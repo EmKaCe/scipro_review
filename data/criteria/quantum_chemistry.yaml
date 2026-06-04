@@ -1,0 +1,58 @@
+categories:
+  quantum_chemistry:
+    title: Quantum Chemistry
+    additional_notes: true
+    positive:
+      - main_point: Quantum chemistry calculations done well, which includes
+        sub_points:
+          - text: correct implementation of the calculation method
+          - text: proper handling of molecular geometry
+          - text: appropriate basis set selection
+          - text: correct interpretation of results
+    neutral:
+      - main_point: Quantum chemistry calculations could be improved, which includes
+        sub_points:
+          - text: basis set choice could be better justified
+          - text: convergence criteria could be more clearly explained
+    negative:
+      - main_point: Quantum chemistry calculation issues, which includes
+        sub_points:
+          - text: incorrect implementation of the calculation method
+          - text: improper handling of molecular geometry
+          - text: wrong or missing basis set parameters
+          - text: incorrect interpretation of results
+
+  pyscf_usage:
+    title: PySCF Usage
+    additional_notes: true
+    positive:
+      - main_point: PySCF usage done well, which includes
+        sub_points:
+          - text: correct setup of the molecular system
+          - text: proper use of PySCF API
+          - text: appropriate calculation parameters
+    neutral: []
+    negative:
+      - main_point: PySCF issues, which includes
+        sub_points:
+          - text: incorrect molecular system setup
+          - text: improper use of PySCF API
+          - text: wrong or missing calculation parameters
+
+  visualization:
+    title: Visualization (Matplotlib)
+    additional_notes: false
+    positive:
+      - main_point: Visualization done well, which includes
+        sub_points:
+          - text: clear and informative plots
+          - text: proper labeling (axes, titles, legends)
+          - text: appropriate plot types for the data
+    neutral: []
+    negative:
+      - main_point: Visualization issues, which includes
+        sub_points:
+          - text: unclear or misleading plots
+          - text: missing labels (axes, titles, legends)
+          - text: inappropriate plot types for the data
+          - text: poor color choices or accessibility issues

@@ -1,0 +1,211 @@
+/**
+ * @file Unit tests for grading-config.ts
+ *
+ * Tests YAML fetching, parsing, caching, and error handling.
+ * Uses mocked fetch to avoid network requests.
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import {
+	loadGradingConfig,
+	getGradingConfig,
+	clearGradingConfigCache,
+} from "$lib/services/grading-config";
+
+// ---------------------------------------------------------------------------
+// Mock data
+// ---------------------------------------------------------------------------
+
+const MOCK_VALID_YAML = `
+dimensions:
+  - key: code_quality_design
+    title: "Code Quality & Design"
+    max_points: 6
+    weight: 4
+  - key: code_execution_results
+    title: "Code Execution & Results"
+    max_points: 6
+    weight: 4
+  - key: assignment_requirements
+    title: "Assignment Requirements"
+    max_points: 6
+    weight: 4
+  - key: scientific_programming
+    title: "Scientific Programming"
+    max_points: 6
+    weight: 4
+  - key: creativity
+    title: "Creativity"
+    max_points: 4
+    weight: 1
+
+grade_boundaries:
+  - min_percentage: 95
+    grade: 1.0
+    label: "excellent"
+    us_equiv: "A+"
+  - min_percentage: 50
+    grade: 4.0
+    label: "sufficient"
+    us_equiv: "D"
+  - min_percentage: 0
+    grade: 5.0
+    label: "insufficient"
+    us_equiv: "F"
+`;
+
+const MOCK_MISSING_DIMENSIONS_YAML = `
+grade_boundaries:
+  - min_percentage: 95
+    grade: 1.0
+    label: "excellent"
+    us_equiv: "A+"
+`;
+
+const MOCK_MISSING_BOUNDARIES_YAML = `
+dimensions:
+  - key: code_quality_design
+    title: "Code Quality & Design"
+    max_points: 6
+    weight: 4
+`;
+
+// ---------------------------------------------------------------------------
+// Mock fetch
+// ---------------------------------------------------------------------------
+
+function mockFetch(urlMap: Record<string, string>) {
+	const originalFetch = globalThis.fetch;
+	globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+		const url =
+			typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+		for (const [path, content] of Object.entries(urlMap)) {
+			if (url.endsWith(path) || url.includes(path)) {
+				return new Response(content, {
+					status: 200,
+					headers: { "Content-Type": "text/yaml" },
+				});
+			}
+		}
+		return new Response("Not Found", { status: 404 });
+	}) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+	return () => {
+		globalThis.fetch = originalFetch;
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+beforeEach(() => {
+	clearGradingConfigCache();
+});
+
+describe("loadGradingConfig", () => {
+	it("loads and parses grading_config.yaml", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_VALID_YAML,
+		});
+
+		const config = await loadGradingConfig();
+		expect(config).not.toBeNull();
+		expect(config!.dimensions).toHaveLength(5);
+		expect(config!.dimensions[0].key).toBe("code_quality_design");
+		expect(config!.dimensions[0].title).toBe("Code Quality & Design");
+		expect(config!.dimensions[0].max_points).toBe(6);
+		expect(config!.dimensions[0].weight).toBe(4);
+
+		expect(config!.grade_boundaries).toHaveLength(3);
+		expect(config!.grade_boundaries[0].min_percentage).toBe(95);
+		expect(config!.grade_boundaries[0].grade).toBe(1.0);
+		expect(config!.grade_boundaries[0].label).toBe("excellent");
+
+		restore();
+	});
+
+	it("caches config after first load", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_VALID_YAML,
+		});
+
+		await loadGradingConfig();
+		await loadGradingConfig(); // Second call should use cache
+
+		// fetch should only be called once (second call uses cache)
+		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+		restore();
+	});
+
+	it("returns null on 404 fetch failure", async () => {
+		const restore = mockFetch({}); // No URLs mapped
+
+		const result = await loadGradingConfig();
+		expect(result).toBeNull();
+
+		restore();
+	});
+
+	it("returns null when YAML is missing 'dimensions' array", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_MISSING_DIMENSIONS_YAML,
+		});
+
+		const result = await loadGradingConfig();
+		expect(result).toBeNull();
+
+		restore();
+	});
+
+	it("returns null when YAML is missing 'grade_boundaries' array", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_MISSING_BOUNDARIES_YAML,
+		});
+
+		const result = await loadGradingConfig();
+		expect(result).toBeNull();
+
+		restore();
+	});
+});
+
+describe("getGradingConfig", () => {
+	it("returns config when load succeeds", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_VALID_YAML,
+		});
+
+		const config = await getGradingConfig();
+		expect(config).not.toBeNull();
+		expect(config.dimensions).toHaveLength(5);
+
+		restore();
+	});
+
+	it("throws when load fails", async () => {
+		const restore = mockFetch({}); // No URLs mapped
+
+		await expect(getGradingConfig()).rejects.toThrow("Failed to load grading configuration");
+
+		restore();
+	});
+});
+
+describe("clearGradingConfigCache", () => {
+	it("resets cache so next load re-fetches", async () => {
+		const restore = mockFetch({
+			"data/grading_config.yaml": MOCK_VALID_YAML,
+		});
+
+		await loadGradingConfig();
+		expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+
+		clearGradingConfigCache();
+
+		await loadGradingConfig();
+		// Should fetch again because cache was cleared
+		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
+
+		restore();
+	});
+});

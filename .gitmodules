@@ -1,0 +1,6 @@
+[submodule ".github/references/scipro_assignments_grading"]
+	path = .github/references/scipro_assignments_grading
+	url = https://github.com/karlkirschner/scipro_assignments_grading.git
+[submodule ".github/references/svelte_prototype"]
+	path = .github/references/svelte_prototype
+	url = https://github.com/emkace/svelte_review.git

@@ -1,0 +1,102 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "frontend: dev",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["dev"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "pattern": {
+          "regexp": "."
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".",
+          "endsPattern": "ready in"
+        }
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "detail": "Start the Vite development server"
+    },
+    {
+      "label": "frontend: build",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["build"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Production build for static adapter"
+    },
+    {
+      "label": "frontend: preview",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["preview"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "dependsOn": ["frontend: build"],
+      "group": "build",
+      "problemMatcher": [],
+      "detail": "Preview the production build locally"
+    },
+    {
+      "label": "frontend: lint",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["lint"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "group": "test",
+      "problemMatcher": [],
+      "detail": "Run Prettier check + ESLint"
+    },
+    {
+      "label": "frontend: format",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["format"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "problemMatcher": [],
+      "detail": "Format all files with Prettier"
+    },
+    {
+      "label": "frontend: check",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["check"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "group": "test",
+      "problemMatcher": [],
+      "detail": "Type-check with svelte-check"
+    },
+    {
+      "label": "frontend: test",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["test"],
+      "options": {
+        "cwd": "${workspaceFolder}/frontend"
+      },
+      "group": "test",
+      "problemMatcher": [],
+      "detail": "Run Vitest test suite"
+    }
+  ]
+}

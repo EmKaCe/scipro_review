@@ -1,0 +1,39 @@
+assignments:
+  - id: atom_interaction
+    title: Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)
+    enabled: true
+    criteria_files:
+      - data/criteria/general.yaml
+      - data/criteria/atom_interaction.yaml
+    dimensions:
+      - code_quality_design
+      - code_execution_results
+      - assignment_requirements
+      - scientific_programming
+      - creativity
+
+  - id: molecular_dynamics
+    title: Molecular Dynamics (OpenMM / NumPy)
+    enabled: false
+    criteria_files:
+      - data/criteria/general.yaml
+      - data/criteria/molecular_dynamics.yaml
+    dimensions:
+      - code_quality_design
+      - code_execution_results
+      - assignment_requirements
+      - scientific_programming
+      - creativity
+
+  - id: quantum_chemistry
+    title: Quantum Chemistry (PySCF / Matplotlib)
+    enabled: false
+    criteria_files:
+      - data/criteria/general.yaml
+      - data/criteria/quantum_chemistry.yaml
+    dimensions:
+      - code_quality_design
+      - code_execution_results
+      - assignment_requirements
+      - scientific_programming
+      - creativity

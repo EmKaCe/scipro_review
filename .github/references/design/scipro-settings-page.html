@@ -1,0 +1,456 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — Settings</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --destructive: oklch(0.577 0.245 27.325);
+      --destructive-bg: oklch(0.97 0.015 25);
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+      --destructive: oklch(0.704 0.191 22.216);
+      --destructive-bg: oklch(0.25 0.05 25);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Custom radio button styling */
+    .theme-radio:checked + label {
+      border-color: var(--accent);
+      background-color: oklch(0.98 0.02 165 / 0.5);
+    }
+
+    .dark .theme-radio:checked + label {
+      background-color: oklch(0.3 0.05 165 / 0.4);
+    }
+
+    /* Custom switch */
+    .custom-switch[data-state="checked"] {
+      background-color: var(--accent);
+    }
+
+    .custom-switch[data-state="checked"] span {
+      transform: translateX(1.25rem);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+
+    .danger-zone {
+      border-color: var(--destructive) !important;
+    }
+
+    .danger-zone .card-header {
+      color: var(--destructive);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header (App Shell Context) -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <button onclick="goBack()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </button>
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span class="text-[var(--muted)] mx-1 select-none">/</span>
+      <span class="text-[var(--muted)] text-sm truncate">Settings</span>
+    </div>
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none"></div>
+
+  <!-- Main Content -->
+  <main class="flex-1">
+    <div class="max-w-2xl mx-auto px-4 py-8 space-y-6">
+
+      <!-- Appearance Card -->
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm overflow-hidden">
+        <div class="p-5 pb-3">
+          <h2 class="text-base font-semibold tracking-tight">Appearance</h2>
+          <p class="text-sm text-[var(--muted)] mt-1">Choose your preferred color scheme.</p>
+        </div>
+        <div class="px-5 pb-5">
+          <div class="flex items-center gap-2 p-1 bg-[var(--bg)] border border-[var(--border)] rounded-[var(--radius)]">
+            <input type="radio" name="theme" id="theme-light" value="light" class="theme-radio sr-only" onchange="setTheme('light')">
+            <label for="theme-light" class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-[calc(var(--radius)-2px)] text-sm font-medium text-[var(--fg)] cursor-pointer transition-all border border-transparent hover:bg-black/5 dark:hover:bg-white/5 select-none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+              Light
+            </label>
+
+            <input type="radio" name="theme" id="theme-dark" value="dark" class="theme-radio sr-only" onchange="setTheme('dark')">
+            <label for="theme-dark" class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-[calc(var(--radius)-2px)] text-sm font-medium text-[var(--fg)] cursor-pointer transition-all border border-transparent hover:bg-black/5 dark:hover:bg-white/5 select-none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              Dark
+            </label>
+
+            <input type="radio" name="theme" id="theme-system" value="system" class="theme-radio sr-only" onchange="setTheme('system')" checked>
+            <label for="theme-system" class="flex-1 flex items-center justify-center gap-1.5 h-8 rounded-[calc(var(--radius)-2px)] text-sm font-medium text-[var(--fg)] cursor-pointer transition-all border border-transparent hover:bg-black/5 dark:hover:bg-white/5 select-none">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+              System
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Mode Card -->
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm overflow-hidden">
+        <div class="p-5 pb-3">
+          <h2 class="text-base font-semibold tracking-tight">Mode</h2>
+          <p class="text-sm text-[var(--muted)] mt-1">Switch between student and teacher review modes.</p>
+        </div>
+        <div class="px-5 pb-5 space-y-4">
+          <div class="flex items-center gap-3">
+            <span class="text-sm font-medium text-[var(--fg)]">Current mode:</span>
+            <span id="mode-badge" class="inline-flex items-center rounded-full border border-[var(--accent)] bg-[var(--accent)]/10 px-2.5 py-0.5 text-xs font-medium text-[var(--accent)]">Student</span>
+          </div>
+          <button onclick="toggleMode()" id="mode-toggle-btn" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center gap-2">
+            <svg id="mode-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Switch to Teacher Mode
+          </button>
+          <div class="space-y-1">
+            <p class="text-xs text-[var(--muted)] flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.001"/><path d="M10 8h.001"/><path d="M14 8h.001"/><path d="M18 8h.001"/><path d="M8 12h.001"/><path d="M12 12h.001"/><path d="M16 12h.001"/><path d="M7 16h10"/></svg>
+              Keyboard shortcut: <kbd class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg)] border border-[var(--border)] text-[var(--fg)]">Alt+Shift+G</kbd>
+            </p>
+            <p class="text-xs text-[var(--muted)]">Teacher mode enables grading controls and dimension sliders.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Management Card -->
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm overflow-hidden">
+        <div class="p-5 pb-3">
+          <h2 class="text-base font-semibold tracking-tight">Data Management</h2>
+          <p class="text-sm text-[var(--muted)] mt-1">Manage your local data and storage.</p>
+        </div>
+        <div class="px-5 pb-5 space-y-4">
+          <div class="flex items-center justify-between p-3 bg-[var(--bg)] rounded-[var(--radius)] border border-[var(--border)]">
+            <div class="flex items-center gap-3">
+              <svg class="text-[var(--muted)]" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s 9-1.34 9-3V5"/></svg>
+              <div>
+                <p class="text-sm font-medium text-[var(--fg)]">IndexedDB Storage</p>
+                <p id="storage-size" class="text-xs text-[var(--muted)]">2.4 KB used</p>
+              </div>
+            </div>
+            <button onclick="clearStorage()" class="h-8 px-3 rounded-[var(--radius)] text-xs font-medium text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+              Clear cache
+            </button>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2">
+            <button onclick="exportData()" class="flex-1 h-9 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+              Export All Data
+            </button>
+            <button onclick="openDeleteDialog()" class="flex-1 h-9 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+              Delete All Data
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- About Card -->
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-sm overflow-hidden">
+        <div class="p-5 pb-3">
+          <h2 class="text-base font-semibold tracking-tight">About</h2>
+        </div>
+        <div class="px-5 pb-5 space-y-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-[var(--radius)] bg-[var(--accent)]/10 flex items-center justify-center">
+              <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div>
+              <p class="text-sm font-semibold text-[var(--fg)]">SciPro Review</p>
+              <p class="text-xs text-[var(--muted)]">v1.2.3</p>
+            </div>
+          </div>
+          <p class="text-sm text-[var(--muted)] leading-relaxed">
+            Peer-review and grading tool for Jupyter notebook submissions. Designed for computational physics courses at German universities.
+          </p>
+          <div class="flex items-center gap-3 pt-2">
+            <a href="https://github.com/scipro/scipro-review" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+              GitHub Repository
+            </a>
+            <a href="#" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-[var(--accent)] hover:underline">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" x2="21" y1="14" y2="3"/></svg>
+              Documentation
+            </a>
+          </div>
+          <p class="text-xs text-[var(--muted)] pt-1">Licensed under MIT License</p>
+        </div>
+      </div>
+
+      <!-- Danger Zone Card -->
+      <div class="bg-[var(--card-bg)] border danger-zone rounded-[var(--radius)] shadow-sm overflow-hidden">
+        <div class="p-5 pb-3">
+          <div class="flex items-center gap-2">
+            <svg class="text-[var(--destructive)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+            <h2 class="text-base font-semibold tracking-tight text-[var(--destructive)]">Danger Zone</h2>
+          </div>
+        </div>
+        <div class="px-5 pb-5 space-y-4">
+          <p class="text-sm text-[var(--muted)] leading-relaxed">
+            This action cannot be undone. All reviews, sessions, and preferences will be permanently deleted from your browser.
+          </p>
+          <button onclick="openDeleteDialog()" class="w-full h-9 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center justify-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            Delete All Data
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-6 text-center border-t border-[var(--border)]">
+    <p class="text-xs text-[var(--muted)]">
+      SciPro Review v1.2.3 · Client-side only · No data leaves your browser
+    </p>
+  </footer>
+
+  <!-- Delete Confirmation Dialog -->
+  <div id="delete-dialog" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-sm w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 p-2 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold tracking-tight">Delete All Data</h3>
+            <p class="text-sm text-[var(--muted)] mt-1 leading-relaxed">
+              This will permanently delete <strong class="text-[var(--fg)]">ALL</strong> saved reviews, sessions, and preferences. This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="text-xs font-medium text-[var(--fg)]">Type <strong>DELETE</strong> to confirm</label>
+          <input type="text" id="confirm-delete-input" oninput="checkDeleteConfirm()" placeholder="DELETE" class="w-full h-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 text-[var(--fg)] uppercase">
+        </div>
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeDeleteDialog()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+          <button id="btn-delete-all" disabled onclick="confirmDelete()" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium opacity-50 cursor-not-allowed transition-opacity">Delete All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentMode = 'student';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Dark mode init
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        document.documentElement.classList.add('dark');
+        document.getElementById('icon-sun').classList.remove('hidden');
+        document.getElementById('icon-sun').classList.add('block');
+        document.getElementById('icon-moon').classList.add('hidden');
+        document.getElementById('icon-moon').classList.remove('block');
+        document.getElementById('theme-dark').checked = true;
+      } else {
+        document.getElementById('theme-system').checked = true;
+      }
+
+      // Storage calculation
+      updateStorageSize();
+    });
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+
+      // Update radio to match
+      if (isDark) {
+        document.getElementById('theme-dark').checked = true;
+      } else {
+        document.getElementById('theme-light').checked = true;
+      }
+    }
+
+    function setTheme(theme) {
+      const isDark = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.documentElement.classList.toggle('dark', isDark);
+
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    function toggleMode() {
+      currentMode = currentMode === 'student' ? 'teacher' : 'student';
+      const badge = document.getElementById('mode-badge');
+      const btn = document.getElementById('mode-toggle-btn');
+
+      if (currentMode === 'teacher') {
+        badge.textContent = 'Teacher';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg> Switch to Student Mode`;
+        showToast('Switched to Teacher Mode');
+      } else {
+        badge.textContent = 'Student';
+        btn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Switch to Teacher Mode`;
+        showToast('Switched to Student Mode');
+      }
+    }
+
+    function updateStorageSize() {
+      // Rough estimate since we can't query IndexedDB size directly without complex logic
+      const size = (Math.random() * 5 + 1).toFixed(1);
+      document.getElementById('storage-size').textContent = `${size} KB used`;
+    }
+
+    function clearStorage() {
+      showToast('Cache cleared');
+      updateStorageSize();
+    }
+
+    function exportData() {
+      const data = { reviews: [], mode: currentMode, theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light' };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `scipro-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Data exported');
+    }
+
+    // Delete Dialog
+    function openDeleteDialog() {
+      const dialog = document.getElementById('delete-dialog');
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+      void dialog.offsetWidth;
+      dialog.classList.remove('opacity-0');
+      dialog.querySelector('div').classList.remove('scale-95');
+      dialog.querySelector('div').classList.add('scale-100');
+      // Reset confirmation input
+      const input = document.getElementById('confirm-delete-input');
+      if (input) {
+        input.value = '';
+      }
+      const btn = document.getElementById('btn-delete-all');
+      if (btn) {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+      }
+    }
+
+    function checkDeleteConfirm() {
+      const input = document.getElementById('confirm-delete-input');
+      const btn = document.getElementById('btn-delete-all');
+      if (input && btn) {
+        if (input.value.trim() === 'DELETE') {
+          btn.disabled = false;
+          btn.classList.remove('opacity-50', 'cursor-not-allowed');
+          btn.classList.add('hover:bg-red-700');
+        } else {
+          btn.disabled = true;
+          btn.classList.add('opacity-50', 'cursor-not-allowed');
+          btn.classList.remove('hover:bg-red-700');
+        }
+      }
+    }
+
+    function closeDeleteDialog() {
+      const dialog = document.getElementById('delete-dialog');
+      dialog.classList.add('opacity-0');
+      dialog.querySelector('div').classList.add('scale-95');
+      dialog.querySelector('div').classList.remove('scale-100');
+      setTimeout(() => {
+        dialog.classList.add('hidden');
+        dialog.classList.remove('flex');
+      }, 200);
+    }
+
+    function confirmDelete() {
+      showToast('All data deleted');
+      closeDeleteDialog();
+      updateStorageSize();
+    }
+
+    function goBack() {
+      console.log('Navigating back to landing page...');
+    }
+
+    function showToast(message) {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'pointer-events-auto flex items-center gap-2 px-4 py-3 rounded-[var(--radius)] bg-[var(--card-bg)] border border-[var(--border)] shadow-lg text-sm text-[var(--fg)] toast-enter';
+      toast.innerHTML = `<svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.classList.remove('toast-enter');
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 200);
+      }, 3000);
+    }
+
+    // Keyboard shortcut for mode toggle
+    document.addEventListener('keydown', (e) => {
+      if (e.altKey && e.shiftKey && e.key === 'G') {
+        e.preventDefault();
+        toggleMode();
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+#!/bin/sh
+#
+# Pre-commit hook for Svelte Frontend
+#
+# Runs lint and type-check before every commit.
+# Exit with error if either fails.
+#
+# Enable with:
+#   git config core.hooksPath .github/hooks
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+echo ""
+echo "📝 Running linter..."
+cd frontend
+pnpm lint
+LINT_EXIT=$?
+cd ..
+
+if [ $LINT_EXIT -ne 0 ]; then
+	echo ""
+	echo "❌ Lint failed. Please fix the errors above and try again."
+	exit 1
+fi
+
+echo "✅ Lint passed"
+
+echo ""
+echo "🔎 Running type-check..."
+cd frontend
+pnpm check
+CHECK_EXIT=$?
+cd ..
+
+if [ $CHECK_EXIT -ne 0 ]; then
+	echo ""
+	echo "❌ Type-check failed. Please fix the errors above and try again."
+	exit 1
+fi
+
+echo "✅ Type-check passed"
+echo ""
+echo "✅ All pre-commit checks passed!"

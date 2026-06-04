@@ -1,0 +1,208 @@
+categories:
+  valid_values:
+    title: Valid Values
+    additional_notes: true
+    positive:
+      - main_point: ""
+        sub_points:
+          - text: Good job on checking whether the distance is negative.
+    neutral: []
+    negative:
+      - main_point: ""
+        sub_points:
+          - text: You did not check for negative values for the distance.
+
+  wrong_numbers:
+    title: Wrong Numbers
+    additional_notes: false
+    positive: []
+    neutral: []
+    negative:
+      - main_point: ""
+        sub_points:
+          - text: The mass of the sun and/or the earth is wrong!
+
+  atom_interaction:
+    title: Atom Interaction
+    additional_notes: true
+    positive:
+      - main_point: Atom interaction done well, which includes
+        sub_points:
+          - text: correct implementation of the Lennard-Jones potential
+          - text: proper handling of the sigma and epsilon parameters
+          - text: appropriate cutoff distance used
+    neutral:
+      - main_point: Atom interaction could be improved, which includes
+        sub_points:
+          - text: cutoff distance could be better justified
+          - text: parameter choices could be more clearly explained
+    negative:
+      - main_point: Atom interaction issues, which includes
+        sub_points:
+          - text: incorrect implementation of the Lennard-Jones potential
+          - text: missing or incorrect sigma and/or epsilon parameters
+          - text: no cutoff distance implemented
+          - text: units are inconsistent or missing
+
+  user_function:
+    title: User-defined Functions
+    additional_notes: true
+    positive:
+      - main_point: Good use of the following
+        sub_points:
+          - text: docstring - providing context; stating what the function does
+          - text: docstring - clearly defining all input variables/objects
+          - text: docstring - clearly defining the returned object(s)
+          - text: internal check - proper use of 'if not isinstance', 'raise' statements, etc.
+          - text: isolating ideas to user-defined functions
+          - text: optional parameters - nice idea to include them
+          - text: type hinting - applied well for input variables (and for what is returned, if applicable)
+          - text: type hinting - good use of the typing library
+    neutral:
+      - main_point: Okay user-defined function(s), but the following could be improved
+        sub_points:
+          - text: assert vs. raise - it is better to use 'raise' since 'assert' can be bypassed
+          - text: complex - a bit too many ideas placed into a single function
+    negative:
+      - main_point: No user-defined functions employed
+        sub_points:
+          - text: Your solution did not include user-defined functions to isolate concepts, improves reusability, transferability and debugging
+      - main_point: Missed opportunity
+        sub_points:
+          - text: You missed an obvious situation to create a user-defined function that would have made your code more concise.
+      - main_point: Your user-defined functions had the following problems
+        sub_points:
+          - text: complex - too many ideas placed in a single function, which limits reusability, transferability and debugging
+          - text: documentation - used comments instead of docstrings to provide context and usage for a function
+          - text: docstring - poorly formatted (e.g., bad indentation, separation of ideas, etc.)
+          - text: docstring - none provided for specifying context
+          - text: docstring - no statement about what the input variables are
+          - text: docstring - no statement about what the function returns
+          - text: docstring - units should be specified for the input and output variables/objects
+          - text: global variables - use local variable in your function (e.g., improves transferability)
+          - text: internal checks - none provided (e.g., 'if not isinstance')
+          - text: internal checks - the check logic is overly complicated or too dense, whose checks should be separated for readability
+          - text: inconsistency - not all functions follow the same style (e.g., some have docstrings, some do not; some have internal checks, some do not)
+          - text: overall solution - creating a homework solution using primarily user-defined functions is not ideal, as it can make the code less concise and more difficult to follow
+          - text: structure - main code logic should be nested under the internal checks (e.g., within an else statement) for clear flow control
+          - text: trivial function - does very little, and arguably does not warrant being a function
+          - text: type hinting - incorrect type(s)
+          - text: type hinting - none provided
+          - text: types redundancy - type hinting is enough, no need to also specify the types again in the docstring
+
+  calling_function:
+    title: Function (and Method) Calling
+    additional_notes: true
+    positive: []
+    neutral: []
+    negative:
+      - main_point: ""
+        sub_points:
+          - text: formatting - placing each parameter being passed onto a new line is not necessary and makes the code less concise
+          - text: keyword arguments calls - include the parameter that are being assigned the argument to (e.g., 'my_function(param1=arg1, param2=arg2)'). Doing so ensure that the arguments are passed correctly.
+
+  pandas:
+    title: Pandas
+    additional_notes: true
+    positive:
+      - main_point: Overall Pandas feedback
+        sub_points:
+          - text: Effective use of Pandas and its built-in functions
+          - text: Good analysis of the correlation results
+          - text: Correlation analysis - Well done
+          - text: Plotting - Good, concise coding for the plot generation
+          - text: Plotting - Nicely made plots containing all key elements
+          - text: Plotting - Very nicely done!
+    neutral:
+      - main_point: The following functions might have been good to use in your solution
+        sub_points:
+          - text: reset_index
+          - text: loc to easily operate over the columns
+          - text: sort_values (Country name) would have been logical to after data cleaning, but fine.=
+    negative:
+      - main_point: Reading Data Into Pandas
+        sub_points:
+          - text: Delimiter (`sep`) - Incorrectly specified the separator used within the CSV-formatted file.
+          - text: Function creation - Creating a function to read in the data is not necessary and adds unnecessary complexity to the code.
+          - text: Header (`header`) - Incorrectly specified the header line.
+          - text: Incorrectly read in the data.
+          - text: New Object - Creating a new object that is string of the input file is unneeded - not concise coding.
+          - text: Renaming file - Renaming the source data file is generally not a good practice.
+      - main_point: Data Modification & Assignment Issue
+        sub_points:
+          - text: "Assignment Failure: You called a modification method (`drop`, `dropna`, `reset_index`, etc.) but failed to save the result by assigning it back (`df = df.method(...)`) or using the `inplace=True` argument. The change was lost."
+      - main_point: Data Cleaning & Preparation
+        sub_points:
+          - text: Cleaning not done - You failed to drop duplicated rows.
+          - text: Cleaning not done - You failed to drop rows with empty/missing cells.
+          - text: Missing Value Handling - Missing values were not handled (dropped or transformed) prior to analysis/correlation.
+      - main_point: Indexing, Slicing, and Merging
+        sub_points:
+          - text: Merging - The merge operation used was incorrect.
+          - text: Sorting - The data was not sorted, or the sorting was incorrect/not saved.
+      - main_point: Correlation Analysis
+        sub_points:
+          - text: corr - Did not use Pandas' built-in correlation function when required.
+          - text: Absolute value - You needed to take the absolute value of some correlation results for analysis.
+          - text: Identification - Incorrectly identified the features that are most correlated.
+          - text: Interpretation - Lack of interpreting what the correlation values mean (context is missing).
+          - text: Interpretation - Incorrectly interpreted the correlation results.
+      - main_point: Output, Persistence, and Presentation
+        sub_points:
+          - text: Not saved - The final processed data was not saved to a file.
+          - text: Presentation - Data should have been formatted or presented in a clear Pandas table (e.g., using `to_string()` or styling) for better readability.
+          - text: Saving index - Saving the default numerical index was unnecessary for the resulting data file.
+      - main_point: Pandas Plotting
+        sub_points:
+          - text: The data was not plotted using the Pandas' built-in methods, which was a requirement for the assignment.
+
+  plotting_data:
+    title: Plotting Data
+    additional_notes: true
+    positive:
+      - main_point: Overall plot feedback
+        sub_points:
+          - text: General - Choices behind the plot(s) were well done, resulting in clear and informative data presentation
+          - text: Color palette - well chosen
+      - main_point: The plot details were good regarding
+        sub_points:
+          - text: axis labels
+          - text: color
+          - text: font size
+          - text: legend
+          - text: line style
+          - text: line thickness
+          - text: point style
+          - text: point size
+          - text: title
+          - text: units
+    neutral:
+      - main_point: Overall plot feedback
+        sub_points:
+          - text: The choices behind the plot creation were generally good, but there is some room for improvement.
+    negative:
+      - main_point: Overall plot feedback
+        sub_points:
+          - text: Plotting data - Data was not visualized/plotted.
+          - text: "Plot type(s) - Type was poorly chosen. It would have been more appropriate to plot the data as:"
+          - text: Related plots/data - Do not have the same axis range, preventing direct comparisons.
+      - main_point: "Composition: Data Overload/Too Many Plots"
+        sub_points:
+          - text: "Too Many Plots: Combining the data into a single (or a reduced number) plots would have been a more concise presentation and allowed easier comparison."
+          - text: "Data Overload: The amount of data presented in a single plot was excessive (too many series/variables), leading to clutter. Consider separating the data."
+      - main_point: Missing Essential Plot Elements
+        sub_points:
+          - text: Axis labels - Missing or incomplete
+          - text: Legend - Missing when multiple data series are present
+          - text: Units - Missing on axis labels or title
+          - text: Title - Plot title is missing
+      - main_point: Poor Choice or Execution of Elements
+        sub_points:
+          - text: Axes and data - independent data should be on the x-axis and dependent data on the y-axis
+          - text: Axis labels - Insufficient detail, misleading, or without units.
+          - text: Color choice - Poor contrast or poor color mapping (i.e., difficult to distinguish).
+          - text: Color choice - Different data series should be assigned different colors to distinguish them.
+          - text: Font size - Too small/large, which significantly impacting readability.
+          - text: Line/point styles - Confusingly similar or inappropriate for the data type.
+          - text: Line styles - A different thickness would have been more appropriate.
+          - text: Point styles - A different size would have been more appropriate.
