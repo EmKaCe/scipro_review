@@ -68,7 +68,6 @@
 	let isReadOnly = $derived(reviewStore.is_read_only);
 	let canUndo = $derived(reviewStore.can_undo);
 	let canRedo = $derived(reviewStore.can_redo);
-	let mode = $derived(reviewStore.mode);
 
 	// Track expanded state per category
 	let expandedCategories = $state<Record<string, boolean>>({});
@@ -86,9 +85,6 @@
 
 	// Active category for scroll-spy
 	let activeCategoryId = $state<string | null>(null);
-
-	// Teacher mode reactive wrapper
-	let teacherMode = $derived(mode === "teacher");
 
 	function toggleCategoryExpanded(key: string) {
 		expandedCategories[key] = !(expandedCategories[key] ?? true);
@@ -144,18 +140,10 @@
 			await reviewStore.importReview(text, file.name);
 			const importedGrading = reviewStore.grading;
 			const hasGradingValues = Object.values(importedGrading).some((v) => v > 0);
-			let readOnly = false;
-			let forcedReadOnly = false;
-			if (settings.mode === "teacher") {
-				readOnly = false;
-			} else if (settings.mode === "student" && hasGradingValues) {
-				readOnly = true;
-				forcedReadOnly = true;
+			if (hasGradingValues) {
+				reviewStore.is_read_only = true;
+				reviewStore.is_forced_read_only = true;
 			}
-			reviewStore.is_read_only = readOnly;
-			reviewStore.is_forced_read_only = forcedReadOnly;
-			// Sync store mode with user settings so grading controls work correctly
-			reviewStore.mode = settings.mode;
 			showImportDialog = false;
 		} catch (error) {
 			console.error("[Review] Import failed:", error);
@@ -313,17 +301,13 @@
 			<SidebarSkeleton />
 		{:else if gradingConfig}
 			{@const hasGradingValues = Object.values(grading).some((v) => v > 0)}
-			{#if teacherMode || hasGradingValues}
+			{#if hasGradingValues}
 				<GradingSidebar
 					dimensions={gradingConfig.dimensions}
 					{grading}
 					{gradeResult}
 					{totalDeductions}
-					{mode}
-					disabled={isReadOnly || (!teacherMode && hasGradingValues)}
-					onToggleMode={() => {
-						reviewStore.mode = mode === "teacher" ? "student" : "teacher";
-					}}
+					disabled={true}
 					onUpdateDimension={handleUpdateDimension}
 				/>
 			{/if}

@@ -34,7 +34,6 @@
 	// Persist settings to localStorage on every change
 	$effect(() => {
 		void settings.theme;
-		void settings.mode;
 		void settings.autoSave;
 		void settings.reviewerName;
 		syncSettingsToStorage();

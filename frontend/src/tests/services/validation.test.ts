@@ -208,10 +208,11 @@ describe("validateReviewSession", () => {
 		expect(result.success).toBe(false);
 	});
 
-	it("rejects invalid mode", () => {
-		const invalid = { ...validSession, mode: "invalid" };
-		const result = validateReviewSession(invalid);
-		expect(result.success).toBe(false);
+	it("accepts any string value for mode (backward compat)", () => {
+		const withCustom = { ...validSession, mode: "anything" };
+		const result = validateReviewSession(withCustom);
+		expect(result.success).toBe(true);
+		expect(result.data!.mode).toBe("anything");
 	});
 
 	it("accepts Set as checked_items", () => {

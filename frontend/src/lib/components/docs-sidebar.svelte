@@ -1,6 +1,5 @@
 <script lang="ts">
 	import Lock from "@lucide/svelte/icons/lock";
-	import { settings } from "$lib/stores/settings.svelte.js";
 
 	/** Props for the documentation sidebar navigation component. */
 	interface Props {
@@ -24,21 +23,9 @@
 		{ id: "importing", label: "Importing Reviews" },
 		{ id: "exporting", label: "Exporting Reviews" },
 		{ id: "previewing", label: "Previewing Evaluations" },
-		{ id: "teacher-mode", label: "Teacher Mode", icon: true },
 		{ id: "shortcuts", label: "Keyboard Shortcuts" },
 		{ id: "faq", label: "FAQ" },
 	];
-
-	let isTeacher = $derived(settings.mode === "teacher");
-
-	let visibleNavItems = $derived(
-		navItems.filter((item) => {
-			if (item.id === "teacher-mode" || item.id === "shortcuts") {
-				return isTeacher;
-			}
-			return true;
-		}),
-	);
 
 	function handleClick(id: string, e: MouseEvent) {
 		e.preventDefault();
@@ -50,7 +37,7 @@
 </script>
 
 <nav class="sticky top-[5rem] max-h-[calc(100vh-6rem)] space-y-0.5 overflow-y-auto pr-2">
-	{#each visibleNavItems as item (item.id)}
+	{#each navItems as item (item.id)}
 		<a
 			href="#{item.id}"
 			onclick={(e) => handleClick(item.id, e)}

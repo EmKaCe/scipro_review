@@ -13,13 +13,6 @@ import type { CategoryKey } from "./criteria.js";
 import type { GradingInputs } from "./grading.js";
 
 // ---------------------------------------------------------------------------
-// Review mode
-// ---------------------------------------------------------------------------
-
-/** View mode for the review interface. */
-export type ReviewMode = "student" | "teacher";
-
-// ---------------------------------------------------------------------------
 // Category selection state
 // ---------------------------------------------------------------------------
 
@@ -55,8 +48,8 @@ export interface ReviewSession {
 	student_id: string;
 	/** Assignment key. */
 	assignment_id: string;
-	/** Review mode. */
-	mode: ReviewMode;
+	/** Review mode (for backward compatibility with persisted sessions). */
+	mode: string;
 	/** Per-category selections keyed by category key. */
 	category_selections: Record<CategoryKey, CategorySelections>;
 	/** Raw scores for each grading dimension. */

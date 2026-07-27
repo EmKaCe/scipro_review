@@ -1,10 +1,5 @@
 <script lang="ts">
-	import type {
-		GradeDimension,
-		GradingInputs,
-		GradeResult,
-		ReviewMode,
-	} from "$lib/types/index.js";
+	import type { GradeDimension, GradingInputs, GradeResult } from "$lib/types/index.js";
 	import {
 		getGradeBarColor,
 		germanGradeFromPercentage,
@@ -23,12 +18,8 @@
 		gradeResult: GradeResult | null;
 		/** Total deduction points. */
 		totalDeductions: number;
-		/** Current review display mode (teacher or student). */
-		mode: ReviewMode;
 		/** Whether the grading is in read-only mode (disables sliders). */
 		disabled?: boolean;
-		/** Callback to toggle between teacher and student mode. */
-		onToggleMode: () => void;
 		/** Callback when a dimension's score value changes. */
 		onUpdateDimension: (key: string, value: number) => void;
 	}
@@ -38,9 +29,7 @@
 		grading,
 		gradeResult,
 		totalDeductions,
-		mode,
 		disabled = false,
-		onToggleMode,
 		onUpdateDimension,
 	}: Props = $props();
 
@@ -60,16 +49,7 @@
 </script>
 
 <div class="space-y-5 rounded-[var(--radius)] border border-border bg-card p-3 sm:p-5">
-	<div class="flex items-center justify-between">
-		<h3 class="text-sm font-semibold tracking-tight">Grading</h3>
-		<button
-			onclick={onToggleMode}
-			class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-			aria-pressed={mode === "teacher"}
-		>
-			{mode === "teacher" ? "Teacher" : "Student"}
-		</button>
-	</div>
+	<h3 class="text-sm font-semibold tracking-tight">Grading</h3>
 
 	<div class="space-y-4">
 		{#each dimensions as dim (dim.key)}

@@ -1,4 +1,17 @@
 assignments:
+  - id: soil_contamination
+    title: Soil Contamination by Factories (NumPy, Pandas, SciPy, sklearn)
+    enabled: true
+    criteria_files:
+      - data/criteria/general.yaml
+      - data/criteria/soil_contamination.yaml
+    dimensions:
+      - code_quality_design
+      - code_execution_results
+      - assignment_requirements
+      - scientific_programming
+      - creativity
+
   - id: atom_interaction
     title: Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)
     enabled: true

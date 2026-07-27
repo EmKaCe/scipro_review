@@ -629,7 +629,6 @@ describe("reset", () => {
 
 		expect(reviewStore.student_id).toBe("");
 		expect(reviewStore.assignment_id).toBe("");
-		expect(reviewStore.mode).toBe("student");
 		expect(reviewStore.rubric).toBeNull();
 		expect(reviewStore.generated_text).toBe("");
 		expect(reviewStore.is_dirty).toBe(false);

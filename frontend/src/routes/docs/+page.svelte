@@ -2,7 +2,6 @@
 	import DocsSidebar from "$lib/components/docs-sidebar.svelte";
 	import DocsContent from "$lib/components/docs-content.svelte";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
-	import { settings } from "$lib/stores/settings.svelte.js";
 
 	let activeSection = $state<string | null>("getting-started");
 
@@ -20,8 +19,6 @@
 		};
 	});
 
-	let isTeacher = $derived(settings.mode === "teacher");
-
 	let sectionIds = $derived([
 		"getting-started",
 		"starting-review",
@@ -30,7 +27,7 @@
 		"importing",
 		"exporting",
 		"previewing",
-		...(isTeacher ? ["teacher-mode", "shortcuts"] : []),
+		"shortcuts",
 		"faq",
 	]);
 
@@ -43,7 +40,6 @@
 			importing: "Importing Reviews",
 			exporting: "Exporting Reviews",
 			previewing: "Previewing Evaluations",
-			"teacher-mode": "Teacher Mode",
 			shortcuts: "Keyboard Shortcuts",
 			faq: "FAQ",
 		};

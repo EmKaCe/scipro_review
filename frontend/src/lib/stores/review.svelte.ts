@@ -10,7 +10,6 @@
  * - Import/restore flows
  * - Undo/redo coordination
  */
-import type { ReviewMode } from "../types/index.js";
 import type { CategoryKey, MergedRubric } from "../types/criteria.js";
 import type { CategorySelections } from "../types/session.js";
 import type { GradingConfig, GradingInputs, GradeResult } from "../types/grading.js";
@@ -64,9 +63,6 @@ class ReviewStore {
 
 	/** Student identifier (e.g., "2026SS_42"). */
 	student_id = $state("");
-
-	/** Review mode: student or teacher. */
-	mode = $state<ReviewMode>("student");
 
 	/** Whether this review was imported and should be read-only. */
 	is_read_only = $state(false);
@@ -573,7 +569,7 @@ class ReviewStore {
 		return {
 			student_id: this.student_id,
 			assignment_id: this.rubricStore.assignment_id,
-			mode: this.mode,
+			mode: "student", // preserved for backward compat with saved sessions
 			category_selections: this.selectionStore.toSession(),
 			grading: this.gradingStore.toSession(),
 			generated_text: this.generated_text,
@@ -606,7 +602,6 @@ class ReviewStore {
 	 */
 	reset(): void {
 		this.student_id = "";
-		this.mode = "student";
 		this.is_read_only = false;
 		this.is_forced_read_only = false;
 		this.generated_text = "";

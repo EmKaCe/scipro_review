@@ -85,11 +85,12 @@ Used across the landing page and review page to import YAML/JSON evaluation file
 ```
 
 **Props**:
-| Prop | Type | Description |
-|------|------|-------------|
-| `open` | `boolean` | Dialog visibility |
-| `onclose` | `() => void` | Close callback |
-| `onimport` | `(file: File, readOnly: boolean) => void` | Single-file import |
+
+| Prop           | Type                                         | Description              |
+| -------------- | -------------------------------------------- | ------------------------ |
+| `open`         | `boolean`                                    | Dialog visibility        |
+| `onclose`      | `() => void`                                 | Close callback           |
+| `onimport`     | `(file: File, readOnly: boolean) => void`    | Single-file import       |
 | `onbulkimport` | `(files: File[], readOnly: boolean) => void` | Multi-file (bulk) import |
 
 ### `RubricCategory` — Rubric category card
@@ -117,17 +118,18 @@ optional rich-text notes editor (TipTap).
 ```
 
 **Props**:
-| Prop | Type | Description |
-|------|------|-------------|
-| `entry` | `CategoryEntry` | Rubric category key + data |
-| `selections` | `CategorySelections` | Current selection state |
-| `expanded` | `boolean` | Whether the card is expanded |
-| `disabled` | `boolean` | Read-only mode |
-| `onToggle` | `() => void` | Expand/collapse callback |
-| `onToggleCheckbox` | `(key: string, checked: boolean) => void` | Checkbox toggle |
-| `onUpdateComment` | `(key: string, value: string) => void` | Comment update |
-| `onUpdateDeduction` | `(key: string, value: number) => void` | Deduction update |
-| `onUpdateNotes` | `(value: string) => void` | Notes update |
+
+| Prop                | Type                                      | Description                  |
+| ------------------- | ----------------------------------------- | ---------------------------- |
+| `entry`             | `CategoryEntry`                           | Rubric category key + data   |
+| `selections`        | `CategorySelections`                      | Current selection state      |
+| `expanded`          | `boolean`                                 | Whether the card is expanded |
+| `disabled`          | `boolean`                                 | Read-only mode               |
+| `onToggle`          | `() => void`                              | Expand/collapse callback     |
+| `onToggleCheckbox`  | `(key: string, checked: boolean) => void` | Checkbox toggle              |
+| `onUpdateComment`   | `(key: string, value: string) => void`    | Comment update               |
+| `onUpdateDeduction` | `(key: string, value: number) => void`    | Deduction update             |
+| `onUpdateNotes`     | `(value: string) => void`                 | Notes update                 |
 
 ### `GradeSlider` — Grading dimension slider
 
@@ -148,12 +150,13 @@ weighted contribution calculation.
 ```
 
 **Props**:
-| Prop | Type | Description |
-|------|------|-------------|
-| `dimension` | `GradeDimension` | Dimension definition (key, title, max, weight) |
-| `value` | `number` | Current score value |
-| `disabled` | `boolean` | Read-only mode |
-| `onChange` | `(key: string, value: number) => void` | Value change callback |
+
+| Prop        | Type                                   | Description                                    |
+| ----------- | -------------------------------------- | ---------------------------------------------- |
+| `dimension` | `GradeDimension`                       | Dimension definition (key, title, max, weight) |
+| `value`     | `number`                               | Current score value                            |
+| `disabled`  | `boolean`                              | Read-only mode                                 |
+| `onChange`  | `(key: string, value: number) => void` | Value change callback                          |
 
 ### `ConfirmationDialog` — Confirmation modal
 
@@ -178,16 +181,17 @@ a `requireTyping` prop for high-stakes operations (e.g., "delete").
 ```
 
 **Props**:
-| Prop | Type | Description |
-|------|------|-------------|
-| `open` | `boolean` | Dialog visibility |
-| `title` | `string` | Dialog title |
-| `message` | `string` | Body message |
-| `confirmLabel` | `string` | Confirm button label (default: "Confirm") |
-| `variant` | `"danger" \| "default"` | Visual style (default: "default") |
-| `requireTyping` | `string` | If set, user must type this to enable confirm |
-| `onconfirm` | `() => void` | Confirm callback |
-| `oncancel` | `() => void` | Cancel callback |
+
+| Prop            | Type                    | Description                                   |
+| --------------- | ----------------------- | --------------------------------------------- |
+| `open`          | `boolean`               | Dialog visibility                             |
+| `title`         | `string`                | Dialog title                                  |
+| `message`       | `string`                | Body message                                  |
+| `confirmLabel`  | `string`                | Confirm button label (default: "Confirm")     |
+| `variant`       | `"danger" \| "default"` | Visual style (default: "default")             |
+| `requireTyping` | `string`                | If set, user must type this to enable confirm |
+| `onconfirm`     | `() => void`            | Confirm callback                              |
+| `oncancel`      | `() => void`            | Cancel callback                               |
 
 ## Component Conventions
 

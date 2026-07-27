@@ -4,6 +4,9 @@
  * Tests serialization, deserialization, YAML/JSON export/import,
  * file download, and format detection.
  */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { describe, it, expect, vi } from "vitest";
 import {
 	serializeSession,
@@ -38,7 +41,7 @@ function makeSession(overrides?: Partial<ReviewSession>): ReviewSession {
 				comments: { did_well: "Nice work" },
 				deductions: { needs_work: 2 },
 			},
-		} as Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+		} as Record<string, any>,
 		grading: {
 			code_quality_design: 4,
 			code_execution_results: 5,
@@ -134,7 +137,7 @@ describe("serializeSession", () => {
 		const session = makeSession();
 		const json = serializeSession(session);
 		const parsed = JSON.parse(json);
-		const checkedItems = (parsed.category_selections as Record<string, any>)["code_quality"] // eslint-disable-line @typescript-eslint/no-explicit-any
+		const checkedItems = (parsed.category_selections as Record<string, any>)["code_quality"]
 			.checked_items;
 		expect(Array.isArray(checkedItems)).toBe(true);
 		expect(checkedItems).toContain("did_well");
@@ -157,7 +160,7 @@ describe("deserializeSession", () => {
 		const original = makeSession();
 		const json = serializeSession(original);
 		const restored = deserializeSession(json);
-		const checkedItems = (restored!.category_selections as Record<string, any>)["code_quality"] // eslint-disable-line @typescript-eslint/no-explicit-any
+		const checkedItems = (restored!.category_selections as Record<string, any>)["code_quality"]
 			.checked_items;
 		expect(checkedItems).toBeInstanceOf(Set);
 		expect(checkedItems.has("did_well")).toBe(true);
@@ -174,12 +177,12 @@ describe("deserializeSession", () => {
 		const json = serializeSession(original);
 		const restored = deserializeSession(json);
 		expect(
-			(restored!.category_selections as Record<string, any>)["code_quality"].comments, // eslint-disable-line @typescript-eslint/no-explicit-any
+			(restored!.category_selections as Record<string, any>)["code_quality"].comments,
 		).toEqual({
 			did_well: "Nice work",
 		});
 		expect(
-			(restored!.category_selections as Record<string, any>)["code_quality"].deductions, // eslint-disable-line @typescript-eslint/no-explicit-any
+			(restored!.category_selections as Record<string, any>)["code_quality"].deductions,
 		).toEqual({
 			needs_work: 2,
 		});
@@ -257,7 +260,6 @@ describe("exportSession", () => {
 	it("throws for unknown format", () => {
 		const session = makeSession();
 		expect(() =>
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			exportSession(session, TEST_RUBRIC, TEST_RESULT, "csv" as any, "Reviewer"),
 		).toThrow("Unknown export format");
 	});
@@ -476,9 +478,8 @@ describe("downloadFile", () => {
 		const originalCreateObjectURL = globalThis.URL.createObjectURL;
 		const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
 
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		vi.spyOn(document, "createElement").mockReturnValue(mockLink as any);
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 		vi.spyOn(document, "body", "get").mockReturnValue(mockBody as any);
 		globalThis.URL.createObjectURL = vi.fn(() => "blob:http://localhost/fake");
 		globalThis.URL.revokeObjectURL = vi.fn();

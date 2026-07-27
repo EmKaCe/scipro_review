@@ -19,9 +19,6 @@ const nonEmptyString = z.string().min(1);
 /** Validates an ISO date string (YYYY-MM-DD or full ISO 8601). */
 const dateString = z.string().min(1);
 
-/** Validates a ReviewMode value. */
-const reviewMode = z.enum(["student", "teacher"]);
-
 // ---------------------------------------------------------------------------
 // Category feedback schema (v2 evaluation format)
 // ---------------------------------------------------------------------------
@@ -78,7 +75,7 @@ const categorySelectionsSchema = z.object({
 const reviewSessionSchema = z.object({
 	student_id: nonEmptyString,
 	assignment_id: nonEmptyString,
-	mode: reviewMode.optional().default("student"),
+	mode: z.string().optional().default("student"),
 	category_selections: z.record(z.string(), categorySelectionsSchema),
 	grading: z.record(z.string(), z.number()),
 	generated_text: z.string().optional().default(""),

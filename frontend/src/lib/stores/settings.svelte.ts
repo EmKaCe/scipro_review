@@ -1,11 +1,10 @@
 /** @file Reactive application settings store using Svelte 5 runes. */
-import type { ThemeMode, ReviewMode } from "../types/index.js";
+import type { ThemeMode } from "../types/index.js";
 
 const STORAGE_KEY = "scipro-settings";
 
 function loadSettings(): {
 	theme: ThemeMode;
-	mode: ReviewMode;
 	autoSave: boolean;
 	reviewerName: string;
 } {
@@ -13,10 +12,9 @@ function loadSettings(): {
 		const raw = localStorage.getItem(STORAGE_KEY);
 		if (raw) {
 			const parsed = JSON.parse(raw);
-			if (parsed.theme && parsed.mode && typeof parsed.autoSave === "boolean") {
+			if (parsed.theme && typeof parsed.autoSave === "boolean") {
 				return {
 					theme: parsed.theme,
-					mode: parsed.mode,
 					autoSave: parsed.autoSave,
 					reviewerName: parsed.reviewerName ?? "",
 				};
@@ -27,7 +25,6 @@ function loadSettings(): {
 	}
 	return {
 		theme: "system",
-		mode: "student",
 		autoSave: true,
 		reviewerName: "",
 	};
@@ -35,13 +32,11 @@ function loadSettings(): {
 
 /**
  * Global reactive application settings.
- * Persists theme, review mode, and auto-save preference.
+ * Persists theme and auto-save preference.
  */
 export const settings = $state<{
 	/** Current theme preference. */
 	theme: ThemeMode;
-	/** Default review display mode. */
-	mode: ReviewMode;
 	/** Whether reviews are automatically saved on changes. */
 	autoSave: boolean;
 	/** Reviewer name for evaluation output. */
@@ -52,7 +47,6 @@ export const settings = $state<{
 export function syncSettingsToStorage(): void {
 	const payload = JSON.stringify({
 		theme: settings.theme,
-		mode: settings.mode,
 		autoSave: settings.autoSave,
 		reviewerName: settings.reviewerName,
 	});
@@ -70,19 +64,6 @@ export function getTheme(): ThemeMode {
  */
 export function setTheme(theme: ThemeMode): void {
 	settings.theme = theme;
-}
-
-/** Returns the current review display mode. */
-export function getMode(): ReviewMode {
-	return settings.mode;
-}
-
-/**
- * Set the review display mode.
- * @param mode - The new review mode.
- */
-export function setMode(mode: ReviewMode): void {
-	settings.mode = mode;
 }
 
 /**

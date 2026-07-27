@@ -8,6 +8,9 @@
  * instead of deleting the database, because the idb library caches
  * the database connection and deleting while connected causes timeouts.
  */
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { describe, it, expect, beforeEach } from "vitest";
 import {
 	saveCurrentSession,
@@ -60,7 +63,7 @@ function makeSession(overrides?: Partial<ReviewSession>): ReviewSession {
 				comments: {},
 				deductions: {},
 			},
-		} as Record<string, any>, // eslint-disable-line @typescript-eslint/no-explicit-any
+		} as Record<string, any>,
 		grading: {
 			code_quality_design: 4,
 			code_execution_results: 5,
@@ -164,7 +167,7 @@ describe("saveReview / loadReview", () => {
 		const session = makeSession();
 		const id = await saveReview(session);
 		const loaded = await loadReview(id);
-		const checkedItems = (loaded!.category_selections as Record<string, any>)["code_quality"] // eslint-disable-line @typescript-eslint/no-explicit-any
+		const checkedItems = (loaded!.category_selections as Record<string, any>)["code_quality"]
 			.checked_items;
 		expect(checkedItems).toBeInstanceOf(Set);
 		expect(checkedItems.has("did_well")).toBe(true);

@@ -67,7 +67,7 @@ export type { AssignmentsRegistry } from "./assignments.js";
 
 export { findAssignment, enabledAssignments } from "./assignments.js";
 
-export type { ReviewMode, CategorySelections, ReviewSession } from "./session.js";
+export type { CategorySelections, ReviewSession } from "./session.js";
 
 export { categorySelectionsToFeedback } from "./session.js";
 

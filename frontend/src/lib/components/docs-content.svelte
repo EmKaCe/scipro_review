@@ -2,10 +2,6 @@
 	import Info from "@lucide/svelte/icons/info";
 	import ImageIcon from "@lucide/svelte/icons/image";
 	import FaqAccordion from "$lib/components/faq-accordion.svelte";
-	import { settings } from "$lib/stores/settings.svelte.js";
-	import { base } from "$app/paths";
-
-	let isTeacher = $derived(settings.mode === "teacher");
 </script>
 
 <div class="doc-content max-w-3xl">
@@ -39,15 +35,6 @@
 				browser data will erase all saved reviews. Export important reviews regularly.
 			</p>
 		</div>
-		{#if isTeacher}
-			<p class="text-muted-foreground">
-				<strong>Mode Toggle:</strong> The Teacher/Student mode switch button is only
-				available on the
-				<a href="{base}/settings" class="text-primary hover:underline">Settings</a> page.
-				However, you can use the <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd> keyboard shortcut
-				from any page to toggle modes.
-			</p>
-		{/if}
 	</section>
 
 	<!-- Starting a Review -->
@@ -214,86 +201,37 @@
 				<strong>Copy to Clipboard</strong> — Use the action bar to copy the report as Markdown.
 			</li>
 			<li>
-				<strong>Grading Summary</strong> — In Teacher Mode, a detailed breakdown of dimension
-				scores is included.
+				<strong>Grading Summary</strong> — A detailed breakdown of dimension scores is included.
 			</li>
 		</ul>
 	</section>
 
-	<!-- Teacher Mode -->
-	{#if isTeacher}
-		<section id="teacher-mode">
-			<h2>Teacher Mode</h2>
-			<p>Teacher Mode unlocks grading controls that are hidden in Student Mode.</p>
-			<div class="mb-4 flex items-center gap-2">
-				<span
-					class="inline-flex items-center rounded-full border border-border px-2 py-0.5 text-xs font-medium text-muted-foreground"
-				>
-					Advanced feature
-				</span>
-			</div>
-			<ul>
-				<li>
-					<strong>Activation</strong> — Go to <strong>Settings</strong> and toggle mode,
-					or press
-					<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>G</kbd>.
-				</li>
-				<li>
-					<strong>Grading Sidebar</strong> — Five dimension sliders appear on the right side
-					of the review page.
-				</li>
-				<li>
-					<strong>Dimensions</strong> — Code Quality, Execution, Requirements, Scientific Programming,
-					and Creativity.
-				</li>
-				<li>
-					<strong>Grade Calculation</strong> — The app computes a weighted percentage and maps
-					it to the German grading scale (1.0–5.0) with a corresponding US label.
-				</li>
-				<li>
-					<strong>Near-Fence Warnings</strong> — If a score is within 2% of a higher grade boundary,
-					an amber warning appears.
-				</li>
-				<li>
-					<strong>Point Deductions</strong> — All checked negative sub-point deductions are
-					summed and subtracted from the total.
-				</li>
-			</ul>
-		</section>
-	{/if}
-
 	<!-- Keyboard Shortcuts -->
-	{#if isTeacher}
-		<section id="shortcuts">
-			<h2>Keyboard Shortcuts</h2>
-			<table>
-				<thead>
-					<tr>
-						<th>Shortcut</th>
-						<th>Action</th>
-					</tr>
-				</thead>
-				<tbody>
-					<tr>
-						<td><kbd>Ctrl</kbd> + <kbd>S</kbd></td>
-						<td>Save the current review</td>
-					</tr>
-					<tr>
-						<td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td>
-						<td>Undo last action</td>
-					</tr>
-					<tr>
-						<td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td>
-						<td>Redo last undone action</td>
-					</tr>
-					<tr>
-						<td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd></td>
-						<td>Toggle Teacher Mode</td>
-					</tr>
-				</tbody>
-			</table>
-		</section>
-	{/if}
+	<section id="shortcuts">
+		<h2>Keyboard Shortcuts</h2>
+		<table>
+			<thead>
+				<tr>
+					<th>Shortcut</th>
+					<th>Action</th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr>
+					<td><kbd>Ctrl</kbd> + <kbd>S</kbd></td>
+					<td>Save the current review</td>
+				</tr>
+				<tr>
+					<td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td>
+					<td>Undo last action</td>
+				</tr>
+				<tr>
+					<td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td>
+					<td>Redo last undone action</td>
+				</tr>
+			</tbody>
+		</table>
+	</section>
 
 	<!-- FAQ -->
 	<section id="faq">

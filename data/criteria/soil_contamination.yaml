@@ -1,0 +1,147 @@
+categories:
+  soil_data_preparation:
+    title: Data Preparation
+    additional_notes: true
+    positive:
+      - main_point: Data preparation done well, which includes
+        sub_points:
+          - text: CSV file correctly loaded using pandas
+          - text: data validation performed (column names, missing values)
+          - text: correct handling of coordinate and concentration data
+    neutral:
+      - main_point: Data preparation could be improved
+        sub_points:
+          - text: basic loading done but no data validation
+          - text: column types or structure could be better documented
+    negative:
+      - main_point: Data preparation issues
+        sub_points:
+          - text: CSV file not loaded correctly
+          - text: missing or incorrect data validation
+          - text: data types not properly handled
+
+  clustering_analysis:
+    title: Clustering Analysis
+    additional_notes: true
+    positive:
+      - main_point: Clustering done well, which includes
+        sub_points:
+          - text: correct use of KMeans with appropriate parameters
+          - text: cluster labels properly assigned to the DataFrame
+          - text: meaningful visualization of the resulting clusters
+          - text: centroids clearly displayed and labeled
+    neutral:
+      - main_point: Clustering could be improved
+        sub_points:
+          - text: clustering implemented but visualization could be clearer
+          - text: cluster labeling could be more informative
+    negative:
+      - main_point: Clustering issues
+        sub_points:
+          - text: incorrect KMeans implementation or parameters
+          - text: cluster labels not properly integrated with data
+          - text: missing or misleading visualization
+
+  model_optimization:
+    title: Model Parameter Optimization
+    additional_notes: true
+    positive:
+      - main_point: Model optimization done well, which includes
+        sub_points:
+          - text: correct user-defined function implementing Equation 1
+          - text: appropriate type hints and NumPy/SciPy types used
+          - text: proper subset selection for Building A cluster
+          - text: correct use of curve_fit with reasonable initial guesses
+          - text: fitted parameters correctly extracted and reported with units
+    neutral:
+      - main_point: Model optimization could be improved
+        sub_points:
+          - text: function implementation correct but type hints imprecise
+          - text: initial guesses reasonable but could be better justified
+          - text: basic fit done but without covariance or uncertainty analysis
+    negative:
+      - main_point: Model optimization issues
+        sub_points:
+          - text: user-defined function incorrectly implements the equation
+          - text: wrong cluster used for Building A analysis
+          - text: curve_fit used incorrectly or parameters not extracted
+          - text: initial guesses unreasonable or missing
+          - text: units missing or inconsistent
+
+  prediction_visualization:
+    title: Prediction and Visualization
+    additional_notes: true
+    positive:
+      - main_point: Prediction and visualization done well, which includes
+        sub_points:
+          - text: predicted concentrations correctly computed from fitted model
+          - text: scatter plot of actual vs predicted with proper labels
+          - text: additional visualization (contour, comparison) where appropriate
+          - text: RMSE or R² computed to quantify prediction quality
+    neutral:
+      - main_point: Visualization could be improved
+        sub_points:
+          - text: basic plot present but could include more detail
+          - text: prediction computed but not compared against actual values
+    negative:
+      - main_point: Prediction and visualization issues
+        sub_points:
+          - text: predicted concentrations not computed or incorrect
+          - text: missing or incorrect scatter plot of actual vs predicted
+          - text: no error metrics (RMSE, R²) provided
+          - text: plots missing labels, units, or legends
+
+  results_interpretation:
+    title: Results Interpretation
+    additional_notes: false
+    positive:
+      - main_point: Results interpretation done well, which includes
+        sub_points:
+          - text: thoughtful commentary on the spatial clustering results
+          - text: meaningful interpretation of the fitted model parameters
+          - text: appropriate discussion of prediction accuracy and limitations
+    neutral:
+      - main_point: Interpretation could be more detailed
+        sub_points:
+          - text: brief comments but could include deeper analysis
+          - text: describes what was done but not why results make sense
+    negative:
+      - main_point: Results interpretation issues
+        sub_points:
+          - text: no commentary on the clustering or model results
+          - text: interpretation is incorrect or contradicts the data
+          - text: discussion is too brief or purely descriptive without insight
+
+  scipy_usage:
+    title: SciPy Usage
+    additional_notes: true
+    positive:
+      - main_point: SciPy usage done well, which includes
+        sub_points:
+          - text: curve_fit correctly imported and used
+          - text: covariance matrix extracted and interpreted
+          - text: appropriate handling of curve_fit outputs
+    neutral: []
+    negative:
+      - main_point: SciPy usage issues
+        sub_points:
+          - text: curve_fit imported but not used correctly
+          - text: covariance results ignored or misinterpreted
+          - text: missing error handling for optimization failures
+
+  sklearn_usage:
+    title: Scikit-learn Usage
+    additional_notes: true
+    positive:
+      - main_point: scikit-learn usage done well, which includes
+        sub_points:
+          - text: KMeans correctly imported with appropriate parameters
+          - text: random_state set for reproducibility
+          - text: cluster labels correctly interpreted and used
+    neutral: []
+    negative:
+      - main_point: scikit-learn usage issues
+        sub_points:
+          - text: KMeans imported but incorrect API usage
+          - text: missing random_state or inappropriate parameter choices
+          - text: cluster labels used incorrectly

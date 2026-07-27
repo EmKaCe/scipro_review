@@ -1,5 +1,7 @@
-import adapter from "@sveltejs/adapter-static";
+import adapterStatic from "@sveltejs/adapter-static";
+import adapterNode from "@sveltejs/adapter-node";
 
+const isNode = process.env.ADAPTER === "node";
 const dev = process.env.NODE_ENV === "development";
 
 /** @type {import('@sveltejs/kit').Config} */
@@ -12,13 +14,11 @@ const config = {
 		warningFilter: (warning) => warning.code !== "a11y_autofocus",
 	},
 	kit: {
-		adapter: adapter({
-			// SPA fallback — all routes are handled client-side
-			fallback: "404.html",
-		}),
+		adapter: isNode ? adapterNode() : adapterStatic({ fallback: "404.html" }),
 		paths: {
 			// GitHub Pages serves at /svelte_review/ — dev server uses root /
-			base: dev ? "" : "/svelte_review",
+			// Node builds also use root — the Docker container handles routing
+			base: isNode || dev ? "" : "/svelte_review",
 		},
 	},
 };

@@ -2,7 +2,6 @@
 	import { reviewStore } from "$lib/stores/review.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
-	import { settings } from "$lib/stores/settings.svelte.js";
 	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
 	import { parseImport } from "$lib/services/session-persistence.js";
@@ -67,8 +66,6 @@
 	async function openReview(id: string) {
 		try {
 			await reviewStore.loadById(id);
-			// Sync store mode with user settings so grading controls work correctly
-			reviewStore.mode = settings.mode;
 			addToast("success", "Review loaded", 2000);
 			goto(`${base}/review/${reviewStore.assignment_id}`);
 		} catch (error) {
@@ -107,15 +104,14 @@
 		try {
 			const text = await file.text();
 			await reviewStore.importReview(text, file.name, readOnly);
-			// Enforce forced read-only for student mode with teacher grades
+			// Imported reviews without grading data respect the user's read-only preference.
+			// Teacher-graded imports (with grading values) are always forced read-only.
 			const importedGrading = reviewStore.grading;
 			const hasGradingValues = Object.values(importedGrading).some((v) => v > 0);
-			if (settings.mode === "student" && hasGradingValues) {
+			if (hasGradingValues) {
 				reviewStore.is_read_only = true;
 				reviewStore.is_forced_read_only = true;
 			}
-			// Sync store mode with user settings so grading controls work correctly
-			reviewStore.mode = settings.mode;
 			showImportDialog = false;
 			goto(`${base}/review/${reviewStore.assignment_id}`);
 		} catch (error) {
