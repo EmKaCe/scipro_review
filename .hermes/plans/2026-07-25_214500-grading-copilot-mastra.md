@@ -202,9 +202,9 @@ Before any development, walk through every user-facing flow in a real browser (C
 **Deliverable:** A GitHub issue listing any bugs found, prioritized (blocking / major / cosmetic). Fix blocking bugs before proceeding to Phase 1.
 
 ---
-## Phase 1: Clean Separation — Remove Legacy Teacher Mode ✅ COMPLETED
+## Phase 1: Clean Separation — Remove Legacy Teacher Mode ✅ MERGED (PR #7)
 
-**Goal:** ✅ The runtime mode toggle has been removed. Mode-gating eliminated from all components. Dual-adapter build is operational. Student-facing static build contains zero teacher-mode code paths.
+> **Status:** ✅ **Merged to `main` via PR #7 on 2026-07-27.** All 14 tasks executed, 215/215 tests passing, both builds verified. Runtime mode toggle removed, dual-adapter build operational.
 
 The mode toggle currently lives in these locations — remove all of them:
 
