@@ -1,2 +1,13 @@
 reviews/**
-data/submissions/*
+# Student submissions — never committed
+data/submissions/
+
+# Assignment materials — keys, PDFs, input data — never committed
+data/materials/
+
+# Exception: criteria, grading config, and registry stay in git
+!data/assignments.yaml
+!data/grading_config.yaml
+!data/criteria/
+
+.hermes/**
