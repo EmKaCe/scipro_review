@@ -37,7 +37,7 @@ jobs:
 
       - run: pnpm prebuild
 
-      - run: pnpm build
+      - run: pnpm build:student
 
       - uses: actions/upload-pages-artifact@v5
         with:
