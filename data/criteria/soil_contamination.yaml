@@ -1,147 +1,144 @@
 categories:
-  soil_data_preparation:
-    title: Data Preparation
+  pandas:
+    title: Pandas
     additional_notes: true
     positive:
-      - main_point: Data preparation done well, which includes
-        sub_points:
-          - text: CSV file correctly loaded using pandas
-          - text: data validation performed (column names, missing values)
-          - text: correct handling of coordinate and concentration data
+    - main_point: The following points were well done
+      sub_points:
+      - text: 'Functions: good use of Pandas functions.'
+      - text: 'Functions: good use of `to_numpy()` when passing coordinates to `curve_fit`.'
+      - text: 'Data loading: correct use of `pd.read_csv`.'
+      - text: 'Data inspection: good use of `head()` to preview the DataFrame.'
+      - text: 'DataFrame display: Nicely displayed Pandas DataFrames for better readability.'
+      - text: 'Merging data: The merge of data into the a DataFrame was well done.'
+      - text: 'Statitical Analysis: Good job on including and interpreting basic statistical
+          analysis.'
     neutral:
-      - main_point: Data preparation could be improved
-        sub_points:
-          - text: basic loading done but no data validation
-          - text: column types or structure could be better documented
+    - main_point: Data Cleaning
+      sub_points:
+      - text: 'Data cleaning: for this assignment, data cleaning was not required,
+          but it is fine that you did it.'
     negative:
-      - main_point: Data preparation issues
-        sub_points:
-          - text: CSV file not loaded correctly
-          - text: missing or incorrect data validation
-          - text: data types not properly handled
-
-  clustering_analysis:
-    title: Clustering Analysis
+    - main_point: Data Loading
+      sub_points:
+      - text: 'Delimiter (i.e., `sep`): incorrectly specified the separator used within
+          the CSV-formatted file.'
+      - text: 'Data reading: incorrectly read in the data.'
+      - text: 'Function Creation: Creating a function to read in the data is not necessary
+          here and adds complexity/verboseness to the code.'
+    - main_point: The following points were problems in your solution
+      sub_points:
+      - text: 'Constants: creating a lot of objects that represent `constants` doesn''t
+          make sense here. For a short notebook, you are replacing a string for an
+          object, which is not concise coding.'
+      - text: 'Displaying data: data is not displayed well (e.g., a print statement)
+          - should display data in a Pandas'' DataFrame table (e.g. `display()`) when
+          possible.'
+      - text: 'Dataframes: the creation of DataFrames was more complicated than needed
+          to be.'
+      - text: 'Dataframes: too many DataFrames were created, causing less concise
+          work and more mental load.'
+      - text: 'Interpretation: Lack of interpreting what the statitical analysis means
+          (i.e., context is missing).'
+      - text: 'Merging DataFrames: The merge of data was incorrect or not done well.'
+  numpy:
+    title: NumPy
     additional_notes: true
     positive:
-      - main_point: Clustering done well, which includes
-        sub_points:
-          - text: correct use of KMeans with appropriate parameters
-          - text: cluster labels properly assigned to the DataFrame
-          - text: meaningful visualization of the resulting clusters
-          - text: centroids clearly displayed and labeled
+    - main_point: The following points were well done
+      sub_points:
+      - text: 'Abbreviation: good job on using use the community abbreviation of `np`.'
+      - text: 'Array Operations: array reshaping done correctly.'
+      - text: 'Array Operations: combining arrays done correctly.'
+      - text: 'Function: good job on maximizing the use use of NumPy''s functions
+          (e.g., `np.add`, `np.subtract`, `np.exp`) to perform meathematics.'
+      - text: 'Function: good job on using NumPy''s `np.exp` functions to perform
+          meathematics.'
+      - text: 'Types: good job on ensuring NumPy objects (e.g. `np.ndarray`, `np.float64`)
+          were used in the solution.'
+      - text: 'Vectorization: good use of NumPy''s vectorization instead of loops
+          (e.g., for loops).'
     neutral:
-      - main_point: Clustering could be improved
-        sub_points:
-          - text: clustering implemented but visualization could be clearer
-          - text: cluster labeling could be more informative
+    - main_point: The following would improve your NumPy solution slightly
+      sub_points:
+      - text: 'Function: fine usage of both regular and NumPy''s functions. While
+          this is more readable, it may detract from performance. Keep this in mind
+          for your future programming.'
     negative:
-      - main_point: Clustering issues
-        sub_points:
-          - text: incorrect KMeans implementation or parameters
-          - text: cluster labels not properly integrated with data
-          - text: missing or misleading visualization
-
-  model_optimization:
-    title: Model Parameter Optimization
+    - main_point: The following points were problems in your solution
+      sub_points:
+      - text: 'Abbreviation: use the community abbreviation of `np`.'
+      - text: 'Function: use NumPy''s `np.exp` functions to perform calculations.'
+      - text: 'Types: ensure NumPy objects (e.g. `np.ndarray`, `np.float64`) are used
+          in the user-defined model.'
+      - text: 'Vectorization: iterating over the NumPy ndarray via a loop defeats
+          the purpose of vectorization and hurts performance.'
+  scipy:
+    title: SciPy
     additional_notes: true
     positive:
-      - main_point: Model optimization done well, which includes
-        sub_points:
-          - text: correct user-defined function implementing Equation 1
-          - text: appropriate type hints and NumPy/SciPy types used
-          - text: proper subset selection for Building A cluster
-          - text: correct use of curve_fit with reasonable initial guesses
-          - text: fitted parameters correctly extracted and reported with units
-    neutral:
-      - main_point: Model optimization could be improved
-        sub_points:
-          - text: function implementation correct but type hints imprecise
-          - text: initial guesses reasonable but could be better justified
-          - text: basic fit done but without covariance or uncertainty analysis
-    negative:
-      - main_point: Model optimization issues
-        sub_points:
-          - text: user-defined function incorrectly implements the equation
-          - text: wrong cluster used for Building A analysis
-          - text: curve_fit used incorrectly or parameters not extracted
-          - text: initial guesses unreasonable or missing
-          - text: units missing or inconsistent
-
-  prediction_visualization:
-    title: Prediction and Visualization
-    additional_notes: true
-    positive:
-      - main_point: Prediction and visualization done well, which includes
-        sub_points:
-          - text: predicted concentrations correctly computed from fitted model
-          - text: scatter plot of actual vs predicted with proper labels
-          - text: additional visualization (contour, comparison) where appropriate
-          - text: RMSE or R² computed to quantify prediction quality
-    neutral:
-      - main_point: Visualization could be improved
-        sub_points:
-          - text: basic plot present but could include more detail
-          - text: prediction computed but not compared against actual values
-    negative:
-      - main_point: Prediction and visualization issues
-        sub_points:
-          - text: predicted concentrations not computed or incorrect
-          - text: missing or incorrect scatter plot of actual vs predicted
-          - text: no error metrics (RMSE, R²) provided
-          - text: plots missing labels, units, or legends
-
-  results_interpretation:
-    title: Results Interpretation
-    additional_notes: false
-    positive:
-      - main_point: Results interpretation done well, which includes
-        sub_points:
-          - text: thoughtful commentary on the spatial clustering results
-          - text: meaningful interpretation of the fitted model parameters
-          - text: appropriate discussion of prediction accuracy and limitations
-    neutral:
-      - main_point: Interpretation could be more detailed
-        sub_points:
-          - text: brief comments but could include deeper analysis
-          - text: describes what was done but not why results make sense
-    negative:
-      - main_point: Results interpretation issues
-        sub_points:
-          - text: no commentary on the clustering or model results
-          - text: interpretation is incorrect or contradicts the data
-          - text: discussion is too brief or purely descriptive without insight
-
-  scipy_usage:
-    title: SciPy Usage
-    additional_notes: true
-    positive:
-      - main_point: SciPy usage done well, which includes
-        sub_points:
-          - text: curve_fit correctly imported and used
-          - text: covariance matrix extracted and interpreted
-          - text: appropriate handling of curve_fit outputs
+    - main_point: ''
+      sub_points:
+      - text: 'Analysis: good job on using the elbow technique.'
+      - text: 'Analysis: good job on using RMSE and R^2 to evaluate the model.'
+      - text: 'Analysis: nice idea to do a double check the number of clusters using
+          the elbow technique.'
+      - text: 'Analysis: very good job on computing the prediction''s errors based
+          on the covariance matrix.'
+      - text: 'Functions: good job on using SciPy `curve_fit` function.'
     neutral: []
     negative:
-      - main_point: SciPy usage issues
-        sub_points:
-          - text: curve_fit imported but not used correctly
-          - text: covariance results ignored or misinterpreted
-          - text: missing error handling for optimization failures
-
-  sklearn_usage:
-    title: Scikit-learn Usage
+    - main_point: The following points were problems in your solution
+      sub_points:
+      - text: 'Analysis: if you used the elbow technique, the results and how it relates
+          to your model should have been discussed.'
+      - text: 'Analysis: if you computed RMSE or R^2, then use the built in functions
+          (e.g., `r2_score`, `mean_squared_error`), thus reducing the chances of introducing
+          errors.'
+      - text: 'Analysis: if you computed RMSE or R^2, the resulting values should
+          have discussed in context to the model.'
+      - text: 'Function: needed to use SciPy''s `curve_fit` function to find the optimal
+          value of the variable.'
+      - text: 'Parameter value: why did you set `maxfev=200000` (or similar large
+          numbers)? What is the justification of replacing its default value?'
+  sklearn:
+    title: sklearn
     additional_notes: true
     positive:
-      - main_point: scikit-learn usage done well, which includes
-        sub_points:
-          - text: KMeans correctly imported with appropriate parameters
-          - text: random_state set for reproducibility
-          - text: cluster labels correctly interpreted and used
-    neutral: []
+    - main_point: Overall sklearn feedback
+      sub_points:
+      - text: 'Functions: good use of sklearn and its class/functions (e.g., `KMeans`,
+          `k_means`).'
+    neutral:
+    - main_point: ''
+      sub_points:
+      - text: 'Data normalization: did not need to normalize the data since they were
+          of similar magnitude.'
     negative:
-      - main_point: scikit-learn usage issues
-        sub_points:
-          - text: KMeans imported but incorrect API usage
-          - text: missing random_state or inappropriate parameter choices
-          - text: cluster labels used incorrectly
+    - main_point: The following points were problems in your solution
+      sub_points:
+      - text: 'Model: did not use sklearn''s `KMeans` class or `k_means` functions.'
+      - text: 'Parameter value: why did you set `n_init=10` (or similar value), replacing
+          the default value of `auto`? What is the justification for this?'
+      - text: 'Results: incorrectly computed cluster.'
+      - text: 'Results: incorrect, poor (e.g., no discussion of which model performs
+          best/worse), or no analysis done.'
+  genai:
+    title: GenAI
+    additional_notes: true
+    positive: []
+    neutral:
+    - main_point: Becarefull with the following
+      sub_points:
+      - text: 'Written context: your writing and understanding of the problem is very
+          refined. I have the feeling that GenAI was used so much that it replaced
+          your own voice.'
+    negative:
+    - main_point: The following points were observed about your solution
+      sub_points:
+      - text: 'Code: your solution indicates the usage of GenAI to generate the code,
+          which was not allowed in the course (see Syllabus).'
+      - text: 'Written context: your writing and understanding of the problem is exceptionally
+          thorough - so much so that it implies you heavy GenAI usage. This raises
+          the concern that you do not understand the solution that present to that
+          depth.'
