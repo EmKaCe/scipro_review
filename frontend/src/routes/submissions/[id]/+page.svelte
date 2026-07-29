@@ -420,14 +420,13 @@
 
 		<!-- Resizable divider (hidden on mobile or when right panel is collapsed) -->
 		{#if showDivider}
-			<div
+			<button
+				type="button"
 				class="panel-divider"
 				onpointerdown={handleDividerPointerDown}
 				onpointermove={handleDividerPointerMove}
 				onpointerup={handleDividerPointerUp}
 				onpointercancel={handleDividerPointerUp}
-				role="separator"
-				tabindex="0"
 				aria-label="Resize panels"
 				ondblclick={() => { leftPanelWidth = null; }}
 				onkeydown={(e) => {
@@ -439,7 +438,7 @@
 						leftPanelWidth = Math.min(cw - RIGHT_MIN, (leftPanelWidth ?? cw * 0.66) + 20);
 					}
 				}}
-			></div>
+			></button>
 		{/if}
 
 		<!-- Right Panel: Tabs (hidden when collapsed) -->
@@ -504,6 +503,8 @@
 		z-index: 10;
 		flex-shrink: 0;
 		transition: background 0.1s;
+		border: none;
+		padding: 0;
 	}
 	.panel-divider:hover,
 	.review-layout.is-dragging .panel-divider {
