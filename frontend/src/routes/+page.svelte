@@ -10,6 +10,7 @@
 	import SavedReviews from "$lib/components/saved-reviews.svelte";
 	import ImportDialog from "$lib/components/import-dialog.svelte";
 	import ConfirmationDialog from "$lib/components/confirmation-dialog.svelte";
+	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
 
 	// Configure header for this page
 	$effect(() => {
@@ -157,14 +158,47 @@
 </svelte:head>
 
 <div class="space-y-8 px-6 py-8 md:px-10 lg:px-16 xl:px-24">
-	<NewReviewForm {semesterPrefix} {assignments} disabled={isLoading} onSubmit={startReview} />
-	<SavedReviews
-		reviews={savedReviews}
-		{assignments}
-		onOpen={openReview}
-		onDelete={confirmDelete}
-		onBulkDelete={bulkDelete}
-	/>
+	{#if isLoading}
+		<!-- NewReviewForm skeleton -->
+		<div class="rounded-[var(--radius)] border border-border bg-card p-6">
+			<SkeletonPulse class="mb-5 h-5 w-36" />
+			<div class="mb-4 space-y-3">
+				<SkeletonPulse class="h-4 w-20" />
+				<SkeletonPulse class="h-10 w-full rounded-[var(--radius-md)]" />
+			</div>
+			<div class="mb-4 space-y-3">
+				<SkeletonPulse class="h-4 w-24" />
+				<SkeletonPulse class="h-10 w-full rounded-[var(--radius-md)]" />
+			</div>
+			<div class="mb-4 space-y-3">
+				<SkeletonPulse class="h-4 w-16" />
+				<SkeletonPulse class="h-10 w-full rounded-[var(--radius-md)]" />
+			</div>
+			<SkeletonPulse class="h-10 w-28 rounded-[var(--radius)]" />
+		</div>
+		<!-- SavedReviews skeleton -->
+		<div class="rounded-[var(--radius)] border border-border bg-card p-6">
+			<SkeletonPulse class="mb-4 h-5 w-32" />
+			{#each [1, 2] as _i (_i)}
+				<div class="flex items-center justify-between border-b border-border py-3">
+					<div class="space-y-1.5">
+						<SkeletonPulse class="h-4 w-32" />
+						<SkeletonPulse class="h-3 w-48" />
+					</div>
+					<SkeletonPulse class="h-7 w-16 rounded-[var(--radius)]" />
+				</div>
+			{/each}
+		</div>
+	{:else}
+		<NewReviewForm {semesterPrefix} {assignments} disabled={false} onSubmit={startReview} />
+		<SavedReviews
+			reviews={savedReviews}
+			{assignments}
+			onOpen={openReview}
+			onDelete={confirmDelete}
+			onBulkDelete={bulkDelete}
+		/>
+	{/if}
 </div>
 
 <ImportDialog

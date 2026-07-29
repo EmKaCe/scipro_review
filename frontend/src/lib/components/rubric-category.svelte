@@ -117,9 +117,9 @@
 	class="review-card rounded-[var(--radius)] border border-border bg-card"
 >
 	<button
+		type="button"
 		onclick={onToggle}
-		class="sticky-card-header flex w-full items-center justify-between rounded-t-[var(--radius)] border-b border-border bg-card p-4 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-		style:top={disabled ? "5.5rem" : "3.5rem"}
+		class="flex w-full items-center justify-between rounded-t-[var(--radius)] border-b border-border bg-card p-3 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
 		aria-expanded={isExpanded}
 		aria-controls="category-content-{entry.key}"
 	>
@@ -145,7 +145,7 @@
 		aria-hidden={!isExpanded}
 	>
 		<div class="accordion-inner min-h-0">
-			<div class="space-y-5 p-5">
+			<div class="space-y-3 p-3">
 				{#if category.positive.length > 0}
 					<RubricSection
 						points={category.positive}
@@ -207,12 +207,6 @@
 </div>
 
 <style>
-	.sticky-card-header {
-		position: sticky;
-		/* top set dynamically via style:top based on disabled state */
-		z-index: 10;
-	}
-
 	.review-card {
 		overflow: visible;
 	}

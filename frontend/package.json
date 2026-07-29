@@ -5,9 +5,16 @@
 	"license": "AGPL-3.0",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
-		"build": "vite build",
-		"preview": "vite preview",
+		"dev": "echo 'Specify mode: pnpm run dev:student (GitHub Pages) or dev:teacher (Docker)' && false",
+		"dev:student": "cp -r ../data static/ && vite dev",
+		"dev:teacher": "cp -r ../data static/ && ADAPTER=node vite dev",
+		"start:teacher": "rm -rf build && pnpm build:teacher && PORT=4174 node build/index.js",
+		"start:student": "rm -rf build && pnpm build:student && python3 -m http.server 4173 -d build",
+		"build": "echo 'Specify mode: pnpm run build:student (GitHub Pages) or build:teacher (Docker)' && false",
+		"build:student": "vite build",
+		"build:teacher": "ADAPTER=node vite build",
+		"preview:student": "vite preview",
+		"preview:teacher": "ADAPTER=node vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
@@ -16,8 +23,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"prebuild": "cp -r ../data static/",
-		"predev": "cp -r ../data static/"
+		"prebuild": "cp -r ../data static/"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.0",
@@ -59,6 +65,9 @@
 		"vitest": "^4.1.10"
 	},
 	"dependencies": {
+		"@mastra/core": "^1.52.1",
+		"@mastra/memory": "^1.23.1",
+		"@tanstack/svelte-table": "9.0.0-beta.58",
 		"@tiptap/core": "^3.29.0",
 		"@tiptap/extension-placeholder": "^3.29.0",
 		"@tiptap/starter-kit": "^3.29.0",

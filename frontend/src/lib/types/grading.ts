@@ -43,6 +43,13 @@ export interface GradeDimension {
 	readonly max_points: number;
 	/** Weight multiplier for percentage calculation. */
 	readonly weight: number;
+	/**
+	 * Optional per-score-range descriptions for tooltip display.
+	 * Keys are score thresholds (e.g. "0", "3", "6"), values are descriptions
+	 * (e.g. "No scientific programming concepts" / "Code somewhat follows...").
+	 * Loaded from grading_config.yaml or a separate descriptions file.
+	 */
+	readonly descriptions?: Record<string, string>;
 }
 
 /** A grade boundary in the German grading scale. */
