@@ -1,0 +1,49 @@
+# =============================================================================
+# SciPro Review — Development overrides
+# =============================================================================
+# Auto-loaded by `docker compose up` (Docker reads docker-compose.override.yml
+# automatically when present alongside the base file).
+#
+# Changes from base:
+#   - Bind-mount the host ./data/ directory instead of a named volume
+#   - Expose executor's port 8766 for direct access / debugging
+#   - Bind-mount executor source for live reload
+#   - Enable uvicorn --reload for the executor
+#   - Lower resource requirements; no restart policy lock
+# =============================================================================
+
+services:
+  frontend:
+    ports:
+      - "4174:4174"
+    volumes:
+      # Development: bind-mount the repo's data directory for live access
+      - ./data:/app/data:delegated
+      # To use the Vite dev server instead of the built server:
+      # command: >
+      #   sh -c "cp -r /app/data /app/frontend/static/ && ADAPTER=node pnpm dev:teacher --host"
+      # volumes:
+      #   - ./frontend/src:/app/frontend/src:delegated
+      #   - ./frontend/static:/app/frontend/static:delegated
+    environment:
+      - NODE_ENV=development
+    restart: no
+
+  executor:
+    ports:
+      - "8766:8766"
+    volumes:
+      - ./data:/app/data:delegated
+      # Bind-mount source for live reload
+      - ./executor/app.py:/app/app.py:delegated
+      - ./executor/requirements.txt:/app/requirements.txt:delegated
+    environment:
+      - EXECUTOR_LOG_LEVEL=debug
+      - EXECUTOR_RELOAD=true
+    # Note: $$ escapes compose interpolation — $PORT is resolved at container runtime
+    command: >
+      sh -c "
+        pip install --no-cache-dir -r requirements.txt -q &&
+        uvicorn app:app --host 0.0.0.0 --port $$PORT --reload --log-level debug
+      "
+    restart: no

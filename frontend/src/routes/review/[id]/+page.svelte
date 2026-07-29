@@ -102,7 +102,6 @@
 	function handleToggleCheckbox(
 		categoryKey: CategoryKey,
 		subPointText: string,
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		_checked: boolean,
 	) {
 		reviewStore.toggleCheckbox(categoryKey, subPointText);

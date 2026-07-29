@@ -3,12 +3,14 @@
 	interface Props {
 		/** Additional CSS class names. */
 		class?: string;
+		/** Inline styles (for special background colors like code blocks). */
+		style?: string;
 	}
 
-	let { class: className = "" }: Props = $props();
+	let { class: className = "", style = "" }: Props = $props();
 </script>
 
-<div class="skeleton-pulse {className}"></div>
+<div class="skeleton-pulse {className}" {style}></div>
 
 <style>
 	.skeleton-pulse {

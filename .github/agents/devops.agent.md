@@ -17,7 +17,7 @@ You are a DevOps agent for a SvelteKit + Svelte 5 + Tailwind v4 project deployed
 
 - **Frontend root**: `frontend/` — all commands run from here
 - **Package manager**: `pnpm`
-- **Adapter**: `@sveltejs/adapter-static` with SPA fallback (`200.html`)
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages, default) and `@sveltejs/adapter-node` (teacher/Docker, via `ADAPTER=node`).
 - **Deploy target**: GitHub Pages via `actions/deploy-pages@v5`
 - **Node version**: 22
 - **Build output**: `frontend/build/`
@@ -42,7 +42,7 @@ Always use the latest major version tags. Pin to major version (e.g., `@v6`) not
 - DO NOT omit `id-token: write` permission in deploy workflows
 - DO NOT set `server.allowedHosts: true` or `server.cors: true` in production Vite configs
 - DO NOT hardcode secrets in workflow files — use GitHub Secrets
-- DO NOT use `adapter-auto` — this project requires `adapter-static`
+- DO NOT use `adapter-auto` — this project requires `adapter-static` or `adapter-node` (selected via `ADAPTER` env var)
 - DO NOT forget `needs: build` on deploy jobs
 
 ## Approach

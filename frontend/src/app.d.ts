@@ -11,6 +11,8 @@ declare global {
 
 	/** Application version string injected by Vite from package.json. */
 	const APP_VERSION: string;
+	/** True when built/run with ADAPTER=node (teacher Docker mode). */
+	const __TEACHER_MODE__: boolean;
 }
 
 export {};

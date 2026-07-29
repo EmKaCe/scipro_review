@@ -181,7 +181,6 @@ describe("validateReviewSession", () => {
 	});
 
 	it("defaults mode to 'student' when missing", () => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { mode: _mode, ...withoutMode } = validSession;
 		const result = validateReviewSession(withoutMode);
 		expect(result.success).toBe(true);
@@ -189,7 +188,6 @@ describe("validateReviewSession", () => {
 	});
 
 	it("defaults generated_text to empty string when missing", () => {
-		// eslint-disable-next-line @typescript-eslint/no-unused-vars
 		const { generated_text: _text, ...withoutText } = validSession;
 		const result = validateReviewSession(withoutText);
 		expect(result.success).toBe(true);

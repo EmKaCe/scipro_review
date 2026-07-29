@@ -48,9 +48,14 @@
 		breadcrumb={headerConfig.breadcrumb}
 		showImport={headerConfig.showImport}
 		onimportclick={headerConfig.onimportclick}
+		showSave={headerConfig.showSave}
+		onsaveclick={headerConfig.onsaveclick}
+		showExport={headerConfig.showExport}
+		onexportclick={headerConfig.onexportclick}
+		headerState={headerConfig.headerState ?? "dashboard"}
 		class="print:hidden"
 	/>
-	<main class="flex flex-1 flex-col">
+	<main class="flex min-h-0 flex-1 flex-col">
 		{@render children()}
 	</main>
 	<AppFooter class="print:hidden" />

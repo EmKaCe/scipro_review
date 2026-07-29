@@ -367,6 +367,10 @@ const LEGACY_CATEGORY_MAP: Record<string, string> = {
 	callingFunction: "calling_function",
 	plotting: "plotting",
 	Pandas: "pandas",
+	NumPy: "numpy",
+	SciPy: "scipy",
+	sklearn: "sklearn",
+	GenAI: "genai",
 };
 
 /**
@@ -499,9 +503,16 @@ function parseLegacyFlatJson(data: Record<string, unknown>): ReviewSession | nul
 	const grading = parseLegacyScored(data);
 	const categorySelections = parseLegacyFlat(data);
 
+	// Detect assignment from legacy category prefixes in the data
+	const soilContaminationPrefixes = ["Pandas", "NumPy", "SciPy", "sklearn", "GenAI"];
+	const hasSoilPrefixes = Object.keys(data).some((key) =>
+		soilContaminationPrefixes.some((prefix) => key.startsWith(prefix + "-")),
+	);
+	const assignmentId = hasSoilPrefixes ? "soil_contamination" : "atom_interaction";
+
 	return {
 		student_id: studentId,
-		assignment_id: "atom_interaction",
+		assignment_id: assignmentId,
 		mode: "student",
 		category_selections: categorySelections as unknown as ReviewSession["category_selections"],
 		grading: grading as unknown as ReviewSession["grading"],

@@ -13,8 +13,8 @@ Configure and troubleshoot Vite as the build tool for this SvelteKit + Svelte 5 
 - **Frontend root**: `frontend/` (all commands run from here)
 - **Package manager**: `pnpm`
 - **Current config**: `frontend/vite.config.ts` — `tailwindcss()` before `sveltekit()`
-- **Adapter**: `@sveltejs/adapter-static` with SPA fallback (`200.html`)
-- **SSR**: disabled (`export const ssr = false` in `+layout.ts`)
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages, default) and `@sveltejs/adapter-node` (teacher/Docker, via `ADAPTER=node`). Selected in `svelte.config.js` via `process.env.ADAPTER`.
+- **SSR**: disabled for student mode (`export const ssr = false` in `+layout.ts`); enabled for teacher mode
 
 ## Procedure: Dev Server Issues
 

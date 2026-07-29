@@ -21,8 +21,8 @@ You are a frontend feature builder for a SvelteKit + Svelte 5 + Tailwind v4 + sh
 - **Styling**: Tailwind CSS v4 (CSS-first config, OKLCH colors, no `tailwind.config`)
 - **UI library**: shadcn-svelte (components at `$lib/components/ui/`, NOT imported from package)
 - **Icons**: `@lucide/svelte` (use direct path imports: `@lucide/svelte/icons/<name>`)
-- **Adapter**: `@sveltejs/adapter-static` with SPA fallback
-- **SSR**: disabled (`export const ssr = false` in `+layout.ts`)
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages, default) and `@sveltejs/adapter-node` (teacher/Docker, via `ADAPTER=node`).
+- **SSR**: disabled for student mode (`export const ssr = false` in `+layout.ts`); enabled for teacher mode
 - **CSS entry**: `frontend/src/routes/layout.css`
 
 ## Constraints
