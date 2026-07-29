@@ -77,6 +77,8 @@
 		return sortAsc ? ArrowUp : ArrowDown;
 	}
 
+	
+
 	// ── Status display config (matches OD mockup colors) ──
 	const statusConfig: Record<SubmissionStatus, { icon: any; label: string }> = {
 		pending:       { icon: Clock,       label: "Pending" },
@@ -150,6 +152,7 @@
 			<tbody>
 				{#each sorted as sub (sub.id)}
 					{@const cfg = statusConfig[sub.status] ?? statusConfig.pending}
+					
 					<tr>
 						<td class="col-id">
 							<a href="{base}/submissions/{sub.id}" class="student-link">{sub.studentId}</a>

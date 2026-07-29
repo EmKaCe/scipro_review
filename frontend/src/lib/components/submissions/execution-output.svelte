@@ -64,7 +64,8 @@
 				<span class="cell-type">· {cell.type}</span>
 				<span class="cell-marker {marker.class}">
 					{#if marker.icon}
-						<svelte:component this={marker.icon} size={12} />
+						{@const MarkerIcon = marker.icon}
+						<MarkerIcon size={12} />
 					{/if}
 					{marker.label}
 				</span>
