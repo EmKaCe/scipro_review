@@ -25,7 +25,7 @@
 	<!-- Full-size empty state — shown when no submissions exist -->
 	<div class="upload-empty-state">
 		<div class="empty-icon-wrap">
-			<Upload size={28} class="empty-icon" />
+			<Upload size={28} />
 		</div>
 		<h2 class="empty-title">No submissions yet</h2>
 		<p class="empty-desc">Upload .ipynb files to get started.</p>
