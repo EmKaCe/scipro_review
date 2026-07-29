@@ -24,10 +24,10 @@ pnpm install
 
 The project supports two build adapters, controlled by the `ADAPTER` environment variable:
 
-| Mode | Adapter | Use Case | Command |
-|------|---------|----------|---------|
+| Mode        | Adapter          | Use Case                         | Command            |
+| ----------- | ---------------- | -------------------------------- | ------------------ |
 | **Student** | `adapter-static` | GitHub Pages / local SPA preview | `pnpm dev:student` |
-| **Teacher** | `adapter-node` | Docker / local Node server | `pnpm dev:teacher` |
+| **Teacher** | `adapter-node`   | Docker / local Node server       | `pnpm dev:teacher` |
 
 ```bash
 # Student mode (default)
@@ -45,22 +45,22 @@ pnpm start:teacher        # Start server on port 4174
 
 ### Common Commands
 
-| Command              | Description                            |
-| -------------------- | -------------------------------------- |
-| `pnpm dev:student`   | Start the dev server in student mode   |
-| `pnpm dev:teacher`   | Start the dev server in teacher mode   |
-| `pnpm build:student` | Production build (adapter-static)      |
-| `pnpm build:teacher` | Production build (adapter-node)        |
+| Command                | Description                          |
+| ---------------------- | ------------------------------------ |
+| `pnpm dev:student`     | Start the dev server in student mode |
+| `pnpm dev:teacher`     | Start the dev server in teacher mode |
+| `pnpm build:student`   | Production build (adapter-static)    |
+| `pnpm build:teacher`   | Production build (adapter-node)      |
 | `pnpm preview:student` | Preview the student build            |
 | `pnpm preview:teacher` | Preview the teacher build            |
-| `pnpm start:student` | Serve student build on port 4173       |
-| `pnpm start:teacher` | Serve teacher build on port 4174       |
-| `pnpm check`         | Type-check with `svelte-check`         |
-| `pnpm lint`          | Prettier check + ESLint                |
-| `pnpm format`        | Format all files with Prettier         |
-| `pnpm test`          | Run unit tests (Vitest)                |
-| `pnpm test:watch`    | Run tests in watch mode                |
-| `pnpm test:coverage` | Run tests with coverage report         |
+| `pnpm start:student`   | Serve student build on port 4173     |
+| `pnpm start:teacher`   | Serve teacher build on port 4174     |
+| `pnpm check`           | Type-check with `svelte-check`       |
+| `pnpm lint`            | Prettier check + ESLint              |
+| `pnpm format`          | Format all files with Prettier       |
+| `pnpm test`            | Run unit tests (Vitest)              |
+| `pnpm test:watch`      | Run tests in watch mode              |
+| `pnpm test:coverage`   | Run tests with coverage report       |
 
 ### Pre-commit Hooks
 
