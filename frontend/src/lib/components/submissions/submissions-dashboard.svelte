@@ -13,6 +13,7 @@
 	import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
 	import ArrowUp from "@lucide/svelte/icons/arrow-up";
 	import ArrowDown from "@lucide/svelte/icons/arrow-down";
+	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
 
 	interface Props {
 		submissions: readonly SubmissionMeta[];
@@ -72,10 +73,7 @@
 		}
 	}
 
-	function sortArrow(key: SortKey): any {
-		if (sortKey !== key) return ArrowUpDown;
-		return sortAsc ? ArrowUp : ArrowDown;
-	}
+	// sortArrow replaced by SortArrow component
 
 	
 
@@ -131,20 +129,20 @@
 				<tr>
 					<th class="col-id" onclick={() => toggleSort("studentId")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("studentId")}>
 						Student
-						<svelte:component this={sortArrow("studentId")} size={10} class="sort-arrow-icon" />
+						<SortArrow currentKey={sortKey} targetKey="studentId" ascending={sortAsc} size={10} class="sort-arrow-icon" />
 					</th>
 					<th class="col-status" onclick={() => toggleSort("status")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("status")}>
 						Status
-						<svelte:component this={sortArrow("status")} size={10} class="sort-arrow-icon" />
+						<SortArrow currentKey={sortKey} targetKey="status" ascending={sortAsc} size={10} class="sort-arrow-icon" />
 					</th>
 					<th class="col-cells" onclick={() => toggleSort("cellSummary")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("cellSummary")}>
-						Cells <svelte:component this={sortArrow("cellSummary")} size={10} class="sort-arrow-icon" />
+						Cells <SortArrow currentKey={sortKey} targetKey="cellSummary" ascending={sortAsc} size={10} class="sort-arrow-icon" />
 					</th>
 					<th class="col-preeval" onclick={() => toggleSort("preEvalGrade")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("preEvalGrade")}>
-						Pre-Eval <svelte:component this={sortArrow("preEvalGrade")} size={10} class="sort-arrow-icon" />
+						Pre-Eval <SortArrow currentKey={sortKey} targetKey="preEvalGrade" ascending={sortAsc} size={10} class="sort-arrow-icon" />
 					</th>
 					<th class="col-grade" onclick={() => toggleSort("teacherGrade")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("teacherGrade")}>
-						Grade <svelte:component this={sortArrow("teacherGrade")} size={10} class="sort-arrow-icon" />
+						Grade <SortArrow currentKey={sortKey} targetKey="teacherGrade" ascending={sortAsc} size={10} class="sort-arrow-icon" />
 					</th>
 					<th class="col-actions"></th>
 				</tr>
@@ -152,14 +150,15 @@
 			<tbody>
 				{#each sorted as sub (sub.id)}
 					{@const cfg = statusConfig[sub.status] ?? statusConfig.pending}
-					
+					{@const StatusIcon = cfg.icon}
 					<tr>
 						<td class="col-id">
 							<a href="{base}/submissions/{sub.id}" class="student-link">{sub.studentId}</a>
 						</td>
 						<td class="col-status">
 							<span class="status-badge status-{sub.status}">
-								<svelte:component this={cfg.icon} size={11} />
+								<!-- @ts-ignore -->
+								<StatusIcon size={11} />
 								{cfg.label}
 							</span>
 						</td>
