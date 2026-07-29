@@ -104,18 +104,23 @@
 			<div class="rubric-scroll">
 				{#if rubric && rubric.categories.length > 0}
 					{#each rubric.categories as entry (entry.key)}
-					{@const expanded = expandedCategories[entry.key] ?? false}
-					<RubricCategory
-						{entry}
-						selections={categorySelections[entry.key] ?? { checked_items: new Set(), comments: {}, deductions: {}, notes: "" }}
-						{expanded}
-						onToggle={() => handleToggle(entry.key)}
-						onToggleCheckbox={handleToggleCheckbox}
-						onUpdateComment={handleUpdateComment}
-						onUpdateDeduction={handleUpdateDeduction}
-						onUpdateNotes={handleUpdateNotes}
-						{disabled}
-					/>
+						{@const expanded = expandedCategories[entry.key] ?? false}
+						<RubricCategory
+							{entry}
+							selections={categorySelections[entry.key] ?? {
+								checked_items: new Set(),
+								comments: {},
+								deductions: {},
+								notes: "",
+							}}
+							{expanded}
+							onToggle={() => handleToggle(entry.key)}
+							onToggleCheckbox={handleToggleCheckbox}
+							onUpdateComment={handleUpdateComment}
+							onUpdateDeduction={handleUpdateDeduction}
+							onUpdateNotes={handleUpdateNotes}
+							{disabled}
+						/>
 					{/each}
 				{:else}
 					<p class="empty-rubric">No rubric loaded for this assignment.</p>
@@ -165,7 +170,9 @@
 		background: none;
 		border: none;
 		cursor: pointer;
-		transition: color 0.15s, background 0.15s;
+		transition:
+			color 0.15s,
+			background 0.15s;
 		position: relative;
 	}
 	.tab:hover {

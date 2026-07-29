@@ -55,7 +55,7 @@
 		headerState={headerConfig.headerState ?? "dashboard"}
 		class="print:hidden"
 	/>
-	<main class="flex flex-1 flex-col min-h-0">
+	<main class="flex min-h-0 flex-1 flex-col">
 		{@render children()}
 	</main>
 	<AppFooter class="print:hidden" />

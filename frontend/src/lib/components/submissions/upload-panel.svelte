@@ -29,6 +29,7 @@
 
 	let { inline = false }: Props = $props();
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let uploadPhase: UploadPhase = $state("empty");
 	let files: DetectedFile[] = $state([]);
 
@@ -41,8 +42,20 @@
 	function simulateFileDetection() {
 		if (!IS_PHASE_2_STUB) return;
 		files = [
-			{ id: "f1", name: "2026SS_03_student.ipynb", type: "submission", confidence: 0.95, editing: false },
-			{ id: "f2", name: "2026SS_03_student.key.ipynb", type: "key", confidence: 0.88, editing: false },
+			{
+				id: "f1",
+				name: "2026SS_03_student.ipynb",
+				type: "submission",
+				confidence: 0.95,
+				editing: false,
+			},
+			{
+				id: "f2",
+				name: "2026SS_03_student.key.ipynb",
+				type: "key",
+				confidence: 0.88,
+				editing: false,
+			},
 			{ id: "f3", name: "assignment.pdf", type: "pdf", confidence: 0.82, editing: false },
 			{ id: "f4", name: "measurements.csv", type: "data", confidence: 0.76, editing: false },
 			{ id: "f5", name: "report.key.ipynb", type: "key", confidence: 0.64, editing: false },
@@ -64,6 +77,7 @@
 		addToast("info", "Phase 3: classification pipeline execution");
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	function preEvaluate() {
 		addToast("info", "Phase 3: pre-evaluation run");
 	}
@@ -85,7 +99,13 @@
 
 	<!-- Drop zone (visible when empty) -->
 	{#if !hasFiles}
-		<div class="drop-zone" onclick={handleDropZoneClick} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}>
+		<div
+			class="drop-zone"
+			onclick={handleDropZoneClick}
+			role="button"
+			tabindex="0"
+			onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}
+		>
 			<Upload size={32} class="drop-zone-icon" />
 			<p class="drop-zone-title">Drop files here or click to browse</p>
 			<p class="drop-zone-sub">Supports .ipynb, .pdf, .csv, and other assignment files</p>
@@ -93,23 +113,34 @@
 				<Upload size={14} />
 				Browse Files
 			</button>
-			<p class="drop-zone-footnote">Files are classified automatically. Review and edit before uploading.</p>
+			<p class="drop-zone-footnote">
+				Files are classified automatically. Review and edit before uploading.
+			</p>
 		</div>
 	{/if}
 
 	<!-- Drop bar + file table (visible when files detected) -->
 	{#if hasFiles}
 		<!-- Compressed drop bar -->
-		<div class="drop-bar" onclick={handleDropZoneClick} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}>
+		<div
+			class="drop-bar"
+			onclick={handleDropZoneClick}
+			role="button"
+			tabindex="0"
+			onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}
+		>
 			<Upload size={16} class="drop-bar-icon" />
 			<span class="drop-bar-text">Drop more files or click to add</span>
 		</div>
 
 		<!-- Detection rules help -->
 		<div class="detection-rules">
-			<strong>Auto-detection:</strong> Files matching filename pattern <code>{detectionPattern}</code> are classified as <strong>Submission</strong>.
-			<code>.key.ipynb</code> &rarr; <strong>Key</strong>. <code>*.pdf</code> &rarr; <strong>PDF</strong>.
-			Other files &rarr; <strong>Data</strong>. Use the &#x270F;&#xFE0F; button to override.
+			<strong>Auto-detection:</strong> Files matching filename pattern
+			<code>{detectionPattern}</code>
+			are classified as <strong>Submission</strong>.
+			<code>.key.ipynb</code> &rarr; <strong>Key</strong>. <code>*.pdf</code> &rarr;
+			<strong>PDF</strong>. Other files &rarr; <strong>Data</strong>. Use the &#x270F;&#xFE0F;
+			button to override.
 		</div>
 
 		<!-- File classification table -->
@@ -119,7 +150,12 @@
 					<tr>
 						<th class="checkbox-col">
 							<label class="table-checkbox-wrap">
-								<input type="checkbox" class="table-checkbox" checked={allSelected} onchange={toggleAllSelected} />
+								<input
+									type="checkbox"
+									class="table-checkbox"
+									checked={allSelected}
+									onchange={toggleAllSelected}
+								/>
 							</label>
 						</th>
 						<th>File</th>
@@ -139,16 +175,32 @@
 							<td><span class="file-name">{file.name}</span></td>
 							<td>
 								<span class="chip chip-{file.type}">
-									{file.type === "submission" ? "Submission" : file.type === "key" ? "Key" : file.type === "pdf" ? "PDF" : "Data"}
+									{file.type === "submission"
+										? "Submission"
+										: file.type === "key"
+											? "Key"
+											: file.type === "pdf"
+												? "PDF"
+												: "Data"}
 								</span>
 							</td>
 							<td>
-								<span class="confidence-text confidence-{file.confidence >= 0.8 ? 'high' : file.confidence >= 0.5 ? 'medium' : 'low'}">
+								<span
+									class="confidence-text confidence-{file.confidence >= 0.8
+										? 'high'
+										: file.confidence >= 0.5
+											? 'medium'
+											: 'low'}"
+								>
 									{(file.confidence * 100).toFixed(0)}%
 								</span>
 							</td>
 							<td class="edit-col">
-								<button class="edit-action-btn" onclick={() => (file.editing = !file.editing)} aria-label="Edit classification">
+								<button
+									class="edit-action-btn"
+									onclick={() => (file.editing = !file.editing)}
+									aria-label="Edit classification"
+								>
 									&#x270F;&#xFE0F;
 								</button>
 							</td>
@@ -176,7 +228,9 @@
 					<option>Data</option>
 				</select>
 				<button class="apply-btn">Apply</button>
-				<span class="batch-edit-subtitle">{allSelected ? 'All' : 'Selected'} files will be updated.</span>
+				<span class="batch-edit-subtitle"
+					>{allSelected ? "All" : "Selected"} files will be updated.</span
+				>
 			</div>
 		{/if}
 
@@ -263,7 +317,9 @@
 		border-radius: var(--radius-lg);
 		background: var(--bg);
 		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
 	.drop-zone:hover {
 		border-color: var(--accent);
@@ -296,7 +352,9 @@
 		font-size: 13px;
 		font-weight: 500;
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
 	}
 	.browse-btn:hover {
 		background: color-mix(in oklch, var(--fg) 4%, transparent);
@@ -320,7 +378,9 @@
 		border-radius: var(--radius-md);
 		background: color-mix(in oklch, var(--accent) 4%, transparent);
 		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
 	.drop-bar:hover {
 		border-color: var(--accent);
@@ -420,7 +480,9 @@
 		cursor: pointer;
 		flex-shrink: 0;
 		margin: 0;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
 	.table-checkbox:checked {
 		background: var(--accent);
@@ -461,10 +523,18 @@
 	.confidence-text {
 		font-size: 12px;
 	}
-	.confidence-high { color: var(--success); }
-	.confidence-medium { color: var(--warning); }
-	.confidence-low { color: var(--error); }
-	.confidence-unknown { color: var(--muted-foreground); }
+	.confidence-high {
+		color: var(--success);
+	}
+	.confidence-medium {
+		color: var(--warning);
+	}
+	.confidence-low {
+		color: var(--error);
+	}
+	.confidence-unknown {
+		color: var(--muted-foreground);
+	}
 	.row-editing {
 		background: color-mix(in oklch, var(--info) 6%, transparent) !important;
 	}
@@ -479,7 +549,9 @@
 		background: transparent;
 		color: var(--muted-foreground);
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
 	.edit-action-btn:hover {
 		background: var(--muted-bg);
@@ -502,7 +574,9 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-sm);
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s;
 	}
 	.batch-edit-toggle:hover {
 		color: var(--fg);
@@ -578,7 +652,9 @@
 		background: var(--card);
 		cursor: pointer;
 		flex-shrink: 0;
-		transition: border-color 0.15s, background 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s;
 	}
 	.upload-checkbox input[type="checkbox"]:checked {
 		background: var(--accent);

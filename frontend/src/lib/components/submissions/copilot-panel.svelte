@@ -48,7 +48,7 @@
 					Ask questions about this submission, or type / for commands.
 				</p>
 				<div class="command-hints">
-					{#each copilot.availableCommands as cmd}
+					{#each copilot.availableCommands as cmd (cmd.command)}
 						<button class="hint-chip" onclick={() => selectCommand(cmd.command)}>
 							{cmd.command}
 						</button>
@@ -57,12 +57,13 @@
 			</div>
 		{:else}
 			{#each copilot.messages as msg (msg.id)}
-				<div
-					class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}"
-				>
+				<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
 					<div class="msg-content">{msg.content}</div>
 					<span class="msg-time">
-						{msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+						{msg.timestamp.toLocaleTimeString([], {
+							hour: "2-digit",
+							minute: "2-digit",
+						})}
 					</span>
 				</div>
 			{/each}
@@ -81,7 +82,7 @@
 	<div class="copilot-input-area">
 		{#if showCommands}
 			<div class="command-dropdown">
-				{#each copilot.availableCommands as cmd}
+				{#each copilot.availableCommands as cmd (cmd.command)}
 					<button class="command-item" onclick={() => selectCommand(cmd.command)}>
 						<span class="cmd-name">{cmd.command}</span>
 						<span class="cmd-desc">{cmd.description}</span>

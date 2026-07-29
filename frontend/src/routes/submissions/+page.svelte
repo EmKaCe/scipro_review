@@ -2,6 +2,7 @@
 	import { listSubmissions } from "$lib/services/submissions-store.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
@@ -88,6 +89,7 @@
 	}
 
 	// Phase 2 stub: flag for stubbed functionality
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const IS_PHASE_2_STUB = true;
 </script>
 
@@ -127,8 +129,10 @@
 				<SkeletonPulse class="h-3 w-[12%]" />
 			</div>
 			<!-- Table rows -->
-			{#each [1, 2, 3, 4, 5] as _i ( _i)}
-				<div class="flex items-center gap-4 border-b border-border px-3.5 py-2.5 last:border-0">
+			{#each [1, 2, 3, 4, 5] as _i (_i)}
+				<div
+					class="flex items-center gap-4 border-b border-border px-3.5 py-2.5 last:border-0"
+				>
 					<SkeletonPulse class="h-3 w-[13%]" />
 					<SkeletonPulse class="h-4 w-[14%] rounded-full" />
 					<SkeletonPulse class="h-3 w-[15%]" />
@@ -149,9 +153,9 @@
 		<SkeletonPulse class="h-9 w-full rounded-[var(--radius-md)]" />
 	</div>
 
-<!-- ================================================================ -->
-<!-- Error state -->
-<!-- ================================================================ -->
+	<!-- ================================================================ -->
+	<!-- Error state -->
+	<!-- ================================================================ -->
 {:else if error}
 	<div class="flex items-center justify-center px-6 py-20 md:px-10 lg:px-16 xl:px-24">
 		<div class="max-w-md text-center">
@@ -176,21 +180,15 @@
 		</div>
 	</div>
 
-<!-- ================================================================ -->
-<!-- Content state -->
-<!-- ================================================================ -->
+	<!-- ================================================================ -->
+	<!-- Content state -->
+	<!-- ================================================================ -->
 {:else}
 	<div class="page-layout">
 		<!-- ── Assignment row ── -->
 		<div class="assign-upload-row">
-			<AssignmentSelector
-				selected={selectedAssignment}
-				onChange={handleAssignmentChange}
-			/>
-			<button
-				class="btn-upload-more"
-				onclick={handleToggleUploadPanel}
-			>
+			<AssignmentSelector selected={selectedAssignment} onChange={handleAssignmentChange} />
+			<button class="btn-upload-more" onclick={handleToggleUploadPanel}>
 				{uploadPanelOpen ? "Close Upload" : "Upload More"}
 			</button>
 		</div>
@@ -209,9 +207,9 @@
 
 		<!-- ── Dashboard table ── -->
 		<SubmissionsDashboard
-			submissions={submissions}
-			searchQuery={searchQuery}
-			statusFilter={statusFilter}
+			{submissions}
+			{searchQuery}
+			{statusFilter}
 			onSearchChange={handleSearchChange}
 			onStatusFilterChange={handleStatusFilterChange}
 		/>
@@ -225,7 +223,9 @@
 				<button
 					class="btn-action btn-outline"
 					onclick={handlePreEvaluateAll}
-					disabled={!submissions.some(s => s.status === "executed" || s.status === "pre-evaluated")}
+					disabled={!submissions.some(
+						(s) => s.status === "executed" || s.status === "pre-evaluated",
+					)}
 				>
 					Pre-evaluate All
 				</button>
@@ -268,7 +268,9 @@
 		font-weight: 500;
 		color: var(--fg);
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
 		white-space: nowrap;
 	}
 	.btn-upload-more:hover {
@@ -320,7 +322,10 @@
 		font-weight: 500;
 		white-space: nowrap;
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s, opacity 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s,
+			opacity 0.15s;
 	}
 	.btn-action:disabled {
 		opacity: 0.4;

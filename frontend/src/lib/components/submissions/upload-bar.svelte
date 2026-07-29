@@ -13,11 +13,7 @@
 
 {#if compact}
 	<!-- Compact upload bar — shown when submissions exist -->
-	<button
-		class="upload-bar-compact"
-		onclick={onClick}
-		aria-label="Upload files"
-	>
+	<button class="upload-bar-compact" onclick={onClick} aria-label="Upload files">
 		<Upload size={14} />
 		<span>Drop .ipynb files here or click to upload</span>
 	</button>
@@ -52,7 +48,10 @@
 		color: var(--muted-foreground);
 		font-size: 12px;
 		cursor: pointer;
-		transition: border-color 0.15s, background 0.15s, color 0.15s;
+		transition:
+			border-color 0.15s,
+			background 0.15s,
+			color 0.15s;
 	}
 	.upload-bar-compact:hover {
 		border-color: var(--accent);
@@ -102,7 +101,9 @@
 		font-weight: 500;
 		color: var(--fg);
 		cursor: pointer;
-		transition: background 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
 	}
 	.btn-upload:hover {
 		background: var(--muted-bg);

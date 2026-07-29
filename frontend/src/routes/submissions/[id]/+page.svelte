@@ -4,11 +4,7 @@
 	import { page } from "$app/state";
 	import { base } from "$app/paths";
 	import type { SubmissionDetail } from "$lib/types/submissions.js";
-	import type {
-		GradingConfig,
-		GradingInputs,
-		GradeResult,
-	} from "$lib/types/grading.js";
+	import type { GradingConfig, GradingInputs, GradeResult } from "$lib/types/grading.js";
 	import type { MergedRubric } from "$lib/types/criteria.js";
 	import type { CategorySelections } from "$lib/types/session.js";
 	import { defaultGradingInputs } from "$lib/types/grading.js";
@@ -89,7 +85,8 @@
 		return (leftPanelWidth / cw) * 100;
 	}
 
-	function getRightPct(): number {
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	function getRightPct() {
 		if (rightPanelCollapsed) return 0;
 		return 100 - getLeftPct();
 	}
@@ -138,11 +135,7 @@
 		}
 		handler(mq);
 		mq.addEventListener("change", handler as (e: MediaQueryListEvent) => void);
-		return () =>
-			mq.removeEventListener(
-				"change",
-				handler as (e: MediaQueryListEvent) => void,
-			);
+		return () => mq.removeEventListener("change", handler as (e: MediaQueryListEvent) => void);
 	});
 
 	// -----------------------------------------------------------------------
@@ -244,7 +237,10 @@
 
 <!-- Loading state -->
 {#if isLoading}
-	<div class="review-layout" style="display:flex;flex-direction:row;flex:1;min-height:0;max-height:calc(100vh - 56px);">
+	<div
+		class="review-layout"
+		style="display:flex;flex-direction:row;flex:1;min-height:0;max-height:calc(100vh - 56px);"
+	>
 		<!-- Left panel skeleton -->
 		<div class="flex flex-1 flex-col overflow-hidden" style="flex:2 1 0">
 			<!-- Submission header -->
@@ -258,7 +254,9 @@
 				</div>
 			</div>
 			<!-- Reference comparison skeleton -->
-			<div class="flex items-center gap-2 border-b border-border px-6 py-2.5 md:px-10 lg:px-8">
+			<div
+				class="flex items-center gap-2 border-b border-border px-6 py-2.5 md:px-10 lg:px-8"
+			>
 				<SkeletonPulse class="h-3 w-4" />
 				<SkeletonPulse class="h-3 w-36" />
 				<div class="ml-auto flex items-center gap-4">
@@ -269,12 +267,18 @@
 			<div class="flex-1 space-y-3 overflow-y-auto p-4">
 				{#each [1, 2, 3, 4] as _i (_i)}
 					<div class="overflow-hidden rounded-[var(--radius)] border border-border">
-						<div class="flex items-center gap-4 border-b border-border px-3 py-1.5" style="background:oklch(0.985 0.002 247.8)">
+						<div
+							class="flex items-center gap-4 border-b border-border px-3 py-1.5"
+							style="background:oklch(0.985 0.002 247.8)"
+						>
 							<SkeletonPulse class="h-3 w-16" />
 							<SkeletonPulse class="ml-auto h-4 w-28 rounded-full" />
 						</div>
 						<div class="p-3">
-							<SkeletonPulse class="h-12 w-full" style="background:oklch(0.148 0.004 228.8)" />
+							<SkeletonPulse
+								class="h-12 w-full"
+								style="background:oklch(0.148 0.004 228.8)"
+							/>
 						</div>
 					</div>
 				{/each}
@@ -283,7 +287,10 @@
 
 		<!-- Divider skeleton -->
 		<div class="w-[6px] shrink-0">
-			<div class="mx-auto mt-[50vh] h-8 w-[2px] rounded-full" style="background:var(--border)"></div>
+			<div
+				class="mx-auto mt-[50vh] h-8 w-[2px] rounded-full"
+				style="background:var(--border)"
+			></div>
 		</div>
 
 		<!-- Right panel skeleton -->
@@ -298,7 +305,9 @@
 			<div class="flex-1 space-y-2 overflow-y-auto p-3">
 				{#each [1, 2, 3] as _j (_j)}
 					<div class="overflow-hidden rounded-[var(--radius)] border border-border">
-						<div class="flex items-center justify-between border-b border-border px-3 py-2.5">
+						<div
+							class="flex items-center justify-between border-b border-border px-3 py-2.5"
+						>
 							<SkeletonPulse class="h-4 w-32" />
 							<SkeletonPulse class="h-4 w-4" />
 						</div>
@@ -313,7 +322,7 @@
 		</div>
 	</div>
 
-<!-- Error state -->
+	<!-- Error state -->
 {:else if error}
 	<div class="flex items-center justify-center px-6 py-20 md:px-10 lg:px-16 xl:px-24">
 		<div class="max-w-md text-center">
@@ -338,7 +347,7 @@
 		</div>
 	</div>
 
-<!-- Content state -->
+	<!-- Content state -->
 {:else if submission}
 	{@const cells = submission.cells}
 
@@ -428,14 +437,19 @@
 				onpointerup={handleDividerPointerUp}
 				onpointercancel={handleDividerPointerUp}
 				aria-label="Resize panels"
-				ondblclick={() => { leftPanelWidth = null; }}
+				ondblclick={() => {
+					leftPanelWidth = null;
+				}}
 				onkeydown={(e) => {
 					if (e.key === "ArrowLeft") {
 						const cw = getContainerWidth();
 						leftPanelWidth = Math.max(cw * 0.5, (leftPanelWidth ?? cw * 0.66) - 20);
 					} else if (e.key === "ArrowRight") {
 						const cw = getContainerWidth();
-						leftPanelWidth = Math.min(cw - RIGHT_MIN, (leftPanelWidth ?? cw * 0.66) + 20);
+						leftPanelWidth = Math.min(
+							cw - RIGHT_MIN,
+							(leftPanelWidth ?? cw * 0.66) + 20,
+						);
 					}
 				}}
 			></button>
@@ -446,15 +460,15 @@
 			<aside class="right-panel">
 				{#if gradingConfig}
 					<RightPanelTabs
-						activeTab={activeTab}
+						{activeTab}
 						onTabChange={handleTabChange}
 						dimensions={gradingConfig.dimensions}
 						grading={gradingInputs}
-						gradeResult={gradeResult}
-						totalDeductions={totalDeductions}
+						{gradeResult}
+						{totalDeductions}
 						onUpdateDimension={handleUpdateDimension}
-						rubric={rubric}
-						categorySelections={categorySelections}
+						{rubric}
+						{categorySelections}
 					/>
 				{/if}
 			</aside>
@@ -521,7 +535,9 @@
 		height: 32px;
 		border-radius: 2px;
 		background: var(--border);
-		transition: background 0.1s, height 0.1s;
+		transition:
+			background 0.1s,
+			height 0.1s;
 	}
 	.panel-divider:hover::after,
 	.review-layout.is-dragging .panel-divider::after {
@@ -558,7 +574,10 @@
 		background: transparent;
 		border: 1px solid var(--border);
 		cursor: pointer;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			border-color 0.15s;
 		margin-left: 4px;
 	}
 	.toggle-panel-btn:hover {

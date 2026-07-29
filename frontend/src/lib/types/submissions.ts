@@ -15,12 +15,7 @@
 
 /** Lifecycle status of a submission within a grading batch. */
 export type SubmissionStatus =
-	| "pending"
-	| "executing"
-	| "executed"
-	| "error"
-	| "pre-evaluated"
-	| "graded";
+	"pending" | "executing" | "executed" | "error" | "pre-evaluated" | "graded";
 
 // ---------------------------------------------------------------------------
 // Cell info

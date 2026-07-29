@@ -22,6 +22,7 @@
 
 	const markerConfig: Record<
 		string,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		{ label: string; icon: any; class: string }
 	> = {
 		same: {

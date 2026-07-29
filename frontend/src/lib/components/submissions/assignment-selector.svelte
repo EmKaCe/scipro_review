@@ -30,12 +30,7 @@
 
 <div class="assign-select-wrapper">
 	<label for="assignment-select" class="sr-only">Assignment</label>
-	<select
-		id="assignment-select"
-		class="assign-select"
-		value={selected}
-		onchange={handleChange}
-	>
+	<select id="assignment-select" class="assign-select" value={selected} onchange={handleChange}>
 		{#each assignments as asgn (asgn.id)}
 			<option value={asgn.id} disabled={asgn.disabled}>{asgn.label}</option>
 		{/each}

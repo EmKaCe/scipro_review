@@ -83,7 +83,7 @@ const STUB_DETAILS: Record<string, SubmissionDetail> = {
 			{
 				index: 2,
 				type: "code",
-				source: 'from sklearn.cluster import KMeans\nkmeans = KMeans(n_clusters=3)\n',
+				source: "from sklearn.cluster import KMeans\nkmeans = KMeans(n_clusters=3)\n",
 				output: "KMeans(n_clusters=3)",
 				marker: "same",
 			},

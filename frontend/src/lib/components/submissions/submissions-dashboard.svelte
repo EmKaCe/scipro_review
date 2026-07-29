@@ -10,9 +10,6 @@
 	import ArrowRight from "@lucide/svelte/icons/arrow-right";
 	import Search from "@lucide/svelte/icons/search";
 	import Upload from "@lucide/svelte/icons/upload";
-	import ArrowUpDown from "@lucide/svelte/icons/arrow-up-down";
-	import ArrowUp from "@lucide/svelte/icons/arrow-up";
-	import ArrowDown from "@lucide/svelte/icons/arrow-down";
 	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
 
 	interface Props {
@@ -23,19 +20,15 @@
 		onStatusFilterChange: (f: string) => void;
 	}
 
-	let {
-		submissions,
-		searchQuery,
-		statusFilter,
-		onSearchChange,
-		onStatusFilterChange,
-	}: Props = $props();
+	let { submissions, searchQuery, statusFilter, onSearchChange, onStatusFilterChange }: Props =
+		$props();
 
 	// ── Filtered list ──
 	let filtered = $derived(
 		submissions.filter((s) => {
 			if (statusFilter !== "all" && s.status !== statusFilter) return false;
-			if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+			if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
+				return false;
 			return true;
 		}),
 	);
@@ -48,14 +41,32 @@
 	let sorted = $derived.by(() => {
 		const arr = [...filtered];
 		arr.sort((a, b) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let va: any, vb: any;
 			switch (sortKey) {
-				case "studentId": va = a.studentId; vb = b.studentId; break;
-				case "status": va = a.status; vb = b.status; break;
-				case "cellSummary": va = a.cellSummary ?? ""; vb = b.cellSummary ?? ""; break;
-				case "preEvalGrade": va = a.preEvalGrade ?? -1; vb = b.preEvalGrade ?? -1; break;
-				case "teacherGrade": va = a.teacherGrade ?? -1; vb = b.teacherGrade ?? -1; break;
-				default: va = a.studentId; vb = b.studentId;
+				case "studentId":
+					va = a.studentId;
+					vb = b.studentId;
+					break;
+				case "status":
+					va = a.status;
+					vb = b.status;
+					break;
+				case "cellSummary":
+					va = a.cellSummary ?? "";
+					vb = b.cellSummary ?? "";
+					break;
+				case "preEvalGrade":
+					va = a.preEvalGrade ?? -1;
+					vb = b.preEvalGrade ?? -1;
+					break;
+				case "teacherGrade":
+					va = a.teacherGrade ?? -1;
+					vb = b.teacherGrade ?? -1;
+					break;
+				default:
+					va = a.studentId;
+					vb = b.studentId;
 			}
 			if (va < vb) return sortAsc ? -1 : 1;
 			if (va > vb) return sortAsc ? 1 : -1;
@@ -75,16 +86,15 @@
 
 	// sortArrow replaced by SortArrow component
 
-	
-
 	// ── Status display config (matches OD mockup colors) ──
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const statusConfig: Record<SubmissionStatus, { icon: any; label: string }> = {
-		pending:       { icon: Clock,       label: "Pending" },
-		executing:     { icon: Loader,      label: "Executing" },
-		executed:      { icon: CircleCheck, label: "Executed" },
-		error:         { icon: CircleAlert, label: "Error" },
-		"pre-evaluated": { icon: Sparkles,  label: "Pre-evaluated" },
-		graded:        { icon: Star,        label: "Graded" },
+		pending: { icon: Clock, label: "Pending" },
+		executing: { icon: Loader, label: "Executing" },
+		executed: { icon: CircleCheck, label: "Executed" },
+		error: { icon: CircleAlert, label: "Error" },
+		"pre-evaluated": { icon: Sparkles, label: "Pre-evaluated" },
+		graded: { icon: Star, label: "Graded" },
 	};
 
 	function gradeDisplay(meta: SubmissionMeta): string {
@@ -127,22 +137,82 @@
 		<table class="submissions-table">
 			<thead>
 				<tr>
-					<th class="col-id" onclick={() => toggleSort("studentId")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("studentId")}>
+					<th
+						class="col-id"
+						onclick={() => toggleSort("studentId")}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === "Enter" && toggleSort("studentId")}
+					>
 						Student
-						<SortArrow currentKey={sortKey} targetKey="studentId" ascending={sortAsc} size={10} class="sort-arrow-icon" />
+						<SortArrow
+							currentKey={sortKey}
+							targetKey="studentId"
+							ascending={sortAsc}
+							size={10}
+							class="sort-arrow-icon"
+						/>
 					</th>
-					<th class="col-status" onclick={() => toggleSort("status")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("status")}>
+					<th
+						class="col-status"
+						onclick={() => toggleSort("status")}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === "Enter" && toggleSort("status")}
+					>
 						Status
-						<SortArrow currentKey={sortKey} targetKey="status" ascending={sortAsc} size={10} class="sort-arrow-icon" />
+						<SortArrow
+							currentKey={sortKey}
+							targetKey="status"
+							ascending={sortAsc}
+							size={10}
+							class="sort-arrow-icon"
+						/>
 					</th>
-					<th class="col-cells" onclick={() => toggleSort("cellSummary")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("cellSummary")}>
-						Cells <SortArrow currentKey={sortKey} targetKey="cellSummary" ascending={sortAsc} size={10} class="sort-arrow-icon" />
+					<th
+						class="col-cells"
+						onclick={() => toggleSort("cellSummary")}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === "Enter" && toggleSort("cellSummary")}
+					>
+						Cells <SortArrow
+							currentKey={sortKey}
+							targetKey="cellSummary"
+							ascending={sortAsc}
+							size={10}
+							class="sort-arrow-icon"
+						/>
 					</th>
-					<th class="col-preeval" onclick={() => toggleSort("preEvalGrade")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("preEvalGrade")}>
-						Pre-Eval <SortArrow currentKey={sortKey} targetKey="preEvalGrade" ascending={sortAsc} size={10} class="sort-arrow-icon" />
+					<th
+						class="col-preeval"
+						onclick={() => toggleSort("preEvalGrade")}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === "Enter" && toggleSort("preEvalGrade")}
+					>
+						Pre-Eval <SortArrow
+							currentKey={sortKey}
+							targetKey="preEvalGrade"
+							ascending={sortAsc}
+							size={10}
+							class="sort-arrow-icon"
+						/>
 					</th>
-					<th class="col-grade" onclick={() => toggleSort("teacherGrade")} role="button" tabindex="0" onkeydown={(e) => e.key === "Enter" && toggleSort("teacherGrade")}>
-						Grade <SortArrow currentKey={sortKey} targetKey="teacherGrade" ascending={sortAsc} size={10} class="sort-arrow-icon" />
+					<th
+						class="col-grade"
+						onclick={() => toggleSort("teacherGrade")}
+						role="button"
+						tabindex="0"
+						onkeydown={(e) => e.key === "Enter" && toggleSort("teacherGrade")}
+					>
+						Grade <SortArrow
+							currentKey={sortKey}
+							targetKey="teacherGrade"
+							ascending={sortAsc}
+							size={10}
+							class="sort-arrow-icon"
+						/>
 					</th>
 					<th class="col-actions"></th>
 				</tr>
@@ -153,7 +223,9 @@
 					{@const StatusIcon = cfg.icon}
 					<tr>
 						<td class="col-id">
-							<a href="{base}/submissions/{sub.id}" class="student-link">{sub.studentId}</a>
+							<a href="{base}/submissions/{sub.id}" class="student-link"
+								>{sub.studentId}</a
+							>
 						</td>
 						<td class="col-status">
 							<span class="status-badge status-{sub.status}">
@@ -163,7 +235,9 @@
 							</span>
 						</td>
 						<td class="col-cells cell-muted">{sub.cellSummary ?? "—"}</td>
-						<td class="col-preeval cell-muted">{sub.preEvalGrade != null ? sub.preEvalGrade.toFixed(1) : "—"}</td>
+						<td class="col-preeval cell-muted"
+							>{sub.preEvalGrade != null ? sub.preEvalGrade.toFixed(1) : "—"}</td
+						>
 						<td class="col-grade cell-bold">{gradeDisplay(sub)}</td>
 						<td class="col-actions">
 							<a href="{base}/submissions/{sub.id}" class="btn-open">
@@ -183,7 +257,9 @@
 				<Upload size={20} class="empty-icon" />
 				<div class="empty-text">
 					<p>No submissions match your filters.</p>
-					<p class="empty-hint">Drop .ipynb files in the upload zone above to get started.</p>
+					<p class="empty-hint">
+						Drop .ipynb files in the upload zone above to get started.
+					</p>
 				</div>
 			</div>
 		</div>
@@ -307,12 +383,25 @@
 	}
 
 	/* ── Column widths ── */
-	.col-id { width: 13%; }
-	.col-status { width: 14%; }
-	.col-cells { width: 15%; }
-	.col-preeval { width: 13%; }
-	.col-grade { width: 12%; }
-	.col-actions { width: 10%; text-align: right; }
+	.col-id {
+		width: 13%;
+	}
+	.col-status {
+		width: 14%;
+	}
+	.col-cells {
+		width: 15%;
+	}
+	.col-preeval {
+		width: 13%;
+	}
+	.col-grade {
+		width: 12%;
+	}
+	.col-actions {
+		width: 10%;
+		text-align: right;
+	}
 
 	/* ── Cell text helpers ── */
 	.cell-muted {
@@ -392,7 +481,9 @@
 		background: transparent;
 		cursor: pointer;
 		text-decoration: none;
-		transition: background 0.15s, border-color 0.15s;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
 		float: right;
 	}
 	.btn-open:hover {

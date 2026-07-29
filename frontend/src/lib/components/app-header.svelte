@@ -92,7 +92,10 @@
 			</button>
 		{/if}
 
-		<a href={base || "/"} class="app-name shrink-0 text-lg font-semibold tracking-tight no-underline">
+		<a
+			href={base || "/"}
+			class="app-name shrink-0 text-lg font-semibold tracking-tight no-underline"
+		>
 			SciPro Review
 		</a>
 
@@ -100,16 +103,23 @@
 
 		{#if headerState === "submission"}
 			<!-- On per-submission page: "Submissions" is a clickable link -->
-			<a href="{base}/submissions" class="breadcrumb-link truncate text-sm text-muted-foreground no-underline transition-colors hover:text-foreground">
+			<a
+				href="{base}/submissions"
+				class="breadcrumb-link truncate text-sm text-muted-foreground no-underline transition-colors hover:text-foreground"
+			>
 				Submissions
 			</a>
 			{#if breadcrumb}
 				<span class="mx-1 text-muted-foreground select-none">/</span>
-				<span class="breadcrumb-current truncate text-sm font-medium text-foreground">{breadcrumb}</span>
+				<span class="breadcrumb-current truncate text-sm font-medium text-foreground"
+					>{breadcrumb}</span
+				>
 			{/if}
 		{:else}
 			<!-- On dashboard: "Submissions" is static text -->
-			<span class="breadcrumb-current truncate text-sm text-muted-foreground">Submissions</span>
+			<span class="breadcrumb-current truncate text-sm text-muted-foreground"
+				>Submissions</span
+			>
 			{#if breadcrumb}
 				<span class="mx-1 text-muted-foreground select-none">/</span>
 				<span class="truncate text-sm text-muted-foreground">{breadcrumb}</span>
@@ -141,7 +151,7 @@
 			<button
 				title="Export YAML"
 				onclick={onexportclick}
-				class="hidden shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10 sm:flex"
+				class="hidden shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5 sm:flex dark:hover:bg-white/10"
 			>
 				<Download size={14} />
 				Export
@@ -161,7 +171,9 @@
 
 		<button
 			onclick={toggleTheme}
-			aria-label={settings.theme === "system" ? "System theme" : `Switch to ${themeCycle[settings.theme]} mode`}
+			aria-label={settings.theme === "system"
+				? "System theme"
+				: `Switch to ${themeCycle[settings.theme]} mode`}
 			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 		>
 			{#if settings.theme === "dark"}

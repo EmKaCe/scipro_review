@@ -13,15 +13,12 @@
 		referenceCells?: readonly CellInfo[];
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	let { submissionCells, referenceCells = [] }: Props = $props();
 
 	let totalCells = $derived(submissionCells.length);
-	let diffCount = $derived(
-		submissionCells.filter((c) => c.marker === "questionable").length,
-	);
-	let errorCount = $derived(
-		submissionCells.filter((c) => c.marker === "error").length,
-	);
+	let diffCount = $derived(submissionCells.filter((c) => c.marker === "questionable").length);
+	let errorCount = $derived(submissionCells.filter((c) => c.marker === "error").length);
 </script>
 
 <details class="ref-compare">
@@ -31,7 +28,9 @@
 		<span class="summary-stats">
 			<span class="stat">{totalCells} cells compared</span>
 			{#if diffCount > 0}
-				<span class="stat stat-diff">{diffCount} divergence{diffCount !== 1 ? "s" : ""}</span>
+				<span class="stat stat-diff"
+					>{diffCount} divergence{diffCount !== 1 ? "s" : ""}</span
+				>
 			{/if}
 			{#if errorCount > 0}
 				<span class="stat stat-error">{errorCount} error{errorCount !== 1 ? "s" : ""}</span>
