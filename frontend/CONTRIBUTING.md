@@ -18,20 +18,43 @@ cd svelte_review/frontend
 
 # Install dependencies
 pnpm install
-
-# Start the dev server
-pnpm dev
 ```
 
-The app will be available at `http://localhost:5173`.
+### Running in Different Modes
+
+The project supports two build adapters, controlled by the `ADAPTER` environment variable:
+
+| Mode | Adapter | Use Case | Command |
+|------|---------|----------|---------|
+| **Student** | `adapter-static` | GitHub Pages / local SPA preview | `pnpm dev:student` |
+| **Teacher** | `adapter-node` | Docker / local Node server | `pnpm dev:teacher` |
+
+```bash
+# Student mode (default)
+pnpm dev:student          # Dev server at localhost:5173
+pnpm build:student        # Build → frontend/build/
+pnpm start:student        # Serve static build on port 4173
+
+# Teacher mode
+pnpm dev:teacher          # Dev server (ADAPTER=node)
+pnpm build:teacher        # Node build → frontend/build/
+pnpm start:teacher        # Start server on port 4174
+```
+
+⚠️ Always `rm -rf build` before switching modes — the `build/` directory is shared between adapters.
 
 ### Common Commands
 
 | Command              | Description                            |
 | -------------------- | -------------------------------------- |
-| `pnpm dev`           | Start the dev server with HMR          |
-| `pnpm build`         | Production build (outputs to `build/`) |
-| `pnpm preview`       | Preview the production build           |
+| `pnpm dev:student`   | Start the dev server in student mode   |
+| `pnpm dev:teacher`   | Start the dev server in teacher mode   |
+| `pnpm build:student` | Production build (adapter-static)      |
+| `pnpm build:teacher` | Production build (adapter-node)        |
+| `pnpm preview:student` | Preview the student build            |
+| `pnpm preview:teacher` | Preview the teacher build            |
+| `pnpm start:student` | Serve student build on port 4173       |
+| `pnpm start:teacher` | Serve teacher build on port 4174       |
 | `pnpm check`         | Type-check with `svelte-check`         |
 | `pnpm lint`          | Prettier check + ESLint                |
 | `pnpm format`        | Format all files with Prettier         |
@@ -57,15 +80,17 @@ in an emergency.
 
 ### Tech Stack
 
-- **Framework**: SvelteKit (SPA mode with `adapter-static`)
+- **Framework**: SvelteKit (dual adapter: `adapter-static` + `adapter-node`)
 - **UI**: Svelte 5 with runes (`$state`, `$derived`, `$effect`)
 - **Styling**: Tailwind CSS v4 (CSS-first config) + shadcn-svelte
 - **Icons**: `@lucide/svelte` (direct path imports only)
 - **State**: Class-based stores in `.svelte.ts` files
-- **Persistence**: IndexedDB via `idb` package
+- **Persistence**: IndexedDB via `idb` package (student mode)
 - **Data**: YAML config files in `static/data/`
 - **Validation**: Zod 4 for import validation
 - **Markdown**: `marked` for evaluation rendering
+- **Data grid**: TanStack Svelte Table v9 (teacher dashboard)
+- **Testing**: Vitest with `jsdom` and `fake-indexeddb`
 
 ### Directory Structure
 
@@ -75,7 +100,8 @@ frontend/src/
 │   ├── components/       # Svelte UI components
 │   │   ├── ui/           # shadcn-svelte primitives
 │   │   ├── settings/     # Settings page cards
-│   │   └── skeleton/     # Loading skeletons
+│   │   ├── skeleton/     # Loading skeletons
+│   │   └── submissions/  # Teacher: dashboard, upload, copilot
 │   ├── services/         # Business logic modules
 │   │   ├── criteria-loader.ts    # YAML criteria loading
 │   │   ├── grading-config.ts     # Grading config loading
@@ -83,37 +109,42 @@ frontend/src/
 │   │   ├── text-generator.ts     # Evaluation text generation
 │   │   ├── session-persistence.ts # Serialization & export/import
 │   │   ├── db.ts                 # IndexedDB CRUD
-│   │   └── validation.ts         # Zod schemas for imports
+│   │   ├── validation.ts         # Zod schemas for imports
+│   │   └── submissions-store.ts  # Stub data (Phase 3: API)
 │   ├── stores/           # Reactive state (Svelte 5 runes)
-   │   ├── review.svelte.ts      # Orchestrator — composes sub-stores
-   │   ├── rubric.svelte.ts      # Rubric loading & assignment selection
-   │   ├── grading.svelte.ts     # Dimension scores & grade calculation
-   │   ├── selection.svelte.ts   # Category selections, comments, undo/redo
-   │   ├── session.svelte.ts     # IndexedDB persistence & auto-save
-   │   ├── export.svelte.ts      # YAML/MD/JSON export & import
+│   │   ├── review.svelte.ts      # Orchestrator — composes sub-stores
+│   │   ├── rubric.svelte.ts      # Rubric loading & assignment selection
+│   │   ├── grading.svelte.ts     # Dimension scores & grade calculation
+│   │   ├── selection.svelte.ts   # Category selections, comments, undo/redo
+│   │   ├── session.svelte.ts     # IndexedDB persistence & auto-save
+│   │   ├── export.svelte.ts      # YAML/MD/JSON export & import
 │   │   ├── settings.svelte.ts    # App settings
 │   │   ├── toast.svelte.ts       # Toast notifications
 │   │   └── header.svelte.ts      # Header configuration
-│   ├── types/             # TypeScript type definitions (v2)
+│   ├── types/            # TypeScript type definitions
 │   │   ├── criteria.ts    # Rubric types
 │   │   ├── grading.ts     # Grade dimensions & boundaries
 │   │   ├── evaluation.ts  # Evaluation output types
-│   │   ├── assignments.ts  # Assignment registry
-│   │   ├── session.ts      # Review session state
-│   │   ├── persistence.ts  # IDB & export types
-│   │   └── index.ts        # Barrel exports
-│   ├── utils.ts           # Utility functions
-│   └── version.ts         # Build version
+│   │   ├── assignments.ts # Assignment registry
+│   │   ├── session.ts     # Review session state
+│   │   ├── persistence.ts # IDB & export types
+│   │   ├── submissions.ts # Teacher submission types
+│   │   └── index.ts       # Barrel exports
+│   ├── utils.ts          # Utility functions
+│   └── version.ts        # Build version
 ├── routes/
-│   ├── +layout.svelte     # App shell (header, footer, dark mode)
-│   ├── +layout.ts         # SSR disabled
-│   ├── +page.svelte       # Landing page
-│   ├── docs/+page.svelte  # Documentation
-│   ├── review/[id]/       # Review page (dynamic route)
-│   └── settings/+page.svelte # Settings page
+│   ├── +layout.svelte    # App shell
+│   ├── +layout.ts        # SSR disabled (static mode only)
+│   ├── +page.svelte      # Landing page
+│   ├── docs/+page.svelte # Documentation
+│   ├── review/[id]/      # Review page (student mode)
+│   ├── submissions/      # Teacher dashboard (Phase 2)
+│   │   ├── +page.svelte  # Submissions table
+│   │   └── [id]/         # Per-submission review
+│   └── settings/+page.svelte
 └── tests/
-    ├── setup.ts           # Vitest global setup
-    └── services/          # Unit tests for service modules
+    ├── setup.ts          # Vitest global setup
+    └── services/         # Unit tests for service modules
 ```
 
 ### Key Conventions
@@ -127,6 +158,18 @@ frontend/src/
 7. **UI Components**: Use shadcn-svelte at `$lib/components/ui/<name>` — never import from npm package.
 8. **Snake Case**: Data model types use `snake_case` (matching YAML keys).
 9. **Branded Types**: `CategoryKey`, `DimensionKey`, `StudentId` use branded string types.
+10. **Teacher features are additive**: Teacher code lives in `routes/submissions/` and `components/submissions/`. In static mode, teacher routes render pre-built pages; in Node mode, they support SSR and eventual API calls.
+
+## Dual-Adapter Architecture
+
+The `ADAPTER` environment variable controls which build adapter is used:
+
+```bash
+ADAPTER=node   # → adapter-node (teacher/Docker)
+ADAPTER=static # → adapter-static (student/GitHub Pages, default)
+```
+
+In `svelte.config.js`, the adapter is selected at build time. Teacher-specific code is guarded by `$app/environment` checks at runtime where needed. The build output always goes to `frontend/build/` — clean this directory when switching adapters.
 
 ## Code Style
 
@@ -200,13 +243,19 @@ describe("calculateGrade", () => {
 3. Reference the criteria file in the assignment's `criteria_files` list
 4. No code changes needed
 
-### Adding a New UI Component
+### Adding a Teacher UI Component
 
-1. If it's a shadcn-svelte component, use `pnpm dlx shadcn-svelte@latest add <component>`
-2. If custom, create in `src/lib/components/`
-3. Follow Svelte 5 runes syntax
-4. Use Tailwind classes for styling
-5. Add OKLCH color variables to `@theme inline` in `layout.css` if needed
+1. Create the component in `src/lib/components/submissions/`
+2. If it connects to data, create or extend the submissions-store service
+3. If it defines new types, add them to `src/lib/types/submissions.ts`
+4. Wire the component into the route page (`src/routes/submissions/`)
+
+### Adding a New shadcn-svelte UI Component
+
+```bash
+cd frontend
+pnpm dlx shadcn-svelte@latest add <component>
+```
 
 ## Data Files
 
@@ -229,9 +278,11 @@ All data files use `snake_case` keys:
 The app deploys to GitHub Pages on push to `main`:
 
 1. GitHub Actions runs `pnpm lint` + `pnpm check`
-2. On success, builds with `pnpm build`
+2. On success, builds with `pnpm build:student` (adapter-static)
 3. Deploys using `actions/deploy-pages@v5`
 4. Uses `adapter-static` with `fallback: "200.html"` (SPA mode)
+
+For the teacher mode, a separate Docker deployment is planned (Phase 3+).
 
 ## Reporting Issues
 
@@ -242,6 +293,7 @@ When reporting bugs, please include:
 3. Expected vs. actual behavior
 4. Console errors (if any)
 5. Whether the issue occurs in both light and dark mode
+6. Whether it affects student mode, teacher mode, or both
 
 ## Releases
 

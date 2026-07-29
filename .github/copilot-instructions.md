@@ -27,19 +27,33 @@ This is a SvelteKit + Svelte 5 + Tailwind v4 + shadcn-svelte project. The fronte
 - **New CSS variables**: Must be registered in `@theme inline` in `layout.css`
 - **Animation**: `tw-animate-css` — not `tailwindcss-animate`
 - **Forms**: Formsnap + Superforms + Zod with `zod4`/`zod4Client` adapters
-- **Adapter**: `@sveltejs/adapter-static` with `fallback: "404.html"` (SPA mode, GitHub Pages compatible)
-- **SSR**: disabled (`export const ssr = false` in `+layout.ts`)
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages, default) and `@sveltejs/adapter-node` (teacher/Docker, via `ADAPTER=node`).
+  - Student build: `fallback: "404.html"` (SPA mode, GitHub Pages compatible)
+  - Teacher build: Node server with SSR, port 4174
+- **SSR**: disabled for student mode (`export const ssr = false` in `+layout.ts`); enabled for teacher mode
 
 ## Commands
 
 ```bash
-cd frontend && pnpm dev        # Dev server
-cd frontend && pnpm build      # Production build
-cd frontend && pnpm preview    # Preview production build
-cd frontend && pnpm lint       # Prettier check + ESLint
-cd frontend && pnpm format     # Format all files
-cd frontend && pnpm check      # Type-check
+cd frontend && pnpm dev:student    # Dev server (student/static)
+cd frontend && pnpm dev:teacher    # Dev server (teacher/node)
+cd frontend && pnpm build:student  # Build for GitHub Pages
+cd frontend && pnpm build:teacher  # Build for Node/Docker
+cd frontend && pnpm start:student  # Serve static build on 4173
+cd frontend && pnpm start:teacher  # Start Node server on 4174
+cd frontend && pnpm lint           # Prettier check + ESLint
+cd frontend && pnpm format         # Format all files
+cd frontend && pnpm check          # Type-check
 ```
+
+## Teacher Mode Routes
+
+Teacher features live under `src/routes/submissions/` and are additive to the student app:
+
+- `/submissions/` — Teacher dashboard with assignment selector, upload bar, search, sortable TanStack Table, status filters, batch action buttons
+- `/submissions/[id]/` — Per-submission review: left panel with cell comparison, right panel with tabbed (Rubric | Grading | Copilot) interface
+
+Teacher components are in `src/lib/components/submissions/`. The `submissions-store.ts` service provides stub data (Phase 2) to be replaced by API calls in Phase 3.
 
 ## Skills
 
@@ -71,6 +85,7 @@ The `.github/instructions/` directory contains detailed, file-type-specific inst
 | ---------------------------------- | ------------------------------------- | -------------------------------------------------------------------------- |
 | `**/*.svelte`                      | `svelte-components.instructions.md`   | Svelte 5 runes, template syntax, snippets, events, bindings, accessibility |
 | `**/*.svelte.ts`, `**/*.svelte.js` | `svelte-module-files.instructions.md` | Runes in modules, shared state, reactive classes, testing                  |
+| `**/*.svelte` in `submissions/`    | `svelte-components.instructions.md`  | TanStack Table, teacher dashboard patterns, upload components |
 | `**/*.ts`                          | `typescript.instructions.md`          | TypeScript 6 best practices, SvelteKit types, project conventions          |
 | `**/*.css`                         | `css-styles.instructions.md`          | Tailwind v4, OKLCH colors, `@theme`, dark mode, shadcn theming             |
 

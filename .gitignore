@@ -10,4 +10,13 @@ data/materials/
 !data/grading_config.yaml
 !data/criteria/
 
-.hermes/**
+# Hermes agent config (keep local)
+.hermes/*
+!.hermes/plans/
+!.hermes/plans/**
+
+# Environment variables — secrets
+.env
+
+# Docs (research artifacts, not code)
+docs/

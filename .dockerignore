@@ -1,0 +1,40 @@
+# Git
+.git/
+.gitignore
+.gitmodules
+
+# Node
+frontend/node_modules/
+frontend/build/
+frontend/.svelte-kit/
+frontend/static/data/
+frontend/.output
+frontend/.vercel
+frontend/.netlify
+
+# Python
+executor/__pycache__/
+executor/.venv/
+executor/*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Env files
+.env
+.env.local
+.env.production
+
+# Data (not in image — mounted as volume)
+data/submissions/
+data/materials/
+
+# Docs
+README.md
+LICENSE
+CONTRIBUTING.md

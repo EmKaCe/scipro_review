@@ -20,8 +20,8 @@ You are a frontend bug fixer for a SvelteKit + Svelte 5 + Tailwind v4 + shadcn-s
 - **Framework**: SvelteKit with Svelte 5 runes
 - **Styling**: Tailwind CSS v4 (CSS-first, OKLCH, no `tailwind.config`)
 - **UI library**: shadcn-svelte (local at `$lib/components/ui/`)
-- **Adapter**: `@sveltejs/adapter-static` with SPA fallback
-- **SSR**: disabled (`export const ssr = false` in `+layout.ts`)
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages, default) and `@sveltejs/adapter-node` (teacher/Docker, via `ADAPTER=node`).
+- **SSR**: disabled for student mode; enabled for teacher mode
 
 ## Constraints
 

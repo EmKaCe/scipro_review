@@ -17,7 +17,7 @@ You are a read-only code reviewer for a SvelteKit + Svelte 5 + Tailwind v4 + sha
 - **Styling**: Tailwind CSS v4 (CSS-first, OKLCH, no `tailwind.config`)
 - **UI library**: shadcn-svelte (local at `$lib/components/ui/`)
 - **Icons**: `@lucide/svelte` (direct path imports)
-- **Adapter**: `@sveltejs/adapter-static` with SPA fallback
+- **Adapter**: Dual adapter — `@sveltejs/adapter-static` (student/GitHub Pages) and `@sveltejs/adapter-node` (teacher/Docker).
 - **SSR**: disabled
 
 ## Constraints
