@@ -18,5 +18,13 @@ data/materials/
 # Environment variables — secrets
 .env
 
+# Python virtual environment (local dev only)
+executor/.venv/
+executor/__pycache__/
+executor/*.egg-info/
+
+# Python lockfile (uv) — committed for reproducibility
+executor/uv.lock
+
 # Docs (research artifacts, not code)
 docs/

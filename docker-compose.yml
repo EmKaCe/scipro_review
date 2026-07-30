@@ -1,16 +1,18 @@
 # =============================================================================
-# SciPro Review — Docker Compose (base configuration)
+# SciPro Review — Teacher Machine
 # =============================================================================
+# Default Docker Compose configuration for the teacher's grading machine.
+#
 # Usage:
-#   Development: docker compose up -d                  (auto-loads override.yml)
-#   Production:  docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#   Teacher:   docker compose up -d                           (this file)
+#   Dev:       docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 #
 # Services:
-#   frontend   — SvelteKit Node server (adapter-node)   :4174
-#   executor   — Python FastAPI notebook executor       :8766
+#   frontend   — SvelteKit Node server (adapter-node)   :4174  (teacher accesses this)
+#   executor   — Python FastAPI notebook executor       :8766  (internal only)
 #
-# Shared volume:
-#   data       — Mounted at /app/data/ in both containers
+# Shared named volume:
+#   data       — Persisted at /app/data/ in both containers
 # =============================================================================
 
 name: svelte-review
@@ -26,7 +28,6 @@ services:
     ports:
       - "4174:4174"
     volumes:
-      # Shared named volume for persistent data access
       - data:/app/data
     environment:
       - ADAPTER=node
@@ -40,12 +41,25 @@ services:
       executor:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4174/"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:4174/"]
       interval: 15s
       timeout: 5s
       start_period: 10s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - app-net
 
@@ -56,6 +70,7 @@ services:
       dockerfile: Dockerfile
     image: svelte-review-executor:latest
     container_name: svelte-review-executor
+    # Not exposed to the host — frontend reaches it via Docker DNS
     expose:
       - "8766"
     volumes:
@@ -72,7 +87,20 @@ services:
       timeout: 5s
       start_period: 5s
       retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 256M
     restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - app-net
 
@@ -80,8 +108,6 @@ services:
 volumes:
   data:
     name: svelte-review-data
-    # Production: Docker-managed named volume (persists across restarts)
-    # Development: overridden to bind-mount ./data/ in docker-compose.override.yml
 
 # ── Network ──────────────────────────────────────────────────────────────────
 networks:

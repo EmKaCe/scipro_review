@@ -2,20 +2,35 @@
 Notebook Executor — FastAPI microservice.
 
 Executes .ipynb files on demand and returns structured results.
-In Phase 4 this will also support LLM-based pre-evaluation.
+Pre-processes notebooks before execution (Colab stripping, path
+normalization, optional LLM analysis).
 
-Run: uvicorn app:app --host 0.0.0.0 --port 8766 --reload
+Endpoints:
+    GET  /health          — Readiness probe
+    POST /execute         — Execute a single notebook
+    POST /execute/batch   — Execute multiple notebooks sequentially
+
+Run: uv icon app:app --host 0.0.0.0 --port 8766 --reload
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import os
+import tempfile
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+import time as _time
+
+from ki_connect import KiConnectClient
+from preprocessor import PreprocessingResult, preprocess_notebook
+from runner import execute_notebook as run_notebook
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -32,24 +47,44 @@ logger = logging.getLogger("executor")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Notebook Executor",
-    version="0.1.0",
-    description="Executes Jupyter notebook submissions and returns results.",
+    version="0.2.0",
+    description=(
+        "Executes Jupyter notebook submissions, pre-processes them, "
+        "and returns structured cell-by-cell results."
+    ),
 )
 
-# Allow the SvelteKit frontend (wherever it's served from)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten in production: ["http://localhost:4174"]
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # ---------------------------------------------------------------------------
-# Data directory (shared named volume)
+# Data directory
 # ---------------------------------------------------------------------------
 DATA_DIR = Path(os.getenv("DATA_DIR", "/app/data"))
 DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# ---------------------------------------------------------------------------
+# KI Connect client (lazy)
+# ---------------------------------------------------------------------------
+_ki_client: KiConnectClient | None = None
+
+
+def _get_ki_client() -> KiConnectClient | None:
+    """Return a cached KiConnectClient or None if no API key is set."""
+    global _ki_client  # noqa: PLW0603
+    if _ki_client is None:
+        key = os.getenv("KI_CONNECT_API_KEY", "")
+        if key:
+            _ki_client = KiConnectClient(api_key=key)
+        else:
+            logger.info("KI_CONNECT_API_KEY not set — LLM features disabled")
+    return _ki_client if _ki_client and _ki_client.api_key else None
+
 
 # ---------------------------------------------------------------------------
 # Request / Response models
@@ -57,16 +92,32 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 
 
 class ExecuteRequest(BaseModel):
-    """Request to execute a notebook."""
+    """Request to execute a single notebook."""
 
     notebook_path: str
     """Relative path inside the shared data directory."""
 
-    timeout: int = 300
-    """Per-cell execution timeout in seconds."""
+    timeout: int = 30
+    """Per-cell execution timeout in seconds (default 30)."""
 
     kernel_name: str = "python3"
     """Jupyter kernel to use."""
+
+    skip_preprocessing: bool = False
+    """If true, skip both deterministic and LLM pre-processing."""
+
+    assignment_context: str | None = None
+    """Optional assignment description for LLM analysis."""
+
+
+class BatchExecuteRequest(BaseModel):
+    """Request to execute multiple notebooks sequentially."""
+
+    notebooks: list[ExecuteRequest]
+    """List of notebooks to execute. Processed in order."""
+
+    stop_on_first_error: bool = False
+    """If true, stop processing after the first notebook that fails."""
 
 
 class CellResult(BaseModel):
@@ -80,6 +131,25 @@ class CellResult(BaseModel):
     traceback: list[str] | None = None
 
 
+class PreprocessingInfo(BaseModel):
+    """Metadata about pre-processing applied to a notebook."""
+
+    cells_modified: int = 0
+    """Number of cells that had at least one edit applied."""
+
+    total_edits: int = 0
+    """Total number of individual edits across all cells."""
+
+    edit_types: dict[str, int] = {}
+    """Count of edits by type (colab_import_removed, path_normalized, …)."""
+
+    llm_preprocessing: str = "skipped"
+    """Status of LLM pre-processing: completed | skipped | error."""
+
+    llm_analysis: bool = False
+    """Whether LLM analysis data is available."""
+
+
 class ExecuteResponse(BaseModel):
     """Result of a notebook execution."""
 
@@ -89,14 +159,151 @@ class ExecuteResponse(BaseModel):
     total_cells: int
     executed_cells: int
     error_cells: int
+    duration_seconds: float = 0.0
+    preprocessing: PreprocessingInfo = PreprocessingInfo()
+
+
+class BatchItemResult(BaseModel):
+    """Result of a single notebook within a batch."""
+
+    notebook_path: str
+    success: bool
+    total_cells: int
+    executed_cells: int
+    error_cells: int
+    duration_seconds: float
+    error: str | None = None
+    """Top-level error message if the notebook itself failed to execute."""
+
+
+class BatchExecuteResponse(BaseModel):
+    """Result of a batch execution."""
+
+    results: list[BatchItemResult]
+    total_notebooks: int
+    succeeded: int
+    failed: int
+    total_duration_seconds: float
 
 
 class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str = "ok"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     data_dir: str
+    ki_connect_available: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Helper — load & pre-process a notebook
+# ---------------------------------------------------------------------------
+
+
+def _load_and_preprocess(
+    notebook_path: Path,
+    skip_preprocessing: bool,
+    assignment_context: str | None,
+) -> tuple[dict[str, Any], PreprocessingResult, Path]:
+    """Load a .ipynb, run preprocessing, return the modified notebook dict.
+
+    Args:
+        notebook_path: Absolute path to the .ipynb file.
+        skip_preprocessing: If True, skip all preprocessing steps.
+        assignment_context: Optional context for LLM analysis.
+
+    Returns:
+        (notebook_dict, preprocessing_result, temp_path_for_execution).
+
+    Raises HTTPException (404/400/500) on errors.
+    """
+    if not notebook_path.exists():
+        raise HTTPException(
+            status_code=404,
+            detail=f"Notebook not found: {notebook_path}",
+        )
+
+    if notebook_path.suffix not in (".ipynb",):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Not a Jupyter notebook: {notebook_path}",
+        )
+
+    try:
+        with open(notebook_path, "r", encoding="utf-8") as f:
+            notebook = json.load(f)
+    except json.JSONDecodeError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid notebook JSON: {e}",
+        )
+
+    # Pre-processing
+    if not skip_preprocessing:
+        ki_client = _get_ki_client()
+        pre_result = preprocess_notebook(
+            notebook=notebook,
+            assignment_context=assignment_context,
+            ki_client=ki_client,
+        )
+    else:
+        # Build a minimal PreprocessingResult with raw cells
+        cells = notebook.get("cells", [])
+        normalized_cells = [
+            {
+                "index": i,
+                "type": c.get("cell_type", "code"),
+                "source": "".join(c.get("source", []))
+                if isinstance(c.get("source"), list)
+                else str(c.get("source", "")),
+            }
+            for i, c in enumerate(cells)
+        ]
+        pre_result = PreprocessingResult(normalized_cells=normalized_cells)
+
+    # Write the (possibly modified) notebook to a temp file for execution
+    # so the sandbox uses the cleaned version
+    tmp_fd, tmp_path_str = tempfile.mkstemp(
+        suffix=".ipynb", prefix="scipro-norm-"
+    )
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_path_str)
+    with open(tmp_path, "w", encoding="utf-8") as f:
+        json.dump(notebook, f)
+
+    return notebook, pre_result, tmp_path
+
+
+def _build_preprocessing_info(pre: PreprocessingResult) -> PreprocessingInfo:
+    """Convert a PreprocessingResult to the API response model."""
+    edit_types: dict[str, int] = {}
+    for edit in pre.edits:
+        edit_types[edit.edit_type] = edit_types.get(edit.edit_type, 0) + 1
+
+    modified_cells = len({e.cell_index for e in pre.edits if e.cell_index >= 0})
+
+    return PreprocessingInfo(
+        cells_modified=modified_cells,
+        total_edits=len(pre.edits),
+        edit_types=edit_types,
+        llm_preprocessing=pre.llm_preprocessing,
+        llm_analysis=pre.analysis is not None,
+    )
+
+
+def _cells_to_response(cells: list) -> list[CellResult]:
+    """Convert runner CellOutput objects to Pydantic models."""
+    return [
+        CellResult(
+            cell_index=c.cell_index,
+            execution_count=c.execution_count,
+            source=c.source,
+            output_text=c.output_text,
+            error=c.error,
+            traceback=c.traceback,
+        )
+        for c in cells
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -105,41 +312,177 @@ class HealthResponse(BaseModel):
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health():
+async def health() -> HealthResponse:
     """Readiness probe for Docker health checks."""
-    return HealthResponse(data_dir=str(DATA_DIR))
+    ki_client = _get_ki_client()
+    return HealthResponse(
+        data_dir=str(DATA_DIR),
+        ki_connect_available=ki_client is not None,
+    )
 
 
 @app.post("/execute", response_model=ExecuteResponse)
-async def execute_notebook(req: ExecuteRequest):
+async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
     """
     Execute a Jupyter notebook and return cell-by-cell results.
 
-    This is a stub — real notebook execution will be implemented
-    using nbclient once the service is operational.
+    The pipeline is:
+    1. Load the .ipynb from disk
+    2. Pre-process (deterministic sanitization + optional LLM analysis)
+    3. Execute cell-by-cell via nbclient (with sandbox)
+    4. Return structured results + pre-processing metadata
     """
     logger.info(
-        "execute request: path=%s timeout=%d", req.notebook_path, req.timeout
+        "execute: path=%s timeout=%d skip_preprocessing=%s",
+        req.notebook_path,
+        req.timeout,
+        req.skip_preprocessing,
     )
 
     full_path = DATA_DIR / req.notebook_path
 
-    if not full_path.exists():
-        raise HTTPException(
-            status_code=404,
-            detail=f"Notebook not found: {req.notebook_path}",
-        )
+    # Load and pre-process
+    notebook, pre_result, exec_path = _load_and_preprocess(
+        full_path,
+        skip_preprocessing=req.skip_preprocessing,
+        assignment_context=req.assignment_context,
+    )
 
-    if full_path.suffix not in (".ipynb",):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Not a Jupyter notebook: {req.notebook_path}",
-        )
+    pre_info = _build_preprocessing_info(pre_result)
 
-    # TODO(Phase 3): implement nbclient-based execution
-    raise HTTPException(
-        status_code=501,
-        detail=f"Not implemented — nbclient execution is pending Phase 3 ({req.notebook_path})",
+    # Execute
+    try:
+        exec_result = run_notebook(
+            notebook_path=exec_path,
+            timeout=req.timeout,
+            kernel_name=req.kernel_name,
+            data_dir=DATA_DIR,
+        )
+    except Exception as e:
+        logger.exception("Execution failed for %s", req.notebook_path)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Execution failed: {e}",
+        )
+    finally:
+        # Clean up temp file
+        if exec_path.exists():
+            exec_path.unlink()
+
+    return ExecuteResponse(
+        success=exec_result.success,
+        notebook_path=req.notebook_path,
+        cells=_cells_to_response(exec_result.cells),
+        total_cells=exec_result.total_cells,
+        executed_cells=exec_result.executed_cells,
+        error_cells=exec_result.error_cells,
+        duration_seconds=exec_result.duration_seconds,
+        preprocessing=pre_info,
+    )
+
+
+@app.post("/execute/batch", response_model=BatchExecuteResponse)
+async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
+    """
+    Execute multiple notebooks sequentially.
+
+    Accepts a list of ``ExecuteRequest`` objects. Each notebook is
+    pre-processed and executed in order. If ``stop_on_first_error`` is set,
+    processing stops after the first 5xx-level failure.
+    """
+    logger.info(
+        "batch execute: %d notebooks, stop_on_first_error=%s",
+        len(req.notebooks),
+        req.stop_on_first_error,
+    )
+
+    results: list[BatchItemResult] = []
+    total_start = _time.monotonic()
+
+    for i, nb_req in enumerate(req.notebooks):
+        nb_start = _time.monotonic()
+        full_path = DATA_DIR / nb_req.notebook_path
+
+        try:
+            # Load and pre-process
+            _, pre_result, exec_path = _load_and_preprocess(
+                full_path,
+                skip_preprocessing=nb_req.skip_preprocessing,
+                assignment_context=nb_req.assignment_context,
+            )
+
+            # Execute
+            exec_result = run_notebook(
+                notebook_path=exec_path,
+                timeout=nb_req.timeout,
+                kernel_name=nb_req.kernel_name,
+                data_dir=DATA_DIR,
+            )
+
+            duration = _time.monotonic() - nb_start
+
+            results.append(
+                BatchItemResult(
+                    notebook_path=nb_req.notebook_path,
+                    success=exec_result.success,
+                    total_cells=exec_result.total_cells,
+                    executed_cells=exec_result.executed_cells,
+                    error_cells=exec_result.error_cells,
+                    duration_seconds=duration,
+                )
+            )
+
+            # Clean up
+            if exec_path.exists():
+                exec_path.unlink()
+
+        except HTTPException as e:
+            duration = _time.monotonic() - nb_start
+            results.append(
+                BatchItemResult(
+                    notebook_path=nb_req.notebook_path,
+                    success=False,
+                    total_cells=0,
+                    executed_cells=0,
+                    error_cells=0,
+                    duration_seconds=duration,
+                    error=e.detail,
+                )
+            )
+            if req.stop_on_first_error and e.status_code >= 500:
+                logger.warning(
+                    "Batch stopping after %s due to %s",
+                    nb_req.notebook_path,
+                    e.detail,
+                )
+                break
+        except Exception as e:
+            duration = _time.monotonic() - nb_start
+            logger.exception("Batch item failed: %s", nb_req.notebook_path)
+            results.append(
+                BatchItemResult(
+                    notebook_path=nb_req.notebook_path,
+                    success=False,
+                    total_cells=0,
+                    executed_cells=0,
+                    error_cells=0,
+                    duration_seconds=duration,
+                    error=str(e),
+                )
+            )
+            if req.stop_on_first_error:
+                break
+
+    total_duration = _time.monotonic() - total_start
+    succeeded = sum(1 for r in results if r.success)
+    failed = sum(1 for r in results if not r.success)
+
+    return BatchExecuteResponse(
+        results=results,
+        total_notebooks=len(results),
+        succeeded=succeeded,
+        failed=failed,
+        total_duration_seconds=total_duration,
     )
 
 

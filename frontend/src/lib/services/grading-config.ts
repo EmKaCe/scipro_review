@@ -7,7 +7,7 @@
  * @see .github/references/schemas/grading-config-schema.md
  */
 
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { base } from "$app/paths";
 import type { GradingConfig, GradeDimension, GradeBoundary } from "../types/grading.js";
 import { parseDimensionKey } from "../types/grading.js";
