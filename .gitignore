@@ -28,3 +28,6 @@ executor/uv.lock
 
 # Docs (research artifacts, not code)
 docs/
+
+# Hermes agent plans (local session planning only)
+.hermes/
