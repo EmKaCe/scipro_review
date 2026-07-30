@@ -62,6 +62,18 @@ updates:
     commit-message:
       prefix: ci
 
+  # Python executor dependencies (pyproject.toml)
+  - package-ecosystem: pip
+    directory: /executor
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: deps
+      prefix-development: deps-dev
+      include: scope
+
   # Git submodules
   - package-ecosystem: gitsubmodule
     directory: /

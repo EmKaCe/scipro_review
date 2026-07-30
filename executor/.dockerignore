@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+.venv/
+*.egg-info/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (not needed in the image)
+README.md

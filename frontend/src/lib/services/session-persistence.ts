@@ -8,7 +8,7 @@
  * @see .github/references/schemas/evaluation-md-schema.md
  */
 
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import type { ReviewSession, CategorySelections } from "../types/session.js";
 import type { MergedRubric, SubPoint } from "../types/criteria.js";
 import type { GradeResult } from "../types/grading.js";

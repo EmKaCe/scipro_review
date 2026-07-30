@@ -14,7 +14,7 @@
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
-	import yaml from "js-yaml";
+	import * as yaml from "js-yaml";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 	import WandSparkles from "@lucide/svelte/icons/wand-sparkles";

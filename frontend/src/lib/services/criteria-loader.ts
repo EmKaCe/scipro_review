@@ -7,7 +7,7 @@
  * @see .github/references/schemas/criteria-schema.md
  */
 
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 import { base } from "$app/paths";
 import type { Category, CategoryEntry, CriteriaFile, MergedRubric } from "../types/criteria.js";
 import type { Assignment, AssignmentsRegistry } from "../types/assignments.js";

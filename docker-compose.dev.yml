@@ -1,0 +1,49 @@
+# =============================================================================
+# SciPro Review — Development Overrides
+# =============================================================================
+# Apply alongside the base teacher config:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Changes from teacher default:
+#   - Bind-mount host ./data/ instead of named volume (live access)
+#   - Expose executor port :8766 for direct debugging
+#   - Bind-mount Python source for uvicorn --reload
+#   - Reinstall Python deps on startup (picks up requirement changes)
+#   - No restart policy
+# =============================================================================
+
+services:
+  frontend:
+    ports:
+      - "4174:4174"
+    volumes:
+      - ./data:/app/data:delegated
+    environment:
+      - NODE_ENV=development
+    # Remove healthy-condition dependency so frontend starts even while
+    # the executor is still reinstalling deps on first startup
+    depends_on:
+      - executor
+    restart: no
+
+  executor:
+    ports:
+      - "8766:8766"
+    volumes:
+      - ./data:/app/data:delegated
+      # Bind-mount Python source files for uvicorn --reload
+      - ./executor/app.py:/app/app.py:delegated
+      - ./executor/ki_connect.py:/app/ki_connect.py:delegated
+      - ./executor/preprocessor.py:/app/preprocessor.py:delegated
+      - ./executor/runner.py:/app/runner.py:delegated
+      - ./executor/requirements.txt:/app/requirements.txt:delegated
+    environment:
+      - EXECUTOR_LOG_LEVEL=debug
+      - EXECUTOR_RELOAD=true
+    # $$ escapes Compose interpolation — $PORT is resolved at container runtime
+    command: >
+      sh -c "
+        pip install --no-cache-dir -r requirements.txt -q &&
+        uvicorn app:app --host 0.0.0.0 --port $$PORT --reload --log-level debug
+      "
+    restart: no
