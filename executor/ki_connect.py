@@ -227,7 +227,9 @@ class KiConnectClient:
     ) -> dict[str, Any] | None:
         """Segment a notebook into logical task groups (cell comparison stage 1).
 
-        Returns structured task list or None on failure.
+        **Phase 4 scaffolding only** — the two-stage segmentation pipeline was
+        archived in the Phase 3 plan (cell comparison is deferred to Phase 4
+        pre-evaluation). Do not call this from Phase 3 code paths.
         """
         if not self.api_key:
             logger.debug("KI Connect segmentation skipped (no API key)")

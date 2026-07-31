@@ -3,7 +3,7 @@
  *       `executor/ki_connect.py`.
  *
  * Provides the same `analyze()` and `autofix()` interface for
- * lightweight analysis tasks such as cell comparison enrichment.
+ * lightweight analysis tasks on the teacher side.
  *
  * This module runs only on the SvelteKit server (`$lib/server/`).
  * It is NOT imported by client/browser code.
