@@ -9,6 +9,8 @@ Endpoints:
     GET  /health          — Readiness probe
     POST /execute         — Execute a single notebook
     POST /execute/batch   — Execute multiple notebooks sequentially
+    POST /auto-fix        — Suggest a fix for a failed cell (Phase 3c)
+    POST /execute/autofix-run — Re-run a patched cell, max 1 attempt (3c.2)
 
 Run: uv icon app:app --host 0.0.0.0 --port 8766 --reload
 """
@@ -29,8 +31,13 @@ from pydantic import BaseModel
 import time as _time
 
 from ki_connect import KiConnectClient
+from auto_fix import autofix_cell, is_valid_python
 from preprocessor import PreprocessingResult, preprocess_notebook
-from runner import _DATA_EXTENSIONS, execute_notebook as run_notebook
+from runner import (
+    _DATA_EXTENSIONS,
+    execute_notebook as run_notebook,
+    execute_single_cell,
+)
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -47,7 +54,7 @@ logger = logging.getLogger("executor")
 # ---------------------------------------------------------------------------
 app = FastAPI(
     title="Notebook Executor",
-    version="0.2.0",
+    version="0.3.0",
     description=(
         "Executes Jupyter notebook submissions, pre-processes them, "
         "and returns structured cell-by-cell results."
@@ -203,9 +210,110 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str = "ok"
-    version: str = "0.2.0"
+    version: str = "0.3.0"
     data_dir: str
     ki_connect_available: bool = False
+
+
+class AutoFixRequest(BaseModel):
+    """Request to suggest a fix for a failed cell (Phase 3c.1)."""
+
+    cell_source: str
+    """The failing cell's source code (as the student wrote it)."""
+
+    cell_error: str
+    """Error message from the failed execution."""
+
+    cell_index: int | None = None
+    """Index of the failing cell in the notebook (informational)."""
+
+    traceback: list[str] | None = None
+    """Optional traceback lines — appended to the error for the LLM."""
+
+    context_cells: list[dict[str, Any]] | None = None
+    """Surrounding notebook cells for LLM context."""
+
+    assignment_context: str | None = None
+    """Optional free-text assignment description."""
+
+    assignment_id: str | None = None
+    """Assignment id — used to discover available input-data files."""
+
+    notebook_path: str | None = None
+    """Path of the notebook the cell belongs to (informational)."""
+
+
+class AutoFixResponse(BaseModel):
+    """Fix suggestion for a failed cell."""
+
+    skipped: bool = False
+    """True when KI Connect is unavailable or returned nothing usable."""
+
+    suggestion: str | None = None
+    """Corrected cell source proposed by the LLM."""
+
+    explanation: str | None = None
+    """Brief explanation of what was wrong and how the fix works."""
+
+    confidence: float | None = None
+    """Model confidence in the fix (0–1)."""
+
+    fix_type: str | None = None
+    """Categorization of the fix (import_fix, syntax_fix, …)."""
+
+    patched_source: str | None = None
+    """Suggestion when it parses as valid Python — safe to re-run. None
+    when the suggestion failed the syntax sanity check."""
+
+    syntax_valid: bool | None = None
+    """Result of the deterministic ast.parse sanity check."""
+
+
+class AutoFixRunRequest(BaseModel):
+    """Request to re-run a single patched cell (Phase 3c.2)."""
+
+    cell_source: str
+    """The original (failed) cell source."""
+
+    cell_error: str
+    """The original error message — echoed back in the response."""
+
+    patched_source: str
+    """The fixed source to execute. Must parse as valid Python."""
+
+    traceback: list[str] | None = None
+    """Original traceback (informational)."""
+
+    assignment_id: str | None = None
+    """Assignment id — stages the assignment's input data in the sandbox."""
+
+    notebook_path: str | None = None
+    """Path of the notebook the cell belongs to (informational)."""
+
+    timeout: int = 30
+    """Per-cell execution timeout in seconds."""
+
+    kernel_name: str = "python3"
+    """Jupyter kernel to use."""
+
+
+class AutoFixRunResponse(BaseModel):
+    """Result of re-executing a single patched cell."""
+
+    original_error: str
+    """The error the cell failed with before the fix."""
+
+    patched_source: str
+    """The fixed source that was re-executed."""
+
+    re_run_output: str = ""
+    """Text output produced by the patched cell."""
+
+    re_run_error: str | None = None
+    """New error after the re-run — None when the patch worked."""
+
+    fixed: bool
+    """True when the patched cell executed without error (max 1 attempt)."""
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +700,108 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
         succeeded=succeeded,
         failed=failed,
         total_duration_seconds=total_duration,
+    )
+
+
+@app.post(
+    "/auto-fix",
+    response_model=AutoFixResponse,
+    response_model_exclude_none=True,
+)
+async def auto_fix(req: AutoFixRequest) -> AutoFixResponse:
+    """Suggest a fix for a failed notebook cell (Phase 3c.1).
+
+    Sends the failing source + error (+ optional context cells) to KI
+    Connect. The suggested fix is sanity-checked with ``ast.parse`` —
+    when invalid, it is returned flagged (``syntax_valid=false``, no
+    ``patched_source``) instead of being applied. Responds 200 with
+    ``{"skipped": true}`` when KI Connect is unavailable (no API key or
+    upstream failure).
+    """
+    logger.info(
+        "auto-fix: cell_index=%s assignment=%s error=%s",
+        req.cell_index,
+        req.assignment_id,
+        req.cell_error.splitlines()[0] if req.cell_error else "",
+    )
+
+    # Reuse the /execute data-discovery pattern: the assignment's input
+    # files give the LLM the file names the fix may need to reference.
+    available_paths: set[str] = set()
+    if req.assignment_id:
+        available_paths = _discover_data_files(req.assignment_id, DATA_DIR)
+
+    result = autofix_cell(
+        cell_source=req.cell_source,
+        cell_error=req.cell_error,
+        traceback=req.traceback,
+        context_cells=req.context_cells,
+        assignment_context=req.assignment_context,
+        available_paths=available_paths,
+        ki_client=_get_ki_client(),
+    )
+    if result.get("skipped"):
+        return AutoFixResponse(skipped=True)
+
+    return AutoFixResponse(
+        skipped=False,
+        suggestion=result.get("suggestion"),
+        explanation=result.get("explanation"),
+        confidence=result.get("confidence"),
+        fix_type=result.get("fix_type"),
+        patched_source=result.get("patched_source"),
+        syntax_valid=result.get("syntax_valid"),
+    )
+
+
+@app.post(
+    "/execute/autofix-run",
+    response_model=AutoFixRunResponse,
+)
+async def autofix_run(req: AutoFixRunRequest) -> AutoFixRunResponse:
+    """Re-execute a single patched cell (Phase 3c.2, max 1 attempt).
+
+    Patches the failed cell by building a one-cell notebook from
+    ``patched_source`` and executing it via nbclient in a fresh sandbox
+    (staging the assignment's input data when ``assignment_id`` is given).
+    Exactly one attempt — if the patched cell still fails, both errors are
+    returned and ``fixed`` is false; there is no re-fix loop.
+    """
+    # Deterministic guard: refuse to re-run a patch that cannot parse.
+    if not is_valid_python(req.patched_source):
+        raise HTTPException(
+            status_code=400,
+            detail="patched_source is not valid Python — refusing to re-run",
+        )
+
+    logger.info(
+        "autofix-run: assignment=%s timeout=%d kernel=%s",
+        req.assignment_id,
+        req.timeout,
+        req.kernel_name,
+    )
+
+    try:
+        cell = execute_single_cell(
+            source=req.patched_source,
+            timeout=req.timeout,
+            kernel_name=req.kernel_name,
+            data_dir=DATA_DIR,
+            assignment_id=req.assignment_id or "",
+        )
+    except Exception as e:
+        logger.exception("Autofix re-run failed")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Autofix re-run failed: {e}",
+        )
+
+    return AutoFixRunResponse(
+        original_error=req.cell_error,
+        patched_source=req.patched_source,
+        re_run_output=cell.output_text,
+        re_run_error=cell.error,
+        fixed=cell.error is None,
     )
 
 

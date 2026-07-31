@@ -443,3 +443,104 @@ def execute_notebook(
         # 5. Cleanup sandbox
         if sandbox_dir is not None:
             cleanup_sandbox(sandbox_dir)
+
+
+def execute_single_cell(
+    source: str,
+    timeout: int = 30,
+    kernel_name: str = "python3",
+    data_dir: Path | None = None,
+    assignment_id: str = "",
+) -> CellOutput:
+    """Execute a single code cell in a fresh sandbox (autofix re-run, 3c.2).
+
+    Builds a minimal one-cell notebook from ``source`` and executes it via
+    nbclient. Used by the autofix re-run loop — **max 1 attempt per cell**:
+    the caller decides what to do with the (success or new error) result.
+
+    Args:
+        source: Cell source code to execute.
+        timeout: Per-cell timeout in seconds.
+        kernel_name: Jupyter kernel name.
+        data_dir: Root data directory. When given together with a non-empty
+            ``assignment_id``, the assignment's input data is staged into
+            the sandbox so data-access cells can re-run successfully.
+        assignment_id: Assignment the cell belongs to (sandbox data
+            staging). Empty → sandbox contains only the cell.
+
+    Returns:
+        :class:`CellOutput` with ``cell_index=0``, execution output/error.
+    """
+    nb = nbformat.v4.new_notebook()
+    nb.cells = [nbformat.v4.new_code_cell(source)]
+    nb.metadata["kernelspec"] = {
+        "display_name": "Python 3",
+        "language": "python",
+        "name": kernel_name,
+    }
+    nb.metadata["language_info"] = {"name": "python"}
+
+    if data_dir is None:
+        data_dir = Path(tempfile.gettempdir())
+
+    # Write the one-cell notebook to a temp file, then stage it in a
+    # fresh sandbox (assignment data included when we have an id).
+    tmp_fd, tmp_path_str = tempfile.mkstemp(
+        suffix=".ipynb", prefix="scipro-autofix-"
+    )
+    os.close(tmp_fd)
+    tmp_path = Path(tmp_path_str)
+    sandbox_dir: Path | None = None
+
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            nbformat.write(nb, f)
+
+        sandbox_dir, sandbox_nb = create_sandbox(
+            tmp_path, data_dir, assignment_id
+        )
+
+        with open(sandbox_nb, "r", encoding="utf-8") as f:
+            sandbox_nb_obj = nbformat.read(f, as_version=4)
+
+        client = nbclient.NotebookClient(
+            sandbox_nb_obj,
+            timeout=timeout,
+            kernel_name=kernel_name,
+            allow_errors=True,
+            raise_on_cell_error=False,
+            resources={"metadata": {"path": str(sandbox_dir)}},
+        )
+
+        logger.info(
+            "Executing single cell (autofix re-run, timeout=%ds, kernel=%s)",
+            timeout,
+            kernel_name,
+        )
+        try:
+            client.execute()
+        except Exception as e:
+            # allow_errors=True should finish even with errors; kernel-level
+            # failures are surfaced as a cell error below
+            logger.warning(
+                "nbclient raised %s during autofix re-run: %s",
+                type(e).__name__,
+                e,
+            )
+
+        cell = sandbox_nb_obj.cells[0]
+        output_text, error, traceback = _extract_outputs(cell)
+
+        return CellOutput(
+            cell_index=0,
+            execution_count=getattr(cell, "execution_count", None),
+            source=source,
+            output_text=output_text,
+            error=error,
+            traceback=traceback,
+        )
+    finally:
+        if sandbox_dir is not None:
+            cleanup_sandbox(sandbox_dir)
+        if tmp_path.exists():
+            tmp_path.unlink()

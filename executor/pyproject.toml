@@ -1,6 +1,6 @@
 [project]
 name = "svelte-review-executor"
-version = "0.2.0"
+version = "0.3.0"
 description = "Jupyter notebook execution engine for SciPro Review"
 requires-python = ">=3.11"
 
@@ -38,7 +38,7 @@ requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["app", "ki_connect", "preprocessor", "runner"]
+py-modules = ["app", "auto_fix", "ki_connect", "preprocessor", "runner"]
 
 # ── Tooling ──────────────────────────────────────────────────────────────────
 
