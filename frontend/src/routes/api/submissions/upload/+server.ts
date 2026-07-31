@@ -1,0 +1,217 @@
+/**
+ * @file POST /api/submissions/upload — multipart upload, classify, persist.
+ *
+ * Form fields:
+ *   files[]        — one or more uploaded files (required)
+ *   assignmentId   — target assignment (required)
+ *   kinds          — optional JSON object mapping file name -> UploadKind
+ *                    override, e.g. {"notes.pdf": "material-data"}
+ *   kind_<name>    — alternative per-file override field
+ *
+ * Files are classified via file-service.classifyFile (student notebooks ->
+ * submissions/, data files -> materials/<assignment>/input_data/, everything
+ * else -> materials/<assignment>/). Overrides may only move a file between
+ * material-data and material-file; forcing "submission" requires a student
+ * file name (<semester>_<n>.ipynb) and is otherwise rejected.
+ *
+ * Submission files are also upserted into the batch metadata (new records
+ * start "pending"; re-uploads replace the notebook, reset status to
+ * "pending" and clear stale execution results). Material files only land on
+ * disk — the assignments materials endpoints manage their listing.
+ */
+
+import { error, json } from "@sveltejs/kit";
+import type { RequestEvent } from "@sveltejs/kit";
+import { access, mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+import { assignmentExists } from "$lib/server/assignments";
+import {
+	classifyFile,
+	type ClassifiedFile,
+	type UploadKind,
+} from "$lib/server/file-service";
+import { getDataDir, upsertSubmission } from "$lib/server/metadata";
+import { clearResult } from "$lib/server/results-store";
+
+const VALID_KINDS: ReadonlySet<string> = new Set<UploadKind>([
+	"submission",
+	"material-data",
+	"material-file",
+]);
+
+export async function POST(event: RequestEvent): Promise<Response> {
+	let form: FormData;
+	try {
+		form = await event.request.formData();
+	} catch {
+		throw error(400, "Expected multipart/form-data body");
+	}
+
+	const assignmentId = String(form.get("assignmentId") ?? "").trim();
+	if (!assignmentId) {
+		throw error(400, "Missing assignmentId field");
+	}
+	if (!(await assignmentExists(assignmentId))) {
+		throw error(404, `Assignment "${assignmentId}" not found`);
+	}
+
+	// Duck-typed File check: FormData entries may come from another realm
+	// (undici vs jsdom), so `instanceof File` is unreliable under test.
+	const files = form
+		.getAll("files")
+		.filter((entry): entry is File => typeof entry === "object" && entry !== null);
+	if (files.length === 0) {
+		throw error(400, "No files provided (field name: files)");
+	}
+
+	const overrides = parseKindOverrides(form);
+
+	const persisted = [];
+	for (const file of files) {
+		const classification = applyKindOverride(classifyFile(file.name, assignmentId), overrides.get(file.name));
+		const data = new Uint8Array(await file.arrayBuffer());
+		const replaced = await persistClassified(classification, data);
+
+		if (classification.kind === "submission") {
+			const record = await upsertSubmission(assignmentId, classification.studentId!, {
+				semester: classification.semester,
+				fileName: classification.fileName,
+				notebookPath: classification.relativePath,
+				status: "pending",
+				error: null,
+			});
+			await clearResult(assignmentId, classification.studentId!);
+			persisted.push({
+				fileName: file.name,
+				kind: classification.kind,
+				studentId: record.studentId,
+				semester: record.semester,
+				replaced,
+				bytes: data.byteLength,
+				notebookPath: record.notebookPath,
+			});
+		} else {
+			persisted.push({
+				fileName: file.name,
+				kind: classification.kind,
+				replaced,
+				bytes: data.byteLength,
+				relativePath: classification.relativePath,
+			});
+		}
+	}
+
+	return json({ assignmentId, results: persisted });
+}
+
+// ---------------------------------------------------------------------------
+// Kind overrides
+// ---------------------------------------------------------------------------
+
+/** Parse optional per-file kind overrides (`kinds` JSON + `kind_<name>` fields). */
+function parseKindOverrides(form: FormData): Map<string, UploadKind> {
+	const overrides = new Map<string, UploadKind>();
+
+	const kindsRaw = form.get("kinds");
+	if (kindsRaw) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(String(kindsRaw));
+		} catch {
+			throw error(400, "Invalid kinds field: expected a JSON object");
+		}
+		if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			throw error(400, "Invalid kinds field: expected a JSON object");
+		}
+		for (const [fileName, kind] of Object.entries(parsed as Record<string, unknown>)) {
+			overrides.set(fileName, validateKind(String(kind), fileName));
+		}
+	}
+
+	for (const entry of form.entries()) {
+		const match = /^kind_(.+)$/.exec(entry[0]);
+		if (match) {
+			overrides.set(match[1]!, validateKind(String(entry[1]), match[1]!));
+		}
+	}
+
+	return overrides;
+}
+
+function validateKind(kind: string, fileName: string): UploadKind {
+	if (!VALID_KINDS.has(kind)) {
+		throw error(
+			400,
+			`Invalid kind "${kind}" for "${fileName}": expected submission, material-data or material-file`,
+		);
+	}
+	return kind as UploadKind;
+}
+
+/**
+ * Apply a kind override to a classification. Overrides may move a file
+ * between material-data and material-file, or confirm a submission. Forcing
+ * "submission" on a file whose name has no student pattern is rejected.
+ */
+function applyKindOverride(
+	classified: ClassifiedFile,
+	override: UploadKind | undefined,
+): ClassifiedFile {
+	if (!override || override === classified.kind) {
+		return classified;
+	}
+	if (override === "submission") {
+		throw error(
+			400,
+			`Cannot classify "${classified.fileName}" as submission: file name must match <semester>_<n>.ipynb`,
+		);
+	}
+	if (override === "material-data") {
+		return {
+			...classified,
+			kind: "material-data",
+			destination: "materials",
+			relativePath: path.join("materials", classified.assignmentId, "input_data", classified.fileName),
+			absolutePath: path.join(
+				getDataDir(),
+				"materials",
+				classified.assignmentId,
+				"input_data",
+				classified.fileName,
+			),
+		};
+	}
+	return {
+		...classified,
+		kind: "material-file",
+		destination: "materials",
+		relativePath: path.join("materials", classified.assignmentId, classified.fileName),
+		absolutePath: path.join(getDataDir(), "materials", classified.assignmentId, classified.fileName),
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Persistence
+// ---------------------------------------------------------------------------
+
+/**
+ * Write an uploaded file at its classified destination. Mirrors
+ * file-service.persistUpload but honors an already-adjusted classification
+ * (persistUpload re-classifies internally and would ignore kind overrides).
+ */
+async function persistClassified(
+	classified: ClassifiedFile,
+	data: Uint8Array,
+): Promise<boolean> {
+	let existed = false;
+	try {
+		await access(classified.absolutePath);
+		existed = true;
+	} catch {
+		// file does not exist yet
+	}
+	await mkdir(path.dirname(classified.absolutePath), { recursive: true });
+	await writeFile(classified.absolutePath, data);
+	return existed;
+}
