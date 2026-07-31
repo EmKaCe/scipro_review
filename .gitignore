@@ -20,7 +20,7 @@ data/materials/
 
 # Python virtual environment (local dev only)
 executor/.venv/
-executor/__pycache__/
+__pycache__/
 executor/*.egg-info/
 
 # Python lockfile (uv) — committed for reproducibility
