@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import filecmp
 import logging
 import os
 import shutil
@@ -82,6 +83,7 @@ class ExecutionResult:
         "duration_seconds",
         "executed_cells",
         "error_cells",
+        "modified_files",
     )
 
     def __init__(
@@ -91,6 +93,7 @@ class ExecutionResult:
         success: bool,
         total_cells: int,
         duration_seconds: float,
+        modified_files: list[str] | None = None,
     ) -> None:
         self.notebook_path = notebook_path
         self.cells = cells
@@ -101,6 +104,7 @@ class ExecutionResult:
             1 for c in cells if c.execution_count is not None
         )
         self.error_cells = sum(1 for c in cells if c.error is not None)
+        self.modified_files = modified_files or []
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -111,6 +115,7 @@ class ExecutionResult:
             "executed_cells": self.executed_cells,
             "error_cells": self.error_cells,
             "duration_seconds": self.duration_seconds,
+            "modified_files": self.modified_files,
         }
 
 
@@ -134,16 +139,31 @@ _DATA_EXTENSIONS = frozenset({
 })
 
 
-def create_sandbox(notebook_path: Path, data_dir: Path) -> tuple[Path, Path]:
-    """Create a temporary sandbox with the notebook and its data files.
+def create_sandbox(
+    notebook_path: Path,
+    data_dir: Path,
+    assignment_id: str,
+) -> tuple[Path, Path]:
+    """Create a temporary sandbox scoped to an assignment.
 
-    Copies the notebook and any data files (CSV, TXT, etc.) found in the
-    same directory or parent directories (up to ``data_dir``) into a
-    temporary directory so execution has the right working directory.
+    Copies the notebook plus **that assignment's input data only**
+    (``materials/<assignment_id>/input_data/``) into a temporary directory,
+    preserving the input data's relative directory structure, so execution
+    has the right working directory. Data from other assignments is never
+    staged — no cross-assignment leakage.
+
+    The assignment is derived by the caller (``app.py``) from the **original**
+    notebook path (``submissions/<assignment>/…``); the executed notebook is
+    a system temp file whose path carries no assignment information.
 
     Args:
         notebook_path: Path to the ``.ipynb`` file.
         data_dir: Root data directory (usually /app/data).
+        assignment_id: Assignment the notebook belongs to. Sandbox data is
+            copied from ``materials/<assignment_id>/input_data/``. If empty
+            or the input_data dir is missing/empty, the sandbox contains
+            only the notebook (data-access cells will fail naturally — a
+            WARNING is logged for diagnostics).
 
     Returns:
         (sandbox_dir, copied_notebook_path).
@@ -155,26 +175,63 @@ def create_sandbox(notebook_path: Path, data_dir: Path) -> tuple[Path, Path]:
     dest_nb = sandbox / notebook_path.name
     shutil.copy2(notebook_path, dest_nb)
 
-    # Walk up from the notebook's directory to find data files.
-    # Stop at data_dir (don't go above it) or at the filesystem root.
-    seen: set[str] = set()
-    current = notebook_path.parent
-    while (
-        current != data_dir.parent
-        and current.exists()
-        and current != current.parent  # stop at filesystem root (/)
-    ):
-        for ext in _DATA_EXTENSIONS:
-            for f in current.glob(f"*{ext}"):
-                if f.stem not in seen:
-                    seen.add(f.stem)
-                    shutil.copy2(f, sandbox / f.name)
-                    logger.debug("Copied data file: %s", f.name)
-        if current == data_dir:
-            break
-        current = current.parent
+    # Copy the assignment's input data, preserving relative structure
+    input_dir = data_dir / "materials" / assignment_id / "input_data"
+    if assignment_id and input_dir.exists():
+        files = [f for f in input_dir.rglob("*") if f.is_file()]
+        if files:
+            for f in files:
+                rel = f.relative_to(input_dir)
+                dest = sandbox / rel
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dest)
+                logger.debug("Copied data file: %s", rel)
+        else:
+            logger.warning(
+                "input_data empty for assignment %s — data-access cells "
+                "will fail",
+                assignment_id,
+            )
+    else:
+        logger.warning(
+            "input_data missing for assignment %s — data-access cells "
+            "will fail",
+            assignment_id,
+        )
 
     return sandbox, dest_nb
+
+
+def _detect_modified_files(
+    sandbox_dir: Path,
+    data_dir: Path,
+    assignment_id: str,
+) -> list[str]:
+    """Return input-data files in the sandbox that differ from their originals.
+
+    Compares every file in the sandbox against its counterpart in
+    ``materials/<assignment_id>/input_data/`` (same relative path) using
+    ``filecmp.cmp(shallow=False)``. Files with no counterpart in the
+    assignment's input data (the notebook itself, student-created files)
+    are ignored.
+
+    Returns:
+        List of relative paths (relative to the input_data dir) that the
+        notebook wrote to or overwrote during execution.
+    """
+    modified: list[str] = []
+    input_dir = data_dir / "materials" / assignment_id / "input_data"
+    if not input_dir.exists():
+        return modified
+
+    for f in sorted(sandbox_dir.rglob("*")):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(sandbox_dir)
+        original = input_dir / rel
+        if original.is_file() and not filecmp.cmp(f, original, shallow=False):
+            modified.append(str(rel))
+    return modified
 
 
 def cleanup_sandbox(sandbox_dir: Path) -> None:
@@ -253,15 +310,18 @@ def execute_notebook(
     timeout: int = 300,
     kernel_name: str = "python3",
     data_dir: Path | None = None,
+    assignment_id: str = "",
 ) -> ExecutionResult:
     """Execute a Jupyter notebook and return structured cell-by-cell results.
 
     The execution flow:
-    1. Create a sandbox (temp dir) with the notebook + data files
+    1. Create a sandbox (temp dir) with the notebook + the assignment's
+       input data (``materials/<assignment_id>/input_data/``)
     2. Load and execute the notebook via nbclient
     3. Extract structured outputs per cell
-    4. Clean up the sandbox
-    5. Return an :class:`ExecutionResult`
+    4. Detect input-data files the notebook modified during execution
+    5. Clean up the sandbox
+    6. Return an :class:`ExecutionResult`
 
     Args:
         notebook_path: Path to the ``.ipynb`` file.
@@ -269,6 +329,10 @@ def execute_notebook(
         kernel_name: Jupyter kernel name (default ``python3``).
         data_dir: Root data directory for sandbox setup. Falls back to
                   the notebook's parent directory.
+        assignment_id: Assignment the notebook belongs to (derived by the
+                  caller from the original ``submissions/<assignment>/…``
+                  path). Scopes the sandbox's data copy. If empty, the
+                  sandbox contains only the notebook.
 
     Returns:
         :class:`ExecutionResult` with per-cell data.
@@ -281,7 +345,9 @@ def execute_notebook(
 
     try:
         # 1. Create sandbox
-        sandbox_dir, sandbox_nb = create_sandbox(notebook_path, data_dir)
+        sandbox_dir, sandbox_nb = create_sandbox(
+            notebook_path, data_dir, assignment_id
+        )
 
         # 2. Load notebook
         with open(sandbox_nb, "r", encoding="utf-8") as f:
@@ -290,12 +356,16 @@ def execute_notebook(
         total_cells = len(nb.cells)
 
         # 3. Configure and run nbclient
+        # resources.metadata.path = sandbox root → the kernel's working
+        # directory, so bare/relative data references resolve against the
+        # sandbox copy of the assignment's input data.
         client = nbclient.NotebookClient(
             nb,
             timeout=timeout,
             kernel_name=kernel_name,
             allow_errors=True,  # Continue executing after cell errors
             raise_on_cell_error=False,
+            resources={"metadata": {"path": str(sandbox_dir)}},
         )
 
         logger.info(
@@ -340,6 +410,17 @@ def execute_notebook(
         duration = time.monotonic() - start_time
         success = total_cells > 0
 
+        # 4. Detect input-data modifications (sandbox copy vs original)
+        modified_files = _detect_modified_files(
+            sandbox_dir, data_dir, assignment_id
+        )
+        if modified_files:
+            logger.warning(
+                "Input data modified during execution of %s: %s",
+                notebook_path.name,
+                ", ".join(modified_files),
+            )
+
         logger.info(
             "Completed: %s (%d/%d executed, %d errors, %.1fs)",
             notebook_path.name,
@@ -355,6 +436,7 @@ def execute_notebook(
             success=success,
             total_cells=total_cells,
             duration_seconds=duration,
+            modified_files=modified_files,
         )
 
     finally:

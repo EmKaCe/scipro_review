@@ -30,7 +30,7 @@ import time as _time
 
 from ki_connect import KiConnectClient
 from preprocessor import PreprocessingResult, preprocess_notebook
-from runner import execute_notebook as run_notebook
+from runner import _DATA_EXTENSIONS, execute_notebook as run_notebook
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -126,6 +126,11 @@ class CellResult(BaseModel):
     cell_index: int
     execution_count: int | None
     source: str
+    """CLEANED + annotated source (what actually ran)."""
+
+    original_source: str
+    """NEW: student's untouched source for this cell (what the review UI shows)."""
+
     output_text: str
     error: str | None = None
     traceback: list[str] | None = None
@@ -141,13 +146,16 @@ class PreprocessingInfo(BaseModel):
     """Total number of individual edits across all cells."""
 
     edit_types: dict[str, int] = {}
-    """Count of edits by type (colab_import_removed, path_normalized, …)."""
+    """Count of edits by type (removed_colab_import, normalized_absolute_path, …)."""
 
     llm_preprocessing: str = "skipped"
     """Status of LLM pre-processing: completed | skipped | error."""
 
     llm_analysis: bool = False
     """Whether LLM analysis data is available."""
+
+    cell_edits: dict[int, list[dict]] = {}
+    """Maps cell_index → list of edits. Each edit: {edit_type, note, …}."""
 
 
 class ExecuteResponse(BaseModel):
@@ -161,6 +169,8 @@ class ExecuteResponse(BaseModel):
     error_cells: int
     duration_seconds: float = 0.0
     preprocessing: PreprocessingInfo = PreprocessingInfo()
+    modified_files: list[str] = []
+    """Input-data files the notebook wrote to or overwrote during execution."""
 
 
 class BatchItemResult(BaseModel):
@@ -174,6 +184,9 @@ class BatchItemResult(BaseModel):
     duration_seconds: float
     error: str | None = None
     """Top-level error message if the notebook itself failed to execute."""
+
+    modified_files: list[str] = []
+    """Input-data files the notebook wrote to or overwrote during execution."""
 
 
 class BatchExecuteResponse(BaseModel):
@@ -200,11 +213,57 @@ class HealthResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+def _assignment_from_path(notebook_path: Path) -> str | None:
+    """Derive the assignment id from a notebook path.
+
+    Canonical layout: ``submissions/<assignment>/<file>.ipynb`` — the
+    assignment is the path segment directly after ``submissions``. Returns
+    None when the path doesn't match the canonical layout.
+
+    Args:
+        notebook_path: Path to the ``.ipynb`` file (may be relative).
+
+    Returns:
+        Assignment id, or None if the path has no ``submissions/`` segment.
+    """
+    parts = notebook_path.parts
+    try:
+        idx = parts.index("submissions")
+    except ValueError:
+        return None
+    if idx + 1 < len(parts):
+        return parts[idx + 1]
+    return None
+
+
+def _discover_data_files(assignment_id: str, data_dir: Path) -> set[str]:
+    """Return the set of input-data file paths for an assignment.
+
+    Scans ``materials/<assignment_id>/input_data/`` (canonical layout) and
+    returns paths relative to the input_data dir. Used **only** as Step 2
+    LLM context — the regex preprocessor never sees this set.
+
+    Args:
+        assignment_id: Assignment id.
+        data_dir: Root data directory (usually /app/data).
+
+    Returns:
+        Set of relative paths (e.g. ``{"soil.csv", "nested/ref.csv"}``).
+    """
+    paths: set[str] = set()
+    input_dir = data_dir / "materials" / assignment_id / "input_data"
+    if input_dir.exists():
+        for f in input_dir.rglob("*"):
+            if f.is_file() and f.suffix.lower() in _DATA_EXTENSIONS:
+                paths.add(str(f.relative_to(input_dir)))
+    return paths
+
+
 def _load_and_preprocess(
     notebook_path: Path,
     skip_preprocessing: bool,
     assignment_context: str | None,
-) -> tuple[dict[str, Any], PreprocessingResult, Path]:
+) -> tuple[str | None, dict[str, Any], PreprocessingResult, Path]:
     """Load a .ipynb, run preprocessing, return the modified notebook dict.
 
     Args:
@@ -213,7 +272,10 @@ def _load_and_preprocess(
         assignment_context: Optional context for LLM analysis.
 
     Returns:
-        (notebook_dict, preprocessing_result, temp_path_for_execution).
+        (assignment_id, notebook_dict, preprocessing_result,
+         temp_path_for_execution). The assignment id is derived from the
+        **original** notebook path (``submissions/<assignment>/…``) — the
+        executed temp file's path cannot be parsed.
 
     Raises HTTPException (404/400/500) on errors.
     """
@@ -238,28 +300,45 @@ def _load_and_preprocess(
             detail=f"Invalid notebook JSON: {e}",
         )
 
+    assignment_id = _assignment_from_path(notebook_path)
+
     # Pre-processing
     if not skip_preprocessing:
         ki_client = _get_ki_client()
+        available_paths = (
+            _discover_data_files(assignment_id, DATA_DIR)
+            if assignment_id
+            else set()
+        )
         pre_result = preprocess_notebook(
             notebook=notebook,
             assignment_context=assignment_context,
             ki_client=ki_client,
+            available_paths=available_paths,
         )
     else:
         # Build a minimal PreprocessingResult with raw cells
         cells = notebook.get("cells", [])
-        normalized_cells = [
-            {
-                "index": i,
-                "type": c.get("cell_type", "code"),
-                "source": "".join(c.get("source", []))
+        original_cells: dict[int, str] = {}
+        normalized_cells: list[dict[str, Any]] = []
+        for i, c in enumerate(cells):
+            source = (
+                "".join(c.get("source", []))
                 if isinstance(c.get("source"), list)
-                else str(c.get("source", "")),
-            }
-            for i, c in enumerate(cells)
-        ]
-        pre_result = PreprocessingResult(normalized_cells=normalized_cells)
+                else str(c.get("source", ""))
+            )
+            original_cells[i] = source
+            normalized_cells.append(
+                {
+                    "index": i,
+                    "type": c.get("cell_type", "code"),
+                    "source": source,
+                }
+            )
+        pre_result = PreprocessingResult(
+            normalized_cells=normalized_cells,
+            original_cells=original_cells,
+        )
 
     # Write the (possibly modified) notebook to a temp file for execution
     # so the sandbox uses the cleaned version
@@ -271,7 +350,7 @@ def _load_and_preprocess(
     with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(notebook, f)
 
-    return notebook, pre_result, tmp_path
+    return assignment_id, notebook, pre_result, tmp_path
 
 
 def _build_preprocessing_info(pre: PreprocessingResult) -> PreprocessingInfo:
@@ -282,22 +361,47 @@ def _build_preprocessing_info(pre: PreprocessingResult) -> PreprocessingInfo:
 
     modified_cells = len({e.cell_index for e in pre.edits if e.cell_index >= 0})
 
+    # Per-cell edit details: {edit_type, note, old_text?, new_text?}
+    # (old/new text truncated to 200 chars when present)
+    cell_edits: dict[int, list[dict]] = {}
+    for edit in pre.edits:
+        entry: dict[str, Any] = {"edit_type": edit.edit_type, "note": edit.note}
+        if edit.old_text is not None:
+            entry["old_text"] = edit.old_text[:200]
+        if edit.new_text is not None:
+            entry["new_text"] = edit.new_text[:200]
+        cell_edits.setdefault(edit.cell_index, []).append(entry)
+
     return PreprocessingInfo(
         cells_modified=modified_cells,
         total_edits=len(pre.edits),
         edit_types=edit_types,
         llm_preprocessing=pre.llm_preprocessing,
         llm_analysis=pre.analysis is not None,
+        cell_edits=cell_edits,
     )
 
 
-def _cells_to_response(cells: list) -> list[CellResult]:
-    """Convert runner CellOutput objects to Pydantic models."""
+def _cells_to_response(
+    cells: list,
+    original_sources: dict[int, str] | None = None,
+) -> list[CellResult]:
+    """Convert runner CellOutput objects to Pydantic models.
+
+    Args:
+        cells: Runner CellOutput objects.
+        original_sources: Map of cell_index → student's untouched source
+            (from ``PreprocessingResult.original_cells``). Falls back to
+            the executed source when a cell has no recorded original.
+    """
+    if original_sources is None:
+        original_sources = {}
     return [
         CellResult(
             cell_index=c.cell_index,
             execution_count=c.execution_count,
             source=c.source,
+            original_source=original_sources.get(c.cell_index, c.source),
             output_text=c.output_text,
             error=c.error,
             traceback=c.traceback,
@@ -341,8 +445,8 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
 
     full_path = DATA_DIR / req.notebook_path
 
-    # Load and pre-process
-    notebook, pre_result, exec_path = _load_and_preprocess(
+    # Load and pre-process (derives assignment_id from the original path)
+    assignment_id, notebook, pre_result, exec_path = _load_and_preprocess(
         full_path,
         skip_preprocessing=req.skip_preprocessing,
         assignment_context=req.assignment_context,
@@ -357,6 +461,7 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
             timeout=req.timeout,
             kernel_name=req.kernel_name,
             data_dir=DATA_DIR,
+            assignment_id=assignment_id or "",
         )
     except Exception as e:
         logger.exception("Execution failed for %s", req.notebook_path)
@@ -372,12 +477,13 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
     return ExecuteResponse(
         success=exec_result.success,
         notebook_path=req.notebook_path,
-        cells=_cells_to_response(exec_result.cells),
+        cells=_cells_to_response(exec_result.cells, pre_result.original_cells),
         total_cells=exec_result.total_cells,
         executed_cells=exec_result.executed_cells,
         error_cells=exec_result.error_cells,
         duration_seconds=exec_result.duration_seconds,
         preprocessing=pre_info,
+        modified_files=exec_result.modified_files,
     )
 
 
@@ -402,10 +508,11 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
     for i, nb_req in enumerate(req.notebooks):
         nb_start = _time.monotonic()
         full_path = DATA_DIR / nb_req.notebook_path
+        exec_path: Path | None = None
 
         try:
-            # Load and pre-process
-            _, pre_result, exec_path = _load_and_preprocess(
+            # Load and pre-process (derives assignment_id from the path)
+            assignment_id, _, _, exec_path = _load_and_preprocess(
                 full_path,
                 skip_preprocessing=nb_req.skip_preprocessing,
                 assignment_context=nb_req.assignment_context,
@@ -417,6 +524,7 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
                 timeout=nb_req.timeout,
                 kernel_name=nb_req.kernel_name,
                 data_dir=DATA_DIR,
+                assignment_id=assignment_id or "",
             )
 
             duration = _time.monotonic() - nb_start
@@ -429,12 +537,9 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
                     executed_cells=exec_result.executed_cells,
                     error_cells=exec_result.error_cells,
                     duration_seconds=duration,
+                    modified_files=exec_result.modified_files,
                 )
             )
-
-            # Clean up
-            if exec_path.exists():
-                exec_path.unlink()
 
         except HTTPException as e:
             duration = _time.monotonic() - nb_start
@@ -472,6 +577,10 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
             )
             if req.stop_on_first_error:
                 break
+        finally:
+            # Clean up temp file — never leak scipro-norm-*.ipynb
+            if exec_path is not None and exec_path.exists():
+                exec_path.unlink()
 
     total_duration = _time.monotonic() - total_start
     succeeded = sum(1 for r in results if r.success)

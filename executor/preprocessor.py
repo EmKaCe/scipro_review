@@ -54,6 +54,9 @@ class PreprocessingResult:
     edits: list[CellEdit] = field(default_factory=list)
     analysis: dict[str, Any] | None = None
     llm_preprocessing: str = "skipped"  # "completed" | "skipped" | "error"
+    original_cells: dict[int, str] = field(default_factory=dict)
+    """Original (untouched) source per code cell index, captured before
+    sanitization mutates the notebook dict. Powers ``CellResult.original_source``."""
 
 
 # ---------------------------------------------------------------------------
@@ -66,16 +69,21 @@ COLAB_IMPORT_RE = re.compile(
     re.MULTILINE,
 )
 
-# Absolute paths in quoted strings — Colab Drive mounts, /content/, /tmp/, etc.
+# Absolute paths in quoted strings — Colab Drive mounts, /content/, /tmp/,
+# and Windows drive letters (C:\, C:/). Linux prefixes listed explicitly;
+# Windows branch is case-insensitive for lowercase drive letters. The
+# filename group excludes both / and \ so Windows backslash paths normalize
+# to the bare filename (not "Users\emre\soil.csv").
 ABSOLUTE_PATH_RE = re.compile(
     r"""(?P<quote>['"])(?P<prefix>
         /content/drive/|
         /content/|
         /tmp/|
         /data/|
-        /home/
-    ).*?(?P<filename>[^/'"]+\.[a-zA-Z]{2,4})(?P=quote)""",
-    re.VERBOSE,
+        /home/|
+        [A-Za-z]:[/\\]      # Windows drive letters (C:\, C:/)
+    ).*?(?P<filename>[^/'"\\]+\.[a-zA-Z]{2,4})(?P=quote)""",
+    re.VERBOSE | re.IGNORECASE,
 )
 
 # Shell command lines starting with !
@@ -90,15 +98,33 @@ SHELL_CMD_LINE_RE = re.compile(
 
 
 def _strip_colab_imports(source: str) -> tuple[str, bool]:
-    """Strip Google Colab import lines.
+    """Strip Google Colab import lines with inline annotation.
+
+    Line-level: each removed line becomes a ``# SciPro: removed_colab_import``
+    annotation followed by the original line as a comment. Student lines
+    already starting with ``#`` are left untouched. Excess blank lines
+    left by removals are collapsed.
 
     Returns (modified_source, was_modified).
     """
-    new_source, count = COLAB_IMPORT_RE.subn("", source)
-    if count:
+    was_modified = False
+    output: list[str] = []
+    for line in source.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        if stripped.startswith("#") or not COLAB_IMPORT_RE.match(stripped):
+            output.append(line)
+            continue
+        was_modified = True
+        output.append(
+            "# SciPro: removed_colab_import — Google Colab imports "
+            "unavailable in grading environment\n"
+        )
+        output.append(f"# {stripped}\n")
+    new_source = "".join(output)
+    if was_modified:
         # Clean up triple-newlines left by removed lines
         new_source = re.sub(r"\n{3,}", "\n\n", new_source)
-    return new_source, count > 0
+    return new_source, was_modified
 
 
 # ---------------------------------------------------------------------------
@@ -107,22 +133,40 @@ def _strip_colab_imports(source: str) -> tuple[str, bool]:
 
 
 def _normalize_paths(source: str) -> tuple[str, list[tuple[str, str]]]:
-    """Replace absolute paths with bare filenames.
+    """Normalize absolute paths to bare filenames with inline annotation.
+
+    Line-level: each line containing an absolute path (Linux or Windows)
+    is replaced by an annotation block — ``# SciPro: normalized_absolute_path``
+    + the original line as a comment + the corrected line. Only absolute
+    paths are touched; relative/subdirectory/dynamic paths are left as-is
+    (the sandbox preserves the assignment's directory structure).
 
     Returns (modified_source, [(old_path, new_path), ...]).
     """
     changes: list[tuple[str, str]] = []
+    output: list[str] = []
 
     def _replace(m: re.Match) -> str:
         quote = m.group("quote")
         filename = m.group("filename")
         old = m.group(0)
-        new = f"{quote}{filename}{quote}"
         changes.append((old.strip(quote), filename))
-        return new
+        return f"{quote}{filename}{quote}"
 
-    result = ABSOLUTE_PATH_RE.sub(_replace, source)
-    return result, changes
+    for line in source.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        if ABSOLUTE_PATH_RE.search(stripped):
+            adjusted = ABSOLUTE_PATH_RE.sub(_replace, stripped)
+            output.append(
+                "# SciPro: normalized_absolute_path — absolute path "
+                "rewritten to bare filename\n"
+            )
+            output.append(f"# {stripped}\n")
+            output.append(f"{adjusted}\n")
+        else:
+            output.append(line)
+
+    return "".join(output), changes
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +187,8 @@ def _comment_shell_commands(
         line = m.group(0).strip()
         commented.append(line.lstrip("!"))
         return (
-            f"# SciPro: commented out shell command\n"
+            "# SciPro: commented_shell_cmd — shell commands unavailable in "
+            "grading environment\n"
             f"# {line}"
         )
 
@@ -197,7 +242,7 @@ def sanitize_cell(source: str, cell_index: int = -1) -> tuple[str, list[CellEdit
         edits.append(
             CellEdit(
                 cell_index=cell_index,
-                edit_type="colab_import_removed",
+                edit_type="removed_colab_import",
                 old_text="(colab import line)",
                 new_text="",
                 note="Removed Google Colab import(s)",
@@ -211,7 +256,7 @@ def sanitize_cell(source: str, cell_index: int = -1) -> tuple[str, list[CellEdit
         edits.append(
             CellEdit(
                 cell_index=cell_index,
-                edit_type="path_normalized",
+                edit_type="normalized_absolute_path",
                 old_text=old_path,
                 new_text=new_path,
                 note=f"Normalized path: {old_path} → {new_path}",
@@ -225,7 +270,7 @@ def sanitize_cell(source: str, cell_index: int = -1) -> tuple[str, list[CellEdit
         edits.append(
             CellEdit(
                 cell_index=cell_index,
-                edit_type="shell_cmd_commented",
+                edit_type="commented_shell_cmd",
                 old_text=cmd,
                 new_text=None,
                 note=f"Commented out shell command: {cmd[:60]}",
@@ -245,11 +290,14 @@ def preprocess_notebook(
     notebook: dict[str, Any],
     assignment_context: str | None = None,
     ki_client: KiConnectClient | None = None,
+    available_paths: set[str] | None = None,
 ) -> PreprocessingResult:
     """Run the full preprocessing pipeline on a notebook dict.
 
     Layer 1 (deterministic sanitization) **always** runs and modifies
     the notebook *in place* so the caller can persist the cleaned version.
+    The student's original source per cell is captured in
+    ``result.original_cells`` **before** sanitization mutates the dict.
 
     Layer 2 (LLM pre-processing) is optional — pass a ``ki_client`` with
     a valid API key to enable it.
@@ -258,6 +306,10 @@ def preprocess_notebook(
         notebook: Loaded ``.ipynb`` content (dict with ``cells`` key).
         assignment_context: Optional assignment description for the LLM.
         ki_client: Optional :class:`KiConnectClient` instance.
+        available_paths: Optional set of this assignment's input-data
+            filenames (``materials/<assignment_id>/input_data/``). Used
+            **only** as Step 2 LLM context — never fed to the regex
+            sanitization layer.
 
     Returns:
         :class:`PreprocessingResult` with normalized cells, edits, and
@@ -265,6 +317,12 @@ def preprocess_notebook(
     """
     cells = notebook.get("cells", [])
     all_edits: list[CellEdit] = []
+
+    # Capture the student's untouched source per cell BEFORE sanitization
+    # mutates the dict (powers CellResult.original_source).
+    original_cells: dict[int, str] = {
+        i: _get_cell_source(cell) for i, cell in enumerate(cells)
+    }
 
     # -- Layer 1: Deterministic sanitization --
     for i, cell in enumerate(cells):
@@ -294,10 +352,18 @@ def preprocess_notebook(
     llm_status = "skipped"
 
     if ki_client is not None and ki_client.api_key:
+        # Fold the assignment's available data files into the LLM context
+        # so it knows which files this assignment provides.
+        context = assignment_context
+        if available_paths:
+            files_txt = ", ".join(sorted(available_paths))
+            context = (
+                f"{context}\n\n" if context else ""
+            ) + f"Available data files for this assignment: {files_txt}"
         try:
             analysis = ki_client.analyze(
                 notebook_cells=normalized_cells,
-                assignment_context=assignment_context,
+                assignment_context=context,
             )
             llm_status = "completed" if analysis is not None else "error"
         except Exception:
@@ -311,4 +377,5 @@ def preprocess_notebook(
         edits=all_edits,
         analysis=analysis,
         llm_preprocessing=llm_status,
+        original_cells=original_cells,
     )
