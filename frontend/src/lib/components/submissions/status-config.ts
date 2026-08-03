@@ -12,8 +12,8 @@ import CircleAlert from "@lucide/svelte/icons/circle-alert";
 import Sparkles from "@lucide/svelte/icons/sparkles";
 import Star from "@lucide/svelte/icons/star";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface StatusDisplay {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	icon: any;
 	label: string;
 }

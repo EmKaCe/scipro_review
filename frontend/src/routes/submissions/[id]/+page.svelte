@@ -101,8 +101,6 @@
 	 * autofix cell-note saves append to it and sync it back (onNotesSaved).
 	 */
 	let notesDraft = $state("");
-	/** Whether the teacher edited the notes card since the last sync. */
-	let notesTouched = $state(false);
 	let notesCardRef: HTMLDivElement | undefined = $state();
 	let activeTab = $state<Tab>("rubric");
 	/** Hidden file input backing the header Import button (teacher YAML, 3i). */
@@ -252,7 +250,6 @@
 
 			// Restore the top-level notes editor from the persisted record.
 			notesDraft = saved?.notes ?? "";
-			notesTouched = false;
 
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
@@ -368,7 +365,6 @@
 			if (savedGrading?.notes != null) {
 				notesDraft = savedGrading.notes;
 			}
-			notesTouched = false;
 			addToast("success", `Grade saved for ${submission.studentId}`, 3000);
 		} catch (e) {
 			addToast("error", e instanceof Error ? e.message : "Failed to save grade", 4000);
@@ -401,7 +397,6 @@
 			updated_at: new Date().toISOString(),
 		};
 		notesDraft = generateEvaluationText(session, rubric);
-		notesTouched = true;
 		// Optional call: jsdom does not implement scrollIntoView.
 		notesCardRef?.scrollIntoView?.({ behavior: "smooth", block: "center" });
 		addToast("success", "Generated evaluation text — edit and press Save", 3500);
@@ -422,14 +417,12 @@
 		categorySelections = empty;
 		gradingInputs = defaultGradingInputs();
 		notesDraft = "";
-		notesTouched = true;
 		addToast("info", "Review cleared — press Save to persist", 3500);
 	}
 
 	/** Notes card edits. */
 	function handleNotesInput(value: string) {
 		notesDraft = value;
-		notesTouched = true;
 	}
 
 	/**
@@ -439,7 +432,6 @@
 	 */
 	function handleNotesSaved(notes: string) {
 		notesDraft = notes;
-		notesTouched = false;
 	}
 
 	async function doExport(kind: "student" | "teacher" = "student") {
@@ -497,7 +489,6 @@
 			const importedGrading = (record as { grading?: SubmissionDetail["grading"] }).grading;
 			if (importedGrading?.notes != null) {
 				notesDraft = importedGrading.notes;
-				notesTouched = false;
 			}
 			// Badges/statuses may have changed — refresh the assignment's pairs.
 			await plagiarismStore.load(submission.assignmentId);
