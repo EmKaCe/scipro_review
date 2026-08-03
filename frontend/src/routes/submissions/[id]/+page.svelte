@@ -62,7 +62,8 @@
 				onclick: () => handleExport("teacher"),
 			},
 		];
-		headerConfig.showImport = false;
+		headerConfig.showImport = true;
+		headerConfig.onimportclick = () => importInput?.click();
 		return () => {
 			headerConfig.headerState = "dashboard";
 			headerConfig.showBack = false;
@@ -72,6 +73,8 @@
 			headerConfig.showExport = false;
 			headerConfig.onexportclick = undefined;
 			headerConfig.exportMenuItems = undefined;
+			headerConfig.showImport = false;
+			headerConfig.onimportclick = undefined;
 		};
 	});
 
@@ -86,6 +89,8 @@
 	let rubric = $state<MergedRubric | null>(null);
 	let categorySelections = $state<Record<string, CategorySelections>>({});
 	let activeTab = $state<Tab>("rubric");
+	/** Hidden file input backing the header Import button (teacher YAML, 3i). */
+	let importInput: HTMLInputElement | undefined = $state(undefined);
 
 	// -----------------------------------------------------------------------
 	// Mobile state (P3-6): 5-tab bar + bottom bar
@@ -373,6 +378,33 @@
 	function handleExport(kind: "student" | "teacher") {
 		pendingExportKind = kind;
 		guardExport("Export YAML", () => void doExport(kind));
+	}
+
+	/**
+	 * Teacher-YAML import (3i): the header Import button opens a hidden file
+	 * picker; the chosen `*-teacher.yaml` is imported through the store and
+	 * applied to the page state (status/teacherGrade/grading), then the
+	 * plagiarism pairs are reloaded (review statuses may have changed).
+	 */
+	async function handleImportFile(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = "";
+		if (!file || !submission) return;
+		try {
+			const record = await submissionsStore.importTeacherYaml(submission.id, await file.text());
+			submission = {
+				...submission,
+				status: record.status,
+				teacherGrade: record.teacherGrade,
+				grading: (record as { grading?: SubmissionDetail["grading"] }).grading,
+			};
+			// Badges/statuses may have changed — refresh the assignment's pairs.
+			await plagiarismStore.load(submission.assignmentId);
+			addToast("success", `Imported ${file.name}`, 3500);
+		} catch (err) {
+			addToast("error", err instanceof Error ? err.message : "Import failed", 5000);
+		}
 	}
 
 	function handleSuggestGrade() {
@@ -796,6 +828,15 @@
 		</div>
 	{/if}
 {/if}
+
+<!-- Hidden file picker for the header Import button (3i teacher YAML). -->
+<input
+	type="file"
+	accept=".yaml,.yml,text/yaml"
+	hidden
+	bind:this={importInput}
+	onchange={handleImportFile}
+/>
 
 <style>
 	/* ── Review layout (two-panel) ── */
