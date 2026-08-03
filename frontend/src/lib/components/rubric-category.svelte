@@ -73,7 +73,18 @@
 				content,
 				editable: !disabled,
 				onUpdate: ({ editor }) => {
-					onUpdateNotes(editor.getHTML());
+					// Only forward updates that differ from the current external
+					// notes value — otherwise our own setContent echo (sync effect
+					// below) would loop: forward → parent state write → selections
+					// prop change → effect → setContent → onUpdate → ...
+					const rawNotes = selections.notes ?? "";
+					const normalized = rawNotes.trim().startsWith("<")
+						? rawNotes
+						: marked.parse(rawNotes, { async: false });
+					const html = editor.getHTML();
+					if (html !== normalized) {
+						onUpdateNotes(html);
+					}
 				},
 			});
 		}, 50);

@@ -740,7 +740,9 @@
 						{totalDeductions}
 						onUpdateDimension={handleUpdateDimension}
 						{rubric}
-						bind:categorySelections
+						sentimentCounts={sent}
+						{categorySelections}
+						onSelectionsChange={(next) => (categorySelections = next)}
 						studentId={submission.studentId}
 						assignmentId={submission.assignmentId}
 						hideTabBar={isMobile}

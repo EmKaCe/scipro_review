@@ -144,4 +144,21 @@ describe("right-panel-tabs.svelte — rubric feedback wiring (A4)", () => {
 		expect(selections.code_formatting?.comments.consistent_indentation).toBe("Keep me");
 		expect(selections.code_formatting?.deductions.consistent_indentation).toBe(0.5);
 	});
+
+	it("updates the tab-header sentiment count when a checkbox is toggled (P3-2 regression)", async () => {
+		await renderExpandedRubric();
+
+		// The positive item is in the fixture rubric; before any click the
+		// count must be zero.
+		expect(screen.getByText(/^Rubric/).closest("button")!.textContent).toContain("0");
+		await fireEvent.click(screen.getByRole("checkbox"));
+
+		// Live counts are computed on the page side (sentimentCounts prop)
+		// from the bindable state — asserting the rendered header reflects the
+		// click. Guards the Svelte 5 bindable/$derived staleness bug seen
+		// 2026-08-03 (child-side assignments did not re-trigger a local
+		// derived over the bindable prop).
+		const header = screen.getByText(/^Rubric/).closest("button")!;
+		expect(header.textContent).toContain("1");
+	});
 });

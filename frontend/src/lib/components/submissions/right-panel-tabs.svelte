@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { GradeDimension, GradingInputs, GradeResult } from "$lib/types/grading.js";
-	import type { MergedRubric } from "$lib/types/criteria.js";
+	import type { MergedRubric, SentimentCounts } from "$lib/types/criteria.js";
 	import type { CategorySelections } from "$lib/types/session.js";
 	import GradingSidebar from "$lib/components/grading-sidebar.svelte";
 	import RubricCategory from "$lib/components/rubric-category.svelte";
@@ -8,7 +8,7 @@
 	import PlagiarismTab from "./plagiarism-tab.svelte";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
-	import { findCategoryEntry, rubricSentimentCounts } from "$lib/types/criteria.js";
+	import { findCategoryEntry } from "$lib/types/criteria.js";
 	import { SvelteSet } from "svelte/reactivity";
 
 	type Tab = "rubric" | "grading" | "plagiarism" | "copilot";
@@ -30,8 +30,22 @@
 		onUpdateDimension: (key: string, value: number) => void;
 		/** Merged rubric with categories. */
 		rubric: MergedRubric | null;
-		/** Current category selections (bindable — checkbox toggles update it). */
+		/**
+		 * Live sentiment counts of checked rubric items (P3-2). Computed by the
+		 * PAGE from its own `categorySelections` state and passed down.
+		 */
+		sentimentCounts: SentimentCounts;
+		/**
+		 * Current category selections — controlled prop owned by the page.
+		 * Edits are reported up via `onSelectionsChange` (the page then passes
+		 * the new value back down). NOT a bindable: a `$bindable` + `$derived`
+		 * combination here did not re-render on child-side assignments (Svelte
+		 * 5.56.8 prop-tracking quirk, seen live 2026-08-03 — checkbox clicks
+		 * updated state but never re-rendered the tab header).
+		 */
 		categorySelections: Record<string, CategorySelections>;
+		/** Report a full new selections map (immutable update). */
+		onSelectionsChange: (selections: Record<string, CategorySelections>) => void;
 		/** Current submission id — plagiarism badge/pairs are scoped to it. */
 		studentId: string;
 		/** Assignment the submission belongs to. */
@@ -51,7 +65,9 @@
 		totalDeductions,
 		onUpdateDimension,
 		rubric,
-		categorySelections = $bindable(),
+		sentimentCounts,
+		categorySelections,
+		onSelectionsChange,
 		studentId,
 		assignmentId,
 		disabled = false,
@@ -63,9 +79,6 @@
 
 	/** Unreviewed pairs involving this submission — tab badge (P3-1). */
 	let unreviewed = $derived(plagiarismStore.unreviewedCount(studentId));
-
-	/** Live sentiment counts of checked rubric items (P3-2). */
-	let sentiment = $derived(rubricSentimentCounts(rubric, categorySelections));
 
 	function handleToggle(categoryKey: string) {
 		expandedCategories = {
@@ -84,6 +97,18 @@
 		};
 	}
 
+	/** Immutably set one category's selections and report the new map up. */
+	function updateSelections(
+		key: string,
+		updater: (current: CategorySelections) => CategorySelections,
+	) {
+		const current = categorySelections[key] ?? emptySelections();
+		onSelectionsChange({
+			...categorySelections,
+			[key]: updater(current),
+		});
+	}
+
 	/**
 	 * Toggle a rubric checkbox (key = sub-point text). Updates the owning
 	 * category's `checked_items` immutably — this drives the live sentiment
@@ -92,17 +117,15 @@
 	function handleToggleCheckbox(key: string, checked: boolean) {
 		const entry = findCategoryEntry(rubric, key);
 		if (!entry) return;
-		const current = categorySelections[entry.key] ?? emptySelections();
-		const nextItems = new SvelteSet(current.checked_items);
-		if (checked) {
-			nextItems.add(key);
-		} else {
-			nextItems.delete(key);
-		}
-		categorySelections = {
-			...categorySelections,
-			[entry.key]: { ...current, checked_items: nextItems },
-		};
+		updateSelections(entry.key, (current) => {
+			const nextItems = new SvelteSet(current.checked_items);
+			if (checked) {
+				nextItems.add(key);
+			} else {
+				nextItems.delete(key);
+			}
+			return { ...current, checked_items: nextItems };
+		});
 	}
 
 	/**
@@ -112,11 +135,10 @@
 	function handleUpdateComment(key: string, value: string) {
 		const entry = findCategoryEntry(rubric, key);
 		if (!entry) return;
-		const current = categorySelections[entry.key] ?? emptySelections();
-		categorySelections = {
-			...categorySelections,
-			[entry.key]: { ...current, comments: { ...current.comments, [key]: value } },
-		};
+		updateSelections(entry.key, (current) => ({
+			...current,
+			comments: { ...current.comments, [key]: value },
+		}));
 	}
 
 	/**
@@ -126,11 +148,10 @@
 	function handleUpdateDeduction(key: string, value: number) {
 		const entry = findCategoryEntry(rubric, key);
 		if (!entry) return;
-		const current = categorySelections[entry.key] ?? emptySelections();
-		categorySelections = {
-			...categorySelections,
-			[entry.key]: { ...current, deductions: { ...current.deductions, [key]: value } },
-		};
+		updateSelections(entry.key, (current) => ({
+			...current,
+			deductions: { ...current.deductions, [key]: value },
+		}));
 	}
 
 	/**
@@ -139,10 +160,11 @@
 	 */
 	function handleUpdateNotes(categoryKey: string, value: string) {
 		const current = categorySelections[categoryKey] ?? emptySelections();
-		categorySelections = {
-			...categorySelections,
-			[categoryKey]: { ...current, notes: value },
-		};
+		// No-op guard: the TipTap editor can echo content updates that are
+		// already in state (init/setContent echo); writing anyway would
+		// re-render → sync effect → setContent → onUpdate → ... loop.
+		if (current.notes === value) return;
+		updateSelections(categoryKey, () => ({ ...current, notes: value }));
 	}
 </script>
 
@@ -156,16 +178,16 @@
 			>
 				Rubric
 				<!-- Sentiment counts: positive / neutral / negative items flagged
-			     (checked) for this submission — live from checkbox state (P3-2). -->
+				     (checked) for this submission — live from checkbox state (P3-2). -->
 				<span class="tab-sent" title="Flagged rubric items by sentiment">
 					<span class="sent-item sent-pos"
-						><span class="sent-num">{sentiment.positive}</span></span
+						><span class="sent-num">{sentimentCounts.positive}</span></span
 					>
 					<span class="sent-item sent-neu"
-						><span class="sent-num">{sentiment.neutral}</span></span
+						><span class="sent-num">{sentimentCounts.neutral}</span></span
 					>
 					<span class="sent-item sent-neg"
-						><span class="sent-num">{sentiment.negative}</span></span
+						><span class="sent-num">{sentimentCounts.negative}</span></span
 					>
 				</span>
 			</button>
