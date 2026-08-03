@@ -398,6 +398,25 @@ export async function saveGrading(
 	);
 }
 
+/**
+ * POST /api/submissions/[id]/import — apply a teacher-YAML grading document
+ * (as exported with kind=teacher) and return the updated record.
+ */
+export async function importTeacherYaml(
+	id: string,
+	yamlText: string,
+	assignmentId?: string,
+): Promise<SubmissionMeta> {
+	return requestJson<SubmissionMeta>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}/import`, assignmentId),
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ yaml: yamlText }),
+		},
+	);
+}
+
 /** POST /api/submissions/[id]/grade — finalize the teacher grade. */
 export async function gradeSubmission(
 	id: string,

@@ -25,6 +25,7 @@ const api = vi.hoisted(() => ({
 	processSubmission: vi.fn(),
 	saveGrading: vi.fn(),
 	gradeSubmission: vi.fn(),
+	importTeacherYaml: vi.fn(),
 	exportSubmission: vi.fn(),
 }));
 
@@ -366,6 +367,41 @@ describe("mutations", () => {
 			ASSIGNMENT,
 		);
 		expect(store.submissions[0]?.updatedAt).toBe("2026-07-28T11:00:00Z");
+	});
+
+	it("importTeacherYaml() posts the yaml and merges the record into list + detail cache", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executed")));
+		api.fetchSubmission.mockResolvedValue(detail("2026SS_01"));
+		api.importTeacherYaml.mockResolvedValue({
+			...meta("2026SS_01", "graded"),
+			teacherGrade: 12,
+		});
+		await store.load();
+		await store.select("2026SS_01");
+
+		const record = await store.importTeacherYaml("2026SS_01", "student_id: 2026SS_01");
+
+		expect(api.importTeacherYaml).toHaveBeenCalledWith(
+			"2026SS_01",
+			"student_id: 2026SS_01",
+			ASSIGNMENT,
+		);
+		expect(record).toMatchObject({ status: "graded", teacherGrade: 12 });
+		expect(store.submissions[0]).toMatchObject({ status: "graded", teacherGrade: 12 });
+		expect(store.getDetail("2026SS_01")).toMatchObject({ status: "graded", teacherGrade: 12 });
+		expect(store.selected).toMatchObject({ status: "graded", teacherGrade: 12 });
+	});
+
+	it("importTeacherYaml() forwards undefined when no assignment is loaded", async () => {
+		api.importTeacherYaml.mockResolvedValue(meta("2026SS_01", "executed"));
+
+		await store.importTeacherYaml("2026SS_01", "student_id: 2026SS_01");
+
+		expect(api.importTeacherYaml).toHaveBeenCalledWith(
+			"2026SS_01",
+			"student_id: 2026SS_01",
+			undefined,
+		);
 	});
 
 	it("export() forwards the assignment and returns the yaml document", async () => {

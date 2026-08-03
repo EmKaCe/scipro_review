@@ -24,6 +24,7 @@ import {
 	fetchSubmission,
 	fetchSubmissions,
 	gradeSubmission,
+	importTeacherYaml as importTeacherYamlApi,
 	processSubmission,
 	processSubmissions,
 	saveGrading as saveGradingApi,
@@ -230,6 +231,16 @@ export class SubmissionsStore {
 	/** Persist grading state and merge the updated record into the list. */
 	async saveGrading(id: string, grading: GradingPatch): Promise<SubmissionMeta> {
 		const record = await saveGradingApi(id, grading, this.assignmentId ?? undefined);
+		this.applyRecord(record);
+		return record;
+	}
+
+	/**
+	 * Import a teacher-YAML grading document for one submission and merge the
+	 * updated record into the list + detail cache.
+	 */
+	async importTeacherYaml(id: string, yamlText: string): Promise<SubmissionMeta> {
+		const record = await importTeacherYamlApi(id, yamlText, this.assignmentId ?? undefined);
 		this.applyRecord(record);
 		return record;
 	}

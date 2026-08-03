@@ -20,6 +20,7 @@ import {
 	fetchSubmission,
 	fetchSubmissions,
 	gradeSubmission,
+	importTeacherYaml,
 	processSubmission,
 	processSubmissions,
 	saveGrading,
@@ -305,6 +306,33 @@ describe("gradeSubmission", () => {
 		expect(url).toBe(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`);
 		expect(JSON.parse(String(init.body))).toEqual({ teacherGrade: 2.0 });
 		expect(result).toMatchObject({ status: "graded", teacherGrade: 2.0 });
+	});
+});
+
+describe("importTeacherYaml", () => {
+	it("POSTs the yaml text as a JSON envelope with the assignment param", async () => {
+		const yaml = "student_id: 2026SS_03\nassignment: soil_contamination";
+		fetchMock.mockResolvedValue(
+			jsonResponse({ ...meta("2026SS_03", "graded"), teacherGrade: 12 }),
+		);
+
+		const result = await importTeacherYaml("2026SS_03", yaml, ASSIGNMENT);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03/import?assignment=${ASSIGNMENT}`);
+		expect(init.method).toBe("POST");
+		expect(init.headers).toEqual({ "Content-Type": "application/json" });
+		expect(JSON.parse(String(init.body))).toEqual({ yaml });
+		expect(result).toMatchObject({ status: "graded", teacherGrade: 12 });
+	});
+
+	it("omits the assignment param when not given", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(meta("2026SS_03", "executed")));
+
+		await importTeacherYaml("2026SS_03", "student_id: 2026SS_03");
+
+		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/submissions/2026SS_03/import");
 	});
 });
 
