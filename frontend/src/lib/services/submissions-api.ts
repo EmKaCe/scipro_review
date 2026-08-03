@@ -154,6 +154,19 @@ export interface AssignmentsResponse {
 	assignments: AssignmentSummary[];
 }
 
+/** Materials state as exposed by GET /api/assignments/[id]/materials. */
+export interface MaterialsStatus {
+	assignmentId: string;
+	hasPdf: boolean;
+	hasKey: boolean;
+	hasInputData: boolean;
+	files: Array<{
+		name: string;
+		kind: "material-file" | "material-data";
+		relativePath: string;
+	}>;
+}
+
 /**
  * One matched cell pair (similarity >= threshold) in a plagiarism result.
  */
@@ -453,6 +466,13 @@ export async function restoreBackup(file: File): Promise<{ restored: number }> {
 /** GET /api/assignments — list enabled assignments. */
 export async function fetchAssignments(): Promise<AssignmentsResponse> {
 	return requestJson<AssignmentsResponse>("/api/assignments");
+}
+
+/** GET /api/assignments/[id]/materials — current materials state for an assignment. */
+export async function fetchMaterials(assignmentId: string): Promise<MaterialsStatus> {
+	return requestJson<MaterialsStatus>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/materials`,
+	);
 }
 
 // ---------------------------------------------------------------------------

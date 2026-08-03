@@ -15,6 +15,7 @@ import {
 	checkPlagiarism,
 	exportSubmission,
 	fetchAssignments,
+	fetchMaterials,
 	fetchPlagiarismResults,
 	fetchSubmission,
 	fetchSubmissions,
@@ -346,6 +347,77 @@ describe("fetchAssignments", () => {
 
 		expect(fetchMock).toHaveBeenCalledWith("/api/assignments", undefined);
 		expect(result.assignments[0]).toMatchObject({ id: ASSIGNMENT, enabled: true });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Materials (Phase 3f B3)
+// ---------------------------------------------------------------------------
+
+describe("fetchMaterials", () => {
+	it("GETs /api/assignments/[id]/materials and maps the status flags + files", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				assignmentId: ASSIGNMENT,
+				hasPdf: true,
+				hasKey: false,
+				hasInputData: true,
+				files: [
+					{
+						name: "assignment.pdf",
+						kind: "material-file",
+						relativePath: "materials/assignment.pdf",
+					},
+					{
+						name: "measurements.csv",
+						kind: "material-data",
+						relativePath: "input/measurements.csv",
+					},
+				],
+			}),
+		);
+
+		const result = await fetchMaterials(ASSIGNMENT);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(fetchMock).toHaveBeenCalledWith(
+			`/api/assignments/${ASSIGNMENT}/materials`,
+			undefined,
+		);
+		expect(result.hasPdf).toBe(true);
+		expect(result.hasKey).toBe(false);
+		expect(result.hasInputData).toBe(true);
+		expect(result.files).toEqual([
+			{
+				name: "assignment.pdf",
+				kind: "material-file",
+				relativePath: "materials/assignment.pdf",
+			},
+			{
+				name: "measurements.csv",
+				kind: "material-data",
+				relativePath: "input/measurements.csv",
+			},
+		]);
+	});
+
+	it("URL-encodes the assignment id", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				assignmentId: "soil contamination",
+				hasPdf: false,
+				hasKey: false,
+				hasInputData: false,
+				files: [],
+			}),
+		);
+
+		await fetchMaterials("soil contamination");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"/api/assignments/soil%20contamination/materials",
+			undefined,
+		);
 	});
 });
 

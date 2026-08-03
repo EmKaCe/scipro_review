@@ -1,93 +1,103 @@
 <script lang="ts">
 	/**
-	 * @file Upload Panel — Unified upload flow with smart classification.
+	 * @file Upload Panel — real upload flow (Phase 3f B2).
 	 *
-	 * Phase 2: stub — operates on in-memory mock data, shows toasts.
-	 * Phase 3: real file upload via backend.
+	 * Empty → uploading → results. Files go straight to the backend via
+	 * submissionsStore.upload; the server classifies each file and returns
+	 * per-file results (kind, replaced, per-file error). No preview/edit
+	 * machinery — classification is deterministic server-side (DDR P3-7).
 	 */
 
 	import Upload from "@lucide/svelte/icons/upload";
+	import Loader from "@lucide/svelte/icons/loader";
+	import CircleCheck from "@lucide/svelte/icons/circle-check";
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import type { SubmissionUploadResult } from "$lib/services/submissions-api.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 
-	/** Phase 2 stub flag — set false when backend is wired. */
-	const IS_PHASE_2_STUB = true;
-
-	interface DetectedFile {
-		id: string;
-		name: string;
-		type: "submission" | "key" | "data" | "pdf";
-		confidence: number;
-		editing: boolean;
-	}
-
-	type UploadPhase = "empty" | "detected" | "reviewing";
-
 	interface Props {
-		/** If true, renders as a full‑width card inline with page content. */
+		/** If true, renders as a full-width card inline with page content. */
 		inline?: boolean;
+		/** Assignment the uploaded files belong to. */
+		assignmentId: string;
+		/** Invoked after a successful (non-throwing) upload. */
+		onUploaded?: () => void;
+		/** Invoked when the user dismisses the results via Done. */
+		onClose?: () => void;
 	}
 
-	let { inline = false }: Props = $props();
+	let { inline = false, assignmentId, onUploaded, onClose }: Props = $props();
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	let uploadPhase: UploadPhase = $state("empty");
-	let files: DetectedFile[] = $state([]);
+	let results = $state<SubmissionUploadResult[]>([]);
+	let uploading = $state(false);
+	let uploadingCount = $state(0);
+	let error = $state<string | null>(null);
+	let inputRef: HTMLInputElement | undefined = $state(undefined);
 
-	let hasFiles: boolean = $derived(files.length > 0);
+	let hasResults = $derived(results.length > 0);
+	let okCount = $derived(results.filter((r) => !r.error).length);
+	let failedCount = $derived(results.length - okCount);
 
-	const detectionPattern = "^\\d{4}[WS]S_";
-
-	// ── Stub simulation ──
-
-	function simulateFileDetection() {
-		if (!IS_PHASE_2_STUB) return;
-		files = [
-			{
-				id: "f1",
-				name: "2026SS_03_student.ipynb",
-				type: "submission",
-				confidence: 0.95,
-				editing: false,
-			},
-			{
-				id: "f2",
-				name: "2026SS_03_student.key.ipynb",
-				type: "key",
-				confidence: 0.88,
-				editing: false,
-			},
-			{ id: "f3", name: "assignment.pdf", type: "pdf", confidence: 0.82, editing: false },
-			{ id: "f4", name: "measurements.csv", type: "data", confidence: 0.76, editing: false },
-			{ id: "f5", name: "report.key.ipynb", type: "key", confidence: 0.64, editing: false },
-		];
-		uploadPhase = "detected";
+	function handlePick() {
+		inputRef?.click();
 	}
 
-	// ── Handlers ──
-
-	function handleDropZoneClick() {
-		if (!hasFiles) {
-			simulateFileDetection();
-		} else {
-			addToast("info", "Phase 3: real file upload");
+	function kindLabel(kind: SubmissionUploadResult["kind"]): string {
+		switch (kind) {
+			case "submission":
+				return "Submission";
+			case "material-data":
+				return "Input Data";
+			case "material-file":
+				return "Material";
 		}
 	}
 
-	function startReview() {
-		addToast("info", "Phase 3: classification pipeline execution");
+	function chipClass(kind: SubmissionUploadResult["kind"]): string {
+		switch (kind) {
+			case "submission":
+				return "chip-submission";
+			case "material-data":
+				return "chip-data";
+			case "material-file":
+				return "chip-material";
+		}
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	function preEvaluate() {
-		addToast("info", "Phase 3: pre-evaluation run");
+	async function handleFiles(e: Event) {
+		const list = (e.currentTarget as HTMLInputElement).files;
+		if (!list || list.length === 0) return;
+		const files = Array.from(list);
+		uploading = true;
+		uploadingCount = files.length;
+		error = null;
+		try {
+			// Ensure the store targets this assignment before upload.
+			if (submissionsStore.assignmentId !== assignmentId) {
+				await submissionsStore.load(assignmentId);
+			}
+			const res = await submissionsStore.upload(files);
+			results = res.results;
+			onUploaded?.();
+			const ok = res.results.filter((r) => !r.error).length;
+			const failed = res.results.length - ok;
+			addToast(
+				"success",
+				`${ok} file(s) uploaded${failed > 0 ? ` · ${failed} failed` : ""}`,
+				4000,
+			);
+		} catch (err) {
+			error = err instanceof Error ? err.message : "Upload failed";
+		} finally {
+			uploading = false;
+			if (inputRef) inputRef.value = "";
+		}
 	}
 
-	// Batch edit state
-	let allSelected = $state(false);
-	let batchEditOpen = $state(false);
-
-	function toggleAllSelected() {
-		allSelected = !allSelected;
+	function handleDone() {
+		results = [];
+		onClose?.();
 	}
 </script>
 
@@ -97,112 +107,69 @@
 		<h1 class="panel-title">Upload Files</h1>
 	</div>
 
-	<!-- Drop zone (visible when empty) -->
-	{#if !hasFiles}
-		<div
-			class="drop-zone"
-			onclick={handleDropZoneClick}
-			role="button"
-			tabindex="0"
-			onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}
-		>
-			<Upload size={32} class="drop-zone-icon" />
-			<p class="drop-zone-title">Drop files here or click to browse</p>
-			<p class="drop-zone-sub">Supports .ipynb, .pdf, .csv, and other assignment files</p>
-			<button class="browse-btn" onclick={handleDropZoneClick}>
-				<Upload size={14} />
-				Browse Files
-			</button>
-			<p class="drop-zone-footnote">
-				Files are classified automatically. Review and edit before uploading.
-			</p>
-		</div>
-	{/if}
+	<!-- Hidden native picker -->
+	<input
+		type="file"
+		multiple
+		accept=".ipynb,.pdf,.csv,.tsv,.txt,.dat,.xlsx,.xls,.json,.npz,.npy,.pkl,.pickle,.parquet,.h5,.hdf5,.mat,.zip,.gz"
+		class="hidden-input"
+		bind:this={inputRef}
+		onchange={handleFiles}
+	/>
 
-	<!-- Drop bar + file table (visible when files detected) -->
-	{#if hasFiles}
-		<!-- Compressed drop bar -->
-		<div
-			class="drop-bar"
-			onclick={handleDropZoneClick}
-			role="button"
-			tabindex="0"
-			onkeydown={(e) => e.key === "Enter" && handleDropZoneClick()}
-		>
-			<Upload size={16} class="drop-bar-icon" />
-			<span class="drop-bar-text">Drop more files or click to add</span>
+	{#if uploading}
+		<!-- ── Uploading state: spinner + progress note, drop zone disabled ── -->
+		<div class="drop-zone drop-zone-disabled" aria-busy="true">
+			<span class="spinner"><Loader size={24} /></span>
+			<p class="drop-zone-title">Uploading {uploadingCount} file(s)…</p>
 		</div>
+	{:else if hasResults}
+		<!-- ── Results state: server response table ── -->
+		<p class="results-summary">
+			<span class="summary-ok">{okCount} files uploaded</span>
+			{#if failedCount > 0}
+				<span class="summary-failed"> · {failedCount} failed</span>
+			{/if}
+		</p>
 
-		<!-- Detection rules help -->
-		<div class="detection-rules">
-			<strong>Auto-detection:</strong> Files matching filename pattern
-			<code>{detectionPattern}</code>
-			are classified as <strong>Submission</strong>.
-			<code>.key.ipynb</code> &rarr; <strong>Key</strong>. <code>*.pdf</code> &rarr;
-			<strong>PDF</strong>. Other files &rarr; <strong>Data</strong>. Use the &#x270F;&#xFE0F;
-			button to override.
-		</div>
-
-		<!-- File classification table -->
 		<div class="class-table-wrap">
 			<table class="class-table">
 				<thead>
 					<tr>
-						<th class="checkbox-col">
-							<label class="table-checkbox-wrap">
-								<input
-									type="checkbox"
-									class="table-checkbox"
-									checked={allSelected}
-									onchange={toggleAllSelected}
-								/>
-							</label>
-						</th>
 						<th>File</th>
 						<th>Type</th>
-						<th>Confidence</th>
-						<th class="edit-col"></th>
+						<th>Status</th>
 					</tr>
 				</thead>
 				<tbody>
-					{#each files as file (file.id)}
-						<tr class:row-editing={file.editing}>
-							<td class="checkbox-col">
-								<label class="table-checkbox-wrap">
-									<input type="checkbox" class="table-checkbox" />
-								</label>
-							</td>
-							<td><span class="file-name">{file.name}</span></td>
+					{#each results as result, i (i)}
+						<tr class:upload-error-row={result.error}>
 							<td>
-								<span class="chip chip-{file.type}">
-									{file.type === "submission"
-										? "Submission"
-										: file.type === "key"
-											? "Key"
-											: file.type === "pdf"
-												? "PDF"
-												: "Data"}
-								</span>
+								<span class="file-name" class:file-error={result.error}
+									>{result.fileName}</span
+								>
+								{#if result.error}
+									<span class="upload-error-message">
+										<CircleAlert size={12} />
+										{result.error}
+									</span>
+								{/if}
 							</td>
 							<td>
-								<span
-									class="confidence-text confidence-{file.confidence >= 0.8
-										? 'high'
-										: file.confidence >= 0.5
-											? 'medium'
-											: 'low'}"
+								<span class="chip {chipClass(result.kind)}"
+									>{kindLabel(result.kind)}</span
 								>
-									{(file.confidence * 100).toFixed(0)}%
-								</span>
 							</td>
-							<td class="edit-col">
-								<button
-									class="edit-action-btn"
-									onclick={() => (file.editing = !file.editing)}
-									aria-label="Edit classification"
-								>
-									&#x270F;&#xFE0F;
-								</button>
+							<td>
+								{#if result.error}
+									<span class="status-failed">Failed</span>
+								{:else if result.replaced}
+									<span class="badge-replaced">Replaced</span>
+								{:else}
+									<span class="status-uploaded"
+										><CircleCheck size={12} /> Uploaded</span
+									>
+								{/if}
 							</td>
 						</tr>
 					{/each}
@@ -210,47 +177,49 @@
 			</table>
 		</div>
 
-		<!-- Batch edit toggle -->
-		<div class="batch-edit-area">
-			<button class="batch-edit-toggle" onclick={() => (batchEditOpen = !batchEditOpen)}>
-				Batch Edit
-			</button>
+		<!-- Compressed drop bar (still active → picks more files) -->
+		<div
+			class="drop-bar"
+			role="button"
+			tabindex="0"
+			onclick={handlePick}
+			onkeydown={(e) => e.key === "Enter" && handlePick()}
+		>
+			<span class="drop-bar-icon"><Upload size={16} /></span>
+			<span class="drop-bar-text">Drop more files or click to add</span>
 		</div>
 
-		<!-- Batch edit panel -->
-		{#if batchEditOpen}
-			<div class="batch-edit-row">
-				<span class="batch-edit-label">Change type to:</span>
-				<select class="batch-edit-select">
-					<option>Submission</option>
-					<option>Key</option>
-					<option>PDF</option>
-					<option>Data</option>
-				</select>
-				<button class="apply-btn">Apply</button>
-				<span class="batch-edit-subtitle"
-					>{allSelected ? "All" : "Selected"} files will be updated.</span
-				>
-			</div>
-		{/if}
-
-		<!-- Upload actions -->
-		<div class="upload-actions">
-			<label class="upload-checkbox">
-				<input type="checkbox" checked={allSelected} onchange={toggleAllSelected} />
-				Select all
-			</label>
-			<button class="upload-btn" onclick={startReview}>
-				<Upload size={16} />
-				Process All
-			</button>
+		<!-- Done → back to empty -->
+		<div class="results-footer">
+			<button class="done-btn" type="button" onclick={handleDone}>Done</button>
 		</div>
-	{/if}
+	{:else}
+		<!-- ── Empty state: drop zone ── -->
+		<div
+			class="drop-zone"
+			role="button"
+			tabindex="0"
+			onclick={handlePick}
+			onkeydown={(e) => e.key === "Enter" && handlePick()}
+		>
+			<span class="drop-zone-icon"><Upload size={32} /></span>
+			<p class="drop-zone-title">Drop files here or click to browse</p>
+			<p class="drop-zone-sub">Supports .ipynb, .pdf, .csv, and other assignment files</p>
+			<button class="browse-btn" type="button" onclick={handlePick}>
+				<Upload size={14} />
+				Browse Files
+			</button>
+			{#if error}
+				<p class="upload-error-message">{error}</p>
+			{/if}
+		</div>
 
-	<!-- Stub notice -->
-	{#if IS_PHASE_2_STUB}
-		<div class="stub-notice">
-			Phase 2 stub &mdash; file detection is simulated. Real upload pipeline comes in Phase 3.
+		<!-- Detection rules help -->
+		<div class="detection-rules">
+			<strong>Auto-detection:</strong> filenames like
+			<code>2026SS_01.ipynb</code> are classified as <strong>Submission</strong>; data files
+			(.csv, .xlsx, …) as <strong>Input Data</strong>; everything else (e.g. .pdf) as
+			<strong>Material</strong>.
 		</div>
 	{/if}
 </div>
@@ -273,18 +242,17 @@
 		margin: 10px 14px 0;
 	}
 	.upload-panel.inline .detection-rules {
-		margin: 8px 14px 0;
+		margin: 8px 14px 14px;
 		padding: 8px 12px;
 	}
 	.upload-panel.inline .class-table-wrap {
-		margin: 0 14px 12px;
+		margin: 0 14px;
 	}
-	.upload-panel.inline .upload-actions {
-		padding: 0 14px 14px;
+	.upload-panel.inline .results-summary {
+		padding: 14px 14px 8px;
 	}
-	.upload-panel.inline .stub-notice {
-		margin: 0;
-		padding: 6px 14px;
+	.upload-panel.inline .results-footer {
+		padding: 12px 14px 14px;
 	}
 
 	/* ── Header ── */
@@ -304,7 +272,12 @@
 		white-space: nowrap;
 	}
 
-	/* ── Drop zone (empty state) ── */
+	/* ── Hidden picker ── */
+	.hidden-input {
+		display: none;
+	}
+
+	/* ── Drop zone (empty + uploading states) ── */
 	.drop-zone {
 		display: flex;
 		flex-direction: column;
@@ -325,7 +298,17 @@
 		border-color: var(--accent);
 		background: color-mix(in oklch, var(--accent) 2%, transparent);
 	}
+	.drop-zone-disabled {
+		opacity: 0.45;
+		pointer-events: none;
+		cursor: default;
+	}
+	.drop-zone-disabled:hover {
+		border-color: var(--border);
+		background: var(--bg);
+	}
 	.drop-zone-icon {
+		display: inline-flex;
 		color: var(--muted-foreground);
 		margin-bottom: 2px;
 	}
@@ -338,6 +321,16 @@
 		font-size: 12px;
 		color: var(--muted-foreground);
 		text-align: center;
+	}
+	.spinner {
+		display: inline-flex;
+		animation: spin 0.9s linear infinite;
+		color: var(--accent);
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 	.browse-btn {
 		display: inline-flex;
@@ -360,13 +353,8 @@
 		background: color-mix(in oklch, var(--fg) 4%, transparent);
 		border-color: var(--muted);
 	}
-	.drop-zone-footnote {
-		font-size: 11px;
-		color: var(--muted-foreground);
-		margin-top: 8px;
-	}
 
-	/* ── Drop bar (has-files state) ── */
+	/* ── Drop bar (results state) ── */
 	.drop-bar {
 		display: flex;
 		align-items: center;
@@ -386,6 +374,7 @@
 		border-color: var(--accent);
 	}
 	.drop-bar-icon {
+		display: inline-flex;
 		color: var(--accent);
 		flex-shrink: 0;
 	}
@@ -397,7 +386,7 @@
 
 	/* ── Detection rules help ── */
 	.detection-rules {
-		margin: 12px 24px 0;
+		margin: 12px 24px 24px;
 		padding: 10px 14px;
 		background: color-mix(in oklch, var(--info) 6%, transparent);
 		border-radius: var(--radius-sm);
@@ -413,11 +402,22 @@
 		font-size: 10px;
 	}
 
-	/* ── File classification table ── */
+	/* ── Results summary ── */
+	.results-summary {
+		padding: 16px 24px 0;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--fg);
+	}
+	.summary-failed {
+		color: var(--error);
+	}
+
+	/* ── Results table ── */
 	.class-table-wrap {
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
-		margin: 0 24px 16px;
+		margin: 10px 24px 0;
 		overflow: hidden;
 	}
 	.class-table {
@@ -450,50 +450,56 @@
 	.class-table tbody tr:hover {
 		background: color-mix(in oklch, var(--accent) 3%, transparent);
 	}
-	.checkbox-col {
-		text-align: center;
-		width: 40px;
-		min-width: 40px;
-	}
-	.edit-col {
-		text-align: right;
-		white-space: nowrap;
-		width: 60px;
-		min-width: 60px;
-	}
-	.table-checkbox-wrap {
-		position: relative;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 16px;
-		height: 16px;
-		cursor: pointer;
-	}
-	.table-checkbox {
-		appearance: none;
-		width: 16px;
-		height: 16px;
-		border: 1.5px solid var(--border);
-		border-radius: 4px;
-		background: var(--card);
-		cursor: pointer;
-		flex-shrink: 0;
-		margin: 0;
-		transition:
-			border-color 0.15s,
-			background 0.15s;
-	}
-	.table-checkbox:checked {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
 	.file-name {
 		font-family: var(--font-mono);
 		font-size: 12px;
 		color: var(--fg);
 		word-break: break-all;
 	}
+	.file-error {
+		color: var(--error);
+	}
+	.upload-error-row {
+		background: color-mix(in oklch, var(--error) 6%, transparent);
+	}
+	.class-table tbody tr.upload-error-row:hover {
+		background: color-mix(in oklch, var(--error) 10%, transparent);
+	}
+	.upload-error-message {
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		margin-top: 4px;
+		font-size: 11px;
+		color: var(--error);
+	}
+	.status-uploaded {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 12px;
+		color: var(--success);
+	}
+	.status-failed {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--error);
+	}
+	.badge-replaced {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 500;
+		background: var(--muted);
+		color: var(--muted-foreground);
+	}
+
+	/* ── Kind chips (server classification, DDR P3-7) ── */
 	.chip {
 		display: inline-flex;
 		align-items: center;
@@ -508,207 +514,43 @@
 		background: oklch(0.92 0.045 195);
 		color: oklch(0.55 0.12 195);
 	}
-	.chip-key {
-		background: oklch(0.91 0.06 280);
-		color: oklch(0.5 0.16 280);
-	}
-	.chip-pdf {
-		background: var(--muted);
-		color: var(--muted-foreground);
-	}
 	.chip-data {
 		background: oklch(0.9 0.1 145);
 		color: oklch(0.5 0.15 145);
 	}
-	.confidence-text {
-		font-size: 12px;
-	}
-	.confidence-high {
-		color: var(--success);
-	}
-	.confidence-medium {
-		color: var(--warning);
-	}
-	.confidence-low {
-		color: var(--error);
-	}
-	.confidence-unknown {
+	.chip-material {
+		background: var(--muted);
 		color: var(--muted-foreground);
-	}
-	.row-editing {
-		background: color-mix(in oklch, var(--info) 6%, transparent) !important;
-	}
-	.edit-action-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border: none;
-		border-radius: var(--radius-sm);
-		background: transparent;
-		color: var(--muted-foreground);
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-	.edit-action-btn:hover {
-		background: var(--muted-bg);
-		color: var(--fg);
 	}
 
-	/* ── Batch edit ── */
-	.batch-edit-area {
-		padding: 0 24px 12px;
+	/* ── Results footer ── */
+	.results-footer {
+		display: flex;
+		justify-content: flex-end;
+		padding: 12px 24px 20px;
 	}
-	.batch-edit-toggle {
+	.done-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 4px;
-		padding: 4px 12px;
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--muted-foreground);
-		background: transparent;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-	.batch-edit-toggle:hover {
-		color: var(--fg);
-		background: var(--muted-bg);
-	}
-	.batch-edit-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		flex-wrap: wrap;
-		padding: 0 24px 16px;
-	}
-	.batch-edit-label {
-		font-size: 12px;
-		color: var(--muted-foreground);
-		white-space: nowrap;
-	}
-	.batch-edit-select {
-		appearance: none;
-		padding: 5px 24px 5px 8px;
-		font-size: 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-sm);
-		background: var(--card);
-		color: var(--fg);
-		cursor: pointer;
-	}
-	.apply-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 5px 14px;
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--accent-on);
-		background: var(--accent);
-		border: none;
-		border-radius: var(--radius-sm);
-		cursor: pointer;
-		transition: background 0.15s;
-	}
-	.apply-btn:hover {
-		background: var(--accent-hover);
-	}
-	.batch-edit-subtitle {
-		font-size: 11px;
-		color: var(--muted-foreground);
-		line-height: 1.5;
-	}
-
-	/* ── Upload actions ── */
-	.upload-actions {
-		display: flex;
-		align-items: center;
-		justify-content: space-between;
-		gap: 16px;
-		padding: 0 24px 20px;
-	}
-	.upload-checkbox {
-		display: flex;
-		align-items: center;
-		gap: 8px;
+		gap: 6px;
+		padding: 8px 20px;
 		font-size: 13px;
-		color: var(--fg);
-		cursor: pointer;
-	}
-	.upload-checkbox input[type="checkbox"] {
-		appearance: none;
-		width: 16px;
-		height: 16px;
-		border: 1.5px solid var(--border);
-		border-radius: 4px;
-		background: var(--card);
-		cursor: pointer;
-		flex-shrink: 0;
-		transition:
-			border-color 0.15s,
-			background 0.15s;
-	}
-	.upload-checkbox input[type="checkbox"]:checked {
-		background: var(--accent);
-		border-color: var(--accent);
-	}
-	.upload-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-		padding: 10px 28px;
-		font-size: 14px;
 		font-weight: 500;
 		color: var(--accent-on);
 		background: var(--accent);
 		border: none;
 		border-radius: var(--radius);
 		cursor: pointer;
-		flex-shrink: 0;
-		letter-spacing: -0.01em;
 		transition: background 0.15s;
 	}
-	.upload-btn:hover:not(:disabled) {
+	.done-btn:hover {
 		background: var(--accent-hover);
-	}
-	.upload-btn:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-		background: var(--muted-foreground);
-	}
-
-	/* ── Stub notice ── */
-	.stub-notice {
-		display: flex;
-		align-items: center;
-		gap: 6px;
-		padding: 8px 16px;
-		background: color-mix(in oklch, var(--warning) 10%, transparent);
-		border-top: 1px solid var(--border);
-		font-size: 11px;
-		color: var(--warning);
 	}
 
 	/* ── Dark mode refinements ── */
 	:global(.dark) .chip-submission {
 		background: oklch(0.25 0.05 195);
 		color: oklch(0.65 0.1 195);
-	}
-	:global(.dark) .chip-key {
-		background: oklch(0.25 0.08 280);
-		color: oklch(0.6 0.14 280);
-	}
-	:global(.dark) .chip-pdf {
-		background: oklch(0.24 0.01 216.9);
-		color: var(--muted-foreground);
 	}
 	:global(.dark) .chip-data {
 		background: oklch(0.22 0.08 145);

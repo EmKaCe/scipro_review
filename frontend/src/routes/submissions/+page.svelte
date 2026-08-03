@@ -17,7 +17,12 @@
 	import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import Archive from "@lucide/svelte/icons/archive";
-	import { downloadBackup, restoreBackup } from "$lib/services/submissions-api.js";
+	import {
+		downloadBackup,
+		restoreBackup,
+		fetchMaterials,
+	} from "$lib/services/submissions-api.js";
+	import type { MaterialsStatus } from "$lib/services/submissions-api.js";
 
 	// -----------------------------------------------------------------------
 	// Header config
@@ -44,6 +49,8 @@
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
 	let processing = $state(false);
+	/** Materials state for the selected assignment (B3 — real API). */
+	let materials = $state<MaterialsStatus | null>(null);
 
 	// -----------------------------------------------------------------------
 	// Teacher backup (download / restore the whole data directory)
@@ -101,6 +108,22 @@
 	// -----------------------------------------------------------------------
 	$effect(() => {
 		loadSubmissions();
+	});
+
+	// Materials indicator: re-fetch whenever the selected assignment changes.
+	$effect(() => {
+		const assignmentId = selectedAssignment;
+		let cancelled = false;
+		fetchMaterials(assignmentId)
+			.then((m) => {
+				if (!cancelled) materials = m;
+			})
+			.catch(() => {
+				if (!cancelled) materials = null;
+			});
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	async function loadSubmissions() {
@@ -161,6 +184,16 @@
 
 	function handleToggleUploadPanel() {
 		uploadPanelOpen = !uploadPanelOpen;
+	}
+
+	/** After a successful panel upload: refresh materials + keep the list fresh. */
+	async function handleUploaded() {
+		try {
+			materials = await fetchMaterials(selectedAssignment);
+		} catch {
+			materials = null;
+		}
+		submissions = submissionsStore.submissions;
 	}
 
 	// Phase 2 stub: flag for stubbed functionality
@@ -270,15 +303,23 @@
 
 		<!-- ── Upload Panel (inline, toggled by "Upload More" button) ── -->
 		{#if uploadPanelOpen}
-			<UploadPanel inline={true} />
+			<UploadPanel
+				inline={true}
+				assignmentId={selectedAssignment}
+				onUploaded={handleUploaded}
+			/>
 		{/if}
 
-		<!-- ── Materials indicator ── -->
+		<!-- ── Materials indicator (real API state, refreshed after upload) ── -->
 		<div class="materials-section">
-			<MaterialsIndicator />
+			<MaterialsIndicator
+				materials={[
+					{ label: "PDF", present: materials?.hasPdf ?? false },
+					{ label: "Key", present: materials?.hasKey ?? false },
+					{ label: "Data", present: materials?.hasInputData ?? false },
+				]}
+			/>
 		</div>
-
-		<!-- ⚠️ Phase 2 stub: materials are always "present" in stub data. -->
 
 		<!-- ── Dashboard table ── -->
 		<SubmissionsDashboard
@@ -293,7 +334,11 @@
 		<!-- ── Action bar ── -->
 		<div class="action-bar">
 			<div class="action-left">
-				<button class="btn-action btn-primary" onclick={handleProcessAll} disabled={processing}>
+				<button
+					class="btn-action btn-primary"
+					onclick={handleProcessAll}
+					disabled={processing}
+				>
 					{processing
 						? `Processing ${submissions.filter((s) => s.status === "executing").length}/${submissions.filter((s) => s.status === "pending").length + submissions.filter((s) => s.status === "executing").length}…`
 						: "Process All"}
