@@ -66,6 +66,8 @@ export interface SubmissionMeta {
 	status: SubmissionStatus;
 	/** Summary of cell comparison: "6 cells, 1 diff". */
 	cellSummary?: string;
+	/** Last execution error message (when status is "error"). */
+	error?: string | null;
 	/** LLM-suggested overall grade (Phase 4). */
 	preEvalGrade?: number;
 	/** Teacher's final grade. */

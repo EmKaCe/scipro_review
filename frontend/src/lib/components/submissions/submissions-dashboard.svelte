@@ -263,7 +263,7 @@
 							>
 						</td>
 						<td class="col-status">
-							<span class="status-badge status-{sub.status}">
+							<span class="status-badge status-{sub.status}" title={sub.error ?? ""}>
 								<!-- @ts-ignore -->
 								<StatusIcon size={11} />
 								{cfg.label}
