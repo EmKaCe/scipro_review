@@ -108,9 +108,8 @@ vi.mock("$lib/stores/toast.svelte", () => ({
 // Imports (after mocks)
 // ---------------------------------------------------------------------------
 
+import type { GradingConfig, GradingInputs } from "$lib/types/grading";
 import { reviewStore } from "$lib/stores/review.svelte";
-
-import type { GradingConfig } from "$lib/types/grading";
 import type { Assignment } from "$lib/types/assignments";
 import { categoryKeyOf } from "$lib/types/criteria";
 import { dimensionKeyOf } from "$lib/types/grading";
@@ -632,7 +631,7 @@ describe("reset", () => {
 		expect(reviewStore.rubric).toBeNull();
 		expect(reviewStore.generated_text).toBe("");
 		expect(reviewStore.is_dirty).toBe(false);
-		expect(reviewStore.grading).toEqual({} as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+		expect(reviewStore.grading).toEqual({} as unknown as GradingInputs);
 	});
 
 	it("prevents undo after reset", () => {

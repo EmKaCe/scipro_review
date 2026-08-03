@@ -60,7 +60,7 @@
 				<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
 					<div class="msg-content">{msg.content}</div>
 					<span class="msg-time">
-						{msg.timestamp.toLocaleTimeString([], {
+						{new Date(msg.timestamp).toLocaleTimeString([], {
 							hour: "2-digit",
 							minute: "2-digit",
 						})}

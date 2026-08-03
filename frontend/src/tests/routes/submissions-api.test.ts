@@ -8,7 +8,6 @@
  * and single execution status transitions, grading save/finalize, export.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RequestEvent } from "@sveltejs/kit";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -152,8 +151,24 @@ function jsonRequest(url: string, body: unknown): Request {
 	});
 }
 
-async function readJson(resp: Response): Promise<Record<string, any>> {
-	return (await resp.json()) as Record<string, any>;
+/** Upload response body (route tests read `results`). */
+interface UploadResponseBody {
+	results: Array<Record<string, unknown>>;
+}
+
+/** Save/grade/autofix response body (route tests read `grading`). */
+interface GradedRecordBody {
+	status?: string;
+	teacherGrade?: number;
+	grading?: {
+		rubric?: Record<string, unknown>;
+		notes?: string;
+		feedback?: Record<string, unknown>;
+	};
+}
+
+async function readJson<T = Record<string, unknown>>(resp: Response): Promise<T> {
+	return (await resp.json()) as T;
 }
 
 /**
@@ -386,7 +401,9 @@ describe("POST /api/submissions/upload", () => {
 			[fakeFile("2026SS_03.ipynb", NOTEBOOK_JSON, "application/json")],
 		);
 
-		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+		const body = await readJson<UploadResponseBody>(
+			await uploadPOST(uploadEvent("/api/submissions/upload", form)),
+		);
 
 		expect(body.results).toHaveLength(1);
 		expect(body.results[0]).toMatchObject({
@@ -444,7 +461,9 @@ describe("POST /api/submissions/upload", () => {
 			NOTEBOOK_JSON,
 		);
 
-		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+		const body = await readJson<UploadResponseBody>(
+			await uploadPOST(uploadEvent("/api/submissions/upload", form)),
+		);
 
 		expect(body.results[0].replaced).toBe(true);
 
@@ -466,7 +485,9 @@ describe("POST /api/submissions/upload", () => {
 			],
 		);
 
-		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+		const body = await readJson<UploadResponseBody>(
+			await uploadPOST(uploadEvent("/api/submissions/upload", form)),
+		);
 
 		expect(body.results[0]).toMatchObject({
 			kind: "material-data",
@@ -497,7 +518,9 @@ describe("POST /api/submissions/upload", () => {
 			[fakeFile("2026SS_03.ipynb", NOTEBOOK_JSON), fakeFile("foo.ipynb", "{}")],
 		);
 
-		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+		const body = await readJson<UploadResponseBody>(
+			await uploadPOST(uploadEvent("/api/submissions/upload", form)),
+		);
 
 		expect(body.results).toHaveLength(2);
 
@@ -539,7 +562,9 @@ describe("POST /api/submissions/upload", () => {
 			],
 			[fakeFile("foo.ipynb", "{}")],
 		);
-		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+		const body = await readJson<UploadResponseBody>(
+			await uploadPOST(uploadEvent("/api/submissions/upload", form)),
+		);
 
 		expect(body.results).toHaveLength(1);
 		expect(body.results[0]).toMatchObject({
@@ -780,7 +805,7 @@ describe("POST /api/submissions/[id]/save", () => {
 	it("merges grading state without touching the status", async () => {
 		await seedSubmission("2026SS_03", "executed");
 
-		const first = await readJson(
+		const first = await readJson<GradedRecordBody>(
 			await savePOST(
 				makeEvent(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
@@ -802,7 +827,7 @@ describe("POST /api/submissions/[id]/save", () => {
 			notes: "first pass",
 		});
 
-		const second = await readJson(
+		const second = await readJson<GradedRecordBody>(
 			await savePOST(
 				makeEvent(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
@@ -857,7 +882,7 @@ describe("POST /api/submissions/[id]/save", () => {
 		await seedSubmission("2026SS_03", "executed");
 
 		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
-		const first = await readJson(
+		const first = await readJson<GradedRecordBody>(
 			await savePOST(
 				makeEvent(url, {
 					params: { id: "2026SS_03" },
@@ -884,7 +909,7 @@ describe("POST /api/submissions/[id]/save", () => {
 		});
 
 		// A second save for a different category key merges, not replaces.
-		const second = await readJson(
+		const second = await readJson<GradedRecordBody>(
 			await savePOST(
 				makeEvent(url, {
 					params: { id: "2026SS_03" },
@@ -937,7 +962,7 @@ describe("POST /api/submissions/[id]/save", () => {
 			}),
 		);
 
-		const autofix = await readJson(
+		const autofix = await readJson<GradedRecordBody>(
 			await savePOST(
 				makeEvent(url, {
 					params: { id: "2026SS_03" },

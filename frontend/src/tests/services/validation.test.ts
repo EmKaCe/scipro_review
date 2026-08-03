@@ -243,8 +243,7 @@ describe("formatValidationErrors", () => {
 					message: "Expected string, received number",
 				},
 			],
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		} as any;
+		} as unknown as Parameters<typeof formatValidationErrors>[0];
 		const formatted = formatValidationErrors(errors);
 		expect(formatted).toContain("student_id");
 		expect(formatted).toContain("Expected string, received number");
@@ -256,8 +255,7 @@ describe("formatValidationErrors", () => {
 				{ path: ["student_id"], message: "Required" },
 				{ path: ["assignment"], message: "Required" },
 			],
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		} as any;
+		} as unknown as Parameters<typeof formatValidationErrors>[0];
 		const formatted = formatValidationErrors(errors);
 		expect(formatted).toContain("student_id");
 		expect(formatted).toContain("assignment");
@@ -268,16 +266,14 @@ describe("formatValidationErrors", () => {
 			path: [`field_${i}`],
 			message: `Error ${i}`,
 		}));
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const errors = { issues } as any;
+		const errors = { issues } as unknown as Parameters<typeof formatValidationErrors>[0];
 		const formatted = formatValidationErrors(errors);
 		expect(formatted).toContain("3 more");
 		expect(formatted).toContain("8 issues");
 	});
 
 	it("handles empty issues array", () => {
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		const errors = { issues: [] } as any;
+		const errors = { issues: [] } as unknown as Parameters<typeof formatValidationErrors>[0];
 		const formatted = formatValidationErrors(errors);
 		expect(formatted).toContain("Unknown validation error");
 	});

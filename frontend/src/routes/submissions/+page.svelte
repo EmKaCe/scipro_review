@@ -2,8 +2,6 @@
 	import { submissionsStore } from "$lib/services/submissions-store.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
@@ -195,10 +193,6 @@
 		}
 		submissions = submissionsStore.submissions;
 	}
-
-	// Phase 2 stub: flag for stubbed functionality
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	const IS_PHASE_2_STUB = true;
 </script>
 
 <svelte:head>

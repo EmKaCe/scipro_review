@@ -306,8 +306,7 @@ export class SelectionStore {
 		const selections: Record<string, CategorySelections> = {};
 		for (const [key, sel] of Object.entries(this.category_selections)) {
 			selections[key] = {
-				// eslint-disable-next-line svelte/prefer-svelte-reactivity
-				checked_items: new Set(sel.checked_items),
+				checked_items: new SvelteSet(sel.checked_items),
 				notes: sel.notes,
 				comments: { ...sel.comments },
 				deductions: { ...sel.deductions },

@@ -139,20 +139,6 @@
 		return containerRef?.clientWidth ?? 1200;
 	}
 
-	function getLeftPct(): number {
-		if (rightPanelCollapsed) return 100;
-		if (leftPanelWidth === null) return 66;
-		const cw = getContainerWidth();
-		if (cw <= 0) return 66;
-		return (leftPanelWidth / cw) * 100;
-	}
-
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	function getRightPct() {
-		if (rightPanelCollapsed) return 0;
-		return 100 - getLeftPct();
-	}
-
 	function handleDividerPointerDown(e: PointerEvent) {
 		if (rightPanelCollapsed) return;
 		isDragging = true;
@@ -788,10 +774,7 @@
 				</div>
 
 				<!-- Reference comparison -->
-				<ReferenceComparison
-					submissionCells={cells}
-					referenceCells={submission.referenceCells}
-				/>
+				<ReferenceComparison submissionCells={cells} />
 
 				<!-- Cell execution output -->
 				<ExecutionOutput

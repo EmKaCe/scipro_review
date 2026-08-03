@@ -9,8 +9,6 @@
  * the database connection and deleting while connected causes timeouts.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { describe, it, expect, beforeEach } from "vitest";
 import {
 	saveCurrentSession,
@@ -25,7 +23,7 @@ import {
 	importAll,
 	clearAllReviews,
 } from "$lib/services/db";
-import type { ReviewSession } from "$lib/types/session";
+import type { CategorySelections, ReviewSession } from "$lib/types/session";
 import type { GradingConfig } from "$lib/types/grading";
 import { categoryKeyOf } from "$lib/types/criteria";
 import { dimensionKeyOf } from "$lib/types/grading";
@@ -63,7 +61,7 @@ function makeSession(overrides?: Partial<ReviewSession>): ReviewSession {
 				comments: {},
 				deductions: {},
 			},
-		} as Record<string, any>,
+		} as Record<string, CategorySelections>,
 		grading: {
 			code_quality_design: 4,
 			code_execution_results: 5,
@@ -167,8 +165,9 @@ describe("saveReview / loadReview", () => {
 		const session = makeSession();
 		const id = await saveReview(session);
 		const loaded = await loadReview(id);
-		const checkedItems = (loaded!.category_selections as Record<string, any>)["code_quality"]
-			.checked_items;
+		const checkedItems = (loaded!.category_selections as Record<string, CategorySelections>)[
+			"code_quality"
+		].checked_items;
 		expect(checkedItems).toBeInstanceOf(Set);
 		expect(checkedItems.has("did_well")).toBe(true);
 	});

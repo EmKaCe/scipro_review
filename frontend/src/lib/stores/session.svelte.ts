@@ -1,4 +1,5 @@
 /** @file Session sub-store — manages IndexedDB persistence, auto-save, and saved reviews list. */
+import { SvelteDate } from "svelte/reactivity";
 import type { ReviewSession } from "../types/session.js";
 import type { GradingConfig } from "../types/grading.js";
 import type { ReviewMetaFull } from "../services/db.js";
@@ -120,8 +121,7 @@ export class SessionStore {
 	async save(session: ReviewSession): Promise<string> {
 		const id = await saveReview(session, this.current_review_id ?? undefined);
 		this.current_review_id = id;
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		this.last_saved = new Date().toISOString();
+		this.last_saved = new SvelteDate().toISOString();
 		this.is_dirty = false;
 		await clearCurrentSession();
 		return id;

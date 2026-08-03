@@ -9,7 +9,8 @@ export interface CopilotMessage {
 	id: string;
 	role: "teacher" | "assistant";
 	content: string;
-	timestamp: Date;
+	/** Epoch ms — plain number so no mutable Date objects enter state. */
+	timestamp: number;
 	type: "text" | "command" | "suggestion" | "draft";
 }
 
@@ -43,8 +44,7 @@ export function createCopilotStore() {
 			id: crypto.randomUUID(),
 			role: "teacher",
 			content,
-			// eslint-disable-next-line svelte/prefer-svelte-reactivity
-			timestamp: new Date(),
+			timestamp: Date.now(),
 			type: content.startsWith("/") ? "command" : "text",
 		};
 		messages = [...messages, userMsg];
@@ -57,8 +57,7 @@ export function createCopilotStore() {
 				role: "assistant",
 				content:
 					"AI Copilot is not yet active. This is a Phase 2 stub — the full agentic experience will be available in Phase 4 with Mastra integration.",
-				// eslint-disable-next-line svelte/prefer-svelte-reactivity
-				timestamp: new Date(),
+				timestamp: Date.now(),
 				type: "text",
 			};
 			messages = [...messages, response];

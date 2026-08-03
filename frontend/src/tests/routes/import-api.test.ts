@@ -7,7 +7,6 @@
  * jsdom environment is fine here.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestEvent } from "@sveltejs/kit";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -78,8 +77,10 @@ function jsonRequest(url: string, body: unknown): Request {
 	});
 }
 
-async function readJson(resp: Response): Promise<Record<string, any>> {
-	return (await resp.json()) as Record<string, any>;
+async function readJson(resp: Response): Promise<Record<string, never>> {
+	// Read-only JSON fixture body — values only flow into expect(); never
+	// keeps every access type-safe without `any`.
+	return (await resp.json()) as Record<string, never>;
 }
 
 /** Assert a handler rejects with a SvelteKit HttpError (status + body.message). */

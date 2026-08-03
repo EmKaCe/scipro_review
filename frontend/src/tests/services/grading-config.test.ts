@@ -87,7 +87,7 @@ function mockFetch(urlMap: Record<string, string>) {
 			}
 		}
 		return new Response("Not Found", { status: 404 });
-	}) as any; // eslint-disable-line @typescript-eslint/no-explicit-any
+	}) as unknown as typeof fetch;
 	return () => {
 		globalThis.fetch = originalFetch;
 	};

@@ -9,12 +9,9 @@
 	interface Props {
 		/** The student's executed cells. */
 		submissionCells: readonly CellInfo[];
-		/** The reference key cells for comparison (optional). */
-		referenceCells?: readonly CellInfo[];
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	let { submissionCells, referenceCells = [] }: Props = $props();
+	let { submissionCells }: Props = $props();
 
 	let totalCells = $derived(submissionCells.length);
 	let diffCount = $derived(submissionCells.filter((c) => c.marker === "questionable").length);

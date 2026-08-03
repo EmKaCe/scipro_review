@@ -5,8 +5,6 @@
  * file download, and format detection.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { describe, it, expect, vi } from "vitest";
 import {
 	serializeSession,
@@ -41,7 +39,7 @@ function makeSession(overrides?: Partial<ReviewSession>): ReviewSession {
 				comments: { did_well: "Nice work" },
 				deductions: { needs_work: 2 },
 			},
-		} as Record<string, any>,
+		} as Record<string, CategorySelections>,
 		grading: {
 			code_quality_design: 4,
 			code_execution_results: 5,
@@ -137,8 +135,9 @@ describe("serializeSession", () => {
 		const session = makeSession();
 		const json = serializeSession(session);
 		const parsed = JSON.parse(json);
-		const checkedItems = (parsed.category_selections as Record<string, any>)["code_quality"]
-			.checked_items;
+		const checkedItems = (parsed.category_selections as Record<string, CategorySelections>)[
+			"code_quality"
+		].checked_items;
 		expect(Array.isArray(checkedItems)).toBe(true);
 		expect(checkedItems).toContain("did_well");
 		expect(checkedItems).toContain("needs_work");
@@ -160,8 +159,9 @@ describe("deserializeSession", () => {
 		const original = makeSession();
 		const json = serializeSession(original);
 		const restored = deserializeSession(json);
-		const checkedItems = (restored!.category_selections as Record<string, any>)["code_quality"]
-			.checked_items;
+		const checkedItems = (restored!.category_selections as Record<string, CategorySelections>)[
+			"code_quality"
+		].checked_items;
 		expect(checkedItems).toBeInstanceOf(Set);
 		expect(checkedItems.has("did_well")).toBe(true);
 		expect(checkedItems.has("needs_work")).toBe(true);
@@ -177,12 +177,14 @@ describe("deserializeSession", () => {
 		const json = serializeSession(original);
 		const restored = deserializeSession(json);
 		expect(
-			(restored!.category_selections as Record<string, any>)["code_quality"].comments,
+			(restored!.category_selections as Record<string, CategorySelections>)["code_quality"]
+				.comments,
 		).toEqual({
 			did_well: "Nice work",
 		});
 		expect(
-			(restored!.category_selections as Record<string, any>)["code_quality"].deductions,
+			(restored!.category_selections as Record<string, CategorySelections>)["code_quality"]
+				.deductions,
 		).toEqual({
 			needs_work: 2,
 		});
@@ -260,7 +262,13 @@ describe("exportSession", () => {
 	it("throws for unknown format", () => {
 		const session = makeSession();
 		expect(() =>
-			exportSession(session, TEST_RUBRIC, TEST_RESULT, "csv" as any, "Reviewer"),
+			exportSession(
+				session,
+				TEST_RUBRIC,
+				TEST_RESULT,
+				"csv" as unknown as Parameters<typeof exportSession>[3],
+				"Reviewer",
+			),
 		).toThrow("Unknown export format");
 	});
 });
@@ -495,9 +503,11 @@ describe("downloadFile", () => {
 		const originalCreateObjectURL = globalThis.URL.createObjectURL;
 		const originalRevokeObjectURL = globalThis.URL.revokeObjectURL;
 
-		vi.spyOn(document, "createElement").mockReturnValue(mockLink as any);
+		vi.spyOn(document, "createElement").mockReturnValue(
+			mockLink as unknown as HTMLAnchorElement,
+		);
 
-		vi.spyOn(document, "body", "get").mockReturnValue(mockBody as any);
+		vi.spyOn(document, "body", "get").mockReturnValue(mockBody as unknown as HTMLBodyElement);
 		globalThis.URL.createObjectURL = vi.fn(() => "blob:http://localhost/fake");
 		globalThis.URL.revokeObjectURL = vi.fn();
 

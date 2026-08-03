@@ -9,7 +9,6 @@
  * must surface it verbatim; records without one must not fabricate it.
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { RequestEvent } from "@sveltejs/kit";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -62,8 +61,10 @@ function makeEvent(url: string): RequestEvent {
 	} as unknown as RequestEvent;
 }
 
-async function readJson(resp: Response): Promise<Record<string, any>> {
-	return (await resp.json()) as Record<string, any>;
+async function readJson(resp: Response): Promise<Record<string, never>> {
+	// Read-only JSON fixture body — values only flow into expect(); never
+	// keeps every access type-safe without `any`.
+	return (await resp.json()) as Record<string, never>;
 }
 
 async function seedSubmission(
