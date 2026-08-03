@@ -9,6 +9,8 @@
  * Phase 4: LLM pre-evaluation data enriches existing types.
  */
 
+import type { CategoryFeedback } from "./evaluation.js";
+
 // ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
@@ -88,9 +90,17 @@ export interface SubmissionDetail extends SubmissionMeta {
 	cells: CellInfo[];
 	/** Reference key cells for comparison (loaded from assignment materials). */
 	referenceCells?: CellInfo[];
-	/** Persisted grading state (rubric/dimensions/notes) — from the record. */
+	/** Persisted grading state (rubric/dimensions/feedback/notes) — from the record. */
 	grading?: {
+		/** Criterion key -> selected option key (legacy mapping; feedback is authoritative). */
+		rubric?: Record<string, string>;
+		/** Dimension id -> slider value (points). */
+		dimensions?: Record<string, number>;
+		/** Per-category feedback: category key -> v2 CategoryFeedback. */
+		feedback?: Record<string, CategoryFeedback>;
 		/** Free-form teacher notes (autofix notes append here). */
 		notes?: string;
+		/** ISO timestamp of the last grading save. */
+		updatedAt?: string;
 	};
 }

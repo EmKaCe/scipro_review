@@ -112,6 +112,36 @@ describe("fetchSubmission", () => {
 		);
 		expect(result).toEqual(submission);
 	});
+
+	it("surfaces the persisted grading block (dimensions + feedback) on the parsed detail", async () => {
+		const submission: SubmissionDetail = {
+			...detail("2026SS_03"),
+			grading: {
+				dimensions: { code_quality_design: 4.5, creativity: 2 },
+				feedback: {
+					code_formatting: {
+						checked: ["blank lines - consistent"],
+						comments: { "blank lines - consistent": "explain" },
+						deductions: { "blank lines - consistent": 0.5 },
+						notes: "<p>n</p>",
+					},
+				},
+				updatedAt: "2026-07-30T09:00:00Z",
+			},
+		};
+		fetchMock.mockResolvedValue(jsonResponse(submission));
+
+		const result = await fetchSubmission("2026SS_03", ASSIGNMENT);
+
+		expect(result.grading?.dimensions).toEqual({ code_quality_design: 4.5, creativity: 2 });
+		expect(result.grading?.feedback?.code_formatting).toEqual({
+			checked: ["blank lines - consistent"],
+			comments: { "blank lines - consistent": "explain" },
+			deductions: { "blank lines - consistent": 0.5 },
+			notes: "<p>n</p>",
+		});
+		expect(result.grading?.updatedAt).toBe("2026-07-30T09:00:00Z");
+	});
 });
 
 describe("uploadSubmissions", () => {

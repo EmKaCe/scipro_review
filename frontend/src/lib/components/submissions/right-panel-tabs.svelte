@@ -8,7 +8,7 @@
 	import PlagiarismTab from "./plagiarism-tab.svelte";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
-	import { rubricSentimentCounts } from "$lib/types/criteria.js";
+	import { findCategoryEntry, rubricSentimentCounts } from "$lib/types/criteria.js";
 	import { SvelteSet } from "svelte/reactivity";
 
 	type Tab = "rubric" | "grading" | "plagiarism" | "copilot";
@@ -74,24 +74,25 @@
 		};
 	}
 
+	/** Empty per-category selection state (SvelteSet + empty maps). */
+	function emptySelections(): CategorySelections {
+		return {
+			checked_items: new SvelteSet<string>(),
+			notes: "",
+			comments: {},
+			deductions: {},
+		};
+	}
+
 	/**
 	 * Toggle a rubric checkbox (key = sub-point text). Updates the owning
 	 * category's `checked_items` immutably — this drives the live sentiment
 	 * counts (P3-2) in the tab header.
 	 */
 	function handleToggleCheckbox(key: string, checked: boolean) {
-		const entry = rubric?.categories.find((e) =>
-			(["positive", "neutral", "negative"] as const).some((sentiment) =>
-				e.category[sentiment].some((mp) => mp.sub_points.some((sp) => sp.text === key)),
-			),
-		);
+		const entry = findCategoryEntry(rubric, key);
 		if (!entry) return;
-		const current = categorySelections[entry.key] ?? {
-			checked_items: new SvelteSet<string>(),
-			notes: "",
-			comments: {},
-			deductions: {},
-		};
+		const current = categorySelections[entry.key] ?? emptySelections();
 		const nextItems = new SvelteSet(current.checked_items);
 		if (checked) {
 			nextItems.add(key);
@@ -104,16 +105,44 @@
 		};
 	}
 
-	function handleUpdateComment(_key: string, _value: string) {
-		// Phase 2 stub
+	/**
+	 * Update an inline comment for a sub-point (key = sub-point text),
+	 * writing into the owning category's `comments` map immutably.
+	 */
+	function handleUpdateComment(key: string, value: string) {
+		const entry = findCategoryEntry(rubric, key);
+		if (!entry) return;
+		const current = categorySelections[entry.key] ?? emptySelections();
+		categorySelections = {
+			...categorySelections,
+			[entry.key]: { ...current, comments: { ...current.comments, [key]: value } },
+		};
 	}
 
-	function handleUpdateDeduction(_key: string, _value: number) {
-		// Phase 2 stub
+	/**
+	 * Update a point deduction for a sub-point (key = sub-point text),
+	 * writing into the owning category's `deductions` map immutably.
+	 */
+	function handleUpdateDeduction(key: string, value: number) {
+		const entry = findCategoryEntry(rubric, key);
+		if (!entry) return;
+		const current = categorySelections[entry.key] ?? emptySelections();
+		categorySelections = {
+			...categorySelections,
+			[entry.key]: { ...current, deductions: { ...current.deductions, [key]: value } },
+		};
 	}
 
-	function handleUpdateNotes(_value: string) {
-		// Phase 2 stub
+	/**
+	 * Update a category's additional notes (key = category key — the
+	 * RubricCategory call site binds `entry.key` before forwarding).
+	 */
+	function handleUpdateNotes(categoryKey: string, value: string) {
+		const current = categorySelections[categoryKey] ?? emptySelections();
+		categorySelections = {
+			...categorySelections,
+			[categoryKey]: { ...current, notes: value },
+		};
 	}
 </script>
 
@@ -179,18 +208,13 @@
 						{@const expanded = expandedCategories[entry.key] ?? false}
 						<RubricCategory
 							{entry}
-							selections={categorySelections[entry.key] ?? {
-								checked_items: new Set(),
-								comments: {},
-								deductions: {},
-								notes: "",
-							}}
+							selections={categorySelections[entry.key] ?? emptySelections()}
 							{expanded}
 							onToggle={() => handleToggle(entry.key)}
 							onToggleCheckbox={handleToggleCheckbox}
 							onUpdateComment={handleUpdateComment}
 							onUpdateDeduction={handleUpdateDeduction}
-							onUpdateNotes={handleUpdateNotes}
+							onUpdateNotes={(v) => handleUpdateNotes(entry.key, v)}
 							{disabled}
 						/>
 					{/each}

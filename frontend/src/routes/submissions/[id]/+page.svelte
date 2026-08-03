@@ -13,6 +13,7 @@
 	import { defaultGradingInputs } from "$lib/types/grading.js";
 	import { calculateGrade } from "$lib/services/grade-calculator.js";
 	import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
+	import { feedbackToSelections, selectionsToFeedback } from "$lib/services/grading-persistence.js";
 	import { rubricSentimentCounts } from "$lib/types/criteria.js";
 	import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
@@ -223,22 +224,22 @@
 				}
 			}
 
+			// Restore dimension sliders from the persisted record (defaults
+			// for dimensions that were never saved).
+			const saved = sub.grading;
+			gradingInputs = { ...defaultGradingInputs(), ...(saved?.dimensions ?? {}) };
+
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
 			rubric = mergedRubric;
 
-			// Build stub category selections from rubric
+			// Restore per-category selections from the persisted feedback
+			// block (record -> rubric -> selections ordering).
 			if (mergedRubric && mergedRubric.categories.length > 0) {
-				const selections: Record<string, CategorySelections> = {};
-				for (const entry of mergedRubric.categories) {
-					selections[entry.key] = {
-						checked_items: new Set(),
-						notes: "",
-						comments: {},
-						deductions: {},
-					};
-				}
-				categorySelections = selections;
+				categorySelections = feedbackToSelections(
+					saved?.feedback,
+					mergedRubric.categories.map((c) => c.key),
+				);
 			}
 		} catch (e) {
 			error = e instanceof Error ? e.message : "Failed to load submission";
@@ -258,9 +259,11 @@
 		mobileTab = tab;
 	}
 
-	// Phase 2 stub handlers (no-op — real functionality in Phase 3)
-	function handleUpdateDimension(_key: string, _value: number) {
-		/* Phase 3 */
+	/**
+	 * Update a dimension slider value immutably (key = dimension id).
+	 */
+	function handleUpdateDimension(key: string, value: number) {
+		gradingInputs = { ...gradingInputs, [key as keyof GradingInputs]: value };
 	}
 
 	/** Unreviewed pairs involving the current submission (guard trigger). */
@@ -325,9 +328,15 @@
 	async function doSaveGrade() {
 		if (!submission) return;
 		try {
-			await submissionsStore.saveGrading(submission.id, {
+			const record = await submissionsStore.saveGrading(submission.id, {
 				dimensions: { ...gradingInputs },
+				feedback: selectionsToFeedback(categorySelections),
 			});
+			// Keep local state fresh: autofix existingNotes must reflect the merge.
+			submission = {
+				...submission,
+				grading: (record as { grading?: SubmissionDetail["grading"] }).grading,
+			};
 			addToast("success", `Grade saved for ${submission.studentId}`, 3000);
 		} catch (e) {
 			addToast("error", e instanceof Error ? e.message : "Failed to save grade", 4000);
