@@ -908,7 +908,12 @@ describe("POST /api/submissions/[id]/save", () => {
 				deductions: { "blank lines - consistent": 0.5 },
 				notes: "first category pass",
 			},
-			naming: { checked: ["naming - not descriptive"], comments: {}, deductions: {}, notes: "" },
+			naming: {
+				checked: ["naming - not descriptive"],
+				comments: {},
+				deductions: {},
+				notes: "",
+			},
 		});
 	});
 
@@ -921,7 +926,12 @@ describe("POST /api/submissions/[id]/save", () => {
 				params: { id: "2026SS_03" },
 				request: jsonRequest(url, {
 					feedback: {
-						code_formatting: { checked: ["x"], comments: {}, deductions: {}, notes: "n" },
+						code_formatting: {
+							checked: ["x"],
+							comments: {},
+							deductions: {},
+							notes: "n",
+						},
 					},
 				}),
 			}),

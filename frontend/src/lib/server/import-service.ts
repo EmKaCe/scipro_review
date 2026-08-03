@@ -69,7 +69,12 @@ export interface ParsedTeacherYaml {
 // Parse
 // ---------------------------------------------------------------------------
 
-const REVIEW_STATUSES = new Set<PairReviewStatus>(["unreviewed", "accepted", "dismissed", "ignored"]);
+const REVIEW_STATUSES = new Set<PairReviewStatus>([
+	"unreviewed",
+	"accepted",
+	"dismissed",
+	"ignored",
+]);
 
 /**
  * Parse and validate a teacher-YAML document (snake_case keys as emitted by
@@ -110,7 +115,9 @@ export function parseTeacherYaml(yamlText: string): ParsedTeacherYaml {
 	let scores: Record<string, number> | undefined;
 	if (doc.scores !== undefined) {
 		if (!isNumberMap(doc.scores)) {
-			throw new ImportError('"scores" must be an object mapping dimension ids to finite numbers');
+			throw new ImportError(
+				'"scores" must be an object mapping dimension ids to finite numbers',
+			);
 		}
 		scores = doc.scores;
 	}
@@ -118,7 +125,9 @@ export function parseTeacherYaml(yamlText: string): ParsedTeacherYaml {
 	let rubric: Record<string, string> | undefined;
 	if (doc.rubric !== undefined) {
 		if (!isStringMap(doc.rubric)) {
-			throw new ImportError('"rubric" must be an object mapping criterion keys to option keys');
+			throw new ImportError(
+				'"rubric" must be an object mapping criterion keys to option keys',
+			);
 		}
 		rubric = doc.rubric;
 	}
@@ -152,10 +161,15 @@ export function parseTeacherYaml(yamlText: string): ParsedTeacherYaml {
 			}
 			const pair = entry as Record<string, unknown>;
 			if (typeof pair.student_b !== "string" || pair.student_b.trim() === "") {
-				throw new ImportError(`plagiarism entry ${index} has invalid "student_b": expected a non-empty string`);
+				throw new ImportError(
+					`plagiarism entry ${index} has invalid "student_b": expected a non-empty string`,
+				);
 			}
 			const reviewStatus = pair.review_status;
-			if (typeof reviewStatus !== "string" || !REVIEW_STATUSES.has(reviewStatus as PairReviewStatus)) {
+			if (
+				typeof reviewStatus !== "string" ||
+				!REVIEW_STATUSES.has(reviewStatus as PairReviewStatus)
+			) {
 				throw new ImportError(
 					`plagiarism entry ${index} has invalid "review_status": expected one of unreviewed|accepted|dismissed|ignored`,
 				);

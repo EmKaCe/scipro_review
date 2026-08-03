@@ -61,7 +61,12 @@ function pair(studentA: string, studentB: string): PlagiarismPair {
 		notebookOverlap: 0.7,
 		matchedCells: [{ cellIndexA: 0, cellIndexB: 0, similarity: 0.9 }],
 		flags: ["shared_imports"],
-		details: { cellCountDiff: 0, sharedVariableNames: [], sharedComments: [], sharedImports: ["numpy"] },
+		details: {
+			cellCountDiff: 0,
+			sharedVariableNames: [],
+			sharedComments: [],
+			sharedImports: ["numpy"],
+		},
 	};
 }
 
@@ -100,7 +105,12 @@ describe("parseTeacherYaml", () => {
 		const yaml = buildGradingYaml(gradedRecord(), {
 			plagiarism: {
 				pairs: [
-					{ studentB: "2026SS_02", severity: "high", notebookOverlap: 0.8, reviewStatus: "accepted" },
+					{
+						studentB: "2026SS_02",
+						severity: "high",
+						notebookOverlap: 0.8,
+						reviewStatus: "accepted",
+					},
 				],
 			},
 		});
@@ -132,12 +142,22 @@ describe("parseTeacherYaml", () => {
 
 	it("rejects malformed documents with ImportError", () => {
 		expect(() => parseTeacherYaml("assignment: soil_contamination")).toThrow(/student_id/);
-		expect(() => parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nscores: [1,2]")).toThrow(/scores/);
-		expect(() => parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nrubric: [a]")).toThrow(/rubric/);
-		expect(() => parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nteacher_grade: many")).toThrow(/teacher_grade/);
-		expect(() => parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nnotes: [1]")).toThrow(/notes/);
 		expect(() =>
-			parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nfeedback:\n  x:\n    checked: nope"),
+			parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nscores: [1,2]"),
+		).toThrow(/scores/);
+		expect(() =>
+			parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nrubric: [a]"),
+		).toThrow(/rubric/);
+		expect(() =>
+			parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nteacher_grade: many"),
+		).toThrow(/teacher_grade/);
+		expect(() =>
+			parseTeacherYaml("student_id: 2026SS_03\nassignment: soil\nnotes: [1]"),
+		).toThrow(/notes/);
+		expect(() =>
+			parseTeacherYaml(
+				"student_id: 2026SS_03\nassignment: soil\nfeedback:\n  x:\n    checked: nope",
+			),
 		).toThrow(/feedback/);
 		expect(() =>
 			parseTeacherYaml(
@@ -165,7 +185,12 @@ describe("parseTeacherYaml", () => {
 describe("applyTeacherYaml", () => {
 	it("applies teacherGrade + status graded, writes grading (notes replaced), and updates pair review statuses", async () => {
 		await seedSubmission("2026SS_03", "executed", {
-			grading: { rubric: {}, dimensions: {}, notes: "old notes", updatedAt: new Date().toISOString() },
+			grading: {
+				rubric: {},
+				dimensions: {},
+				notes: "old notes",
+				updatedAt: new Date().toISOString(),
+			},
 		});
 		await writePlagiarismResult(ASSIGNMENT, {
 			status: "done",
@@ -203,10 +228,12 @@ describe("applyTeacherYaml", () => {
 
 		const cache = await readPlagiarismResult(ASSIGNMENT);
 		expect(
-			cache?.pairs.find((p) => p.studentA === "2026SS_02" && p.studentB === "2026SS_03")?.reviewStatus,
+			cache?.pairs.find((p) => p.studentA === "2026SS_02" && p.studentB === "2026SS_03")
+				?.reviewStatus,
 		).toBe("accepted");
 		expect(
-			cache?.pairs.find((p) => p.studentA === "2026SS_03" && p.studentB === "2026SS_05")?.reviewStatus,
+			cache?.pairs.find((p) => p.studentA === "2026SS_03" && p.studentB === "2026SS_05")
+				?.reviewStatus,
 		).toBeUndefined();
 	});
 

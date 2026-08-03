@@ -56,7 +56,11 @@ const rubric: MergedRubric = {
 					{
 						main_point: "Good formatting",
 						sub_points: [
-							{ text: "consistent_indentation", comment: true, point_deduction: true },
+							{
+								text: "consistent_indentation",
+								comment: true,
+								point_deduction: true,
+							},
 						],
 					},
 				],

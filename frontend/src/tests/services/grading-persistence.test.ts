@@ -8,10 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import {
-	feedbackToSelections,
-	selectionsToFeedback,
-} from "$lib/services/grading-persistence.js";
+import { feedbackToSelections, selectionsToFeedback } from "$lib/services/grading-persistence.js";
 
 describe("grading persistence serialization", () => {
 	it("round-trips selections -> feedback -> selections losslessly", () => {

@@ -182,7 +182,9 @@ export function findCategoryEntry(
 	return (
 		rubric.categories.find((entry) =>
 			(["positive", "neutral", "negative"] as const).some((sentiment) =>
-				entry.category[sentiment].some((mp) => mp.sub_points.some((sp) => sp.text === subPointText)),
+				entry.category[sentiment].some((mp) =>
+					mp.sub_points.some((sp) => sp.text === subPointText),
+				),
 			),
 		) ?? null
 	);

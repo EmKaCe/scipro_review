@@ -13,7 +13,10 @@
 	import { defaultGradingInputs } from "$lib/types/grading.js";
 	import { calculateGrade } from "$lib/services/grade-calculator.js";
 	import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
-	import { feedbackToSelections, selectionsToFeedback } from "$lib/services/grading-persistence.js";
+	import {
+		feedbackToSelections,
+		selectionsToFeedback,
+	} from "$lib/services/grading-persistence.js";
 	import { rubricSentimentCounts } from "$lib/types/criteria.js";
 	import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
@@ -392,7 +395,10 @@
 		input.value = "";
 		if (!file || !submission) return;
 		try {
-			const record = await submissionsStore.importTeacherYaml(submission.id, await file.text());
+			const record = await submissionsStore.importTeacherYaml(
+				submission.id,
+				await file.text(),
+			);
 			submission = {
 				...submission,
 				status: record.status,
