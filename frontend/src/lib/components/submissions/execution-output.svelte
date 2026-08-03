@@ -15,9 +15,11 @@
 		assignmentId: string;
 		/** Existing submission notes (autofix notes append to them). */
 		existingNotes?: string;
+		/** Forwarded to AutofixCard: top-level notes changed after a save. */
+		onNotesSaved?: (notes: string) => void;
 	}
 
-	let { cells, submissionId, assignmentId, existingNotes = "" }: Props = $props();
+	let { cells, submissionId, assignmentId, existingNotes = "", onNotesSaved }: Props = $props();
 
 	function renderMarkdown(src: string): string {
 		try {
@@ -96,6 +98,7 @@
 						{submissionId}
 						{assignmentId}
 						{existingNotes}
+						{onNotesSaved}
 					/>
 				{/if}
 			{:else}

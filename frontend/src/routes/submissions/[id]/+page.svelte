@@ -8,16 +8,18 @@
 	import { base } from "$app/paths";
 	import type { SubmissionDetail } from "$lib/types/submissions.js";
 	import type { GradingConfig, GradingInputs, GradeResult } from "$lib/types/grading.js";
-	import type { MergedRubric } from "$lib/types/criteria.js";
-	import type { CategorySelections } from "$lib/types/session.js";
+	import type { MergedRubric, CategoryKey } from "$lib/types/criteria.js";
+	import type { CategorySelections, ReviewSession } from "$lib/types/session.js";
 	import { defaultGradingInputs } from "$lib/types/grading.js";
 	import { calculateGrade } from "$lib/services/grade-calculator.js";
 	import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
+	import { generateEvaluationText } from "$lib/services/text-generator.js";
 	import {
 		feedbackToSelections,
 		selectionsToFeedback,
 	} from "$lib/services/grading-persistence.js";
 	import { rubricSentimentCounts } from "$lib/types/criteria.js";
+	import { statusConfig } from "$lib/components/submissions/status-config.js";
 	import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
@@ -38,7 +40,9 @@
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Download from "@lucide/svelte/icons/download";
 	import Save from "@lucide/svelte/icons/save";
+	import FilePlus2 from "@lucide/svelte/icons/file-plus-2";
 	import X from "@lucide/svelte/icons/x";
+	import { SvelteSet } from "svelte/reactivity";
 
 	/** Desktop right-panel tabs (mockup: Rubric | Grading | Plagiarism | Copilot). */
 	type Tab = "rubric" | "grading" | "plagiarism" | "copilot";
@@ -91,6 +95,15 @@
 	let gradingInputs = $state<GradingInputs>(defaultGradingInputs());
 	let rubric = $state<MergedRubric | null>(null);
 	let categorySelections = $state<Record<string, CategorySelections>>({});
+	/**
+	 * Top-level teacher notes (3f.5 / notes editor). Single source for the
+	 * notes card; the header Save persists it via GradingPatch.notes, and
+	 * autofix cell-note saves append to it and sync it back (onNotesSaved).
+	 */
+	let notesDraft = $state("");
+	/** Whether the teacher edited the notes card since the last sync. */
+	let notesTouched = $state(false);
+	let notesCardRef: HTMLDivElement | undefined = $state();
 	let activeTab = $state<Tab>("rubric");
 	/** Hidden file input backing the header Import button (teacher YAML, 3i). */
 	let importInput: HTMLInputElement | undefined = $state(undefined);
@@ -237,6 +250,10 @@
 			const saved = sub.grading;
 			gradingInputs = { ...defaultGradingInputs(), ...(saved?.dimensions ?? {}) };
 
+			// Restore the top-level notes editor from the persisted record.
+			notesDraft = saved?.notes ?? "";
+			notesTouched = false;
+
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
 			rubric = mergedRubric;
@@ -339,12 +356,19 @@
 			const record = await submissionsStore.saveGrading(submission.id, {
 				dimensions: { ...gradingInputs },
 				feedback: selectionsToFeedback(categorySelections),
+				notes: notesDraft,
 			});
 			// Keep local state fresh: autofix existingNotes must reflect the merge.
+			const savedGrading = (record as { grading?: SubmissionDetail["grading"] }).grading;
 			submission = {
 				...submission,
-				grading: (record as { grading?: SubmissionDetail["grading"] }).grading,
+				grading: savedGrading,
 			};
+			// The notes editor mirrors the persisted top-level notes now.
+			if (savedGrading?.notes != null) {
+				notesDraft = savedGrading.notes;
+			}
+			notesTouched = false;
 			addToast("success", `Grade saved for ${submission.studentId}`, 3000);
 		} catch (e) {
 			addToast("error", e instanceof Error ? e.message : "Failed to save grade", 4000);
@@ -353,6 +377,69 @@
 
 	function handleSaveGrade() {
 		guardExport("Save Grade", () => void doSaveGrade());
+	}
+
+	/**
+	 * Generate (3f.5): compile the current rubric selections + grading into
+	 * editable evaluation text (deterministic — no KI), shown inline in the
+	 * notes card; the teacher edits and saves it with Save.
+	 */
+	function handleGenerate() {
+		if (!submission || !rubric) return;
+		const session: ReviewSession = {
+			student_id: submission.studentId,
+			assignment_id: submission.assignmentId,
+			mode: "teacher",
+			category_selections: categorySelections as unknown as Record<
+				CategoryKey,
+				CategorySelections
+			>,
+			grading: { ...gradingInputs },
+			generated_text: "",
+			notes: notesDraft,
+			started_at: new Date().toISOString(),
+			updated_at: new Date().toISOString(),
+		};
+		notesDraft = generateEvaluationText(session, rubric);
+		notesTouched = true;
+		// Optional call: jsdom does not implement scrollIntoView.
+		notesCardRef?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+		addToast("success", "Generated evaluation text — edit and press Save", 3500);
+	}
+
+	/** Reset (3f.5): clear all review state locally for the next student. */
+	function handleReset() {
+		if (!rubric) return;
+		const empty: Record<string, CategorySelections> = {};
+		for (const entry of rubric.categories) {
+			empty[entry.key] = {
+				checked_items: new SvelteSet<string>(),
+				notes: "",
+				comments: {},
+				deductions: {},
+			};
+		}
+		categorySelections = empty;
+		gradingInputs = defaultGradingInputs();
+		notesDraft = "";
+		notesTouched = true;
+		addToast("info", "Review cleared — press Save to persist", 3500);
+	}
+
+	/** Notes card edits. */
+	function handleNotesInput(value: string) {
+		notesDraft = value;
+		notesTouched = true;
+	}
+
+	/**
+	 * Autofix cell-note saves append to the top-level notes on the server;
+	 * mirror the resulting notes into the editor so the card never drifts
+	 * from what Save will persist.
+	 */
+	function handleNotesSaved(notes: string) {
+		notesDraft = notes;
+		notesTouched = false;
 	}
 
 	async function doExport(kind: "student" | "teacher" = "student") {
@@ -405,6 +492,13 @@
 				teacherGrade: record.teacherGrade,
 				grading: (record as { grading?: SubmissionDetail["grading"] }).grading,
 			};
+			// Imported notes replace the record's top-level notes — sync the
+			// notes editor so it reflects what is now persisted.
+			const importedGrading = (record as { grading?: SubmissionDetail["grading"] }).grading;
+			if (importedGrading?.notes != null) {
+				notesDraft = importedGrading.notes;
+				notesTouched = false;
+			}
 			// Badges/statuses may have changed — refresh the assignment's pairs.
 			await plagiarismStore.load(submission.assignmentId);
 			addToast("success", `Imported ${file.name}`, 3500);
@@ -562,6 +656,8 @@
 	{@const rightTab: Tab = mobileTab === "cells" ? "rubric" : mobileTab}
 	{@const sent = rubricSentimentCounts(rubric, categorySelections)}
 	{@const mobUnreviewed = plagiarismStore.unreviewedCount(submission.studentId)}
+	{@const statusCfg = statusConfig[submission.status] ?? statusConfig.pending}
+	{@const StatusIcon = statusCfg.icon}
 	<div
 		class="review-layout"
 		class:is-dragging={isDragging}
@@ -642,9 +738,12 @@
 				>
 					<h1 class="text-lg font-semibold text-foreground">{submission.studentId}</h1>
 					<span
-						class="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300"
+						class="status-badge status-{submission.status}"
+						title={submission.error ?? ""}
 					>
-						Executed
+						<!-- @ts-ignore -->
+						<StatusIcon size={11} />
+						{statusCfg.label}
 					</span>
 					<div class="ml-auto flex items-center gap-2">
 						<button
@@ -660,6 +759,22 @@
 						>
 							<FileText size={14} />
 							Draft Notes
+						</button>
+						<button
+							onclick={handleGenerate}
+							title="Compile rubric + grading into editable evaluation text"
+							class="inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+						>
+							<FilePlus2 size={14} />
+							Generate
+						</button>
+						<button
+							onclick={handleReset}
+							title="Clear all rubric selections, sliders and notes (local — Save persists)"
+							class="inline-flex items-center gap-1.5 rounded-[var(--radius)] border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10"
+						>
+							<RefreshCw size={14} />
+							Reset
 						</button>
 
 						<!-- Collapse/expand right panel toggle (desktop only) -->
@@ -693,8 +808,26 @@
 					{cells}
 					submissionId={submission.studentId}
 					assignmentId={submission.assignmentId}
-					existingNotes={submission.grading?.notes ?? ""}
+					existingNotes={notesDraft}
+					onNotesSaved={handleNotesSaved}
 				/>
+
+				<!-- Top-level teacher notes (3f.5): edited inline, persisted
+				     with the header Save (GradingPatch.notes). -->
+				<div class="notes-card" bind:this={notesCardRef}>
+					<div class="notes-card-header">
+						<FileText size={13} />
+						<span class="notes-title">Teacher notes</span>
+						<span class="notes-hint">saved with Save</span>
+					</div>
+					<textarea
+						class="notes-textarea"
+						rows={4}
+						placeholder="Top-level feedback notes for this submission…"
+						value={notesDraft}
+						oninput={(e) => handleNotesInput((e.target as HTMLTextAreaElement).value)}
+					></textarea>
+				</div>
 			</div>
 		{/if}
 
@@ -1229,5 +1362,94 @@
 	.btn-guard-primary:hover {
 		background: var(--accent-hover);
 		border-color: var(--accent-hover);
+	}
+
+	/* ── Status badge (shared config, same palette as the dashboard) ── */
+	.status-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 5px;
+		padding: 2px 9px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.4;
+		border: 1px solid transparent;
+	}
+	.status-pending {
+		background: color-mix(in oklch, var(--muted) 10%, transparent);
+		color: var(--muted-foreground);
+		border-color: color-mix(in oklch, var(--muted) 15%, transparent);
+	}
+	.status-executing {
+		background: color-mix(in oklch, var(--info) 12%, transparent);
+		color: var(--info);
+		border-color: color-mix(in oklch, var(--info) 20%, transparent);
+	}
+	.status-executed {
+		background: color-mix(in oklch, var(--success) 12%, transparent);
+		color: var(--success);
+		border-color: color-mix(in oklch, var(--success) 20%, transparent);
+	}
+	.status-error {
+		background: color-mix(in oklch, var(--error) 12%, transparent);
+		color: var(--error);
+		border-color: color-mix(in oklch, var(--error) 20%, transparent);
+	}
+	.status-pre-evaluated {
+		background: color-mix(in oklch, var(--info) 12%, transparent);
+		color: var(--info);
+		border-color: color-mix(in oklch, var(--info) 20%, transparent);
+	}
+	.status-graded {
+		background: var(--accent);
+		color: var(--accent-on);
+		border-color: var(--accent);
+	}
+
+	/* ── Top-level teacher notes card (3f.5) ── */
+	.notes-card {
+		margin: 12px;
+		padding: 10px 12px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--bg);
+	}
+	.notes-card-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-bottom: 6px;
+		color: var(--muted-foreground);
+	}
+	.notes-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--fg);
+	}
+	.notes-hint {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--muted-foreground);
+	}
+	.notes-textarea {
+		width: 100%;
+		box-sizing: border-box;
+		padding: 8px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		font-size: 12px;
+		font-family: var(--font-mono, ui-monospace, monospace);
+		resize: vertical;
+		background: var(--bg);
+		color: var(--fg);
+	}
+	.notes-textarea:focus {
+		outline: none;
+		border-color: var(--ring);
+		box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
+	}
+	.notes-textarea::placeholder {
+		color: var(--muted);
 	}
 </style>

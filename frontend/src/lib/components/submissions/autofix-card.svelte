@@ -40,6 +40,8 @@
 		assignmentId: string;
 		/** Existing submission notes (autofix notes are appended to them). */
 		existingNotes?: string;
+		/** Notify the parent that the top-level notes changed (saved notes). */
+		onNotesSaved?: (notes: string) => void;
 	}
 
 	let {
@@ -50,6 +52,7 @@
 		submissionId,
 		assignmentId,
 		existingNotes = "",
+		onNotesSaved,
 	}: Props = $props();
 
 	// Reactive store state for this cell.
@@ -85,13 +88,14 @@
 	async function handleSaveNote() {
 		saving = true;
 		try {
-			await autofixStore.saveNote(
+			const notes = await autofixStore.saveNote(
 				submissionId,
 				assignmentId,
 				cellIndex,
 				noteDraft,
 				existingNotes,
 			);
+			onNotesSaved?.(notes);
 			addToast("success", `Note for cell ${cellIndex + 1} saved`, 3000);
 		} catch (err) {
 			addToast("error", err instanceof Error ? err.message : "Failed to save note", 4000);

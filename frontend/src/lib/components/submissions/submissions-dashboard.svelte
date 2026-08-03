@@ -1,13 +1,8 @@
 <script lang="ts">
 	import { base } from "$app/paths";
-	import type { SubmissionMeta, SubmissionStatus } from "$lib/types/submissions.js";
+	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
-	import Clock from "@lucide/svelte/icons/clock";
-	import Loader from "@lucide/svelte/icons/loader";
-	import CircleCheck from "@lucide/svelte/icons/circle-check";
-	import CircleAlert from "@lucide/svelte/icons/circle-alert";
-	import Sparkles from "@lucide/svelte/icons/sparkles";
-	import Star from "@lucide/svelte/icons/star";
+	import { statusConfig } from "$lib/components/submissions/status-config.js";
 	import ArrowRight from "@lucide/svelte/icons/arrow-right";
 	import Search from "@lucide/svelte/icons/search";
 	import Upload from "@lucide/svelte/icons/upload";
@@ -112,16 +107,7 @@
 
 	// sortArrow replaced by SortArrow component
 
-	// ── Status display config (matches OD mockup colors) ──
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	const statusConfig: Record<SubmissionStatus, { icon: any; label: string }> = {
-		pending: { icon: Clock, label: "Pending" },
-		executing: { icon: Loader, label: "Executing" },
-		executed: { icon: CircleCheck, label: "Executed" },
-		error: { icon: CircleAlert, label: "Error" },
-		"pre-evaluated": { icon: Sparkles, label: "Pre-evaluated" },
-		graded: { icon: Star, label: "Graded" },
-	};
+	// ── Status display config: shared module (page header chip uses it too) ──
 
 	function gradeDisplay(meta: SubmissionMeta): string {
 		if (meta.teacherGrade != null) return meta.teacherGrade.toFixed(1);
