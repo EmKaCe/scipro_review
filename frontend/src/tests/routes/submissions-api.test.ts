@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * @file L5 API-contract tests for the /api/submissions routes.
  *
@@ -484,8 +485,53 @@ describe("POST /api/submissions/upload", () => {
 		expect(csv).toBe("a,b\n1,2");
 	});
 
-	it("rejects forced submission overrides and malformed requests", async () => {
-		// Non-student notebook forced to submission -> 400.
+	it("persists valid files and reports per-file errors for the rest of the batch", async () => {
+		// One valid submission + one file with an invalid kind override: the
+		// bad file must not abort the request — both results come back and
+		// the failing entry carries the error message.
+		const form = formDataWith(
+			[
+				["assignmentId", ASSIGNMENT],
+				["kinds", JSON.stringify({ "foo.ipynb": "submission" })],
+			],
+			[fakeFile("2026SS_03.ipynb", NOTEBOOK_JSON), fakeFile("foo.ipynb", "{}")],
+		);
+
+		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+
+		expect(body.results).toHaveLength(2);
+
+		// Valid file persisted normally, no error field.
+		expect(body.results[0]).toMatchObject({
+			fileName: "2026SS_03.ipynb",
+			kind: "submission",
+			studentId: "2026SS_03",
+			replaced: false,
+			notebookPath: notebookPath("2026SS_03"),
+		});
+		expect(body.results[0].error).toBeUndefined();
+		const stored = await readFile(
+			path.join(dataDir, "submissions", ASSIGNMENT, "2026SS_03.ipynb"),
+			"utf-8",
+		);
+		expect(stored).toBe(NOTEBOOK_JSON);
+		const [record] = await listSubmissions(ASSIGNMENT);
+		expect(record.studentId).toBe("2026SS_03");
+		expect(record.status).toBe("pending");
+
+		// Bad file surfaced as an error entry.
+		expect(body.results[1]).toMatchObject({
+			fileName: "foo.ipynb",
+			kind: "material-file",
+			replaced: false,
+			bytes: 0,
+		});
+		expect(body.results[1].error).toContain("file name must match");
+	});
+
+	it("reports forced submission overrides as per-file errors and rejects malformed requests", async () => {
+		// Non-student notebook forced to submission -> per-file error entry,
+		// the request itself still succeeds (no whole-request abort).
 		const form = formDataWith(
 			[
 				["assignmentId", ASSIGNMENT],
@@ -493,11 +539,17 @@ describe("POST /api/submissions/upload", () => {
 			],
 			[fakeFile("foo.ipynb", "{}")],
 		);
-		await expectApiError(
-			uploadPOST(uploadEvent("/api/submissions/upload", form)),
-			400,
-			"file name must match",
-		);
+		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
+
+		expect(body.results).toHaveLength(1);
+		expect(body.results[0]).toMatchObject({
+			fileName: "foo.ipynb",
+			kind: "material-file", // kind is meaningless for failed files
+			replaced: false,
+			bytes: 0,
+		});
+		expect(body.results[0].error).toContain("file name must match");
+		expect(await listSubmissions(ASSIGNMENT)).toEqual([]); // nothing persisted
 
 		// Missing assignmentId -> 400.
 		const noAssignment = formDataWith([], [fakeFile("2026SS_03.ipynb", "{}")]);

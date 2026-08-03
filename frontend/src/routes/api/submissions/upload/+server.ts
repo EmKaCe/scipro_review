@@ -29,6 +29,7 @@ import { assignmentExists } from "$lib/server/assignments";
 import { classifyFile, type ClassifiedFile, type UploadKind } from "$lib/server/file-service";
 import { getDataDir, upsertSubmission } from "$lib/server/metadata";
 import { clearResult } from "$lib/server/results-store";
+import type { SubmissionUploadResult } from "$lib/services/submissions-api";
 
 const VALID_KINDS: ReadonlySet<string> = new Set<UploadKind>([
 	"submission",
@@ -63,45 +64,75 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	const overrides = parseKindOverrides(form);
 
-	const persisted = [];
+	// One bad file must not abort the batch: failures are reported per-file
+	// (error entry) and the remaining files are still processed.
+	const persisted: SubmissionUploadResult[] = [];
 	for (const file of files) {
-		const classification = applyKindOverride(
-			classifyFile(file.name, assignmentId),
-			overrides.get(file.name),
-		);
-		const data = new Uint8Array(await file.arrayBuffer());
-		const replaced = await persistClassified(classification, data);
+		try {
+			const classification = applyKindOverride(
+				classifyFile(file.name, assignmentId),
+				overrides.get(file.name),
+			);
+			const data = new Uint8Array(await file.arrayBuffer());
+			const replaced = await persistClassified(classification, data);
 
-		if (classification.kind === "submission") {
-			const record = await upsertSubmission(assignmentId, classification.studentId!, {
-				semester: classification.semester,
-				fileName: classification.fileName,
-				notebookPath: classification.relativePath,
-				status: "pending",
-				error: null,
-			});
-			await clearResult(assignmentId, classification.studentId!);
+			if (classification.kind === "submission") {
+				const record = await upsertSubmission(assignmentId, classification.studentId!, {
+					semester: classification.semester,
+					fileName: classification.fileName,
+					notebookPath: classification.relativePath,
+					status: "pending",
+					error: null,
+				});
+				await clearResult(assignmentId, classification.studentId!);
+				persisted.push({
+					fileName: file.name,
+					kind: classification.kind,
+					studentId: record.studentId,
+					semester: record.semester,
+					replaced,
+					bytes: data.byteLength,
+					notebookPath: record.notebookPath,
+				});
+			} else {
+				persisted.push({
+					fileName: file.name,
+					kind: classification.kind,
+					replaced,
+					bytes: data.byteLength,
+					relativePath: classification.relativePath,
+				});
+			}
+		} catch (err) {
 			persisted.push({
 				fileName: file.name,
-				kind: classification.kind,
-				studentId: record.studentId,
-				semester: record.semester,
-				replaced,
-				bytes: data.byteLength,
-				notebookPath: record.notebookPath,
-			});
-		} else {
-			persisted.push({
-				fileName: file.name,
-				kind: classification.kind,
-				replaced,
-				bytes: data.byteLength,
-				relativePath: classification.relativePath,
+				kind: "material-file", // kind is meaningless for failed files; UI shows the error row
+				replaced: false,
+				bytes: 0,
+				error: errorMessage(err),
 			});
 		}
 	}
 
 	return json({ assignmentId, results: persisted });
+}
+
+/**
+ * Extract a human-readable message from an unknown thrown value. SvelteKit's
+ * `error()` throws an HttpError that is NOT an Error instance — its message
+ * lives in body.message — so handle that shape explicitly.
+ */
+function errorMessage(err: unknown): string {
+	if (err instanceof Error) return err.message;
+	if (typeof err === "object" && err !== null) {
+		const body = (err as { body?: unknown }).body;
+		if (typeof body === "string") return body;
+		if (typeof body === "object" && body !== null) {
+			const message = (body as { message?: unknown }).message;
+			if (typeof message === "string") return message;
+		}
+	}
+	return String(err);
 }
 
 // ---------------------------------------------------------------------------
