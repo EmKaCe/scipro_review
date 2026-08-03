@@ -182,6 +182,79 @@ describe("buildStudentYaml", () => {
 		const yaml = buildStudentYaml(record);
 		expect(yaml).not.toContain("notes:");
 	});
+
+	it("emits per-category feedback (checked list, comments, deductions, notes)", () => {
+		const record = gradedRecord();
+		record.grading = {
+			...record.grading!,
+			feedback: {
+				code_formatting: {
+					checked: ["a", "b"],
+					comments: { a: "c" },
+					deductions: { b: 0.5 },
+					notes: "<p>n</p>",
+				},
+			},
+		};
+		const yaml = buildStudentYaml(record);
+
+		expect(yaml).toContain("feedback:");
+		expect(yaml).toContain("code_formatting:");
+		expect(yaml).toContain("checked:");
+		expect(yaml).toContain("- a");
+		expect(yaml).toContain("- b");
+		expect(yaml).toContain("comments:");
+		expect(yaml).toContain("a: c");
+		expect(yaml).toContain("deductions:");
+		expect(yaml).toContain("b: 0.5");
+		expect(yaml).toContain("notes: |-");
+	});
+
+	it("round-trips feedback through the v2 parser shape", async () => {
+		const record = gradedRecord();
+		record.grading = {
+			...record.grading!,
+			feedback: {
+				code_formatting: {
+					checked: ["a", "b"],
+					comments: { a: "c" },
+					deductions: { b: 0.5 },
+					notes: "<p>n</p>",
+				},
+			},
+		};
+		const yaml = buildStudentYaml(record);
+		const { load } = await import("js-yaml");
+		const parsed = load(yaml) as {
+			feedback?: Record<
+				string,
+				{
+					checked: string[];
+					comments: Record<string, string>;
+					deductions: Record<string, number>;
+					notes: string;
+				}
+			>;
+		};
+
+		expect(parsed.feedback!.code_formatting.checked).toEqual(["a", "b"]);
+		expect(parsed.feedback!.code_formatting.comments).toEqual({ a: "c" });
+		expect(parsed.feedback!.code_formatting.deductions).toEqual({ b: 0.5 });
+		expect(parsed.feedback!.code_formatting.notes).toBe("<p>n</p>");
+	});
+
+	it("omits categories without content and keeps feedback: {} for the student copy", () => {
+		const record = gradedRecord();
+		record.grading = {
+			...record.grading!,
+			feedback: {
+				code_formatting: { checked: [], comments: {}, deductions: {}, notes: "" },
+			},
+		};
+		const yaml = buildStudentYaml(record);
+		expect(yaml).toContain("feedback: {}");
+		expect(yaml).not.toContain("code_formatting:");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -218,5 +291,38 @@ describe("buildGradingYaml (plagiarism audit)", () => {
 	it("omits the plagiarism block when no pairs exist", () => {
 		const yaml = buildGradingYaml(gradedRecord());
 		expect(yaml).not.toContain("plagiarism:");
+	});
+});
+
+describe("buildGradingYaml (feedback block)", () => {
+	it("includes the feedback block after scores when the record has feedback", async () => {
+		const record = gradedRecord();
+		record.grading = {
+			...record.grading!,
+			feedback: {
+				code_formatting: {
+					checked: ["a"],
+					comments: {},
+					deductions: {},
+					notes: "",
+				},
+			},
+		};
+		const yaml = buildGradingYaml(record);
+
+		expect(yaml).toContain("scores:");
+		expect(yaml.indexOf("feedback:")).toBeGreaterThan(yaml.indexOf("scores:"));
+		expect(yaml).toContain("code_formatting:");
+		expect(yaml).toContain("checked:");
+		expect(yaml).toContain("- a");
+		expect(yaml).toContain("comments: {}");
+		expect(yaml).toContain("deductions: {}");
+		expect(yaml).toContain('notes: ""');
+
+		const { load } = await import("js-yaml");
+		const parsed = load(yaml) as {
+			feedback?: Record<string, { checked: string[] }>;
+		};
+		expect(parsed.feedback!.code_formatting.checked).toEqual(["a"]);
 	});
 });
