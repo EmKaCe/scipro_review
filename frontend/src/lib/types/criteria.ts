@@ -170,6 +170,24 @@ export function mainPointsFor(category: Category, sentiment: Sentiment): readonl
 	return category[sentiment];
 }
 
+/**
+ * Find the rubric category whose sub-points contain the given text
+ * (null when absent).
+ */
+export function findCategoryEntry(
+	rubric: MergedRubric | null,
+	subPointText: string,
+): CategoryEntry | null {
+	if (!rubric) return null;
+	return (
+		rubric.categories.find((entry) =>
+			(["positive", "neutral", "negative"] as const).some((sentiment) =>
+				entry.category[sentiment].some((mp) => mp.sub_points.some((sp) => sp.text === subPointText)),
+			),
+		) ?? null
+	);
+}
+
 /** Whether any sub-point in the category has `comment: true`. */
 export function hasCommentItems(category: Category): boolean {
 	return allSubPoints(category).some((sp) => sp.comment === true);

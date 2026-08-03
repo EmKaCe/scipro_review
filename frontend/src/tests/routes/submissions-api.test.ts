@@ -800,6 +800,115 @@ describe("POST /api/submissions/[id]/save", () => {
 			"2026SS_99",
 		);
 	});
+
+	it("persists a feedback block and merges it per category", async () => {
+		await seedSubmission("2026SS_03", "executed");
+
+		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
+		const first = await readJson(
+			await savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						feedback: {
+							code_formatting: {
+								checked: ["blank lines - consistent"],
+								comments: { "blank lines - consistent": "add blank lines" },
+								deductions: { "blank lines - consistent": 0.5 },
+								notes: "first category pass",
+							},
+						},
+					}),
+				}),
+			),
+		);
+		expect(first.grading?.feedback).toEqual({
+			code_formatting: {
+				checked: ["blank lines - consistent"],
+				comments: { "blank lines - consistent": "add blank lines" },
+				deductions: { "blank lines - consistent": 0.5 },
+				notes: "first category pass",
+			},
+		});
+
+		// A second save for a different category key merges, not replaces.
+		const second = await readJson(
+			await savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						feedback: {
+							naming: {
+								checked: ["naming - not descriptive"],
+								comments: {},
+								deductions: {},
+								notes: "",
+							},
+						},
+					}),
+				}),
+			),
+		);
+		expect(second.grading?.feedback).toEqual({
+			code_formatting: {
+				checked: ["blank lines - consistent"],
+				comments: { "blank lines - consistent": "add blank lines" },
+				deductions: { "blank lines - consistent": 0.5 },
+				notes: "first category pass",
+			},
+			naming: { checked: ["naming - not descriptive"], comments: {}, deductions: {}, notes: "" },
+		});
+	});
+
+	it("does not clobber existing feedback on a notes-only (autofix) save", async () => {
+		await seedSubmission("2026SS_03", "executed");
+
+		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
+		await savePOST(
+			makeEvent(url, {
+				params: { id: "2026SS_03" },
+				request: jsonRequest(url, {
+					feedback: {
+						code_formatting: { checked: ["x"], comments: {}, deductions: {}, notes: "n" },
+					},
+				}),
+			}),
+		);
+
+		const autofix = await readJson(
+			await savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, { notes: "autofix [Cell 3] ..." }),
+				}),
+			),
+		);
+		expect(autofix.grading?.feedback?.code_formatting).toEqual({
+			checked: ["x"],
+			comments: {},
+			deductions: {},
+			notes: "n",
+		});
+		expect(autofix.grading?.notes).toContain("[Cell 3]");
+	});
+
+	it("400s malformed feedback entries", async () => {
+		await seedSubmission("2026SS_03", "executed");
+
+		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
+		await expectApiError(
+			savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						feedback: { code_formatting: { checked: "not-an-array" } },
+					}),
+				}),
+			),
+			400,
+			"feedback",
+		);
+	});
 });
 
 // ---------------------------------------------------------------------------

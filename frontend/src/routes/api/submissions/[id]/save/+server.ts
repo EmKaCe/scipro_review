@@ -4,6 +4,7 @@
  * Body (JSON, all optional):
  *   rubric     — object mapping criterion key -> selected option key
  *   dimensions — object mapping dimension id -> slider value (number)
+ *   feedback   — object mapping category key -> { checked, comments, deductions, notes }
  *   notes      — free-form string
  *
  * Merges into the record's grading state via metadata.saveGrading; the
@@ -15,6 +16,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { getSubmission, saveGrading } from "$lib/server/metadata";
+import type { CategoryFeedback } from "$lib/types/evaluation";
 
 export async function POST(event: RequestEvent): Promise<Response> {
 	const studentId = event.params.id;
@@ -48,6 +50,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	const grading: {
 		rubric?: Record<string, string>;
 		dimensions?: Record<string, number>;
+		feedback?: Record<string, CategoryFeedback>;
 		notes?: string;
 	} = {};
 	if (input.rubric !== undefined) {
@@ -61,6 +64,15 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			throw error(400, "dimensions must be an object mapping dimension ids to numbers");
 		}
 		grading.dimensions = input.dimensions as Record<string, number>;
+	}
+	if (input.feedback !== undefined) {
+		if (!isFeedbackMap(input.feedback)) {
+			throw error(
+				400,
+				"feedback must be an object mapping category keys to { checked: string[], comments: Record<string,string>, deductions: Record<string,number>, notes: string }",
+			);
+		}
+		grading.feedback = input.feedback as Record<string, CategoryFeedback>;
 	}
 	if (input.notes !== undefined) {
 		if (typeof input.notes !== "string") {
@@ -89,4 +101,23 @@ function isNumberMap(value: unknown): value is Record<string, number> {
 		return false;
 	}
 	return Object.values(value).every((v) => typeof v === "number" && Number.isFinite(v));
+}
+
+function isFeedbackMap(value: unknown): boolean {
+	if (value === null || typeof value !== "object" || Array.isArray(value)) {
+		return false;
+	}
+	return Object.values(value).every((entry) => {
+		if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+			return false;
+		}
+		const e = entry as Record<string, unknown>;
+		return (
+			Array.isArray(e.checked) &&
+			e.checked.every((v) => typeof v === "string") &&
+			isStringMap(e.comments) &&
+			isNumberMap(e.deductions) &&
+			typeof e.notes === "string"
+		);
+	});
 }

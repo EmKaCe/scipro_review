@@ -18,6 +18,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import type { SubmissionStatus } from "$lib/types/submissions";
+import type { CategoryFeedback } from "$lib/types/evaluation";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -29,6 +30,8 @@ export interface GradingState {
 	rubric: Record<string, string>;
 	/** Dimension scores: dimension id -> slider value (points deducted). */
 	dimensions: Record<string, number>;
+	/** Per-category feedback (v2 CategoryFeedback shape, keyed by category key). */
+	feedback?: Record<string, CategoryFeedback>;
 	/** Free-form teacher notes (Phase 3f Generate button output). */
 	notes?: string;
 	/** ISO timestamp of the last grading change. */
@@ -284,6 +287,7 @@ export async function saveGrading(
 		grading: {
 			rubric: { ...(existing.grading?.rubric ?? {}), ...(grading.rubric ?? {}) },
 			dimensions: { ...(existing.grading?.dimensions ?? {}), ...(grading.dimensions ?? {}) },
+			feedback: { ...(existing.grading?.feedback ?? {}), ...(grading.feedback ?? {}) },
 			notes: grading.notes ?? existing.grading?.notes,
 			updatedAt: now,
 		},

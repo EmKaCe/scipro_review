@@ -247,6 +247,19 @@ describe("saveGrading", () => {
 		expect(JSON.parse(String(init.body))).toEqual(grading);
 		expect(result.id).toBe("2026SS_03");
 	});
+
+	it("sends feedback and dimensions in the patch body", async () => {
+		const feedback = {
+			code_formatting: { checked: ["a"], comments: {}, deductions: {}, notes: "n" },
+		};
+		fetchMock.mockResolvedValue(jsonResponse(meta("2026SS_03", "executed")));
+
+		await saveGrading("2026SS_03", { feedback, dimensions: { style: 1.5 } }, ASSIGNMENT);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`);
+		expect(JSON.parse(String(init.body))).toEqual({ feedback, dimensions: { style: 1.5 } });
+	});
 });
 
 describe("gradeSubmission", () => {

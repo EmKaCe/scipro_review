@@ -12,6 +12,7 @@
  */
 
 import type { SubmissionDetail, SubmissionMeta } from "$lib/types/submissions.js";
+import type { CategoryFeedback } from "$lib/types/evaluation.js";
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -53,6 +54,8 @@ export interface SubmissionUploadResult {
 	notebookPath?: string;
 	/** Present for material-kind files. */
 	relativePath?: string;
+	/** Error message when this file failed to persist (per-file failure). */
+	error?: string;
 }
 
 /** POST /api/submissions/upload response. */
@@ -84,6 +87,8 @@ export interface GradingPatch {
 	rubric?: Record<string, string>;
 	/** Dimension id -> slider value (points deducted). */
 	dimensions?: Record<string, number>;
+	/** Per-category feedback: category key -> v2 CategoryFeedback. */
+	feedback?: Record<string, CategoryFeedback>;
 	/** Free-form teacher notes. */
 	notes?: string;
 }
