@@ -15,6 +15,7 @@ import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
+import { isFeedbackMap, isNumberMap, isStringMap } from "$lib/server/grading-validation";
 import { getSubmission, saveGrading } from "$lib/server/metadata";
 import type { CategoryFeedback } from "$lib/types/evaluation";
 
@@ -83,41 +84,4 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	const record = await saveGrading(assignmentId, studentId, grading);
 	return json(record);
-}
-
-// ---------------------------------------------------------------------------
-// Validation helpers
-// ---------------------------------------------------------------------------
-
-function isStringMap(value: unknown): value is Record<string, string> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	return Object.values(value).every((v) => typeof v === "string");
-}
-
-function isNumberMap(value: unknown): value is Record<string, number> {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	return Object.values(value).every((v) => typeof v === "number" && Number.isFinite(v));
-}
-
-function isFeedbackMap(value: unknown): boolean {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) {
-		return false;
-	}
-	return Object.values(value).every((entry) => {
-		if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
-			return false;
-		}
-		const e = entry as Record<string, unknown>;
-		return (
-			Array.isArray(e.checked) &&
-			e.checked.every((v) => typeof v === "string") &&
-			isStringMap(e.comments) &&
-			isNumberMap(e.deductions) &&
-			typeof e.notes === "string"
-		);
-	});
 }
