@@ -56,6 +56,8 @@ export interface ReviewSession {
 	grading: GradingInputs;
 	/** Generated evaluation text (Markdown). */
 	generated_text: string;
+	/** Free-text feedback notes (top-level, teacher-written; optional). */
+	notes?: string;
 	/** ISO timestamp when the session was started. */
 	started_at: string;
 	/** ISO timestamp of the last update. */

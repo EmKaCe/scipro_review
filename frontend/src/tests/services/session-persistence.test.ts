@@ -298,6 +298,23 @@ result:
 		expect(session!.assignment_id).toBe("atom_interaction");
 	});
 
+	it("carries top-level teacher notes into the session (student copy export)", () => {
+		const yaml = `
+student_id: "2026SS_03"
+assignment: "soil_contamination"
+reviewer: "SciPro Review"
+date: "2026-07-31"
+scores: {}
+feedback: {}
+notes: |-
+  Good structure.
+  One missing axis label in plot 2.
+`;
+		const session = parseYamlImport(yaml);
+		expect(session).not.toBeNull();
+		expect(session!.notes).toBe("Good structure.\nOne missing axis label in plot 2.");
+	});
+
 	it("returns null for YAML without feedback key", () => {
 		const yaml = `
 student_id: "2026SS_42"

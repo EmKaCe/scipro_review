@@ -182,6 +182,65 @@ export interface BatchExecutionResult {
 }
 
 // ---------------------------------------------------------------------------
+// Autofix (Phase 3c.1 — KI Connect fix suggestions for failed cells)
+// ---------------------------------------------------------------------------
+
+export interface AutofixRequest {
+	/** The failing cell's source code (as executed). */
+	cellSource: string;
+	/** Error message from the failed execution. */
+	cellError: string;
+	/** Index of the failing cell in the notebook (informational). */
+	cellIndex?: number;
+	/** Optional traceback lines — appended to the error for the LLM. */
+	traceback?: string[] | null;
+	/** Assignment id — used by the executor to discover input-data files. */
+	assignmentId?: string | null;
+}
+
+/** Fix suggestion for a failed cell (mirrors the executor's AutoFixResponse). */
+export interface AutofixSuggestion {
+	/** True when KI Connect was unavailable or returned nothing usable. */
+	skipped: boolean;
+	/** Corrected cell source proposed by the LLM. */
+	suggestion: string | null;
+	/** Brief explanation of what was wrong and how the fix works. */
+	explanation: string | null;
+	/** Model confidence in the fix (0–1). */
+	confidence: number | null;
+	/** Categorization of the fix (import_fix, syntax_fix, …). */
+	fixType: string | null;
+	/** Suggestion when it parses as valid Python — safe to re-run. */
+	patchedSource: string | null;
+	/** Result of the deterministic ast.parse sanity check. */
+	syntaxValid: boolean | null;
+}
+
+/** Convert a frontend AutofixRequest into the executor wire body. */
+export function toWireAutofixRequest(request: AutofixRequest): Record<string, unknown> {
+	return {
+		cell_source: request.cellSource,
+		cell_error: request.cellError,
+		cell_index: request.cellIndex ?? null,
+		traceback: request.traceback ?? null,
+		assignment_id: request.assignmentId ?? null,
+	};
+}
+
+/** Translate the executor's AutoFixResponse into the frontend shape. */
+export function translateAutofixSuggestion(wire: Record<string, unknown>): AutofixSuggestion {
+	return {
+		skipped: wire.skipped === true,
+		suggestion: typeof wire.suggestion === "string" ? wire.suggestion : null,
+		explanation: typeof wire.explanation === "string" ? wire.explanation : null,
+		confidence: typeof wire.confidence === "number" ? wire.confidence : null,
+		fixType: typeof wire.fix_type === "string" ? wire.fix_type : null,
+		patchedSource: typeof wire.patched_source === "string" ? wire.patched_source : null,
+		syntaxValid: typeof wire.syntax_valid === "boolean" ? wire.syntax_valid : null,
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 
@@ -343,6 +402,22 @@ export class ExecutorClient {
 	/** Executor health check. */
 	async health(): Promise<ExecutorHealth> {
 		return (await this.get("/health")) as ExecutorHealth;
+	}
+
+	/**
+	 * Ask KI Connect for a fix suggestion for a failed cell.
+	 *
+	 * The executor sanity-checks the suggestion with ast.parse; a
+	 * syntactically invalid fix is returned flagged (syntaxValid false,
+	 * no patchedSource) instead of being applied. When KI Connect is
+	 * unavailable the executor responds with `skipped: true`.
+	 */
+	async suggestAutofix(request: AutofixRequest): Promise<AutofixSuggestion> {
+		const wire = (await this.post("/auto-fix", toWireAutofixRequest(request))) as Record<
+			string,
+			unknown
+		>;
+		return translateAutofixSuggestion(wire);
 	}
 
 	// ------------------------------------------------------------------

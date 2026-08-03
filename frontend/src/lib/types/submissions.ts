@@ -86,4 +86,9 @@ export interface SubmissionDetail extends SubmissionMeta {
 	cells: CellInfo[];
 	/** Reference key cells for comparison (loaded from assignment materials). */
 	referenceCells?: CellInfo[];
+	/** Persisted grading state (rubric/dimensions/notes) — from the record. */
+	grading?: {
+		/** Free-form teacher notes (autofix notes append here). */
+		notes?: string;
+	};
 }

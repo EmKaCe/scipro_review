@@ -11,6 +11,7 @@
 	import { base } from "$app/paths";
 	import { goto } from "$app/navigation";
 	import { settings, setTheme } from "$lib/stores/settings.svelte.js";
+	import MenuButton from "$lib/components/ui/menu-button.svelte";
 
 	interface Props {
 		/** Whether to show the back navigation button. */
@@ -21,10 +22,16 @@
 		showSave?: boolean;
 		/** Callback invoked when save is clicked. */
 		onsaveclick?: () => void;
-		/** Whether to show the export YAML button. */
 		showExport?: boolean;
 		/** Callback invoked when export is clicked. */
 		onexportclick?: () => void;
+		/** Secondary export actions (split-button menu). */
+		exportMenuItems?: {
+			id: string;
+			label: string;
+			description?: string;
+			onclick: () => void;
+		}[];
 		/** Whether to show the import button. */
 		showImport?: boolean;
 		/** Callback invoked when the import button is clicked. */
@@ -48,6 +55,7 @@
 		onsaveclick,
 		showExport = false,
 		onexportclick,
+		exportMenuItems = [],
 		showImport = false,
 		onimportclick,
 		headerState = "dashboard",
@@ -148,14 +156,17 @@
 		{/if}
 
 		{#if showExport}
-			<button
-				title="Export YAML"
-				onclick={onexportclick}
-				class="hidden shrink-0 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5 sm:flex dark:hover:bg-white/10"
-			>
+			{#snippet exportIcon()}
 				<Download size={14} />
-				Export
-			</button>
+			{/snippet}
+			<MenuButton
+				label="Export"
+				primaryOnClick={() => onexportclick?.()}
+				items={exportMenuItems ?? []}
+				icon={exportIcon}
+				groupClass="hidden shrink-0 overflow-hidden rounded-[var(--radius)] border border-border sm:flex"
+				variantClass="gap-1.5 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			/>
 		{/if}
 
 		{#if showImport}

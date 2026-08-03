@@ -436,9 +436,9 @@ describe("generateEvaluation", () => {
 		const session = makeSession();
 		const result = makeGradeResult(75);
 		const evaluation = generateEvaluation(session, TEST_RUBRIC, result, "Reviewer");
-		expect(evaluation.result.percentage).toBe(75);
-		expect(evaluation.result.grade).toBeDefined();
-		expect(evaluation.result.label).toBeDefined();
+		expect(evaluation.result?.percentage).toBe(75);
+		expect(evaluation.result?.grade).toBeDefined();
+		expect(evaluation.result?.label).toBeDefined();
 	});
 
 	it("skips categories with no selections", () => {

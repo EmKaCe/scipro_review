@@ -123,7 +123,9 @@ export function deriveCellSummary(
 		return undefined;
 	}
 	const errors = result.errorCells ?? 0;
-	return errors > 0 ? `${total} cells, ${errors} error${errors === 1 ? "" : "s"}` : `${total} cells`;
+	return errors > 0
+		? `${total} cells, ${errors} error${errors === 1 ? "" : "s"}`
+		: `${total} cells`;
 }
 
 function isNodeError(err: unknown): err is NodeJS.ErrnoException {

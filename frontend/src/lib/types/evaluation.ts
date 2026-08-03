@@ -95,5 +95,10 @@ export interface Evaluation {
 	/** Feedback for each rubric category. */
 	readonly feedback: Readonly<Record<CategoryKey, CategoryFeedback>>;
 	/** Computed grade result. */
-	readonly result: EvaluationResult;
+	readonly result?: EvaluationResult;
+	/**
+	 * Free-text feedback notes (top-level, teacher-written).
+	 * Optional for backward compatibility with exports that predate it.
+	 */
+	readonly notes?: string;
 }

@@ -15,8 +15,13 @@ export const headerConfig = $state<{
 	onsaveclick?: () => void;
 	/** Whether to show the export YAML button. */
 	showExport?: boolean;
-	/** Callback invoked when the export button is clicked. */
+	/** Callback invoked when the export button is clicked (primary = student copy). */
 	onexportclick?: () => void;
+	/**
+	 * Secondary export actions shown in the split-button menu
+	 * (e.g. the teacher YAML variant). Primary stays `onexportclick`.
+	 */
+	exportMenuItems?: { id: string; label: string; description?: string; onclick: () => void }[];
 	/** Whether to show the import button. */
 	showImport: boolean;
 	/** Callback invoked when the import button is clicked. */
@@ -34,6 +39,7 @@ export const headerConfig = $state<{
 	onsaveclick: undefined,
 	showExport: false,
 	onexportclick: undefined,
+	exportMenuItems: undefined,
 	showImport: false,
 	onimportclick: undefined,
 	headerState: "dashboard",

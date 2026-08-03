@@ -45,7 +45,12 @@ function pair(a: string, b: string): PlagiarismPair {
 		notebookOverlap: 0.8,
 		matchedCells: [],
 		flags: [],
-		details: { cellCountDiff: 0, sharedVariableNames: [], sharedComments: [], sharedImports: [] },
+		details: {
+			cellCountDiff: 0,
+			sharedVariableNames: [],
+			sharedComments: [],
+			sharedImports: [],
+		},
 	};
 }
 
@@ -69,9 +74,7 @@ afterEach(() => {
 describe("isSemanticComparisonAvailable", () => {
 	it("is false without KI_CONNECT_API_KEY", async () => {
 		delete process.env.KI_CONNECT_API_KEY;
-		const { isSemanticComparisonAvailable } = await import(
-			"$lib/server/plagiarism/semantic"
-		);
+		const { isSemanticComparisonAvailable } = await import("$lib/server/plagiarism/semantic");
 		expect(isSemanticComparisonAvailable()).toBe(false);
 	});
 });
@@ -180,7 +183,12 @@ describe("mergeSemanticResults", () => {
 		const pairs = [pair("2026SS_01", "2026SS_02"), pair("2026SS_01", "2026SS_03")];
 
 		const merged = mergeSemanticResults(pairs, [
-			{ studentA: "2026SS_01", studentB: "2026SS_02", semanticScore: 0.75, verdict: "similar" },
+			{
+				studentA: "2026SS_01",
+				studentB: "2026SS_02",
+				semanticScore: 0.75,
+				verdict: "similar",
+			},
 		]);
 
 		expect(merged[0]!.semanticScore).toBe(0.75);

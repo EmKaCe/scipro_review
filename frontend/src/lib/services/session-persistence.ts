@@ -334,6 +334,7 @@ function evaluationToSession(evaluation: Evaluation): ReviewSession {
 		category_selections: categorySelections as Record<string, never>,
 		grading: grading as never,
 		generated_text: "",
+		notes: (evaluation as { notes?: string }).notes ?? "",
 		started_at: evaluation.date ?? new Date().toISOString(),
 		updated_at: new Date().toISOString(),
 	};

@@ -12,11 +12,7 @@
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
-import {
-	assignmentExists,
-	getAssignmentById,
-	resolveAssignmentId,
-} from "$lib/server/assignments";
+import { assignmentExists, getAssignmentById, resolveAssignmentId } from "$lib/server/assignments";
 import { getExecutorClient } from "$lib/server/executor-client";
 import { getSubmission, updateStatus, upsertSubmission } from "$lib/server/metadata";
 import { deriveCellSummary, setResult } from "$lib/server/results-store";

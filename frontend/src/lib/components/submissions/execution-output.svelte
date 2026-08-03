@@ -5,12 +5,19 @@
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import { marked } from "marked";
+	import AutofixCard from "./autofix-card.svelte";
 
 	interface Props {
 		cells: readonly CellInfo[];
+		/** Submission id — autofix suggestions + notes target. */
+		submissionId: string;
+		/** Assignment id — route scoping. */
+		assignmentId: string;
+		/** Existing submission notes (autofix notes append to them). */
+		existingNotes?: string;
 	}
 
-	let { cells }: Props = $props();
+	let { cells, submissionId, assignmentId, existingNotes = "" }: Props = $props();
 
 	function renderMarkdown(src: string): string {
 		try {
@@ -78,6 +85,18 @@
 				{/if}
 				{#if cell.output}
 					<div class="cell-output">{cell.output}</div>
+				{/if}
+				{#if cell.error}
+					<!-- Autofix card (P3-3): suggestion on demand, teacher writes
+					     the final note. Only for failing code cells. -->
+					<AutofixCard
+						cellIndex={cell.index}
+						source={cell.source}
+						error={cell.error}
+						{submissionId}
+						{assignmentId}
+						{existingNotes}
+					/>
 				{/if}
 			{:else}
 				<div class="cell-markdown">{@html renderMarkdown(cell.source)}</div>

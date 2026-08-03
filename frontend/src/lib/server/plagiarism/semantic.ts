@@ -86,11 +86,7 @@ function formatNotebookForPrompt(notebook: NotebookInput, maxChars: number): str
 	return `${code.slice(0, maxChars)}\n# ... [truncated]`;
 }
 
-function buildSemanticPrompt(
-	a: NotebookInput,
-	b: NotebookInput,
-	opts: SemanticOptions,
-): string {
+function buildSemanticPrompt(a: NotebookInput, b: NotebookInput, opts: SemanticOptions): string {
 	const context = opts.assignmentContext
 		? `Assignment context: ${opts.assignmentContext}\n\n`
 		: "";

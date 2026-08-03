@@ -240,9 +240,9 @@ export class SubmissionsStore {
 		return record;
 	}
 
-	/** Download the grading YAML for one submission. */
-	async export(id: string): Promise<SubmissionExport> {
-		return exportSubmission(id, this.assignmentId ?? undefined);
+	/** Download the grading YAML for one submission (student copy by default). */
+	async export(id: string, kind: "student" | "teacher" = "student"): Promise<SubmissionExport> {
+		return exportSubmission(id, this.assignmentId ?? undefined, kind);
 	}
 
 	// -----------------------------------------------------------------------

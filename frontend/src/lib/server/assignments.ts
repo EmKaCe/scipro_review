@@ -50,10 +50,9 @@ export async function loadAssignmentsRegistry(): Promise<AssignmentsRegistry | n
 	try {
 		parsed = yaml.load(raw);
 	} catch (err) {
-		throw new Error(
-			`assignments.yaml is not valid YAML: ${(err as Error).message}`,
-			{ cause: err },
-		);
+		throw new Error(`assignments.yaml is not valid YAML: ${(err as Error).message}`, {
+			cause: err,
+		});
 	}
 
 	if (

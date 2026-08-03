@@ -17,7 +17,10 @@ import { upsertSubmission } from "$lib/server/metadata";
 import { loadAssignmentNotebooks } from "$lib/server/plagiarism/structural";
 
 import { POST as checkPOST } from "../../routes/api/plagiarism/check/+server";
-import { GET as resultsGET } from "../../routes/api/plagiarism/results/+server";
+import {
+	GET as resultsGET,
+	PATCH as resultsPATCH,
+} from "../../routes/api/plagiarism/results/+server";
 
 // ---------------------------------------------------------------------------
 // Semantic pass mock (availability + LLM calls; merging stays real)
@@ -55,10 +58,10 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 const SHARED_CELL = [
-	'import numpy as np',
+	"import numpy as np",
 	'data = np.loadtxt("data.csv")',
-	'mean = data.mean()',
-	'print(mean)',
+	"mean = data.mean()",
+	"print(mean)",
 ].join("\n");
 
 const UNRELATED_CELL = "import math\nradius = 5\narea = math.pi * radius ** 2\nprint(area)";
@@ -202,7 +205,11 @@ describe("POST /api/plagiarism/check", () => {
 	it("returns done with no pairs for an empty assignment", async () => {
 		const response = await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
 
-		const result = (await response.json()) as { status: string; pairs: unknown[]; totalPairs: number };
+		const result = (await response.json()) as {
+			status: string;
+			pairs: unknown[];
+			totalPairs: number;
+		};
 		expect(result.status).toBe("done");
 		expect(result.pairs).toEqual([]);
 		expect(result.totalPairs).toBe(0);
@@ -254,7 +261,9 @@ describe("GET /api/plagiarism/results", () => {
 		await seedSubmission("2026SS_02", [SHARED_CELL]);
 		await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
 
-		const response = await resultsGET(asEvent(getRequest("http://localhost/api/plagiarism/results")));
+		const response = await resultsGET(
+			asEvent(getRequest("http://localhost/api/plagiarism/results")),
+		);
 
 		expect(response.status).toBe(200);
 		const result = (await response.json()) as {
@@ -271,7 +280,9 @@ describe("GET /api/plagiarism/results", () => {
 		await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
 
 		const response = await resultsGET(
-			asEvent(getRequest(`http://localhost/api/plagiarism/results?assignmentId=${ASSIGNMENT}`)),
+			asEvent(
+				getRequest(`http://localhost/api/plagiarism/results?assignmentId=${ASSIGNMENT}`),
+			),
 		);
 
 		expect(response.status).toBe(200);
@@ -285,19 +296,158 @@ describe("GET /api/plagiarism/results", () => {
 
 	it("returns 404 for an unknown assignment", async () => {
 		await expect(
-			resultsGET(asEvent(getRequest("http://localhost/api/plagiarism/results?assignmentId=nope"))),
+			resultsGET(
+				asEvent(getRequest("http://localhost/api/plagiarism/results?assignmentId=nope")),
+			),
 		).rejects.toMatchObject({ status: 404 });
 	});
 });
 
 // ---------------------------------------------------------------------------
-// Loader
+// PATCH /api/plagiarism/results
+// ---------------------------------------------------------------------------
+
+describe("PATCH /api/plagiarism/results", () => {
+	/** Seed two identical submissions and run a check; returns the pair. */
+	async function seedCheckedPair(): Promise<{ studentA: string; studentB: string }> {
+		await seedSubmission("2026SS_01", [SHARED_CELL]);
+		await seedSubmission("2026SS_02", [SHARED_CELL]);
+		await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
+		return { studentA: "2026SS_01", studentB: "2026SS_02" };
+	}
+
+	function patchRequest(body: unknown): Request {
+		return new Request("http://localhost/api/plagiarism/results", {
+			method: "PATCH",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(body),
+		});
+	}
+
+	it("sets the pair's review status, persists it, and returns the updated result", async () => {
+		const { studentA, studentB } = await seedCheckedPair();
+
+		const response = await resultsPATCH(
+			asEvent(
+				patchRequest({
+					assignmentId: ASSIGNMENT,
+					studentA,
+					studentB,
+					reviewStatus: "accepted",
+				}),
+			),
+		);
+
+		expect(response.status).toBe(200);
+		const result = (await response.json()) as {
+			pairs: Array<{ studentA: string; reviewStatus?: string }>;
+		};
+		expect(result.pairs[0]).toMatchObject({ studentA, reviewStatus: "accepted" });
+
+		// Persisted on disk — a fresh GET returns the same status.
+		const cached = JSON.parse(
+			await readFile(path.join(dataDir, "plagiarism", `${ASSIGNMENT}.json`), "utf-8"),
+		) as { pairs: Array<{ reviewStatus?: string }> };
+		expect(cached.pairs[0]!.reviewStatus).toBe("accepted");
+
+		const fresh = await resultsGET(
+			asEvent(
+				getRequest(`http://localhost/api/plagiarism/results?assignmentId=${ASSIGNMENT}`),
+			),
+		);
+		const freshResult = (await fresh.json()) as {
+			pairs: Array<{ reviewStatus?: string }>;
+		};
+		expect(freshResult.pairs[0]!.reviewStatus).toBe("accepted");
+	});
+
+	it("accepts the reversed pair order", async () => {
+		const { studentA, studentB } = await seedCheckedPair();
+
+		const response = await resultsPATCH(
+			asEvent(
+				patchRequest({ studentA: studentB, studentB: studentA, reviewStatus: "dismissed" }),
+			),
+		);
+
+		const result = (await response.json()) as {
+			pairs: Array<{ studentB: string; reviewStatus?: string }>;
+		};
+		expect(result.pairs[0]).toMatchObject({ studentB, reviewStatus: "dismissed" });
+	});
+
+	it("accepts every status value and rewrites unreviewed back to default", async () => {
+		const { studentA, studentB } = await seedCheckedPair();
+		for (const status of ["accepted", "dismissed", "ignored", "unreviewed"]) {
+			const response = await resultsPATCH(
+				asEvent(patchRequest({ studentA, studentB, reviewStatus: status })),
+			);
+			expect(response.status).toBe(200);
+		}
+	});
+
+	it("returns 404 when no check has been run", async () => {
+		await expect(
+			resultsPATCH(
+				asEvent(
+					patchRequest({
+						studentA: "2026SS_01",
+						studentB: "2026SS_02",
+						reviewStatus: "accepted",
+					}),
+				),
+			),
+		).rejects.toMatchObject({ status: 404 });
+	});
+
+	it("returns 404 for an unknown pair", async () => {
+		await seedSubmission("2026SS_01", [SHARED_CELL]);
+		await seedSubmission("2026SS_02", [SHARED_CELL]);
+		await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
+
+		await expect(
+			resultsPATCH(
+				asEvent(
+					patchRequest({
+						studentA: "2026SS_01",
+						studentB: "nope",
+						reviewStatus: "accepted",
+					}),
+				),
+			),
+		).rejects.toMatchObject({ status: 404 });
+	});
+
+	it("returns 400 for a missing/invalid reviewStatus or missing students", async () => {
+		const { studentA, studentB } = await seedCheckedPair();
+
+		await expect(
+			resultsPATCH(asEvent(patchRequest({ studentA, studentB }))),
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			resultsPATCH(asEvent(patchRequest({ studentA, studentB, reviewStatus: "maybe" }))),
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			resultsPATCH(asEvent(patchRequest({ studentA, reviewStatus: "accepted" }))),
+		).rejects.toMatchObject({ status: 400 });
+		await expect(
+			resultsPATCH(
+				asEvent(patchRequest({ studentA: "", studentB, reviewStatus: "accepted" })),
+			),
+		).rejects.toMatchObject({ status: 400 });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// loadAssignmentNotebooks
 // ---------------------------------------------------------------------------
 
 describe("loadAssignmentNotebooks", () => {
 	it("skips unreadable/corrupt notebooks and keeps the valid ones", async () => {
 		await seedSubmission("2026SS_01", [SHARED_CELL]);
-		await upsertSubmission(ASSIGNMENT, "2026SS_02", { notebookPath: notebookPath("2026SS_02") });
+		await upsertSubmission(ASSIGNMENT, "2026SS_02", {
+			notebookPath: notebookPath("2026SS_02"),
+		});
 		await writeFile(path.join(dataDir, notebookPath("2026SS_02")), "not json", "utf-8");
 		await mkdir(path.join(dataDir, "submissions", ASSIGNMENT), { recursive: true });
 

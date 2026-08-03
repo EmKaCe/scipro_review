@@ -66,9 +66,14 @@
 		return assignment?.title ?? assignmentId;
 	});
 
-	// Determine page state
+	// Determine page state — an imported teacher student-copy has no generated
+	// text but may carry feedback notes, so notes alone count as loaded.
 	let pageState = $derived<"loading" | "empty" | "loaded">(
-		reviewStore.is_loading ? "loading" : generatedText ? "loaded" : "empty",
+		reviewStore.is_loading
+			? "loading"
+			: generatedText || reviewStore.notes
+				? "loaded"
+				: "empty",
 	);
 
 	// Rendered Markdown HTML — strip YAML frontmatter, protect LaTeX, parse markdown, render KaTeX, wrap sentiments
@@ -213,6 +218,16 @@
 		<article class="markdown-body">
 			{@html renderedHtml}
 		</article>
+
+		<!-- Teacher feedback notes (top-level `notes` in imported evaluations) -->
+		{#if reviewStore.notes}
+			<div class="notes-section rounded-[var(--radius)] border border-border bg-card p-6">
+				<h3 class="mb-3 text-base font-semibold">Notes</h3>
+				<p class="notes-body text-sm leading-relaxed whitespace-pre-wrap text-foreground">
+					{reviewStore.notes}
+				</p>
+			</div>
+		{/if}
 
 		{#if gradeResult}
 			<div

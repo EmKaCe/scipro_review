@@ -141,9 +141,93 @@ export function gradingExportToYaml(data: GradingExport): string {
 /** Build the complete grading YAML for a submission record. */
 export function buildGradingYaml(
 	record: SubmissionRecord,
-	opts: { assignmentTitle?: string } = {},
+	opts: { assignmentTitle?: string; plagiarism?: PlagiarismExportSection } = {},
 ): string {
-	return gradingExportToYaml(buildGradingExport(record, opts));
+	let lines = gradingExportToYaml(buildGradingExport(record, opts));
+	if (opts.plagiarism && opts.plagiarism.pairs.length > 0) {
+		lines += plagiarismToYaml(opts.plagiarism);
+	}
+	return lines;
+}
+
+// ---------------------------------------------------------------------------
+// Teacher-only plagiarism audit section
+// ---------------------------------------------------------------------------
+
+/** One plagiarism pair as exported in the teacher YAML. */
+export interface PlagiarismExportPair {
+	/** The other student id in the flagged pair. */
+	studentB: string;
+	/** "high" | "medium" | "low". */
+	severity: string;
+	/** Notebook-level similarity in [0, 1]. */
+	notebookOverlap: number;
+	/** Teacher's per-pair review status. */
+	reviewStatus: string;
+}
+
+/** Plagiarism audit block attached to the teacher YAML. */
+export interface PlagiarismExportSection {
+	pairs: PlagiarismExportPair[];
+}
+
+/** Serialize the plagiarism audit block (teacher-only; never in student copies). */
+function plagiarismToYaml(section: PlagiarismExportSection): string {
+	const lines = ["plagiarism:"];
+	for (const pair of section.pairs) {
+		lines.push(`  - student_b: ${yamlScalar(pair.studentB)}`);
+		lines.push(`    severity: ${yamlScalar(pair.severity)}`);
+		lines.push(`    notebook_overlap: ${yamlScalar(pair.notebookOverlap)}`);
+		lines.push(`    review_status: ${yamlScalar(pair.reviewStatus)}`);
+	}
+	return `${lines.join("\n")}\n`;
+}
+
+// ---------------------------------------------------------------------------
+// Student-facing export (v2 evaluation-output schema)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build the student-facing evaluation YAML for a submission record.
+ *
+ * Uses the v2 evaluation-output schema — the format the student webapp's
+ * import flow (`parseImport`) accepts. Teacher-internal fields (status,
+ * file_name, timestamps, plagiarism verdicts) are deliberately excluded.
+ *
+ * `feedback` is emitted as an empty map today; rubric selections/comments/
+ * deductions become available here once rubric persistence lands (Phase 3f).
+ * Teacher notes are included (top-level `notes`, optional in the schema).
+ */
+export function buildStudentYaml(
+	record: SubmissionRecord,
+	_opts: { assignmentTitle?: string } = {},
+): string {
+	const lines: string[] = [];
+	pushScalar(lines, "student_id", record.studentId);
+	pushScalar(lines, "assignment", record.assignmentId);
+	pushScalar(lines, "reviewer", "SciPro Review");
+	pushScalar(lines, "date", (record.updatedAt ?? record.createdAt).slice(0, 10));
+	lines.push("scores:");
+	const scores = record.grading?.dimensions ?? {};
+	if (Object.keys(scores).length === 0) {
+		lines.push("  {}");
+	} else {
+		for (const [key, value] of Object.entries(scores)) {
+			lines.push(`  ${yamlKey(key)}: ${yamlScalar(value)}`);
+		}
+	}
+	// `feedback` is required by the v2 parser (`parseYamlImport` rejects YAML
+	// without it). Empty for now; gains per-category feedback with rubric
+	// persistence (Phase 3f).
+	lines.push("feedback: {}");
+	const notes = record.grading?.notes;
+	if (notes !== undefined && notes !== "") {
+		lines.push("notes: |-");
+		for (const line of notes.replace(/\r\n/g, "\n").split("\n")) {
+			lines.push(line === "" ? "" : `  ${line}`);
+		}
+	}
+	return `${lines.join("\n")}\n`;
 }
 
 // ---------------------------------------------------------------------------

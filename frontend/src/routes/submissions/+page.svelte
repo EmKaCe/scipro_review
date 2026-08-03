@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { listSubmissions } from "$lib/services/submissions-store.js";
+	import { submissionsStore } from "$lib/services/submissions-store.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -15,6 +15,9 @@
 	import UploadPanel from "$lib/components/submissions/upload-panel.svelte";
 	import MaterialsIndicator from "$lib/components/submissions/materials-indicator.svelte";
 	import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
+	import MenuButton from "$lib/components/ui/menu-button.svelte";
+	import Archive from "@lucide/svelte/icons/archive";
+	import { downloadBackup, restoreBackup } from "$lib/services/submissions-api.js";
 
 	// -----------------------------------------------------------------------
 	// Header config
@@ -24,6 +27,7 @@
 		headerConfig.showBack = false;
 		headerConfig.showImport = false;
 		headerConfig.showSave = false;
+		headerConfig.showExport = false;
 		return () => {
 			headerConfig.headerState = "dashboard";
 		};
@@ -41,7 +45,58 @@
 	let uploadPanelOpen = $state(false);
 
 	// -----------------------------------------------------------------------
-	// Data loading
+	// Teacher backup (download / restore the whole data directory)
+	// -----------------------------------------------------------------------
+	let backupFileInput: HTMLInputElement | undefined = $state(undefined);
+	let backupBusy = $state(false);
+
+	async function handleDownloadBackup() {
+		if (backupBusy) return;
+		backupBusy = true;
+		try {
+			const { fileName, content } = await downloadBackup();
+			const blob = new Blob([content], { type: "application/zip" });
+			const url = URL.createObjectURL(blob);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = fileName;
+			link.click();
+			URL.revokeObjectURL(url);
+			addToast("success", `Backup downloaded: ${fileName}`, 3500);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Failed to download backup", 4000);
+		} finally {
+			backupBusy = false;
+		}
+	}
+
+	function handleOpenBackupPicker() {
+		backupFileInput?.click();
+	}
+
+	async function handleRestoreBackup(e: Event) {
+		const input = e.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = "";
+		if (!file) return;
+		backupBusy = true;
+		try {
+			const { restored } = await restoreBackup(file);
+			addToast("success", `Backup restored (${restored} files). Reloading…`, 3500);
+			await loadSubmissions();
+		} catch (err) {
+			addToast(
+				"error",
+				err instanceof Error ? err.message : "Failed to restore backup",
+				4000,
+			);
+		} finally {
+			backupBusy = false;
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Data loading (Phase 3b store — real API)
 	// -----------------------------------------------------------------------
 	$effect(() => {
 		loadSubmissions();
@@ -51,8 +106,8 @@
 		isLoading = true;
 		error = null;
 		try {
-			// Phase 2 stub: simulate async load
-			submissions = listSubmissions();
+			await submissionsStore.load(selectedAssignment);
+			submissions = submissionsStore.submissions;
 		} catch (e) {
 			error = e instanceof Error ? e.message : "Failed to load submissions";
 		} finally {
@@ -65,7 +120,7 @@
 	// -----------------------------------------------------------------------
 	function handleAssignmentChange(id: string) {
 		selectedAssignment = id;
-		loadSubmissions();
+		// loadSubmissions() re-runs via the $effect on selectedAssignment.
 	}
 
 	function handleSearchChange(q: string) {
@@ -210,6 +265,7 @@
 			{submissions}
 			{searchQuery}
 			{statusFilter}
+			assignmentId={selectedAssignment}
 			onSearchChange={handleSearchChange}
 			onStatusFilterChange={handleStatusFilterChange}
 		/>
@@ -229,6 +285,31 @@
 				>
 					Pre-evaluate All
 				</button>
+				{#snippet backupIcon()}
+					<Archive size={14} />
+				{/snippet}
+				<MenuButton
+					label="Backup"
+					primaryOnClick={handleDownloadBackup}
+					items={[
+						{
+							id: "restore",
+							label: "Restore backup…",
+							description: "Import a teacher backup zip (replaces data directory)",
+							onclick: handleOpenBackupPicker,
+						},
+					]}
+					icon={backupIcon}
+					groupClass="btn-action btn-outline"
+					variantClass="gap-1.5"
+				/>
+				<input
+					type="file"
+					accept=".zip,application/zip"
+					hidden
+					bind:this={backupFileInput}
+					onchange={handleRestoreBackup}
+				/>
 			</div>
 		</div>
 

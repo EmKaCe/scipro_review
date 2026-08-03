@@ -15,7 +15,7 @@ import path from "node:path";
 
 import { assertSafeSegment, getDataDir } from "../metadata";
 
-import type { PlagiarismPair } from "./structural";
+import type { PairReviewStatus, PlagiarismPair } from "./structural";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,9 +54,7 @@ export function getPlagiarismCachePath(assignmentId: string): string {
 // ---------------------------------------------------------------------------
 
 /** Read the cached result; null when absent or corrupt. */
-export async function readPlagiarismResult(
-	assignmentId: string,
-): Promise<PlagiarismResult | null> {
+export async function readPlagiarismResult(assignmentId: string): Promise<PlagiarismResult | null> {
 	const filePath = getPlagiarismCachePath(assignmentId);
 	let raw: string;
 	try {
@@ -89,6 +87,35 @@ export async function writePlagiarismResult(
 	const tmpPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
 	await writeFile(tmpPath, JSON.stringify(result, null, 2), "utf-8");
 	await rename(tmpPath, filePath);
+}
+
+/**
+ * Set the review status of one pair in the cached result (P3-1) and persist
+ * the updated result atomically. The pair is matched by its canonical
+ * (studentA, studentB) ordering; the reversed order is accepted too.
+ *
+ * Returns the updated result, or null when the assignment has no cache or
+ * the pair does not exist.
+ */
+export async function updatePairReviewStatus(
+	assignmentId: string,
+	studentA: string,
+	studentB: string,
+	reviewStatus: PairReviewStatus,
+): Promise<PlagiarismResult | null> {
+	const result = await readPlagiarismResult(assignmentId);
+	if (!result) return null;
+
+	const pair = result.pairs.find(
+		(p) =>
+			(p.studentA === studentA && p.studentB === studentB) ||
+			(p.studentA === studentB && p.studentB === studentA),
+	);
+	if (!pair) return null;
+
+	pair.reviewStatus = reviewStatus;
+	await writePlagiarismResult(assignmentId, result);
+	return result;
 }
 
 // ---------------------------------------------------------------------------

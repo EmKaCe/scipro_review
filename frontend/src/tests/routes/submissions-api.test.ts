@@ -326,7 +326,11 @@ describe("GET /api/submissions/[id]", () => {
 		} as unknown as ResultsFile);
 
 		const body = await readJson(
-			await detailGET(makeEvent(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`, { params: { id: "2026SS_03" } })),
+			await detailGET(
+				makeEvent(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`, {
+					params: { id: "2026SS_03" },
+				}),
+			),
 		);
 
 		expect(body.studentId).toBe("2026SS_03");
@@ -339,19 +343,31 @@ describe("GET /api/submissions/[id]", () => {
 			output: "",
 			marker: "different",
 		});
-		expect(cells[1]).toMatchObject({ index: 1, marker: "error", error: "ZeroDivisionError: division by zero" });
+		expect(cells[1]).toMatchObject({
+			index: 1,
+			marker: "error",
+			error: "ZeroDivisionError: division by zero",
+		});
 	});
 
 	it("returns cells: [] without results and 404s unknown submissions", async () => {
 		await seedSubmission("2026SS_03", "executed");
 
 		const body = await readJson(
-			await detailGET(makeEvent(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`, { params: { id: "2026SS_03" } })),
+			await detailGET(
+				makeEvent(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`, {
+					params: { id: "2026SS_03" },
+				}),
+			),
 		);
 		expect(body.cells).toEqual([]);
 
 		await expectApiError(
-			detailGET(makeEvent(`/api/submissions/2026SS_99?assignment=${ASSIGNMENT}`, { params: { id: "2026SS_99" } })),
+			detailGET(
+				makeEvent(`/api/submissions/2026SS_99?assignment=${ASSIGNMENT}`, {
+					params: { id: "2026SS_99" },
+				}),
+			),
 			404,
 			'Submission "2026SS_99" not found',
 		);
@@ -439,7 +455,10 @@ describe("POST /api/submissions/upload", () => {
 
 	it("classifies data files as material-data and applies kind overrides", async () => {
 		const form = formDataWith(
-			[["assignmentId", ASSIGNMENT], ["kinds", JSON.stringify({ "notes.pdf": "material-data" })]],
+			[
+				["assignmentId", ASSIGNMENT],
+				["kinds", JSON.stringify({ "notes.pdf": "material-data" })],
+			],
 			[
 				fakeFile("soil_samples.csv", "a,b\n1,2", "text/csv"),
 				fakeFile("notes.pdf", "pdf", "application/pdf"),
@@ -448,8 +467,14 @@ describe("POST /api/submissions/upload", () => {
 
 		const body = await readJson(await uploadPOST(uploadEvent("/api/submissions/upload", form)));
 
-		expect(body.results[0]).toMatchObject({ kind: "material-data", relativePath: `materials/${ASSIGNMENT}/input_data/soil_samples.csv` });
-		expect(body.results[1]).toMatchObject({ kind: "material-data", relativePath: `materials/${ASSIGNMENT}/input_data/notes.pdf` });
+		expect(body.results[0]).toMatchObject({
+			kind: "material-data",
+			relativePath: `materials/${ASSIGNMENT}/input_data/soil_samples.csv`,
+		});
+		expect(body.results[1]).toMatchObject({
+			kind: "material-data",
+			relativePath: `materials/${ASSIGNMENT}/input_data/notes.pdf`,
+		});
 		expect(await listSubmissions(ASSIGNMENT)).toEqual([]); // no metadata records
 
 		const csv = await readFile(
@@ -462,7 +487,10 @@ describe("POST /api/submissions/upload", () => {
 	it("rejects forced submission overrides and malformed requests", async () => {
 		// Non-student notebook forced to submission -> 400.
 		const form = formDataWith(
-			[["assignmentId", ASSIGNMENT], ["kinds", JSON.stringify({ "foo.ipynb": "submission" })]],
+			[
+				["assignmentId", ASSIGNMENT],
+				["kinds", JSON.stringify({ "foo.ipynb": "submission" })],
+			],
 			[fakeFile("foo.ipynb", "{}")],
 		);
 		await expectApiError(
@@ -538,7 +566,11 @@ describe("POST /api/submissions/process", () => {
 		});
 
 		const body = await readJson(
-			await batchPOST(makeEvent("/api/submissions/process", { request: jsonRequest("/api/submissions/process", {}) })),
+			await batchPOST(
+				makeEvent("/api/submissions/process", {
+					request: jsonRequest("/api/submissions/process", {}),
+				}),
+			),
 		);
 
 		expect(mockClient.executeBatch).toHaveBeenCalledWith({
@@ -547,7 +579,12 @@ describe("POST /api/submissions/process", () => {
 				{ notebookPath: notebookPath("2026SS_02") },
 			],
 		});
-		expect(body).toMatchObject({ assignmentId: ASSIGNMENT, submitted: 2, succeeded: 1, failed: 1 });
+		expect(body).toMatchObject({
+			assignmentId: ASSIGNMENT,
+			submitted: 2,
+			succeeded: 1,
+			failed: 1,
+		});
 
 		const records = await listSubmissions(ASSIGNMENT);
 		const byId = new Map(records.map((r) => [r.id, r]));
@@ -559,7 +596,10 @@ describe("POST /api/submissions/process", () => {
 
 		const results = await readResults(ASSIGNMENT);
 		expect(results["2026SS_01"]).toMatchObject({ success: true, cells: [], totalCells: 4 });
-		expect(results["2026SS_02"]).toMatchObject({ success: false, error: "NameError: name 'x' is not defined" });
+		expect(results["2026SS_02"]).toMatchObject({
+			success: false,
+			error: "NameError: name 'x' is not defined",
+		});
 	});
 
 	it("marks all targets error and 500s when the executor call itself fails", async () => {
@@ -567,7 +607,11 @@ describe("POST /api/submissions/process", () => {
 		mockClient.executeBatch.mockRejectedValue(new Error("ECONNREFUSED executor:8766"));
 
 		await expectApiError(
-			batchPOST(makeEvent("/api/submissions/process", { request: jsonRequest("/api/submissions/process", {}) })),
+			batchPOST(
+				makeEvent("/api/submissions/process", {
+					request: jsonRequest("/api/submissions/process", {}),
+				}),
+			),
 			500,
 			"ECONNREFUSED",
 		);
@@ -589,7 +633,11 @@ describe("POST /api/submissions/process", () => {
 		});
 
 		const body = await readJson(
-			await batchPOST(makeEvent("/api/submissions/process", { request: jsonRequest("/api/submissions/process", { ids: ["2026SS_02"] }) })),
+			await batchPOST(
+				makeEvent("/api/submissions/process", {
+					request: jsonRequest("/api/submissions/process", { ids: ["2026SS_02"] }),
+				}),
+			),
 		);
 		expect(body.submitted).toBe(1);
 		expect(mockClient.executeBatch.mock.calls[0]?.[0]?.notebooks).toEqual([
@@ -597,7 +645,11 @@ describe("POST /api/submissions/process", () => {
 		]);
 
 		await expectApiError(
-			batchPOST(makeEvent("/api/submissions/process", { request: jsonRequest("/api/submissions/process", { ids: ["2026SS_99"] }) })),
+			batchPOST(
+				makeEvent("/api/submissions/process", {
+					request: jsonRequest("/api/submissions/process", { ids: ["2026SS_99"] }),
+				}),
+			),
 			404,
 			"2026SS_99",
 		);
@@ -680,11 +732,14 @@ describe("POST /api/submissions/[id]/save", () => {
 			await savePOST(
 				makeEvent(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
-						rubric: { data_quality: "complete" },
-						dimensions: { code_quality_design: 1.5 },
-						notes: "first pass",
-					}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`,
+						{
+							rubric: { data_quality: "complete" },
+							dimensions: { code_quality_design: 1.5 },
+							notes: "first pass",
+						},
+					),
 				}),
 			),
 		);
@@ -699,9 +754,12 @@ describe("POST /api/submissions/[id]/save", () => {
 			await savePOST(
 				makeEvent(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
-						notes: "second pass",
-					}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`,
+						{
+							notes: "second pass",
+						},
+					),
 				}),
 			),
 		);
@@ -717,9 +775,12 @@ describe("POST /api/submissions/[id]/save", () => {
 			savePOST(
 				makeEvent(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`, {
-						dimensions: { code_quality_design: "high" },
-					}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`,
+						{
+							dimensions: { code_quality_design: "high" },
+						},
+					),
 				}),
 			),
 			400,
@@ -729,7 +790,10 @@ describe("POST /api/submissions/[id]/save", () => {
 			savePOST(
 				makeEvent(`/api/submissions/2026SS_99/save?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_99" },
-					request: jsonRequest(`/api/submissions/2026SS_99/save?assignment=${ASSIGNMENT}`, { notes: "x" }),
+					request: jsonRequest(
+						`/api/submissions/2026SS_99/save?assignment=${ASSIGNMENT}`,
+						{ notes: "x" },
+					),
 				}),
 			),
 			404,
@@ -750,9 +814,12 @@ describe("POST /api/submissions/[id]/grade", () => {
 			await gradePOST(
 				makeEvent(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {
-						teacherGrade: 8.5,
-					}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`,
+						{
+							teacherGrade: 8.5,
+						},
+					),
 				}),
 			),
 		);
@@ -771,9 +838,12 @@ describe("POST /api/submissions/[id]/grade", () => {
 			gradePOST(
 				makeEvent(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {
-						teacherGrade: 5,
-					}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`,
+						{
+							teacherGrade: 5,
+						},
+					),
 				}),
 			),
 			409,
@@ -784,7 +854,10 @@ describe("POST /api/submissions/[id]/grade", () => {
 			gradePOST(
 				makeEvent(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {
 					params: { id: "2026SS_03" },
-					request: jsonRequest(`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`, {}),
+					request: jsonRequest(
+						`/api/submissions/2026SS_03/grade?assignment=${ASSIGNMENT}`,
+						{},
+					),
 				}),
 			),
 			400,
@@ -816,15 +889,46 @@ describe("GET /api/submissions/[id]/export", () => {
 		);
 
 		expect(resp.status).toBe(200);
-		expect(resp.headers.get("content-disposition")).toBe('attachment; filename="2026SS_03.yaml"');
+		expect(resp.headers.get("content-disposition")).toBe(
+			'attachment; filename="2026SS_03.yaml"',
+		);
 		expect(resp.headers.get("content-type")).toContain("application/yaml");
 		const yaml = await resp.text();
 		expect(yaml).toContain("student_id: 2026SS_03");
 		expect(yaml).toContain("assignment: soil_contamination");
+		// Default kind = student copy: v2 evaluation schema, no teacher fields
+		expect(yaml).toContain("reviewer: SciPro Review");
+		expect(yaml).toContain("feedback: {}");
+		expect(yaml).not.toContain("teacher_grade");
+		expect(yaml).not.toContain("file_name");
+		expect(yaml).toContain("notes: |-");
+	});
+
+	it("returns the teacher YAML (kind=teacher) with the full record", async () => {
+		await seedSubmission("2026SS_03", "graded", {
+			teacherGrade: 12,
+			grading: {
+				rubric: { data_quality: "complete" },
+				dimensions: { code_quality_design: 1.5 },
+				notes: "Good work",
+				updatedAt: new Date().toISOString(),
+			},
+		});
+
+		const resp = await exportGET(
+			makeEvent(`/api/submissions/2026SS_03/export?assignment=${ASSIGNMENT}&kind=teacher`, {
+				params: { id: "2026SS_03" },
+			}),
+		);
+
+		expect(resp.status).toBe(200);
+		expect(resp.headers.get("content-disposition")).toBe(
+			'attachment; filename="2026SS_03-teacher.yaml"',
+		);
+		const yaml = await resp.text();
 		expect(yaml).toContain("teacher_grade: 12");
 		expect(yaml).toContain("  data_quality: complete");
 		expect(yaml).toContain("  code_quality_design: 1.5");
-		expect(yaml).toContain("notes: |-");
 	});
 
 	it("404s unknown submissions", async () => {

@@ -360,7 +360,7 @@ describe("mutations", () => {
 
 		const result = await store.export("2026SS_01");
 
-		expect(api.exportSubmission).toHaveBeenCalledWith("2026SS_01", ASSIGNMENT);
+		expect(api.exportSubmission).toHaveBeenCalledWith("2026SS_01", ASSIGNMENT, "student");
 		expect(result).toEqual({ fileName: "2026SS_01.yaml", content: "studentId: 2026SS_01" });
 	});
 });

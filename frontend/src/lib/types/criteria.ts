@@ -7,6 +7,8 @@
  * @see .github/references/schemas/criteria-schema.md
  */
 
+import type { CategorySelections } from "./session.js";
+
 // ---------------------------------------------------------------------------
 // Primitives
 // ---------------------------------------------------------------------------
@@ -116,6 +118,43 @@ export interface CategoryEntry {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Checked-item counts per sentiment (P3-2, rubric tab header). */
+export interface SentimentCounts {
+	positive: number;
+	neutral: number;
+	negative: number;
+}
+
+/**
+ * Count the checked rubric items per sentiment from live checkbox state.
+ *
+ * Checked item keys are sub-point `text` values (see CategorySelections);
+ * the texts are matched against each category's positive/neutral/negative
+ * groups. Live — re-derives whenever the selections change.
+ */
+export function rubricSentimentCounts(
+	rubric: MergedRubric | null,
+	categorySelections: Record<string, CategorySelections>,
+): SentimentCounts {
+	const counts: SentimentCounts = { positive: 0, neutral: 0, negative: 0 };
+	if (!rubric) return counts;
+
+	for (const entry of rubric.categories) {
+		const selections = categorySelections[entry.key];
+		if (!selections || selections.checked_items.size === 0) continue;
+		for (const sentiment of ["positive", "neutral", "negative"] as const) {
+			const texts = new Set<string>();
+			for (const mp of entry.category[sentiment]) {
+				for (const sp of mp.sub_points) texts.add(sp.text);
+			}
+			for (const key of selections.checked_items) {
+				if (texts.has(key)) counts[sentiment]++;
+			}
+		}
+	}
+	return counts;
+}
 
 /** All sub-points in a category, across all sentiments. */
 export function allSubPoints(category: Category): readonly SubPoint[] {

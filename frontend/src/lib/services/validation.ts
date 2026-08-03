@@ -50,6 +50,7 @@ const evaluationSchema = z.object({
 			label: z.string(),
 		})
 		.optional(),
+	notes: z.string().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,7 @@ const reviewSessionSchema = z.object({
 	student_id: nonEmptyString,
 	assignment_id: nonEmptyString,
 	mode: z.string().optional().default("student"),
+	notes: z.string().optional(),
 	category_selections: z.record(z.string(), categorySelectionsSchema),
 	grading: z.record(z.string(), z.number()),
 	generated_text: z.string().optional().default(""),

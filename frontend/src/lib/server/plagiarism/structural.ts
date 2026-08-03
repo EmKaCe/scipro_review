@@ -120,6 +120,24 @@ export interface PlagiarismPair {
 	semanticScore?: number;
 	/** Verdict text from the KI Connect pass (optional). */
 	semanticVerdict?: string;
+	/**
+	 * Teacher review state (P3-1). Absent = "unreviewed". Persisted
+	 * server-side with the cached result so reloads/export survive.
+	 */
+	reviewStatus?: PairReviewStatus;
+}
+
+/**
+ * Teacher review state for a plagiarism pair (P3-1). Defaults to
+ * "unreviewed" when absent (old caches have no field). Review is
+ * per-pair, never per-submission — one submission can be flagged
+ * against several others, and each pair resolves independently.
+ */
+export type PairReviewStatus = "unreviewed" | "accepted" | "dismissed" | "ignored";
+
+/** Resolve a pair's review status, defaulting absent values to "unreviewed". */
+export function reviewStatusOf(pair: PlagiarismPair): PairReviewStatus {
+	return pair.reviewStatus ?? "unreviewed";
 }
 
 /** Severity classification for a pair (see `classifyPair`). */
@@ -173,17 +191,72 @@ export const COMBINED_SEMANTIC_WEIGHT = 0.3;
 
 /** Python keywords — shared boilerplate that must not create matches. */
 const PYTHON_KEYWORDS = new Set([
-	"and", "as", "assert", "async", "await", "break", "class", "continue",
-	"def", "del", "elif", "else", "except", "finally", "for", "from", "global",
-	"if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass",
-	"raise", "return", "try", "while", "with", "yield", "True", "False", "None",
+	"and",
+	"as",
+	"assert",
+	"async",
+	"await",
+	"break",
+	"class",
+	"continue",
+	"def",
+	"del",
+	"elif",
+	"else",
+	"except",
+	"finally",
+	"for",
+	"from",
+	"global",
+	"if",
+	"import",
+	"in",
+	"is",
+	"lambda",
+	"nonlocal",
+	"not",
+	"or",
+	"pass",
+	"raise",
+	"return",
+	"try",
+	"while",
+	"with",
+	"yield",
+	"True",
+	"False",
+	"None",
 ]);
 
 /** Common builtins — same rationale as keywords. */
 const PYTHON_BUILTINS = new Set([
-	"abs", "all", "any", "bool", "dict", "enumerate", "filter", "float", "int",
-	"isinstance", "len", "list", "map", "max", "min", "open", "print", "range",
-	"reversed", "round", "set", "sorted", "str", "sum", "super", "tuple", "type",
+	"abs",
+	"all",
+	"any",
+	"bool",
+	"dict",
+	"enumerate",
+	"filter",
+	"float",
+	"int",
+	"isinstance",
+	"len",
+	"list",
+	"map",
+	"max",
+	"min",
+	"open",
+	"print",
+	"range",
+	"reversed",
+	"round",
+	"set",
+	"sorted",
+	"str",
+	"sum",
+	"super",
+	"tuple",
+	"type",
 	"zip",
 ]);
 
@@ -359,7 +432,8 @@ export function fingerprintNotebook(
 		const imports = type === "code" ? extractImports(source) : [];
 		const variables = type === "code" ? extractVariables(source) : [];
 		const normalizedSource = type === "code" ? normalizeCode(source) : "";
-		const ngramList = type === "code" ? [...new Set(ngramsOf(tokenize(normalizedSource), n))] : [];
+		const ngramList =
+			type === "code" ? [...new Set(ngramsOf(tokenize(normalizedSource), n))] : [];
 		const ngramSet = new Set(ngramList);
 
 		for (const gram of ngramSet) notebookNgrams.add(gram);
@@ -420,8 +494,7 @@ export function compareNotebooks(
 	opts: StructuralOptions = {},
 ): PlagiarismPair {
 	// Canonical ordering: matchedCells cellIndexA always refers to studentA.
-	const [first, second] =
-		a.studentId <= b.studentId ? [a, b] : [b, a];
+	const [first, second] = a.studentId <= b.studentId ? [a, b] : [b, a];
 	const fa = fingerprintNotebook(first, opts);
 	const fb = fingerprintNotebook(second, opts);
 	const maxMatched = opts.maxMatchedCells ?? DEFAULT_MAX_MATCHED_CELLS;

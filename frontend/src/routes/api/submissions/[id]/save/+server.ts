@@ -45,7 +45,11 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 	const input = body as Record<string, unknown>;
 
-	const grading: { rubric?: Record<string, string>; dimensions?: Record<string, number>; notes?: string } = {};
+	const grading: {
+		rubric?: Record<string, string>;
+		dimensions?: Record<string, number>;
+		notes?: string;
+	} = {};
 	if (input.rubric !== undefined) {
 		if (!isStringMap(input.rubric)) {
 			throw error(400, "rubric must be an object mapping criterion keys to option keys");

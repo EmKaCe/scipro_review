@@ -168,6 +168,25 @@ export interface PlagiarismPairDetails {
 	sharedImports: string[];
 }
 
+/** Teacher review state of a plagiarism pair (P3-1, per-pair). */
+export type PairReviewStatus = "unreviewed" | "accepted" | "dismissed" | "ignored";
+
+/** Resolve a pair's review status, defaulting absent values to "unreviewed". */
+export function pairReviewStatus(pair: PlagiarismPair): PairReviewStatus {
+	return pair.reviewStatus ?? "unreviewed";
+}
+
+/** Severity classification for a pair (mirrors the server's thresholds). */
+export type PairSeverity = "high" | "medium" | "low" | "none";
+
+/** Classify a pair: high ≥ 60% cell overlap, flagged = medium, ≥ 15% = low. */
+export function pairSeverity(pair: PlagiarismPair): PairSeverity {
+	if (pair.cellOverlap >= 0.6) return "high";
+	if (pair.cellOverlap >= 0.35 || pair.notebookOverlap >= 0.5) return "medium";
+	if (pair.cellOverlap >= 0.15) return "low";
+	return "none";
+}
+
 /**
  * One compared pair of submissions. `cellOverlap` / `notebookOverlap` are
  * the structural scores; `semanticScore` / `semanticVerdict` are filled in
@@ -190,6 +209,8 @@ export interface PlagiarismPair {
 	semanticScore?: number;
 	/** Verdict text from the KI Connect pass (optional). */
 	semanticVerdict?: string;
+	/** Teacher review state (absent = "unreviewed"). */
+	reviewStatus?: PairReviewStatus;
 }
 
 /** Cached plagiarism comparison for one assignment. */
@@ -375,16 +396,49 @@ export async function gradeSubmission(
 	);
 }
 
-/** GET /api/submissions/[id]/export — download the grading YAML document. */
+/**
+ * GET /api/submissions/[id]/export — download the grading YAML document.
+ *
+ * @param kind "student" (default; v2 evaluation schema, importable in the
+ *   student webapp, filename `<id>.yaml`) or "teacher" (full record +
+ *   plagiarism audit, filename `<id>-teacher.yaml`).
+ */
 export async function exportSubmission(
 	id: string,
 	assignmentId?: string,
+	kind: "student" | "teacher" = "student",
 ): Promise<SubmissionExport> {
 	const url = withAssignment(`/api/submissions/${encodeURIComponent(id)}/export`, assignmentId);
-	const content = await requestText(url);
-	// The route names the attachment <studentId>.yaml; the caller only knows
-	// the id, so reuse it for the frontend-facing file name.
-	return { fileName: `${id}.yaml`, content };
+	const content = await requestText(`${url}${url.includes("?") ? "&" : "?"}kind=${kind}`);
+	// The route names the attachment <studentId>.yaml / <studentId>-teacher.yaml;
+	// the caller only knows the id, so mirror that convention here.
+	return {
+		fileName: kind === "teacher" ? `${id}-teacher.yaml` : `${id}.yaml`,
+		content,
+	};
+}
+
+// ---------------------------------------------------------------------------
+// Teacher backup (whole data directory)
+// ---------------------------------------------------------------------------
+
+/** GET /api/backup — download the teacher backup zip. */
+export async function downloadBackup(): Promise<{ fileName: string; content: ArrayBuffer }> {
+	const response = await requestRaw("/api/backup");
+	const disposition = response.headers.get("content-disposition") ?? "";
+	const match = /filename="([^"]+)"/.exec(disposition);
+	return {
+		fileName: match?.[1] ?? "sci-pro-teacher-backup.zip",
+		content: await response.arrayBuffer(),
+	};
+}
+
+/** POST /api/backup — restore a teacher backup zip into the data directory. */
+export async function restoreBackup(file: File): Promise<{ restored: number }> {
+	const form = new FormData();
+	form.append("file", file);
+	const response = await requestRaw("/api/backup", { method: "POST", body: form });
+	return (await response.json()) as { restored: number };
 }
 
 // ---------------------------------------------------------------------------
@@ -429,4 +483,68 @@ export async function fetchPlagiarismResults(assignmentId?: string): Promise<Pla
 			? ""
 			: `?assignmentId=${encodeURIComponent(assignmentId)}`;
 	return requestJson<PlagiarismResult>(`/api/plagiarism/results${query}`);
+}
+
+/**
+ * PATCH /api/plagiarism/results — set the review status of one pair
+ * (P3-1, per-pair resolution). Returns the updated full result.
+ */
+export async function setPairReviewStatus(
+	studentA: string,
+	studentB: string,
+	reviewStatus: PairReviewStatus,
+	assignmentId?: string,
+): Promise<PlagiarismResult> {
+	const body: Record<string, unknown> = {
+		studentA,
+		studentB,
+		reviewStatus,
+	};
+	if (assignmentId !== undefined) {
+		body.assignmentId = assignmentId;
+	}
+	return requestJson<PlagiarismResult>("/api/plagiarism/results", {
+		method: "PATCH",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Autofix (Phase 3c.1)
+// ---------------------------------------------------------------------------
+
+/** Fix suggestion for a failed cell (wire shape of POST /api/submissions/[id]/autofix). */
+export interface AutofixSuggestion {
+	skipped: boolean;
+	suggestion: string | null;
+	explanation: string | null;
+	confidence: number | null;
+	fixType: string | null;
+	patchedSource: string | null;
+	syntaxValid: boolean | null;
+}
+
+/** POST /api/submissions/[id]/autofix — ask KI Connect for a cell fix. */
+export async function suggestAutofix(
+	id: string,
+	cell: { cellIndex: number; cellSource: string; cellError: string; traceback?: string[] },
+	assignmentId?: string,
+): Promise<AutofixSuggestion> {
+	const body: Record<string, unknown> = {
+		cellIndex: cell.cellIndex,
+		cellSource: cell.cellSource,
+		cellError: cell.cellError,
+	};
+	if (cell.traceback !== undefined && cell.traceback.length > 0) {
+		body.traceback = cell.traceback;
+	}
+	return requestJson<AutofixSuggestion>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}/autofix`, assignmentId),
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		},
+	);
 }

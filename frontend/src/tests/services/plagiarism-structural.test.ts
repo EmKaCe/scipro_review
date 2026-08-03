@@ -19,6 +19,7 @@ import {
 	isFlaggedPair,
 	jaccard,
 	normalizeCode,
+	reviewStatusOf,
 	type NotebookInput,
 	type PlagiarismPair,
 } from "$lib/server/plagiarism/structural";
@@ -27,22 +28,25 @@ import {
 // Fixtures
 // ---------------------------------------------------------------------------
 
-function notebook(studentId: string, cells: Array<{ type?: string; source: string }>): NotebookInput {
+function notebook(
+	studentId: string,
+	cells: Array<{ type?: string; source: string }>,
+): NotebookInput {
 	return { studentId, cells: cells.map((c) => ({ type: c.type ?? "code", source: c.source })) };
 }
 
 const SHARED_CELL = [
-	'import numpy as np',
+	"import numpy as np",
 	'data = np.loadtxt("data.csv")',
-	'mean = data.mean()',
-	'print(mean)',
+	"mean = data.mean()",
+	"print(mean)",
 ].join("\n");
 
 const UNRELATED_CELL = [
-	'import math',
-	'radius = 5',
-	'area = math.pi * radius ** 2',
-	'print(area)',
+	"import math",
+	"radius = 5",
+	"area = math.pi * radius ** 2",
+	"print(area)",
 ].join("\n");
 
 const MD_A = "import math\nx = alpha + beta * gamma\nprint(x)";
@@ -54,14 +58,8 @@ const MD_B = "y = delta + epsilon * zeta\nprint(y)";
 
 describe("compareNotebooks — core similarity", () => {
 	it("identical notebooks get cellOverlap and notebookOverlap of 1.0", () => {
-		const a = notebook("2026SS_01", [
-			{ source: SHARED_CELL },
-			{ source: UNRELATED_CELL },
-		]);
-		const b = notebook("2026SS_02", [
-			{ source: SHARED_CELL },
-			{ source: UNRELATED_CELL },
-		]);
+		const a = notebook("2026SS_01", [{ source: SHARED_CELL }, { source: UNRELATED_CELL }]);
+		const b = notebook("2026SS_02", [{ source: SHARED_CELL }, { source: UNRELATED_CELL }]);
 
 		const pair = compareNotebooks(a, b);
 
@@ -163,19 +161,21 @@ describe("normalization", () => {
 
 	it("strips full-line comments and docstrings", () => {
 		const a = notebook("2026SS_01", [
-			{ source: '# load the data\ndef compute(data):\n    """Mean of the array."""\n    return data.mean()' },
+			{
+				source: '# load the data\ndef compute(data):\n    """Mean of the array."""\n    return data.mean()',
+			},
 		]);
-		const b = notebook("2026SS_02", [
-			{ source: "def compute(data):\n    return data.mean()" },
-		]);
+		const b = notebook("2026SS_02", [{ source: "def compute(data):\n    return data.mean()" }]);
 
 		const pair = compareNotebooks(a, b);
 
 		expect(pair.cellOverlap).toBe(1);
 		expect(pair.matchedCells[0]!.similarity).toBe(1);
-		expect(normalizeCode('def compute(data):\n    """Mean of the array."""\n    return data.mean()')).toBe(
-			"def compute(data): return data.mean()",
-		);
+		expect(
+			normalizeCode(
+				'def compute(data):\n    """Mean of the array."""\n    return data.mean()',
+			),
+		).toBe("def compute(data): return data.mean()");
 	});
 
 	it("normalizes whitespace: spacing/indentation differences do not matter", () => {
@@ -255,8 +255,7 @@ describe("matched cells", () => {
 		]);
 		const b = notebook("2026SS_02", [
 			{
-				source:
-					"alpha = beta + gamma\ndelta = epsilon + zeta\neta = theta + iota\nkappa = lambda + mu",
+				source: "alpha = beta + gamma\ndelta = epsilon + zeta\neta = theta + iota\nkappa = lambda + mu",
 			},
 			{ source: "alpha = beta + gamma\ndelta = epsilon + zeta\neta = theta + iota" },
 		]);
@@ -382,7 +381,12 @@ describe("combinedScore", () => {
 			notebookOverlap: 0.5,
 			matchedCells: [],
 			flags: [],
-			details: { cellCountDiff: 0, sharedVariableNames: [], sharedComments: [], sharedImports: [] },
+			details: {
+				cellCountDiff: 0,
+				sharedVariableNames: [],
+				sharedComments: [],
+				sharedImports: [],
+			},
 		};
 
 		expect(combinedScore(pair)).toBe(0.6);
@@ -396,10 +400,54 @@ describe("combinedScore", () => {
 			notebookOverlap: 0.5,
 			matchedCells: [],
 			flags: [],
-			details: { cellCountDiff: 0, sharedVariableNames: [], sharedComments: [], sharedImports: [] },
+			details: {
+				cellCountDiff: 0,
+				sharedVariableNames: [],
+				sharedComments: [],
+				sharedImports: [],
+			},
 			semanticScore: 0.8,
 		};
 
 		expect(combinedScore(pair)).toBe(0.66);
+	});
+});
+
+describe("reviewStatusOf", () => {
+	it("defaults to unreviewed when the field is absent (old caches)", () => {
+		const pair: PlagiarismPair = {
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			cellOverlap: 0.6,
+			notebookOverlap: 0.5,
+			matchedCells: [],
+			flags: [],
+			details: {
+				cellCountDiff: 0,
+				sharedVariableNames: [],
+				sharedComments: [],
+				sharedImports: [],
+			},
+		};
+		expect(reviewStatusOf(pair)).toBe("unreviewed");
+	});
+
+	it("returns the persisted status when present", () => {
+		const pair: PlagiarismPair = {
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			cellOverlap: 0.6,
+			notebookOverlap: 0.5,
+			matchedCells: [],
+			flags: [],
+			details: {
+				cellCountDiff: 0,
+				sharedVariableNames: [],
+				sharedComments: [],
+				sharedImports: [],
+			},
+			reviewStatus: "dismissed",
+		};
+		expect(reviewStatusOf(pair)).toBe("dismissed");
 	});
 });

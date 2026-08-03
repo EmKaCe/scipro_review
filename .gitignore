@@ -2,6 +2,9 @@ reviews/**
 # Student submissions — never committed
 data/submissions/
 
+# Plagiarism results cache (per-assignment runtime state) — never committed
+data/plagiarism/
+
 # Assignment materials — keys, PDFs, input data — never committed
 data/materials/
 

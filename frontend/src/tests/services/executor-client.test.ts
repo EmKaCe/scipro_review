@@ -337,6 +337,112 @@ describe("health", () => {
 });
 
 // ---------------------------------------------------------------------------
+// /autofix — request contract + translation (Phase 3c.1)
+// ---------------------------------------------------------------------------
+
+describe("suggestAutofix", () => {
+	const WIRE_SUGGESTION = {
+		skipped: false,
+		suggestion: "df['cluster'] = kmeans.fit_predict(scaled)",
+		explanation: "Replace scaled_data with scaled (Cell 3 variable name).",
+		confidence: 0.92,
+		fix_type: "name_fix",
+		patched_source: "df['cluster'] = kmeans.fit_predict(scaled)\n",
+		syntax_valid: true,
+	};
+
+	it("POSTs the snake_case wire body to /auto-fix", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(WIRE_SUGGESTION));
+
+		await client().suggestAutofix({
+			cellSource: "df['cluster'] = kmeans.fit_predict(scaled_data)",
+			cellError: "NameError: name 'scaled_data' is not defined",
+			cellIndex: 3,
+			traceback: [
+				"Traceback (most recent call last):",
+				"NameError: name 'scaled_data' is not defined",
+			],
+			assignmentId: "soil_contamination",
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("http://executor.test/auto-fix");
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(init.body as string)).toEqual({
+			cell_source: "df['cluster'] = kmeans.fit_predict(scaled_data)",
+			cell_error: "NameError: name 'scaled_data' is not defined",
+			cell_index: 3,
+			traceback: [
+				"Traceback (most recent call last):",
+				"NameError: name 'scaled_data' is not defined",
+			],
+			assignment_id: "soil_contamination",
+		});
+	});
+
+	it("translates the wire response into the frontend shape", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(WIRE_SUGGESTION));
+
+		const result = await client().suggestAutofix({
+			cellSource: "x",
+			cellError: "boom",
+		});
+
+		expect(result).toEqual({
+			skipped: false,
+			suggestion: "df['cluster'] = kmeans.fit_predict(scaled)",
+			explanation: "Replace scaled_data with scaled (Cell 3 variable name).",
+			confidence: 0.92,
+			fixType: "name_fix",
+			patchedSource: "df['cluster'] = kmeans.fit_predict(scaled)\n",
+			syntaxValid: true,
+		});
+	});
+
+	it("maps a skipped/empty response (KI Connect unavailable)", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				skipped: true,
+				suggestion: null,
+				explanation: null,
+				confidence: null,
+				fix_type: null,
+				patched_source: null,
+				syntax_valid: null,
+			}),
+		);
+
+		const result = await client().suggestAutofix({ cellSource: "x", cellError: "boom" });
+
+		expect(result).toEqual({
+			skipped: true,
+			suggestion: null,
+			explanation: null,
+			confidence: null,
+			fixType: null,
+			patchedSource: null,
+			syntaxValid: null,
+		});
+	});
+
+	it("omits undefined optionals instead of nulls", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(WIRE_SUGGESTION));
+
+		await client().suggestAutofix({ cellSource: "x", cellError: "boom" });
+
+		const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(JSON.parse(init.body as string)).toEqual({
+			cell_source: "x",
+			cell_error: "boom",
+			cell_index: null,
+			traceback: null,
+			assignment_id: null,
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 

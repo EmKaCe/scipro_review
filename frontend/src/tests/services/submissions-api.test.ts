@@ -276,7 +276,7 @@ describe("exportSubmission", () => {
 		const result = await exportSubmission("2026SS_03", ASSIGNMENT);
 
 		expect(fetchMock).toHaveBeenCalledWith(
-			`/api/submissions/2026SS_03/export?assignment=${ASSIGNMENT}`,
+			`/api/submissions/2026SS_03/export?assignment=${ASSIGNMENT}&kind=student`,
 			undefined,
 		);
 		expect(result).toEqual({ fileName: "2026SS_03.yaml", content: "studentId: 2026SS_03\n" });

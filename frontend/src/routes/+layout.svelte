@@ -52,6 +52,7 @@
 		onsaveclick={headerConfig.onsaveclick}
 		showExport={headerConfig.showExport}
 		onexportclick={headerConfig.onexportclick}
+		exportMenuItems={headerConfig.exportMenuItems ?? []}
 		headerState={headerConfig.headerState ?? "dashboard"}
 		class="print:hidden"
 	/>

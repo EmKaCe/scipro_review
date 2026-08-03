@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { base } from "$app/paths";
 	import type { SubmissionMeta, SubmissionStatus } from "$lib/types/submissions.js";
+	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import Clock from "@lucide/svelte/icons/clock";
 	import Loader from "@lucide/svelte/icons/loader";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
@@ -10,18 +11,43 @@
 	import ArrowRight from "@lucide/svelte/icons/arrow-right";
 	import Search from "@lucide/svelte/icons/search";
 	import Upload from "@lucide/svelte/icons/upload";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
+	import PlagiarismModal from "$lib/components/submissions/plagiarism-modal.svelte";
 
 	interface Props {
 		submissions: readonly SubmissionMeta[];
 		searchQuery: string;
 		statusFilter: string;
+		/** Active assignment — plagiarism results are scoped to it. */
+		assignmentId: string;
 		onSearchChange: (q: string) => void;
 		onStatusFilterChange: (f: string) => void;
 	}
 
-	let { submissions, searchQuery, statusFilter, onSearchChange, onStatusFilterChange }: Props =
-		$props();
+	let {
+		submissions,
+		searchQuery,
+		statusFilter,
+		assignmentId,
+		onSearchChange,
+		onStatusFilterChange,
+	}: Props = $props();
+
+	// ── Plagiarism modal + badge (P3-1) ──
+	let plagiarismModalOpen = $state(false);
+
+	// Load the cached plagiarism result whenever the assignment changes
+	// (404 → store stays empty; the modal offers "Run check").
+	$effect(() => {
+		plagiarismStore.load(assignmentId).catch(() => {
+			// 404 and network errors are surfaced inside the modal; the
+			// dashboard badge just stays hidden.
+		});
+	});
+
+	/** Unreviewed pairs across the assignment — badge count. */
+	let unreviewed = $derived(plagiarismStore.unreviewedCount());
 
 	// ── Filtered list ──
 	let filtered = $derived(
@@ -105,7 +131,7 @@
 </script>
 
 <div class="dashboard-table-container">
-	<!-- Toolbar: search + filter -->
+	<!-- Toolbar: search + filter + plagiarism -->
 	<div class="table-toolbar">
 		<div class="search-row">
 			<Search size={14} class="search-icon" />
@@ -130,6 +156,15 @@
 			<option value="pre-evaluated">Pre-evaluated</option>
 			<option value="graded">Graded</option>
 		</select>
+		<div class="toolbar-actions">
+			<button class="btn-plagiarism" onclick={() => (plagiarismModalOpen = true)}>
+				<ShieldCheck size={13} />
+				Plagiarism
+				{#if unreviewed > 0}
+					<span class="plagiarism-count-badge">{unreviewed}</span>
+				{/if}
+			</button>
+		</div>
 	</div>
 
 	<!-- Table -->
@@ -271,6 +306,11 @@
 	</div>
 </div>
 
+<!-- Plagiarism overview modal (P3-1) -->
+{#if plagiarismModalOpen}
+	<PlagiarismModal {assignmentId} onClose={() => (plagiarismModalOpen = false)} />
+{/if}
+
 <style>
 	/* ── Container ── */
 	.dashboard-table-container {
@@ -333,6 +373,51 @@
 		outline: none;
 		border-color: var(--accent);
 		box-shadow: 0 0 0 2px var(--accent-soft);
+	}
+
+	/* ── Toolbar actions (plagiarism button, P3-1) ── */
+	.toolbar-actions {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.btn-plagiarism {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		height: 30px;
+		padding: 0 12px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: transparent;
+		color: var(--fg);
+		font-size: 12px;
+		font-weight: 500;
+		cursor: pointer;
+		white-space: nowrap;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
+	}
+	.btn-plagiarism:hover {
+		background: color-mix(in oklch, var(--fg) 4%, transparent);
+		border-color: var(--muted);
+	}
+	.plagiarism-count-badge {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-width: 17px;
+		height: 17px;
+		padding: 0 5px;
+		border-radius: 999px;
+		background: var(--destructive);
+		color: var(--destructive-foreground, white);
+		font-size: 10px;
+		font-weight: 700;
+		line-height: 1;
+		font-variant-numeric: tabular-nums;
 	}
 
 	/* ── Table ── */

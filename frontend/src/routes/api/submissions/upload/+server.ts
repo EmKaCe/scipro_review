@@ -26,11 +26,7 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { assignmentExists } from "$lib/server/assignments";
-import {
-	classifyFile,
-	type ClassifiedFile,
-	type UploadKind,
-} from "$lib/server/file-service";
+import { classifyFile, type ClassifiedFile, type UploadKind } from "$lib/server/file-service";
 import { getDataDir, upsertSubmission } from "$lib/server/metadata";
 import { clearResult } from "$lib/server/results-store";
 
@@ -69,7 +65,10 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	const persisted = [];
 	for (const file of files) {
-		const classification = applyKindOverride(classifyFile(file.name, assignmentId), overrides.get(file.name));
+		const classification = applyKindOverride(
+			classifyFile(file.name, assignmentId),
+			overrides.get(file.name),
+		);
 		const data = new Uint8Array(await file.arrayBuffer());
 		const replaced = await persistClassified(classification, data);
 
@@ -172,7 +171,12 @@ function applyKindOverride(
 			...classified,
 			kind: "material-data",
 			destination: "materials",
-			relativePath: path.join("materials", classified.assignmentId, "input_data", classified.fileName),
+			relativePath: path.join(
+				"materials",
+				classified.assignmentId,
+				"input_data",
+				classified.fileName,
+			),
 			absolutePath: path.join(
 				getDataDir(),
 				"materials",
@@ -187,7 +191,12 @@ function applyKindOverride(
 		kind: "material-file",
 		destination: "materials",
 		relativePath: path.join("materials", classified.assignmentId, classified.fileName),
-		absolutePath: path.join(getDataDir(), "materials", classified.assignmentId, classified.fileName),
+		absolutePath: path.join(
+			getDataDir(),
+			"materials",
+			classified.assignmentId,
+			classified.fileName,
+		),
 	};
 }
 
@@ -200,10 +209,7 @@ function applyKindOverride(
  * file-service.persistUpload but honors an already-adjusted classification
  * (persistUpload re-classifies internally and would ignore kind overrides).
  */
-async function persistClassified(
-	classified: ClassifiedFile,
-	data: Uint8Array,
-): Promise<boolean> {
+async function persistClassified(classified: ClassifiedFile, data: Uint8Array): Promise<boolean> {
 	let existed = false;
 	try {
 		await access(classified.absolutePath);

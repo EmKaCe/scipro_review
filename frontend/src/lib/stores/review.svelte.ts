@@ -76,6 +76,8 @@ class ReviewStore {
 
 	/** Generated evaluation text (Markdown). */
 	generated_text = $state("");
+	/** Free-text feedback notes (top-level; teacher-written, imported or set). */
+	notes = $state("");
 
 	// -----------------------------------------------------------------------
 	// Session lifecycle (orchestrator-owned)
@@ -573,6 +575,7 @@ class ReviewStore {
 			category_selections: this.selectionStore.toSession(),
 			grading: this.gradingStore.toSession(),
 			generated_text: this.generated_text,
+			notes: this.notes,
 			started_at: this.started_at,
 			updated_at: new Date().toISOString(),
 		};
@@ -586,6 +589,7 @@ class ReviewStore {
 		this.rubricStore.assignment_id = session.assignment_id;
 		// Preserve current user mode — do not overwrite from imported session
 		this.generated_text = session.generated_text;
+		this.notes = session.notes ?? "";
 		this.started_at = session.started_at;
 
 		this.selectionStore.fromSession(session);
@@ -605,6 +609,7 @@ class ReviewStore {
 		this.is_read_only = false;
 		this.is_forced_read_only = false;
 		this.generated_text = "";
+		this.notes = "";
 		this.started_at = new Date().toISOString();
 
 		this.rubricStore.reset();

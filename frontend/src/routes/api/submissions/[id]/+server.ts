@@ -12,7 +12,11 @@
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
-import { translateCell, type ExecutedCell, type ExecutorCellResult } from "$lib/server/executor-client";
+import {
+	translateCell,
+	type ExecutedCell,
+	type ExecutorCellResult,
+} from "$lib/server/executor-client";
 import { getSubmission } from "$lib/server/metadata";
 import { readResults } from "$lib/server/results-store";
 import type { CellInfo } from "$lib/types/submissions";

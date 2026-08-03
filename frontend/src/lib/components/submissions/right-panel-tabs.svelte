@@ -5,8 +5,13 @@
 	import GradingSidebar from "$lib/components/grading-sidebar.svelte";
 	import RubricCategory from "$lib/components/rubric-category.svelte";
 	import CopilotPanel from "./copilot-panel.svelte";
+	import PlagiarismTab from "./plagiarism-tab.svelte";
+	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import { rubricSentimentCounts } from "$lib/types/criteria.js";
+	import { SvelteSet } from "svelte/reactivity";
 
-	type Tab = "rubric" | "grading" | "copilot";
+	type Tab = "rubric" | "grading" | "plagiarism" | "copilot";
 
 	interface Props {
 		/** Currently active tab. */
@@ -25,10 +30,16 @@
 		onUpdateDimension: (key: string, value: number) => void;
 		/** Merged rubric with categories. */
 		rubric: MergedRubric | null;
-		/** Current category selections. */
+		/** Current category selections (bindable — checkbox toggles update it). */
 		categorySelections: Record<string, CategorySelections>;
+		/** Current submission id — plagiarism badge/pairs are scoped to it. */
+		studentId: string;
+		/** Assignment the submission belongs to. */
+		assignmentId: string;
 		/** Whether grading is read-only. */
 		disabled?: boolean;
+		/** Hide the component's own tab bar (the parent renders it — mobile). */
+		hideTabBar?: boolean;
 	}
 
 	let {
@@ -40,12 +51,21 @@
 		totalDeductions,
 		onUpdateDimension,
 		rubric,
-		categorySelections,
+		categorySelections = $bindable(),
+		studentId,
+		assignmentId,
 		disabled = false,
+		hideTabBar = false,
 	}: Props = $props();
 
 	let gradePct = $derived(gradeResult?.percentage ?? 0);
 	let expandedCategories = $state<Record<string, boolean>>({});
+
+	/** Unreviewed pairs involving this submission — tab badge (P3-1). */
+	let unreviewed = $derived(plagiarismStore.unreviewedCount(studentId));
+
+	/** Live sentiment counts of checked rubric items (P3-2). */
+	let sentiment = $derived(rubricSentimentCounts(rubric, categorySelections));
 
 	function handleToggle(categoryKey: string) {
 		expandedCategories = {
@@ -54,8 +74,34 @@
 		};
 	}
 
-	function handleToggleCheckbox(_key: string, _checked: boolean) {
-		// Phase 2 stub
+	/**
+	 * Toggle a rubric checkbox (key = sub-point text). Updates the owning
+	 * category's `checked_items` immutably — this drives the live sentiment
+	 * counts (P3-2) in the tab header.
+	 */
+	function handleToggleCheckbox(key: string, checked: boolean) {
+		const entry = rubric?.categories.find((e) =>
+			(["positive", "neutral", "negative"] as const).some((sentiment) =>
+				e.category[sentiment].some((mp) => mp.sub_points.some((sp) => sp.text === key)),
+			),
+		);
+		if (!entry) return;
+		const current = categorySelections[entry.key] ?? {
+			checked_items: new SvelteSet<string>(),
+			notes: "",
+			comments: {},
+			deductions: {},
+		};
+		const nextItems = new SvelteSet(current.checked_items);
+		if (checked) {
+			nextItems.add(key);
+		} else {
+			nextItems.delete(key);
+		}
+		categorySelections = {
+			...categorySelections,
+			[entry.key]: { ...current, checked_items: nextItems },
+		};
 	}
 
 	function handleUpdateComment(_key: string, _value: string) {
@@ -72,32 +118,58 @@
 </script>
 
 <div class="right-panel-tabs">
-	<div class="tab-bar">
-		<button
-			class="tab"
-			class:active={activeTab === "rubric"}
-			onclick={() => onTabChange("rubric")}
-		>
-			Rubric
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === "grading"}
-			onclick={() => onTabChange("grading")}
-		>
-			Grading
-			{#if gradeResult}
-				<span class="tab-badge">{gradePct.toFixed(0)}%</span>
-			{/if}
-		</button>
-		<button
-			class="tab"
-			class:active={activeTab === "copilot"}
-			onclick={() => onTabChange("copilot")}
-		>
-			Copilot
-		</button>
-	</div>
+	{#if !hideTabBar}
+		<div class="tab-bar">
+			<button
+				class="tab"
+				class:active={activeTab === "rubric"}
+				onclick={() => onTabChange("rubric")}
+			>
+				Rubric
+				<!-- Sentiment counts: positive / neutral / negative items flagged
+			     (checked) for this submission — live from checkbox state (P3-2). -->
+				<span class="tab-sent" title="Flagged rubric items by sentiment">
+					<span class="sent-item sent-pos"
+						><span class="sent-num">{sentiment.positive}</span></span
+					>
+					<span class="sent-item sent-neu"
+						><span class="sent-num">{sentiment.neutral}</span></span
+					>
+					<span class="sent-item sent-neg"
+						><span class="sent-num">{sentiment.negative}</span></span
+					>
+				</span>
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "grading"}
+				onclick={() => onTabChange("grading")}
+			>
+				Grading
+				{#if gradeResult}
+					<span class="tab-badge">{gradePct.toFixed(0)}%</span>
+				{/if}
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "plagiarism"}
+				onclick={() => onTabChange("plagiarism")}
+			>
+				<ShieldCheck size={12} />
+				Plagiarism
+				{#if unreviewed > 0}
+					<span class="tab-badge tab-badge-warn">{unreviewed}</span>
+				{/if}
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "copilot"}
+				onclick={() => onTabChange("copilot")}
+			>
+				Copilot
+			</button>
+		</div>
+	{/if}
 
 	<div class="tab-content">
 		{#if activeTab === "rubric"}
@@ -137,6 +209,8 @@
 					{onUpdateDimension}
 				/>
 			</div>
+		{:else if activeTab === "plagiarism"}
+			<PlagiarismTab {studentId} {assignmentId} />
 		{:else if activeTab === "copilot"}
 			<CopilotPanel />
 		{/if}
@@ -199,6 +273,39 @@
 		background: color-mix(in oklch, var(--accent) 60%, transparent);
 		color: var(--accent-foreground);
 		font-weight: 600;
+	}
+	/* Plagiarism badge: destructive tint (unreviewed count, P3-1). */
+	.tab-badge-warn {
+		background: color-mix(in oklch, var(--destructive) 14%, transparent);
+		color: var(--destructive);
+		border: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
+	}
+	/* Sentiment counts in the Rubric tab header (P3-2). */
+	.tab-sent {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: 2px;
+	}
+	.sent-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+	}
+	.sent-num {
+		font-size: 10px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+	.sent-pos .sent-num {
+		color: var(--success);
+	}
+	.sent-neu .sent-num {
+		color: var(--muted-foreground);
+	}
+	.sent-neg .sent-num {
+		color: var(--destructive);
 	}
 	.tab-content {
 		flex: 1;
