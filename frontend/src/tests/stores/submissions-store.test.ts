@@ -155,6 +155,24 @@ describe("load", () => {
 		expect(store.status).toBe("error");
 		expect(store.error).toBe("boom");
 	});
+
+	it("starts polling when the loaded list contains an executing row", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executing")));
+
+		await store.load();
+
+		expect(store.isPolling).toBe(true);
+	});
+
+	it("does not poll when the loaded list is fully settled", async () => {
+		api.fetchSubmissions.mockResolvedValue(
+			list(meta("2026SS_01", "executed"), meta("2026SS_02", "error")),
+		);
+
+		await store.load();
+
+		expect(store.isPolling).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------

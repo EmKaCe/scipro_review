@@ -90,6 +90,7 @@ export class SubmissionsStore {
 			const response = await fetchSubmissions(assignmentId ?? this.assignmentId ?? undefined);
 			this.assignmentId = response.assignmentId;
 			this.submissions = response.submissions;
+			this.syncPolling();
 			this.status = "idle";
 			return response.submissions;
 		} catch (err) {

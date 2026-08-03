@@ -43,6 +43,7 @@
 	let searchQuery = $state("");
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
+	let processing = $state(false);
 
 	// -----------------------------------------------------------------------
 	// Teacher backup (download / restore the whole data directory)
@@ -131,8 +132,27 @@
 		statusFilter = f;
 	}
 
-	function handleProcessAll() {
-		addToast("info", "Processing pipeline coming in Phase 3", 4000);
+	async function handleProcessAll() {
+		if (processing) return;
+		const pending = submissions.filter((s) => s.status === "pending");
+		if (pending.length === 0) {
+			addToast("info", "No pending submissions to process", 3000);
+			return;
+		}
+		processing = true;
+		submissionsStore.startPolling(); // live row statuses while the synchronous batch runs
+		try {
+			const resp = await submissionsStore.process();
+			addToast(
+				"success",
+				`Processed ${resp.succeeded} of ${resp.submitted} submission(s)${resp.failed > 0 ? `, ${resp.failed} failed` : ""}`,
+				5000,
+			);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Batch processing failed", 5000);
+		} finally {
+			processing = false;
+		}
 	}
 
 	function handlePreEvaluateAll() {
@@ -273,8 +293,10 @@
 		<!-- ── Action bar ── -->
 		<div class="action-bar">
 			<div class="action-left">
-				<button class="btn-action btn-primary" onclick={handleProcessAll}>
-					Process All
+				<button class="btn-action btn-primary" onclick={handleProcessAll} disabled={processing}>
+					{processing
+						? `Processing ${submissions.filter((s) => s.status === "executing").length}/${submissions.filter((s) => s.status === "pending").length + submissions.filter((s) => s.status === "executing").length}…`
+						: "Process All"}
 				</button>
 				<button
 					class="btn-action btn-outline"
