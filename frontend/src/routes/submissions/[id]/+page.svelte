@@ -732,7 +732,6 @@
 						class="status-badge status-{submission.status}"
 						title={submission.error ?? ""}
 					>
-						<!-- @ts-ignore -->
 						<StatusIcon size={11} />
 						{statusCfg.label}
 					</span>

@@ -5,6 +5,7 @@
  * submission's status renders identically everywhere.
  */
 import type { SubmissionStatus } from "$lib/types/submissions.js";
+import type { LucideIcon } from "@lucide/svelte";
 import Clock from "@lucide/svelte/icons/clock";
 import Loader from "@lucide/svelte/icons/loader";
 import CircleCheck from "@lucide/svelte/icons/circle-check";
@@ -13,8 +14,8 @@ import Sparkles from "@lucide/svelte/icons/sparkles";
 import Star from "@lucide/svelte/icons/star";
 
 export interface StatusDisplay {
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	icon: any;
+	/** Lucide icon component rendered in the badge. */
+	icon: LucideIcon;
 	label: string;
 }
 

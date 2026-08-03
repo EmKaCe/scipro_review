@@ -59,39 +59,33 @@
 	let sortKey = $state<SortKey>("studentId");
 	let sortAsc = $state(true);
 
+	/** Extract the sortable value for the current sort key (same type for both rows). */
+	function sortValue(s: SubmissionMeta): string | number {
+		switch (sortKey) {
+			case "status":
+				return s.status;
+			case "cellSummary":
+				return s.cellSummary ?? "";
+			case "preEvalGrade":
+				return s.preEvalGrade ?? -1;
+			case "teacherGrade":
+				return s.teacherGrade ?? -1;
+			default:
+				return s.studentId;
+		}
+	}
+
+	/** Compare two sort values: numbers numerically, strings lexically. */
+	function compareValues(x: string | number, y: string | number): number {
+		if (typeof x === "number" && typeof y === "number") return x - y;
+		return String(x).localeCompare(String(y));
+	}
+
 	let sorted = $derived.by(() => {
 		const arr = [...filtered];
 		arr.sort((a, b) => {
-			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			let va: any, vb: any;
-			switch (sortKey) {
-				case "studentId":
-					va = a.studentId;
-					vb = b.studentId;
-					break;
-				case "status":
-					va = a.status;
-					vb = b.status;
-					break;
-				case "cellSummary":
-					va = a.cellSummary ?? "";
-					vb = b.cellSummary ?? "";
-					break;
-				case "preEvalGrade":
-					va = a.preEvalGrade ?? -1;
-					vb = b.preEvalGrade ?? -1;
-					break;
-				case "teacherGrade":
-					va = a.teacherGrade ?? -1;
-					vb = b.teacherGrade ?? -1;
-					break;
-				default:
-					va = a.studentId;
-					vb = b.studentId;
-			}
-			if (va < vb) return sortAsc ? -1 : 1;
-			if (va > vb) return sortAsc ? 1 : -1;
-			return 0;
+			const cmp = compareValues(sortValue(a), sortValue(b));
+			return sortAsc ? cmp : -cmp;
 		});
 		return arr;
 	});
@@ -250,7 +244,6 @@
 						</td>
 						<td class="col-status">
 							<span class="status-badge status-{sub.status}" title={sub.error ?? ""}>
-								<!-- @ts-ignore -->
 								<StatusIcon size={11} />
 								{cfg.label}
 							</span>

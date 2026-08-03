@@ -4,6 +4,7 @@
 	import GitFork from "@lucide/svelte/icons/git-fork";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import type { LucideIcon } from "@lucide/svelte";
 	import { marked } from "marked";
 	import AutofixCard from "./autofix-card.svelte";
 
@@ -29,11 +30,7 @@
 		}
 	}
 
-	const markerConfig: Record<
-		string,
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		{ label: string; icon: any; class: string }
-	> = {
+	const markerConfig: Record<string, { label: string; icon: LucideIcon; class: string }> = {
 		same: {
 			label: "Same approach",
 			icon: CircleCheck,
