@@ -148,7 +148,7 @@
 	.hint {
 		margin: 0;
 		font-size: 12px;
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 	.spinner {
 		display: inline-flex;

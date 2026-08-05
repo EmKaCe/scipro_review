@@ -240,7 +240,7 @@
 	}
 	.field-hint {
 		font-size: 12px;
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 	.field-error {
 		margin: 0;

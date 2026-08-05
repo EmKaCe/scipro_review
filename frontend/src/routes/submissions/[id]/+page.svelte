@@ -1456,6 +1456,6 @@
 		box-shadow: 0 0 0 2px color-mix(in oklch, var(--ring) 30%, transparent);
 	}
 	.notes-textarea::placeholder {
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 </style>

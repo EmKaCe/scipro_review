@@ -73,7 +73,7 @@
 		right: 10px;
 		top: 50%;
 		transform: translateY(-50%);
-		color: var(--muted);
+		color: var(--muted-foreground);
 		pointer-events: none;
 	}
 

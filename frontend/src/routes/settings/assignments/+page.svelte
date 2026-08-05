@@ -278,7 +278,7 @@
 	.page-subtitle {
 		margin: 4px 0 0;
 		font-size: 13.5px;
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 	.btn-back {
 		display: inline-flex;
@@ -372,7 +372,7 @@
 		border: none;
 		border-radius: var(--radius);
 		background: transparent;
-		color: var(--muted);
+		color: var(--muted-foreground);
 		cursor: pointer;
 	}
 	.icon-btn:hover {
@@ -422,12 +422,12 @@
 	}
 	.badge-disabled {
 		background: color-mix(in oklch, var(--muted) 14%, transparent);
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 	.row-sub {
 		margin: 3px 0 0;
 		font-size: 13px;
-		color: var(--muted);
+		color: var(--muted-foreground);
 	}
 	.row-actions {
 		display: flex;
@@ -446,7 +446,7 @@
 		padding: 32px;
 		border: 1px dashed var(--border);
 		border-radius: var(--radius);
-		color: var(--muted);
+		color: var(--muted-foreground);
 		font-size: 14px;
 		text-align: center;
 	}

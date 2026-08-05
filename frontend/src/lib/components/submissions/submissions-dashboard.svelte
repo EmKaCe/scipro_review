@@ -351,8 +351,8 @@
 		border-radius: var(--radius-md);
 		padding: 4px 8px;
 	}
-	.search-icon {
-		color: var(--muted);
+	:global(.search-icon) {
+		color: var(--muted-foreground);
 		flex-shrink: 0;
 	}
 	.search-input {

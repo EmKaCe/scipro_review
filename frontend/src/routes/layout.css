@@ -58,6 +58,17 @@
 	--warning: oklch(0.7 0.15 85);
 	--error: oklch(0.577 0.245 27.325);
 	--info: oklch(0.6 0.15 250);
+	/* Legacy aliases (pre-shadcn token names still used across components) */
+	--fg: var(--foreground);
+	--bg: var(--background);
+	--muted-bg: var(--muted);
+	--font-mono:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+		monospace;
+	--destructive-foreground: var(--background);
+	--accent-on: var(--accent-foreground);
+	--accent-hover: color-mix(in oklch, var(--accent) 80%, var(--foreground));
+	--accent-soft: color-mix(in oklch, var(--accent) 15%, transparent);
 }
 
 .dark {
@@ -110,6 +121,17 @@
 	--warning: oklch(0.65 0.14 85);
 	--error: oklch(0.704 0.191 22.216);
 	--info: oklch(0.55 0.14 250);
+	/* Legacy aliases (pre-shadcn token names still used across components) */
+	--fg: var(--foreground);
+	--bg: var(--background);
+	--muted-bg: var(--muted);
+	--font-mono:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New",
+		monospace;
+	--destructive-foreground: var(--background);
+	--accent-on: var(--accent-foreground);
+	--accent-hover: color-mix(in oklch, var(--accent) 80%, var(--foreground));
+	--accent-soft: color-mix(in oklch, var(--accent) 15%, transparent);
 }
 
 @theme inline {
