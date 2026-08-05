@@ -6,10 +6,11 @@
  */
 import type { SubmissionStatus } from "$lib/types/submissions.js";
 import type { LucideIcon } from "@lucide/svelte";
+import Archive from "@lucide/svelte/icons/archive";
+import CircleAlert from "@lucide/svelte/icons/circle-alert";
+import CircleCheck from "@lucide/svelte/icons/circle-check";
 import Clock from "@lucide/svelte/icons/clock";
 import Loader from "@lucide/svelte/icons/loader";
-import CircleCheck from "@lucide/svelte/icons/circle-check";
-import CircleAlert from "@lucide/svelte/icons/circle-alert";
 import Sparkles from "@lucide/svelte/icons/sparkles";
 import Star from "@lucide/svelte/icons/star";
 
@@ -27,6 +28,7 @@ export const statusConfig: Record<SubmissionStatus, StatusDisplay> = {
 	error: { icon: CircleAlert, label: "Error" },
 	"pre-evaluated": { icon: Sparkles, label: "Pre-evaluated" },
 	graded: { icon: Star, label: "Graded" },
+	archived: { icon: Archive, label: "Archived" },
 };
 
 /** Human-readable label for a status (falls back to "Pending"). */

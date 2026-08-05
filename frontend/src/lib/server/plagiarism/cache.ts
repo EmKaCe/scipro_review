@@ -118,6 +118,60 @@ export async function updatePairReviewStatus(
 	return result;
 }
 
+/**
+ * Set the review status of every pair involving a student (used when a
+ * submission is archived: pairs become `ignored`; on restore they become
+ * `unreviewed` again so the export guard works as before). Persists the
+ * updated result; returns the updated result or null when no cache exists.
+ */
+export async function setStudentPairReviewStatus(
+	assignmentId: string,
+	studentId: string,
+	reviewStatus: PairReviewStatus,
+): Promise<PlagiarismResult | null> {
+	const result = await readPlagiarismResult(assignmentId);
+	if (!result) return null;
+
+	let changed = false;
+	for (const pair of result.pairs) {
+		if (pair.studentA === studentId || pair.studentB === studentId) {
+			if (pair.reviewStatus !== reviewStatus) {
+				pair.reviewStatus = reviewStatus;
+				changed = true;
+			}
+		}
+	}
+	if (changed) {
+		await writePlagiarismResult(assignmentId, result);
+	}
+	return result;
+}
+
+/**
+ * Remove every pair involving the given student from a cached result and
+ * persist it. Returns the updated result, or null when the assignment has
+ * no cache. Used when a submission is permanently deleted.
+ */
+export async function removeStudentFromPlagiarism(
+	assignmentId: string,
+	studentId: string,
+): Promise<PlagiarismResult | null> {
+	const result = await readPlagiarismResult(assignmentId);
+	if (!result) return null;
+
+	const before = result.pairs.length;
+	result.pairs = result.pairs.filter((p) => p.studentA !== studentId && p.studentB !== studentId);
+	if (result.pairs.length === before) {
+		return result; // nothing changed — no write needed
+	}
+	result.comparedSubmissions = result.comparedSubmissions.filter((s) => s !== studentId);
+	// Recompute the pair count over the remaining compared set (n choose 2).
+	const n = result.comparedSubmissions.length;
+	result.totalPairs = (n * (n - 1)) / 2;
+	await writePlagiarismResult(assignmentId, result);
+	return result;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

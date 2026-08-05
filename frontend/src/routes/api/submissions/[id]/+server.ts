@@ -1,26 +1,36 @@
 /**
- * @file GET /api/submissions/[id] — full detail for one submission.
+ * @file /api/submissions/[id] — full detail + deletion for one submission.
  *
- * Returns the metadata record plus executed cells. Cells come from the
- * assignment's results.json (data/submissions/<assignment>/results.json);
- * entries written by the batch endpoint carry no cell data, so `cells` is []
- * until a single-submission process run stores them. Stored wire-shaped
- * cells (cell_index) are translated via executor-client.translateCell;
- * already-translated cells pass through.
+ * GET    — metadata record plus executed cells. Cells come from the
+ *          assignment's results.json (data/submissions/<assignment>/results.json);
+ *          entries written by the batch endpoint carry no cell data, so `cells` is []
+ *          until a single-submission process run stores them. Stored wire-shaped
+ *          cells (cell_index) are translated via executor-client.translateCell;
+ *          already-translated cells pass through.
+ * DELETE — permanently remove the submission: metadata entry, notebook file,
+ *          stored execution result, and plagiarism pairs. Destructive — the
+ *          UI requires a confirm step before calling this.
+ *
+ * Query param (both):
+ *   assignment? — target assignment (default: first enabled assignment)
  */
+
+import { unlink } from "node:fs/promises";
 
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
+import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import {
 	translateCell,
 	type ExecutedCell,
 	type ExecutorCellResult,
 } from "$lib/server/executor-client";
-import { getSubmission } from "$lib/server/metadata";
-import { readResults } from "$lib/server/results-store";
+import { getSubmissionNotebookAbsolutePath } from "$lib/server/file-service";
+import { getSubmission, removeSubmission } from "$lib/server/metadata";
+import { removeStudentFromPlagiarism } from "$lib/server/plagiarism/cache";
+import { readResults, clearResult } from "$lib/server/results-store";
 import type { CellInfo } from "$lib/types/submissions";
-import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	const studentId = event.params.id;
@@ -44,6 +54,42 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const cells = normalizeStoredCells(results[studentId]?.cells);
 
 	return json({ ...record, cells });
+}
+
+export async function DELETE(event: RequestEvent): Promise<Response> {
+	const studentId = event.params.id;
+	if (!studentId) {
+		throw error(400, "Missing submission id");
+	}
+	const assignmentId = await resolveAssignmentId(event.url.searchParams.get("assignment"));
+	if (!assignmentId) {
+		throw error(404, "No assignments configured");
+	}
+	if (!(await assignmentExists(assignmentId))) {
+		throw error(404, `Assignment "${assignmentId}" not found`);
+	}
+	const existing = await getSubmission(assignmentId, studentId);
+	if (!existing) {
+		throw error(404, `Submission "${studentId}" not found in assignment "${assignmentId}"`);
+	}
+
+	// Notebook file (best-effort — a missing file must not block removal).
+	try {
+		await unlink(getSubmissionNotebookAbsolutePath(assignmentId, studentId));
+	} catch (err) {
+		if (!isNodeError(err) || err.code !== "ENOENT") {
+			throw error(500, `Failed to delete notebook file: ${(err as Error).message}`);
+		}
+	}
+
+	// Execution result + plagiarism pairs involving this student.
+	await clearResult(assignmentId, studentId);
+	await removeStudentFromPlagiarism(assignmentId, studentId);
+
+	// Metadata last: if anything above threw, the record stays consistent.
+	await removeSubmission(assignmentId, studentId);
+
+	return json({ deleted: studentId, assignmentId });
 }
 
 // ---------------------------------------------------------------------------
@@ -84,4 +130,8 @@ function toCellInfo(cell: CellInfo | ExecutedCell): CellInfo {
 		error: cell.error ?? undefined,
 		marker: cell.marker,
 	};
+}
+
+function isNodeError(err: unknown): err is NodeJS.ErrnoException {
+	return err instanceof Error && "code" in err;
 }

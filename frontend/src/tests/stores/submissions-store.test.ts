@@ -128,7 +128,7 @@ describe("load", () => {
 
 		const result = await store.load();
 
-		expect(api.fetchSubmissions).toHaveBeenCalledWith(undefined);
+		expect(api.fetchSubmissions).toHaveBeenCalledWith(undefined, false);
 		expect(result).toHaveLength(2);
 		expect(store.submissions).toEqual([
 			meta("2026SS_01", "pending"),
@@ -144,7 +144,7 @@ describe("load", () => {
 
 		await store.load("atom_interaction");
 
-		expect(api.fetchSubmissions).toHaveBeenCalledWith("atom_interaction");
+		expect(api.fetchSubmissions).toHaveBeenCalledWith("atom_interaction", false);
 		expect(store.assignmentId).toBe(ASSIGNMENT); // response wins
 	});
 
@@ -152,9 +152,19 @@ describe("load", () => {
 		api.fetchSubmissions.mockRejectedValue(new Error("boom"));
 
 		await expect(store.load()).rejects.toThrow("boom");
-
 		expect(store.status).toBe("error");
 		expect(store.error).toBe("boom");
+	});
+
+	it("forwards includeArchived when the archived view is requested", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "archived")));
+
+		store.includeArchived = true;
+		await store.load();
+
+		expect(api.fetchSubmissions).toHaveBeenCalledWith(undefined, true);
+		expect(store.submissions).toHaveLength(1);
+		expect(store.submissions[0]!.status).toBe("archived");
 	});
 
 	it("starts polling when the loaded list contains an executing row", async () => {

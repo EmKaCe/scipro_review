@@ -12,7 +12,7 @@
  * Environment: DATA_DIR (default ./data). Server-only ($lib/server deps).
  */
 
-import { readdir } from "node:fs/promises";
+import { readdir, rm, unlink } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
 
@@ -109,6 +109,59 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	return json({ status: await scanMaterials(assignmentId), uploaded });
+}
+
+/**
+ * Delete assignment materials.
+ *
+ *   DELETE /api/assignments/<id>/materials?name=<file>
+ *       — remove one material file (searches the materials root and
+ *         input_data/; the name must be a single path segment)
+ *   DELETE /api/assignments/<id>/materials
+ *       — remove the whole materials directory for the assignment
+ *
+ * Returns the updated material status.
+ */
+export async function DELETE(event: RequestEvent): Promise<Response> {
+	const assignmentId = validateAssignmentId(event.params.id);
+	const name = event.url.searchParams.get("name");
+
+	const root = path.join(getDataDir(), "materials", assignmentId);
+
+	if (name !== null && name !== "") {
+		try {
+			assertSafeSegment(name, "name");
+		} catch (err) {
+			throw error(400, (err as Error).message);
+		}
+		const candidates = [path.join(root, name), path.join(root, "input_data", name)];
+		let removed = false;
+		for (const candidate of candidates) {
+			try {
+				await unlink(candidate);
+				removed = true;
+			} catch (err) {
+				if (!isNodeError(err) || err.code !== "ENOENT") {
+					throw error(
+						500,
+						`Failed to delete material "${name}": ${(err as Error).message}`,
+					);
+				}
+			}
+		}
+		if (!removed) {
+			throw error(404, `Material "${name}" not found for assignment "${assignmentId}"`);
+		}
+		return json({ status: await scanMaterials(assignmentId), removed: [name] });
+	}
+
+	// Clear the whole materials directory for the assignment.
+	try {
+		await rm(root, { recursive: true, force: true });
+	} catch (err) {
+		throw error(500, `Failed to clear materials: ${(err as Error).message}`);
+	}
+	return json({ status: await scanMaterials(assignmentId), removed: [] });
 }
 
 // ---------------------------------------------------------------------------

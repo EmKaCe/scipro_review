@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as listAssignments } from "../../routes/api/assignments/+server";
 import {
+	DELETE as deleteMaterials,
 	GET as getMaterials,
 	POST as postMaterials,
 } from "../../routes/api/assignments/[id]/materials/+server";
@@ -56,6 +57,17 @@ function makeEvent(id: string, formData?: FormData): RequestEvent {
 				return formData;
 			},
 		},
+	} as unknown as RequestEvent;
+}
+
+/** RequestEvent stub with a real URL (DELETE reads ?name=). */
+function makeDeleteEvent(id: string, query = ""): RequestEvent {
+	return {
+		url: new URL(`http://localhost/api/assignments/${id}/materials${query}`),
+		params: { id },
+		request: new Request(`http://localhost/api/assignments/${id}/materials${query}`, {
+			method: "DELETE",
+		}),
 	} as unknown as RequestEvent;
 }
 
@@ -346,6 +358,70 @@ describe("POST /api/assignments/[id]/materials", () => {
 				makeEvent("soil_contamination", formDataWith([fakeFile("2026SS_03.ipynb")])),
 			),
 			400,
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/assignments/[id]/materials
+// ---------------------------------------------------------------------------
+
+describe("DELETE /api/assignments/[id]/materials", () => {
+	it("deletes a single material file and reports the updated status", async () => {
+		await mkdir(materialsDir("soil_contamination", "input_data"), { recursive: true });
+		await writeFile(materialsDir("soil_contamination", "assignment.pdf"), "pdf");
+		await writeFile(materialsDir("soil_contamination", "input_data", "soil.csv"), "a,b\n");
+
+		const res = await deleteMaterials(makeDeleteEvent("soil_contamination", "?name=soil.csv"));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			removed: string[];
+			status: { hasInputData: boolean; files: Array<{ name: string }> };
+		};
+		expect(body.removed).toEqual(["soil.csv"]);
+		expect(body.status.hasInputData).toBe(false);
+		expect(body.status.files.map((f) => f.name)).toEqual(["assignment.pdf"]);
+
+		// The file is really gone; the sibling material remains.
+		await expect(
+			readFile(materialsDir("soil_contamination", "input_data", "soil.csv")),
+		).rejects.toThrow();
+		await expect(
+			readFile(materialsDir("soil_contamination", "assignment.pdf"), "utf-8"),
+		).resolves.toBe("pdf");
+	});
+
+	it("clears the whole materials directory when no name is given", async () => {
+		await mkdir(materialsDir("soil_contamination", "input_data"), { recursive: true });
+		await writeFile(materialsDir("soil_contamination", "assignment.pdf"), "pdf");
+		await writeFile(materialsDir("soil_contamination", "input_data", "soil.csv"), "a,b\n");
+
+		const res = await deleteMaterials(makeDeleteEvent("soil_contamination"));
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			removed: string[];
+			status: { hasPdf: boolean; hasInputData: boolean; files: unknown[] };
+		};
+		expect(body.status).toEqual({
+			assignmentId: "soil_contamination",
+			hasPdf: false,
+			hasKey: false,
+			hasInputData: false,
+			files: [],
+		});
+	});
+
+	it("rejects path traversal names with 400", async () => {
+		await expectHttpError(
+			deleteMaterials(makeDeleteEvent("soil_contamination", "?name=../assignments.yaml")),
+			400,
+		);
+	});
+
+	it("404s for a missing file", async () => {
+		await expectHttpError(
+			deleteMaterials(makeDeleteEvent("soil_contamination", "?name=nope.pdf")),
+			404,
 		);
 	});
 });

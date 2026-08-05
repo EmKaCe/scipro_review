@@ -231,7 +231,7 @@ async function expectApiError(
 
 async function seedSubmission(
 	studentId: string,
-	status: "pending" | "executing" | "executed" | "error" | "graded" = "pending",
+	status: "pending" | "executing" | "executed" | "error" | "graded" | "archived" = "pending",
 	extra: Record<string, unknown> = {},
 ) {
 	return upsertSubmission(ASSIGNMENT, studentId, {
@@ -294,6 +294,24 @@ describe("GET /api/submissions", () => {
 			404,
 			'Assignment "does_not_exist" not found',
 		);
+	});
+
+	it("excludes archived submissions unless includeArchived=1", async () => {
+		await seedSubmission("2026SS_01", "executed");
+		await seedSubmission("2026SS_02", "archived");
+
+		const defaultList = await readJson<{ submissions: Array<{ studentId: string }> }>(
+			await listGET(makeEvent("/api/submissions")),
+		);
+		expect(defaultList.submissions.map((s) => s.studentId)).toEqual(["2026SS_01"]);
+
+		const withArchived = await readJson<{ submissions: Array<{ studentId: string }> }>(
+			await listGET(makeEvent("/api/submissions?includeArchived=1")),
+		);
+		expect(withArchived.submissions.map((s) => s.studentId)).toEqual([
+			"2026SS_01",
+			"2026SS_02",
+		]);
 	});
 });
 

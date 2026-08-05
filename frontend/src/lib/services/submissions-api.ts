@@ -313,13 +313,18 @@ async function errorMessage(response: Response): Promise<string> {
 // ---------------------------------------------------------------------------
 
 /** GET /api/submissions — list submissions for the (optional) assignment. */
-export async function fetchSubmissions(assignmentId?: string): Promise<{
+export async function fetchSubmissions(
+	assignmentId?: string,
+	includeArchived = false,
+): Promise<{
 	assignmentId: string;
 	submissions: SubmissionMeta[];
 }> {
-	return requestJson<{ assignmentId: string; submissions: SubmissionMeta[] }>(
-		withAssignment("/api/submissions", assignmentId),
-	);
+	const base = withAssignment("/api/submissions", assignmentId);
+	const url = includeArchived
+		? `${base}${base.includes("?") ? "&" : "?"}includeArchived=1`
+		: base;
+	return requestJson<{ assignmentId: string; submissions: SubmissionMeta[] }>(url);
 }
 
 /** GET /api/submissions/[id] — full detail for one submission. */
@@ -433,6 +438,33 @@ export async function gradeSubmission(
 	);
 }
 
+/** DELETE /api/submissions/[id] — permanently remove a submission. */
+export async function deleteSubmission(
+	id: string,
+	assignmentId?: string,
+): Promise<{ deleted: string; assignmentId: string }> {
+	return requestJson<{ deleted: string; assignmentId: string }>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}`, assignmentId),
+		{ method: "DELETE" },
+	);
+}
+
+/** POST /api/submissions/[id]/archive — archive or restore a submission. */
+export async function archiveSubmission(
+	id: string,
+	assignmentId: string,
+	action: "archive" | "restore" = "archive",
+): Promise<SubmissionMeta> {
+	return requestJson<SubmissionMeta>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}/archive`, assignmentId),
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ action }),
+		},
+	);
+}
+
 /**
  * GET /api/submissions/[id]/export — download the grading YAML document.
  *
@@ -492,6 +524,19 @@ export async function fetchMaterials(assignmentId: string): Promise<MaterialsSta
 	return requestJson<MaterialsStatus>(
 		`/api/assignments/${encodeURIComponent(assignmentId)}/materials`,
 	);
+}
+
+/** DELETE /api/assignments/[id]/materials — delete one material file or clear all. */
+export async function deleteMaterial(
+	assignmentId: string,
+	name?: string,
+): Promise<{ status: MaterialsStatus; removed: string[] }> {
+	const url = `/api/assignments/${encodeURIComponent(assignmentId)}/materials${
+		name ? `?name=${encodeURIComponent(name)}` : ""
+	}`;
+	return requestJson<{ status: MaterialsStatus; removed: string[] }>(url, {
+		method: "DELETE",
+	});
 }
 
 // ---------------------------------------------------------------------------

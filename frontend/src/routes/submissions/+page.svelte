@@ -12,8 +12,10 @@
 	import UploadBar from "$lib/components/submissions/upload-bar.svelte";
 	import UploadPanel from "$lib/components/submissions/upload-panel.svelte";
 	import MaterialsIndicator from "$lib/components/submissions/materials-indicator.svelte";
+	import MaterialsManager from "$lib/components/submissions/materials-manager.svelte";
 	import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
+	import ConfirmationDialog from "$lib/components/confirmation-dialog.svelte";
 	import Archive from "@lucide/svelte/icons/archive";
 	import {
 		downloadBackup,
@@ -47,6 +49,8 @@
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
 	let processing = $state(false);
+	/** Materials manager panel visibility (dashboard). */
+	let materialsOpen = $state(false);
 	/** Materials state for the selected assignment (B3 — real API). */
 	let materials = $state<MaterialsStatus | null>(null);
 
@@ -138,6 +142,42 @@
 	}
 
 	// -----------------------------------------------------------------------
+	// Submission lifecycle: archive / restore / delete
+	// -----------------------------------------------------------------------
+	/** Pending delete target (confirm dialog). */
+	let deleteTarget = $state<SubmissionMeta | null>(null);
+	let deleting = $state(false);
+
+	async function handleArchive(id: string, action: "archive" | "restore") {
+		try {
+			await submissionsStore.archive(id, action);
+			addToast("success", action === "archive" ? `Archived ${id}` : `Restored ${id}`, 3000);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Archive action failed", 4000);
+		}
+	}
+
+	function requestDelete(id: string) {
+		const meta = submissions.find((s) => s.id === id) ?? null;
+		deleteTarget = meta;
+	}
+
+	async function handleDelete() {
+		const target = deleteTarget;
+		if (!target || deleting) return;
+		deleting = true;
+		try {
+			await submissionsStore.delete(target.id);
+			addToast("success", `Deleted ${target.id}`, 3000);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Delete failed", 4000);
+		} finally {
+			deleting = false;
+			deleteTarget = null;
+		}
+	}
+
+	// -----------------------------------------------------------------------
 	// Handlers
 	// -----------------------------------------------------------------------
 	function handleAssignmentChange(id: string) {
@@ -151,6 +191,9 @@
 
 	function handleStatusFilterChange(f: string) {
 		statusFilter = f;
+		// Reload with archived rows when the "Archived" filter is active.
+		submissionsStore.includeArchived = f === "archived";
+		void loadSubmissions();
 	}
 
 	async function handleProcessAll() {
@@ -304,15 +347,29 @@
 			/>
 		{/if}
 
-		<!-- ── Materials indicator (real API state, refreshed after upload) ── -->
+		<!-- ── Materials: indicator (toggles the manager) + management panel ── -->
 		<div class="materials-section">
-			<MaterialsIndicator
-				materials={[
-					{ label: "PDF", present: materials?.hasPdf ?? false },
-					{ label: "Key", present: materials?.hasKey ?? false },
-					{ label: "Data", present: materials?.hasInputData ?? false },
-				]}
-			/>
+			<button
+				class="materials-toggle"
+				title="Manage assignment materials (upload, replace, delete)"
+				onclick={() => (materialsOpen = !materialsOpen)}
+			>
+				<MaterialsIndicator
+					materials={[
+						{ label: "PDF", present: materials?.hasPdf ?? false },
+						{ label: "Key", present: materials?.hasKey ?? false },
+						{ label: "Data", present: materials?.hasInputData ?? false },
+					]}
+				/>
+				<span class="materials-toggle-label">{materialsOpen ? "Hide" : "Manage"}</span>
+			</button>
+			{#if materialsOpen}
+				<MaterialsManager
+					assignmentId={selectedAssignment}
+					{materials}
+					onChange={(status) => (materials = status)}
+				/>
+			{/if}
 		</div>
 
 		<!-- ── Dashboard table ── -->
@@ -323,6 +380,8 @@
 			assignmentId={selectedAssignment}
 			onSearchChange={handleSearchChange}
 			onStatusFilterChange={handleStatusFilterChange}
+			onArchive={handleArchive}
+			onDelete={requestDelete}
 		/>
 
 		<!-- ── Action bar ── -->
@@ -379,6 +438,20 @@
 		<UploadBar compact={true} onClick={handleToggleUploadPanel} />
 	</div>
 {/if}
+
+<!-- Delete confirmation (destructive, requires typing the student ID). -->
+<ConfirmationDialog
+	open={deleteTarget !== null}
+	title="Delete Submission"
+	message={deleteTarget
+		? `Permanently delete <span class="font-medium text-foreground">${deleteTarget.studentId}</span>? This removes the notebook, its execution results, and its plagiarism pairs. This cannot be undone.`
+		: ""}
+	confirmLabel="Delete"
+	variant="danger"
+	requireTyping={deleteTarget?.studentId ?? ""}
+	onconfirm={handleDelete}
+	oncancel={() => (deleteTarget = null)}
+/>
 
 <style>
 	.page-layout {
@@ -440,6 +513,21 @@
 	.materials-section {
 		padding: 0 14px;
 		/* Match table cell horizontal padding so text aligns with card contents */
+	}
+	.materials-toggle {
+		display: inline-flex;
+		align-items: center;
+		gap: 10px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		padding: 2px 0;
+		font: inherit;
+	}
+	.materials-toggle-label {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--primary);
 	}
 
 	/* ── Action bar ── */

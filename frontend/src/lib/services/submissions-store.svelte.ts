@@ -20,6 +20,8 @@ import { SvelteMap } from "svelte/reactivity";
 import type { SubmissionDetail, SubmissionMeta, SubmissionStatus } from "$lib/types/submissions.js";
 
 import {
+	archiveSubmission as archiveSubmissionApi,
+	deleteSubmission,
 	exportSubmission,
 	fetchSubmission,
 	fetchSubmissions,
@@ -67,6 +69,8 @@ export class SubmissionsStore {
 	error = $state<string | null>(null);
 	/** Whether the D5 polling loop is currently running. */
 	isPolling = $state(false);
+	/** Fetch archived rows too (set while the "Archived" filter is active). */
+	includeArchived = $state(false);
 
 	/** Detail cache backing the sync getSubmission() wrapper. */
 	private details = new SvelteMap<string, SubmissionDetail>();
@@ -83,12 +87,18 @@ export class SubmissionsStore {
 	 * Load the submission list for an assignment (defaults to the current
 	 * one, or the server-side default when none is set). Sets loading/error
 	 * status and throws on failure.
+	 *
+	 * `includeArchived` fetches archived rows too (the dashboard does this
+	 * while the "Archived" filter is active).
 	 */
-	async load(assignmentId?: string): Promise<SubmissionMeta[]> {
+	async load(assignmentId?: string, includeArchived?: boolean): Promise<SubmissionMeta[]> {
 		this.status = "loading";
 		this.error = null;
 		try {
-			const response = await fetchSubmissions(assignmentId ?? this.assignmentId ?? undefined);
+			const response = await fetchSubmissions(
+				assignmentId ?? this.assignmentId ?? undefined,
+				includeArchived ?? this.includeArchived,
+			);
 			this.assignmentId = response.assignmentId;
 			this.submissions = response.submissions;
 			this.syncPolling();
@@ -108,7 +118,10 @@ export class SubmissionsStore {
 	 */
 	async refresh(): Promise<void> {
 		try {
-			const response = await fetchSubmissions(this.assignmentId ?? undefined);
+			const response = await fetchSubmissions(
+				this.assignmentId ?? undefined,
+				this.includeArchived,
+			);
 			this.assignmentId = response.assignmentId;
 			this.submissions = response.submissions;
 			this.error = null;
@@ -250,6 +263,24 @@ export class SubmissionsStore {
 		const record = await gradeSubmission(id, teacherGrade, this.assignmentId ?? undefined);
 		this.applyRecord(record);
 		return record;
+	}
+
+	/** Archive (soft-hide) or restore a submission, then refresh the list. */
+	async archive(id: string, action: "archive" | "restore" = "archive"): Promise<SubmissionMeta> {
+		const record = await archiveSubmissionApi(id, this.requireAssignment(), action);
+		this.applyRecord(record);
+		await this.refresh();
+		return record;
+	}
+
+	/** Permanently delete a submission, then refresh the list. */
+	async delete(id: string): Promise<void> {
+		await deleteSubmission(id, this.assignmentId ?? undefined);
+		this.details.delete(id);
+		if (this.selected?.id === id) {
+			this.selected = null;
+		}
+		await this.refresh();
 	}
 
 	/** Download the grading YAML for one submission (student copy by default). */

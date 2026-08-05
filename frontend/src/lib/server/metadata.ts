@@ -58,6 +58,8 @@ export interface SubmissionRecord {
 	/** Last execution error summary (when status is "error"). */
 	error?: string | null;
 	grading?: GradingState;
+	/** Pre-archive status — set by archiveSubmission, cleared on restore. */
+	archivedFrom?: SubmissionStatus;
 	/** ISO timestamp of upload. */
 	createdAt: string;
 	/** ISO timestamp of the last change. */
@@ -88,12 +90,15 @@ export class MetadataError extends Error {
  * from error/executed back to executing.
  */
 export const STATUS_TRANSITIONS: Record<SubmissionStatus, SubmissionStatus[]> = {
-	pending: ["executing"],
-	executing: ["executed", "error"],
-	executed: ["graded", "executing", "error"],
-	error: ["executing"],
-	"pre-evaluated": ["graded", "executing"],
-	graded: ["executing"],
+	pending: ["executing", "archived"],
+	executing: ["executed", "error", "archived"],
+	executed: ["graded", "executing", "error", "archived"],
+	error: ["executing", "archived"],
+	"pre-evaluated": ["graded", "executing", "archived"],
+	graded: ["executing", "archived"],
+	// Archived records keep their prior status for restore — the caller
+	// passes the status to return to (e.g. "executed" or "graded").
+	archived: ["pending", "executing", "executed", "error", "pre-evaluated", "graded"],
 };
 
 const VALID_STATUSES = new Set<SubmissionStatus>(
@@ -308,6 +313,53 @@ export async function removeSubmission(assignmentId: string, studentId: string):
 	delete records[studentId];
 	await writeMetadata(assignmentId, records);
 	return true;
+}
+
+/**
+ * Soft-archive a submission: set status "archived" and remember the
+ * pre-archive status on the record so a later restore can return to it.
+ */
+export async function archiveSubmission(
+	assignmentId: string,
+	studentId: string,
+): Promise<SubmissionRecord> {
+	const records = await readMetadata(assignmentId);
+	const existing = records[studentId];
+	if (!existing) {
+		throw new MetadataError(
+			`Submission "${studentId}" not found in assignment "${assignmentId}"`,
+		);
+	}
+	const archivedFrom = existing.status;
+	const record = await updateStatus(assignmentId, studentId, "archived");
+	const fresh = await readMetadata(assignmentId);
+	fresh[studentId] = { ...record, archivedFrom };
+	await writeMetadata(assignmentId, fresh);
+	return fresh[studentId]!;
+}
+
+/**
+ * Restore an archived submission to its pre-archive status (or an explicit
+ * target). Clears `archivedFrom`. Returns the updated record.
+ */
+export async function restoreSubmission(
+	assignmentId: string,
+	studentId: string,
+	target?: SubmissionStatus,
+): Promise<SubmissionRecord> {
+	const records = await readMetadata(assignmentId);
+	const existing = records[studentId];
+	if (!existing) {
+		throw new MetadataError(
+			`Submission "${studentId}" not found in assignment "${assignmentId}"`,
+		);
+	}
+	const status: SubmissionStatus = target ?? existing.archivedFrom ?? "pending";
+	const record = await updateStatus(assignmentId, studentId, status, { force: true });
+	const fresh = await readMetadata(assignmentId);
+	fresh[studentId] = { ...record, archivedFrom: undefined };
+	await writeMetadata(assignmentId, fresh);
+	return fresh[studentId]!;
 }
 
 // ---------------------------------------------------------------------------

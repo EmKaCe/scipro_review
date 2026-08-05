@@ -18,6 +18,10 @@
 		assignmentId: string;
 		onSearchChange: (q: string) => void;
 		onStatusFilterChange: (f: string) => void;
+		/** Archive (soft-hide) or restore a submission. */
+		onArchive: (id: string, action: "archive" | "restore") => void;
+		/** Permanently delete a submission (caller confirms first). */
+		onDelete: (id: string) => void;
 	}
 
 	let {
@@ -27,6 +31,8 @@
 		assignmentId,
 		onSearchChange,
 		onStatusFilterChange,
+		onArchive,
+		onDelete,
 	}: Props = $props();
 
 	// ── Plagiarism modal + badge (P3-1) ──
@@ -47,6 +53,8 @@
 	// ── Filtered list ──
 	let filtered = $derived(
 		submissions.filter((s) => {
+			// Archived rows are hidden unless the "Archived" filter is active.
+			if (s.status === "archived" && statusFilter !== "archived") return false;
 			if (statusFilter !== "all" && s.status !== statusFilter) return false;
 			if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
 				return false;
@@ -135,6 +143,7 @@
 			<option value="error">Error</option>
 			<option value="pre-evaluated">Pre-evaluated</option>
 			<option value="graded">Graded</option>
+			<option value="archived">Archived</option>
 		</select>
 		<div class="toolbar-actions">
 			<button class="btn-plagiarism" onclick={() => (plagiarismModalOpen = true)}>
@@ -257,6 +266,30 @@
 							<a href="{base}/submissions/{sub.id}" class="btn-open">
 								Open <ArrowRight size={12} />
 							</a>
+							{#if sub.status === "archived"}
+								<button
+									class="btn-row-action"
+									title="Restore to the active batch"
+									onclick={() => onArchive(sub.id, "restore")}
+								>
+									Restore
+								</button>
+								<button
+									class="btn-row-action btn-row-danger"
+									title="Permanently delete"
+									onclick={() => onDelete(sub.id)}
+								>
+									Delete
+								</button>
+							{:else}
+								<button
+									class="btn-row-action"
+									title="Archive (hidden from the active batch, restorable)"
+									onclick={() => onArchive(sub.id, "archive")}
+								>
+									Archive
+								</button>
+							{/if}
 						</td>
 					</tr>
 				{/each}
@@ -465,6 +498,7 @@
 	.col-actions {
 		width: 10%;
 		text-align: right;
+		white-space: nowrap;
 	}
 
 	/* ── Cell text helpers ── */
@@ -548,12 +582,44 @@
 		transition:
 			background 0.15s,
 			border-color 0.15s;
-		float: right;
 	}
 	.btn-open:hover {
 		background: var(--accent);
 		border-color: var(--accent);
 		color: var(--accent-on);
+	}
+
+	/* ── Row action buttons (Archive / Restore / Delete) ── */
+	.btn-row-action {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-left: 6px;
+		padding: 4px 10px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		font-size: 12px;
+		font-weight: 500;
+		color: var(--fg);
+		background: transparent;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
+	}
+	.btn-row-action:hover {
+		background: var(--accent);
+		border-color: var(--accent);
+		color: var(--accent-on);
+	}
+	.btn-row-danger {
+		color: var(--error);
+		border-color: color-mix(in oklch, var(--error) 30%, transparent);
+	}
+	.btn-row-danger:hover {
+		background: var(--error);
+		border-color: var(--error);
+		color: #fff;
 	}
 
 	/* ── Empty row ── */

@@ -691,7 +691,7 @@ function parseNotebookCells(parsed: unknown): NotebookCellInput[] {
  * warning — a broken file must not fail the whole comparison.
  */
 export async function loadAssignmentNotebooks(assignmentId: string): Promise<NotebookInput[]> {
-	const records = await listSubmissions(assignmentId);
+	const records = (await listSubmissions(assignmentId)).filter((r) => r.status !== "archived");
 	const notebooks: NotebookInput[] = [];
 	for (const record of records) {
 		try {

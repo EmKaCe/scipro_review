@@ -17,7 +17,15 @@ import type { CategoryFeedback } from "./evaluation.js";
 
 /** Lifecycle status of a submission within a grading batch. */
 export type SubmissionStatus =
-	"pending" | "executing" | "executed" | "error" | "pre-evaluated" | "graded";
+	| "pending"
+	| "executing"
+	| "executed"
+	| "error"
+	| "pre-evaluated"
+	| "graded"
+	/** Soft-archived: hidden from the default dashboard and batch processing,
+	 *  but restorable (the notebook + grading stay on disk). */
+	| "archived";
 
 // ---------------------------------------------------------------------------
 // Cell info
