@@ -13,6 +13,7 @@
 
 import type { SubmissionDetail, SubmissionMeta } from "$lib/types/submissions.js";
 import type { CategoryFeedback } from "$lib/types/evaluation.js";
+import type { CriteriaFile } from "$lib/types/criteria.js";
 
 // ---------------------------------------------------------------------------
 // Error type
@@ -726,6 +727,34 @@ export async function suggestAutofix(
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
+		},
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Criteria editor
+// ---------------------------------------------------------------------------
+
+/** GET /api/assignments/[id]/criteria — load the assignment's own criteria. */
+export async function getCriteria(
+	assignmentId: string,
+): Promise<{ fileName: string | null; content: CriteriaFile | null }> {
+	return requestJson<{ fileName: string | null; content: CriteriaFile | null }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/criteria`,
+	);
+}
+
+/** PUT /api/assignments/[id]/criteria — replace the assignment's own criteria. */
+export async function saveCriteria(
+	assignmentId: string,
+	categories: Record<string, unknown>,
+): Promise<{ fileName: string; content: CriteriaFile }> {
+	return requestJson<{ fileName: string; content: CriteriaFile }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/criteria`,
+		{
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ categories }),
 		},
 	);
 }

@@ -22,6 +22,7 @@ import path from "node:path";
 
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
+import * as yaml from "js-yaml";
 
 import { getAssignmentById } from "$lib/server/assignments";
 import {
@@ -35,9 +36,185 @@ import {
 	validateCriteriaYaml,
 } from "$lib/server/criteria";
 import { getDataDir } from "$lib/server/metadata";
+import type { CriteriaFile } from "$lib/types/criteria";
 
 /** Safe criteria basenames: letters, digits, underscores, hyphens, .yaml. */
 const SAFE_BASENAME = /^[a-zA-Z0-9_-]+\.yaml$/;
+
+/** The shared rubric file — never editable through the per-assignment editor. */
+const GENERAL_CRITERIA_PATH = "data/criteria/general.yaml";
+
+/**
+ * Deep structural equality for two criteria category maps.
+ *
+ * Used by the PUT no-op guard: the client round-trips the document through
+ * JSON/YAML, so key order and undefined-vs-absent booleans can differ while
+ * the document is semantically the same. Compare values only, ignoring key
+ * order in objects.
+ */
+function deepEqualCategories(a: unknown, b: unknown): boolean {
+	if (a === b) return true;
+	if (typeof a !== typeof b || a === null || b === null) return false;
+	if (Array.isArray(a) || Array.isArray(b)) {
+		if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+		return a.every((item, i) => deepEqualCategories(item, b[i]));
+	}
+	if (typeof a === "object") {
+		const aObj = a as Record<string, unknown>;
+		const bObj = b as Record<string, unknown>;
+		const aKeys = Object.keys(aObj);
+		const bKeys = Object.keys(bObj);
+		if (aKeys.length !== bKeys.length) return false;
+		return aKeys.every((key) => deepEqualCategories(aObj[key], bObj[key]));
+	}
+	return a === b;
+}
+
+// ---------------------------------------------------------------------------
+// GET / PUT — visual criteria editor
+// ---------------------------------------------------------------------------
+
+/**
+ * The assignment's own criteria file: the first entry in `criteria_files`
+ * that is NOT the shared general.yaml. general.yaml applies automatically to
+ * every assignment and is never returned here as editable.
+ */
+function ownCriteriaFile(criteriaFiles: readonly string[]): string | null {
+	return criteriaFiles.find((f) => f !== GENERAL_CRITERIA_PATH) ?? null;
+}
+
+/** GET /api/assignments/[id]/criteria — load the assignment's own criteria. */
+export async function GET(event: RequestEvent): Promise<Response> {
+	const id = event.params.id ?? "";
+
+	const assignment = await getAssignmentById(id);
+	if (!assignment) {
+		throw error(404, `Assignment "${id}" not found`);
+	}
+
+	const fileName = ownCriteriaFile(assignment.criteria_files);
+	if (!fileName) {
+		return json({ fileName: null, content: null });
+	}
+
+	// Missing file on disk → treat as none (the editor starts empty).
+	const content = await loadCriteriaFile(fileName);
+	if (!content) {
+		return json({ fileName: null, content: null });
+	}
+	return json({ fileName, content });
+}
+
+/** PUT /api/assignments/[id]/criteria — replace the assignment's own criteria. */
+export async function PUT(event: RequestEvent): Promise<Response> {
+	const id = event.params.id ?? "";
+
+	// The assignment must exist and be writable (checked before persisting
+	// anything so a bad id leaves no file or registry change).
+	const existing = await getAssignmentById(id);
+	if (!existing) {
+		throw error(404, `Assignment "${id}" not found`);
+	}
+
+	let body: { categories?: Record<string, unknown> };
+	try {
+		body = (await event.request.json()) as { categories?: Record<string, unknown> };
+	} catch {
+		throw error(400, "Expected a JSON body");
+	}
+	if (
+		!body ||
+		typeof body !== "object" ||
+		!body.categories ||
+		typeof body.categories !== "object"
+	) {
+		throw error(400, "Expected a JSON body with a 'categories' map");
+	}
+
+	// Determine the target file: existing own file, or a new
+	// data/criteria/<assignmentId>.yaml when the assignment has none.
+	let fileName = ownCriteriaFile(existing.criteria_files);
+	let isNewFile = false;
+	if (!fileName) {
+		const basename = path.basename(`${id}.yaml`);
+		if (!SAFE_BASENAME.test(basename)) {
+			throw error(400, `Invalid criteria file name "${basename}"`);
+		}
+		fileName = `data/criteria/${basename}`;
+		isNewFile = true;
+	}
+
+	// Serialize + validate (throws CriteriaValidationError with a 400 message).
+	const yamlText = yaml.dump({ categories: body.categories });
+	let validated: { fileName: string; categories: Record<string, unknown> };
+	try {
+		validated = validateCriteriaYaml(yamlText, path.basename(fileName));
+	} catch (err) {
+		if (err instanceof CriteriaValidationError) {
+			throw error(400, err.message);
+		}
+		throw err;
+	}
+
+	// Collision check against data/criteria/general.yaml (skipped when the
+	// file is missing on disk — the document itself is still valid).
+	await assertNoGeneralCollision(validated.categories);
+
+	// No-op guard: when the saved document is semantically identical to what
+	// is already on disk, skip the write entirely. The YAML dump reformats
+	// (indentation, folding), so a no-op save must NOT churn the tracked
+	// git file — otherwise every "Save" click produces a fake diff.
+	if (!isNewFile) {
+		const existingOnDisk = await loadCriteriaFile(fileName);
+		if (
+			existingOnDisk &&
+			deepEqualCategories(existingOnDisk.categories, validated.categories)
+		) {
+			return json({
+				fileName,
+				content: { categories: validated.categories } as unknown as CriteriaFile,
+			});
+		}
+	}
+
+	// Atomic write: temp file in the same directory + rename.
+	try {
+		const criteriaDir = path.join(getDataDir(), "criteria");
+		await mkdir(criteriaDir, { recursive: true });
+		const basename = path.basename(fileName);
+		const tmpPath = path.join(criteriaDir, `.${basename}.tmp-${process.pid}-${Date.now()}`);
+		await writeFile(tmpPath, yamlText, "utf-8");
+		await rename(tmpPath, path.join(criteriaDir, basename));
+	} catch (err) {
+		throw error(500, `Failed to write criteria file: ${(err as Error).message}`);
+	}
+
+	// A brand-new file must be registered in the assignment's criteria_files
+	// (dedupe in case the entry somehow already exists).
+	if (isNewFile) {
+		try {
+			await updateAssignment(id, {
+				criteria_files: existing.criteria_files.includes(fileName)
+					? [...existing.criteria_files]
+					: [...existing.criteria_files, fileName],
+			});
+		} catch (err) {
+			if (err instanceof AssignmentWriteError) {
+				throw error(err.status, err.message);
+			}
+			throw error(500, (err as Error).message);
+		}
+	}
+
+	return json({
+		fileName,
+		content: { categories: validated.categories } as unknown as CriteriaFile,
+	});
+}
+
+// ---------------------------------------------------------------------------
+// POST — YAML upload (unchanged)
+// ---------------------------------------------------------------------------
 
 /** POST /api/assignments/[id]/criteria — upload one criteria YAML file. */
 export async function POST(event: RequestEvent): Promise<Response> {

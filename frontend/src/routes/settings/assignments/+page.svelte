@@ -216,6 +216,12 @@
 						<p class="row-sub">{a.title} · {criteriaCount(a)} criteria file(s)</p>
 					</div>
 					<div class="row-actions">
+						<a
+							class="btn-outline"
+							href={`${base}/settings/assignments/${a.id}/criteria`}
+						>
+							Edit criteria
+						</a>
 						<button class="btn-outline" onclick={() => (uploadTarget = a)}>
 							Upload criteria
 						</button>
