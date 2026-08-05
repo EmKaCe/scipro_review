@@ -5,6 +5,7 @@
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
+	import ConfigErrorBanner from "$lib/components/submissions/config-error-banner.svelte";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 
@@ -50,6 +51,12 @@
 	let assignmentOptions = $state<{ id: string; label: string; disabled?: boolean }[]>([]);
 	/** Set when GET /api/assignments fails; the selector then shows the empty placeholder. */
 	let assignmentsError = $state<string | null>(null);
+	/**
+	 * Set when the assignment configuration (assignments list or materials)
+	 * fails to load — surfaced as a dismissible banner above the table so a
+	 * broken config is never a silent null (Phase 3g T3).
+	 */
+	let configError = $state<string | null>(null);
 	let searchQuery = $state("");
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
@@ -128,8 +135,11 @@
 			.then((m) => {
 				if (!cancelled) materials = m;
 			})
-			.catch(() => {
-				if (!cancelled) materials = null;
+			.catch((e) => {
+				if (cancelled) return;
+				materials = null;
+				configError =
+					e instanceof Error ? e.message : "Failed to load assignment materials";
 			});
 		return () => {
 			cancelled = true;
@@ -154,6 +164,7 @@
 			} catch (e) {
 				const message = e instanceof Error ? e.message : "Failed to load assignments";
 				assignmentsError = message;
+				configError = message;
 				isLoading = false;
 				addToast("error", message, 4000);
 			}
@@ -409,6 +420,9 @@
 		</div>
 
 		<!-- ── Dashboard table ── -->
+		{#if configError}
+			<ConfigErrorBanner message={configError} onDismiss={() => (configError = null)} />
+		{/if}
 		<SubmissionsDashboard
 			{submissions}
 			{searchQuery}

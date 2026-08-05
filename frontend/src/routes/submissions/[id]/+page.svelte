@@ -94,6 +94,12 @@
 	let gradingConfig = $state<GradingConfig | null>(null);
 	let gradingInputs = $state<GradingInputs>(defaultGradingInputs());
 	let rubric = $state<MergedRubric | null>(null);
+	/**
+	 * Set when the rubric for this assignment fails to load (getCriteriaForAssignment
+	 * returned null) — shown as an inline notice in the right panel Rubric tab area
+	 * so a broken criteria config is never a silent null (Phase 3g T3).
+	 */
+	let rubricError = $state<string | null>(null);
 	let categorySelections = $state<Record<string, CategorySelections>>({});
 	/**
 	 * Top-level teacher notes (3f.5 / notes editor). Single source for the
@@ -240,6 +246,9 @@
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
 			rubric = mergedRubric;
+			// A null rubric (loader failure) is surfaced as an inline notice in
+			// the right panel Rubric tab area — never a silent empty panel.
+			rubricError = mergedRubric ? null : "Rubric could not be loaded for this assignment.";
 
 			// Restore per-category selections from the persisted feedback
 			// block (record -> rubric -> selections ordering).
@@ -836,6 +845,14 @@
 		     Cells tab is active) -->
 		{#if showRightPanel && (!isMobile || mobileTab !== "cells")}
 			<aside class="right-panel">
+				{#if rubricError}
+					<!-- Inline notice: rubric could not be loaded (right panel Rubric
+					     tab area) — no silent null for the teacher (Phase 3g T3). -->
+					<div class="rubric-error-notice" role="alert">
+						<TriangleAlert size={15} style="flex-shrink: 0" />
+						<span>{rubricError}</span>
+					</div>
+				{/if}
 				{#if gradingConfig}
 					<RightPanelTabs
 						activeTab={isMobile ? rightTab : activeTab}
@@ -1036,6 +1053,22 @@
 		flex: 1 1 0;
 		min-width: 300px;
 		max-width: 50%;
+	}
+
+	/* ── Rubric load failure notice (Phase 3g T3) ── */
+	.rubric-error-notice {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		margin: 10px 12px 0;
+		padding: 9px 11px;
+		border: 1px solid color-mix(in oklch, var(--destructive) 35%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in oklch, var(--destructive) 8%, transparent);
+		font-size: 12.5px;
+		line-height: 1.45;
+		color: var(--destructive);
+		flex-shrink: 0;
 	}
 
 	/* ── Collapse toggle button ── */
