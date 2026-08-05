@@ -4,7 +4,8 @@
  * Tests YAML fetching, parsing, caching, and error handling.
  * Uses mocked fetch to avoid network requests.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as gradingService from "$lib/services/grading-config";
 import {
 	loadGradingConfig,
 	getGradingConfig,
@@ -99,6 +100,22 @@ function mockFetch(urlMap: Record<string, string>) {
 
 beforeEach(() => {
 	clearGradingConfigCache();
+});
+
+/**
+ * Flip the service's exported apiMode flag. The flag is a mutable holder
+ * object (ESM namespace bindings are read-only, so a bare `export let`
+ * could not be reassigned from tests) — mutating `.value` works in both
+ * the module namespace and the live bindings.
+ */
+function setApiMode(value: boolean): void {
+	gradingService.apiMode.value = value;
+}
+
+afterEach(() => {
+	// The apiMode describe block flips this; always restore the student
+	// (static) default so tests never leak teacher mode into each other.
+	setApiMode(false);
 });
 
 describe("loadGradingConfig", () => {
@@ -207,5 +224,78 @@ describe("clearGradingConfigCache", () => {
 		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 
 		restore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// apiMode (teacher build) branch
+// ---------------------------------------------------------------------------
+
+describe("apiMode (teacher build)", () => {
+	it("loadGradingConfig fetches /api/config/grading and returns the config", async () => {
+		setApiMode(true);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					config: {
+						dimensions: [
+							{
+								key: "code_quality_design",
+								title: "Code Quality & Design",
+								max_points: 6,
+								weight: 4,
+							},
+						],
+						grade_boundaries: [
+							{ min_percentage: 95, grade: 1.0, label: "excellent", us_equiv: "A+" },
+						],
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const config = await loadGradingConfig();
+		expect(config).not.toBeNull();
+		expect(config!.dimensions).toHaveLength(1);
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// assert the API path itself.
+		expect(String(fetchMock.mock.calls[0][0])).toContain("/api/config/grading");
+
+		vi.unstubAllGlobals();
+	});
+
+	it("loadGradingConfig returns null on API failure", async () => {
+		setApiMode(true);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(new Response("Not Found", { status: 404 })),
+		);
+
+		const config = await loadGradingConfig();
+		expect(config).toBeNull();
+
+		vi.unstubAllGlobals();
+	});
+
+	it("caches the API result for repeated calls", async () => {
+		setApiMode(true);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					config: { dimensions: [], grade_boundaries: [] },
+				}),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await loadGradingConfig();
+		await loadGradingConfig();
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		vi.unstubAllGlobals();
 	});
 });

@@ -4,7 +4,8 @@
  * Tests YAML loading, merging, caching, and error handling.
  * Uses mocked fetch to avoid network requests.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import * as loader from "$lib/services/criteria-loader";
 import {
 	loadAssignments,
 	getEnabledAssignments,
@@ -121,6 +122,22 @@ function mockFetch(urlMap: Record<string, string>) {
 
 beforeEach(() => {
 	clearCache();
+});
+
+/**
+ * Flip the loader's exported apiMode flag. The flag is a mutable holder
+ * object (ESM namespace bindings are read-only, so a bare `export let`
+ * could not be reassigned from tests) — mutating `.value` works in both
+ * the module namespace and the live bindings.
+ */
+function setApiMode(value: boolean): void {
+	loader.apiMode.value = value;
+}
+
+afterEach(() => {
+	// The apiMode describe block flips this; always restore the student
+	// (static) default so tests never leak teacher mode into each other.
+	setApiMode(false);
 });
 
 describe("loadAssignments", () => {
@@ -310,5 +327,135 @@ describe("clearCache", () => {
 		expect(globalThis.fetch).toHaveBeenCalledTimes(2);
 
 		restore();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// apiMode (teacher build) branch
+// ---------------------------------------------------------------------------
+
+describe("apiMode (teacher build)", () => {
+	it("getCriteriaForAssignment fetches the API route and returns the rubric", async () => {
+		setApiMode(true);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					rubric: {
+						categories: [
+							{ key: "code_formatting", category: { title: "Code Formatting" } },
+						],
+					},
+				}),
+				{ status: 200, headers: { "Content-Type": "application/json" } },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const rubric = await getCriteriaForAssignment("atom_interaction");
+
+		expect(rubric).not.toBeNull();
+		expect(rubric!.categories[0].key).toBe("code_formatting");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// assert the API path itself.
+		expect(String(fetchMock.mock.calls[0][0])).toContain(
+			"/api/config/criteria?assignment=atom_interaction",
+		);
+
+		vi.unstubAllGlobals();
+	});
+
+	it("getCriteriaForAssignment returns null on API failure", async () => {
+		setApiMode(true);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(new Response("Not Found", { status: 404 })),
+		);
+
+		const rubric = await getCriteriaForAssignment("atom_interaction");
+		expect(rubric).toBeNull();
+
+		vi.unstubAllGlobals();
+	});
+
+	it("caches the API result for repeated calls", async () => {
+		setApiMode(true);
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ rubric: { categories: [] } }), { status: 200 }),
+			);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await getCriteriaForAssignment("atom_interaction");
+		await getCriteriaForAssignment("atom_interaction");
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		vi.unstubAllGlobals();
+	});
+
+	it("loadAssignments fetches /api/assignments and maps dimensions to []", async () => {
+		setApiMode(true);
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					assignments: [
+						{
+							id: "atom_interaction",
+							title: "Atom Interaction",
+							enabled: true,
+							criteria_files: ["data/criteria/general.yaml"],
+						},
+					],
+				}),
+				{ status: 200 },
+			),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const registry = await loadAssignments();
+		expect(registry).not.toBeNull();
+		expect(registry!.assignments).toHaveLength(1);
+		expect(registry!.assignments[0].dimensions).toEqual([]);
+		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// assert the API path itself.
+		expect(String(fetchMock.mock.calls[0][0])).toContain("/api/assignments");
+
+		vi.unstubAllGlobals();
+	});
+
+	it("loadCriteriaForAssignment returns null in apiMode (merge is server-side)", async () => {
+		setApiMode(true);
+		vi.stubGlobal("fetch", vi.fn());
+
+		const rubric = await loadCriteriaForAssignment("atom_interaction", [
+			"data/criteria/general.yaml",
+		]);
+		expect(rubric).toBeNull();
+
+		vi.unstubAllGlobals();
+	});
+
+	it("getEnabledAssignments filters the API registry as before", async () => {
+		setApiMode(true);
+		vi.stubGlobal(
+			"fetch",
+			vi.fn().mockResolvedValue(
+				new Response(
+					JSON.stringify({
+						assignments: [
+							{ id: "a", title: "A", enabled: true, criteria_files: [] },
+							{ id: "b", title: "B", enabled: false, criteria_files: [] },
+						],
+					}),
+					{ status: 200 },
+				),
+			),
+		);
+
+		const enabled = await getEnabledAssignments();
+		expect(enabled.map((a) => a.id)).toEqual(["a"]);
+
+		vi.unstubAllGlobals();
 	});
 });

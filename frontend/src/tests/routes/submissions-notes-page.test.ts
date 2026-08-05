@@ -53,6 +53,10 @@ vi.mock("$lib/services/criteria-loader.js", () => ({
 	getCriteriaForAssignment: vi.fn(),
 }));
 
+vi.mock("$lib/services/grading-config.js", () => ({
+	getGradingConfig: vi.fn().mockResolvedValue(null),
+}));
+
 vi.mock("$app/state", () => ({
 	page: { params: { id: "2026SS_03" } },
 }));

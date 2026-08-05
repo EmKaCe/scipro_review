@@ -13,6 +13,7 @@
 	import { defaultGradingInputs } from "$lib/types/grading.js";
 	import { calculateGrade } from "$lib/services/grade-calculator.js";
 	import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
+	import { getGradingConfig } from "$lib/services/grading-config.js";
 	import { generateEvaluationText } from "$lib/services/text-generator.js";
 	import {
 		feedbackToSelections,
@@ -25,7 +26,6 @@
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
-	import * as yaml from "js-yaml";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
@@ -219,14 +219,14 @@
 				// surfaced inside the Plagiarism tab / guard modal
 			});
 
-			// Load grading config from static YAML
-			const resp = await fetch(`${base}/data/grading_config.yaml`);
-			if (resp.ok) {
-				const text = await resp.text();
-				const parsed = yaml.load(text) as GradingConfig;
-				if (parsed && parsed.dimensions) {
-					gradingConfig = parsed;
-				}
+			// Load grading config via the service (teacher build fetches
+			// GET /api/config/grading; student build fetches the static
+			// copy). Failures leave gradingConfig null — the page renders
+			// without sliders rather than erroring.
+			try {
+				gradingConfig = await getGradingConfig();
+			} catch {
+				gradingConfig = null;
 			}
 
 			// Restore dimension sliders from the persisted record (defaults

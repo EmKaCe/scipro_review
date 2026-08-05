@@ -14,6 +14,25 @@ import type { Assignment, AssignmentsRegistry } from "../types/assignments.js";
 import { parseCategoryKey } from "../types/criteria.js";
 
 // ---------------------------------------------------------------------------
+// Teacher mode switch
+// ---------------------------------------------------------------------------
+
+/**
+ * Teacher-mode switch: true in the teacher (node) build, where config is
+ * served by the API routes (`/api/config/*`) reading DATA_DIR directly.
+ *
+ * Computed once at module top because `__TEACHER_MODE__` is a compile-time
+ * Rollup `define` — it is replaced textually at build time and CANNOT be
+ * stubbed at runtime (e.g. with vi.stubGlobal). Exported as a mutable holder
+ * (ESM namespace objects are read-only, so a bare `export let` could not be
+ * flipped from tests); tests set `apiMode.value = true` to exercise the API
+ * branch and restore `false` afterwards.
+ */
+export const apiMode: { value: boolean } = {
+	value: typeof __TEACHER_MODE__ !== "undefined" && __TEACHER_MODE__,
+};
+
+// ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
 
@@ -66,6 +85,41 @@ async function fetchYaml<T>(path: string): Promise<T | null> {
 export async function loadAssignments(): Promise<AssignmentsRegistry | null> {
 	if (cachedAssignments) return cachedAssignments;
 
+	// Teacher mode: the registry comes from GET /api/assignments (server
+	// reads DATA_DIR directly). The API omits `dimensions` — map it to [].
+	if (apiMode.value) {
+		try {
+			const response = await fetch(`${base}/api/assignments`);
+			if (!response.ok) {
+				console.error(
+					`[criteria-loader] Failed to fetch /api/assignments: ${response.status}`,
+				);
+				return null;
+			}
+			const body = (await response.json()) as { assignments?: Array<Partial<Assignment>> };
+			if (!body || !Array.isArray(body.assignments)) {
+				console.error(
+					"[criteria-loader] Invalid /api/assignments response: missing 'assignments'",
+				);
+				return null;
+			}
+			const registry: AssignmentsRegistry = {
+				assignments: body.assignments.map((a) => ({
+					id: a.id ?? "",
+					title: a.title ?? "",
+					enabled: a.enabled ?? false,
+					criteria_files: a.criteria_files ?? [],
+					dimensions: [],
+				})),
+			};
+			cachedAssignments = registry;
+			return registry;
+		} catch (error) {
+			console.error("[criteria-loader] Error fetching /api/assignments:", error);
+			return null;
+		}
+	}
+
 	const data = await fetchYaml<AssignmentsRegistry>("data/assignments.yaml");
 	if (!data || !data.assignments) {
 		console.error("[criteria-loader] Invalid assignments.yaml: missing 'assignments' key");
@@ -106,6 +160,14 @@ export async function loadCriteriaFile(filePath: string): Promise<CriteriaFile |
 		return criteriaCache.get(filePath)!;
 	}
 
+	// Teacher mode: criteria files are served merged by the API route — a
+	// single call returns the whole rubric for the assignment, so this
+	// per-file function is unused there. Kept on the static path for the
+	// student build.
+	if (apiMode.value) {
+		return null;
+	}
+
 	const data = await fetchYaml<CriteriaFile>(filePath);
 	if (!data || !data.categories) {
 		console.error(
@@ -135,6 +197,13 @@ export async function loadCriteriaForAssignment(
 	// Check cache first
 	if (rubricCache.has(assignmentId)) {
 		return rubricCache.get(assignmentId)!;
+	}
+
+	// Teacher mode: the API route merges the files server-side — use
+	// getCriteriaForAssignment() instead; this per-file merge path is
+	// student-build only.
+	if (apiMode.value) {
+		return null;
 	}
 
 	const categories: CategoryEntry[] = [];
@@ -171,6 +240,34 @@ export async function getCriteriaForAssignment(assignmentId: string): Promise<Me
 	// Check rubric cache first
 	if (rubricCache.has(assignmentId)) {
 		return rubricCache.get(assignmentId)!;
+	}
+
+	// Teacher mode: the merged rubric comes from GET /api/config/criteria,
+	// which reads the criteria YAML from DATA_DIR on the server.
+	if (apiMode.value) {
+		try {
+			const response = await fetch(
+				`${base}/api/config/criteria?assignment=${encodeURIComponent(assignmentId)}`,
+			);
+			if (!response.ok) {
+				console.error(
+					`[criteria-loader] Failed to fetch criteria for ${assignmentId}: ${response.status}`,
+				);
+				return null;
+			}
+			const body = (await response.json()) as { rubric?: MergedRubric };
+			if (!body || !body.rubric) {
+				console.error(
+					`[criteria-loader] Invalid /api/config/criteria response for ${assignmentId}`,
+				);
+				return null;
+			}
+			rubricCache.set(assignmentId, body.rubric);
+			return body.rubric;
+		} catch (error) {
+			console.error(`[criteria-loader] Error fetching criteria for ${assignmentId}:`, error);
+			return null;
+		}
 	}
 
 	const registry = await loadAssignments();

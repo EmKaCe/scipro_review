@@ -13,6 +13,26 @@ import type { GradingConfig, GradeDimension, GradeBoundary } from "../types/grad
 import { parseDimensionKey } from "../types/grading.js";
 
 // ---------------------------------------------------------------------------
+// Teacher mode switch
+// ---------------------------------------------------------------------------
+
+/**
+ * Teacher-mode switch: true in the teacher (node) build, where the grading
+ * configuration is served by GET /api/config/grading reading DATA_DIR
+ * directly.
+ *
+ * Computed once at module top because `__TEACHER_MODE__` is a compile-time
+ * Rollup `define` — it is replaced textually at build time and CANNOT be
+ * stubbed at runtime (e.g. with vi.stubGlobal). Exported as a mutable holder
+ * (ESM namespace objects are read-only, so a bare `export let` could not be
+ * flipped from tests); tests set `apiMode.value = true` to exercise the API
+ * branch and restore `false` afterwards.
+ */
+export const apiMode: { value: boolean } = {
+	value: typeof __TEACHER_MODE__ !== "undefined" && __TEACHER_MODE__,
+};
+
+// ---------------------------------------------------------------------------
 // Cache
 // ---------------------------------------------------------------------------
 
@@ -31,6 +51,30 @@ let cachedConfig: GradingConfig | null = null;
  */
 export async function loadGradingConfig(): Promise<GradingConfig | null> {
 	if (cachedConfig) return cachedConfig;
+
+	// Teacher mode: the config comes from GET /api/config/grading, which
+	// reads data/grading_config.yaml from DATA_DIR on the server.
+	if (apiMode.value) {
+		try {
+			const response = await fetch(`${base}/api/config/grading`);
+			if (!response.ok) {
+				console.error(
+					`[grading-config] Failed to fetch /api/config/grading: ${response.status}`,
+				);
+				return null;
+			}
+			const body = (await response.json()) as { config?: GradingConfig };
+			if (!body || !body.config || !Array.isArray(body.config.dimensions)) {
+				console.error("[grading-config] Invalid /api/config/grading response");
+				return null;
+			}
+			cachedConfig = body.config;
+			return body.config;
+		} catch (error) {
+			console.error("[grading-config] Error fetching /api/config/grading:", error);
+			return null;
+		}
+	}
 
 	try {
 		const url = new URL(`${base}/data/grading_config.yaml`, window.location.origin);
