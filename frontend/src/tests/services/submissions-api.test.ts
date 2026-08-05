@@ -24,6 +24,7 @@ import {
 	processSubmission,
 	processSubmissions,
 	saveGrading,
+	uploadCriteria,
 	uploadSubmissions,
 } from "$lib/services/submissions-api.js";
 
@@ -375,6 +376,57 @@ describe("fetchAssignments", () => {
 
 		expect(fetchMock).toHaveBeenCalledWith("/api/assignments", undefined);
 		expect(result.assignments[0]).toMatchObject({ id: ASSIGNMENT, enabled: true });
+	});
+});
+
+describe("uploadCriteria", () => {
+	it("POSTs the file as multipart field 'file' and maps the 201 response", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				fileName: "data/criteria/soil_v2.yaml",
+				criteria_files: ["data/criteria/general.yaml", "data/criteria/soil_v2.yaml"],
+			}),
+		);
+		const file = new File(["categories: {}\n"], "soil_v2.yaml", { type: "text/yaml" });
+
+		const result = await uploadCriteria(ASSIGNMENT, file);
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}/criteria`);
+		expect(init.method).toBe("POST");
+		expect(init.body).toBeInstanceOf(FormData);
+		const form = init.body as FormData;
+		expect(form.get("file")).toBe(file);
+		expect(result).toEqual({
+			fileName: "data/criteria/soil_v2.yaml",
+			criteria_files: ["data/criteria/general.yaml", "data/criteria/soil_v2.yaml"],
+		});
+	});
+
+	it("URL-encodes the assignment id", async () => {
+		fetchMock.mockResolvedValue(jsonResponse({ fileName: "", criteria_files: [] }));
+
+		await uploadCriteria("soil contamination", new File(["x"], "a.yaml"));
+
+		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/assignments/soil%20contamination/criteria");
+	});
+
+	it("maps a 400 error body to ApiError with the server message", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse(
+				{ message: "category key code_formatting already exists in general.yaml" },
+				400,
+			),
+		);
+
+		await expect(
+			uploadCriteria(ASSIGNMENT, new File(["x"], "dupe.yaml")),
+		).rejects.toMatchObject({
+			status: 400,
+			message: "category key code_formatting already exists in general.yaml",
+		});
 	});
 });
 

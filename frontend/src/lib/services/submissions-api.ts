@@ -554,6 +554,27 @@ export async function deleteAssignment(id: string): Promise<void> {
 	await requestRaw(`/api/assignments/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+/**
+ * POST /api/assignments/[id]/criteria — upload a validated criteria YAML
+ * file. Multipart field `file` (one `.yaml` document); on success the file
+ * is persisted to data/criteria/ and appended to the assignment's
+ * `criteria_files` list.
+ */
+export async function uploadCriteria(
+	assignmentId: string,
+	file: File,
+): Promise<{ fileName: string; criteria_files: string[] }> {
+	const form = new FormData();
+	form.append("file", file);
+	return requestJson<{ fileName: string; criteria_files: string[] }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/criteria`,
+		{
+			method: "POST",
+			body: form,
+		},
+	);
+}
+
 /** GET /api/assignments/[id]/materials — current materials state for an assignment. */
 export async function fetchMaterials(assignmentId: string): Promise<MaterialsStatus> {
 	return requestJson<MaterialsStatus>(

@@ -458,6 +458,9 @@
 				>
 					Pre-evaluate All
 				</button>
+				<a class="btn-action btn-outline" href={`${base}/settings/assignments`}>
+					Manage Assignments
+				</a>
 				{#snippet backupIcon()}
 					<Archive size={14} />
 				{/snippet}

@@ -16,6 +16,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as listAssignments } from "../../routes/api/assignments/+server";
+import { POST as postCriteria } from "../../routes/api/assignments/[id]/criteria/+server";
 import {
 	DELETE as deleteMaterials,
 	GET as getMaterials,
@@ -421,6 +422,121 @@ describe("DELETE /api/assignments/[id]/materials", () => {
 	it("404s for a missing file", async () => {
 		await expectHttpError(
 			deleteMaterials(makeDeleteEvent("soil_contamination", "?name=nope.pdf")),
+			404,
+		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/assignments/[id]/criteria
+// ---------------------------------------------------------------------------
+
+describe("POST /api/assignments/[id]/criteria", () => {
+	const VALID_CRITERIA_YAML = `categories:
+  pandas:
+    title: Pandas
+    additional_notes: true
+    positive: []
+    neutral: []
+    negative: []
+`;
+
+	// Seed the registry + general.yaml for this suite only (the sibling
+	// suites intentionally start with an empty DATA_DIR).
+	beforeEach(async () => {
+		await writeFile(path.join(dataDir, "assignments.yaml"), ASSIGNMENTS_YAML);
+		await mkdir(path.join(dataDir, "criteria"), { recursive: true });
+		await writeFile(
+			path.join(dataDir, "criteria", "general.yaml"),
+			`categories:
+  code_formatting:
+    title: Code Formatting
+    additional_notes: true
+    positive: []
+    neutral: []
+    negative: []
+`,
+		);
+	});
+
+	/** Multipart RequestEvent stub with one `file` entry. */
+	function criteriaEvent(id: string, fileName: string, content: string): RequestEvent {
+		const form = new FormData();
+		form.append("file", new File([content], fileName, { type: "text/yaml" }));
+		return {
+			params: { id },
+			request: {
+				formData: async () => form,
+			},
+		} as unknown as RequestEvent;
+	}
+
+	it("validates and persists the file, appends it to criteria_files, responds 201", async () => {
+		const res = await postCriteria(
+			criteriaEvent("soil_contamination", "soil_v2.yaml", VALID_CRITERIA_YAML),
+		);
+		expect(res.status).toBe(201);
+
+		const body = (await res.json()) as { fileName: string; criteria_files: string[] };
+		expect(body).toEqual({
+			fileName: "data/criteria/soil_v2.yaml",
+			criteria_files: [
+				"data/criteria/general.yaml",
+				"data/criteria/soil_contamination.yaml",
+				"data/criteria/soil_v2.yaml",
+			],
+		});
+
+		await expect(
+			readFile(path.join(dataDir, "criteria", "soil_v2.yaml"), "utf-8"),
+		).resolves.toBe(VALID_CRITERIA_YAML);
+	});
+
+	it("rejects schema-invalid YAML with 400 and writes no file", async () => {
+		await expectHttpError(
+			postCriteria(
+				criteriaEvent(
+					"soil_contamination",
+					"broken.yaml",
+					"categories:\n  pandas:\n    positive: []\n",
+				),
+			),
+			400,
+		);
+
+		await expect(readFile(path.join(dataDir, "criteria", "broken.yaml"))).rejects.toThrow();
+	});
+
+	it("rejects a category key colliding with general.yaml with 400", async () => {
+		await expectHttpError(
+			postCriteria(
+				criteriaEvent(
+					"soil_contamination",
+					"dupe.yaml",
+					`categories:
+  code_formatting:
+    title: Code Formatting
+    additional_notes: true
+    positive: []
+    neutral: []
+    negative: []
+`,
+				),
+			),
+			400,
+		);
+	});
+
+	it("rejects a non-.yaml file with 400", async () => {
+		await expectHttpError(
+			postCriteria(criteriaEvent("soil_contamination", "criteria.txt", VALID_CRITERIA_YAML)),
+			400,
+		);
+	});
+
+	it("404s for an unknown assignment id", async () => {
+		await expectHttpError(
+			postCriteria(criteriaEvent("nope", "criteria.yaml", VALID_CRITERIA_YAML)),
 			404,
 		);
 	});
