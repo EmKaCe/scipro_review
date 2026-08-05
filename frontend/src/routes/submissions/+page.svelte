@@ -19,8 +19,9 @@
 	import Archive from "@lucide/svelte/icons/archive";
 	import {
 		downloadBackup,
-		restoreBackup,
+		fetchAssignments,
 		fetchMaterials,
+		restoreBackup,
 	} from "$lib/services/submissions-api.js";
 	import type { MaterialsStatus } from "$lib/services/submissions-api.js";
 
@@ -44,7 +45,11 @@
 	let submissions = $state<SubmissionMeta[]>([]);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
-	let selectedAssignment = $state("soil_contamination");
+	let selectedAssignment = $state("");
+	/** Assignment dropdown options, fed from GET /api/assignments (no hardcoded stub). */
+	let assignmentOptions = $state<{ id: string; label: string; disabled?: boolean }[]>([]);
+	/** Set when GET /api/assignments fails; the selector then shows the empty placeholder. */
+	let assignmentsError = $state<string | null>(null);
 	let searchQuery = $state("");
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
@@ -109,12 +114,15 @@
 	// Data loading (Phase 3b store — real API)
 	// -----------------------------------------------------------------------
 	$effect(() => {
+		// No assignment yet (still fetching the list) — skip the empty-id call.
+		if (!selectedAssignment) return;
 		loadSubmissions();
 	});
 
 	// Materials indicator: re-fetch whenever the selected assignment changes.
 	$effect(() => {
 		const assignmentId = selectedAssignment;
+		if (!assignmentId) return;
 		let cancelled = false;
 		fetchMaterials(assignmentId)
 			.then((m) => {
@@ -126,6 +134,30 @@
 		return () => {
 			cancelled = true;
 		};
+	});
+
+	// Assignment dropdown: fetch the enabled list once on mount and default
+	// the selection to the first assignment. Until this resolves, the
+	// selector renders the "No assignments configured" placeholder.
+	$effect(() => {
+		void (async () => {
+			try {
+				const { assignments } = await fetchAssignments();
+				const options = assignments.map((a) => ({ id: a.id, label: a.title }));
+				assignmentOptions = options;
+				selectedAssignment = options[0]?.id ?? "";
+				if (options.length === 0) {
+					// Nothing to load — release the skeleton so the content
+					// state renders with the empty selector placeholder.
+					isLoading = false;
+				}
+			} catch (e) {
+				const message = e instanceof Error ? e.message : "Failed to load assignments";
+				assignmentsError = message;
+				isLoading = false;
+				addToast("error", message, 4000);
+			}
+		})();
 	});
 
 	async function loadSubmissions() {
@@ -332,7 +364,11 @@
 	<div class="page-layout">
 		<!-- ── Assignment row ── -->
 		<div class="assign-upload-row">
-			<AssignmentSelector selected={selectedAssignment} onChange={handleAssignmentChange} />
+			<AssignmentSelector
+				assignments={assignmentOptions}
+				selected={selectedAssignment}
+				onChange={handleAssignmentChange}
+			/>
 			<button class="btn-upload-more" onclick={handleToggleUploadPanel}>
 				{uploadPanelOpen ? "Close Upload" : "Upload More"}
 			</button>
@@ -385,6 +421,9 @@
 		/>
 
 		<!-- ── Action bar ── -->
+		{#if assignmentsError}
+			<p class="assignments-error">Assignments unavailable: {assignmentsError}</p>
+		{/if}
 		<div class="action-bar">
 			<div class="action-left">
 				<button
@@ -535,6 +574,11 @@
 		display: flex;
 		align-items: center;
 		justify-content: flex-start;
+	}
+	.assignments-error {
+		margin: 0;
+		font-size: 13px;
+		color: var(--destructive);
 	}
 	.action-left {
 		display: flex;

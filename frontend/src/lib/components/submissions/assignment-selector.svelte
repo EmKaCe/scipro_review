@@ -1,26 +1,22 @@
 <script lang="ts">
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 
-	interface Assignment {
+	interface AssignmentOption {
 		id: string;
 		label: string;
 		disabled?: boolean;
 	}
 
 	interface Props {
+		/** Assignment options to render — the component holds NO hardcoded defaults. */
+		assignments: AssignmentOption[];
 		/** Currently selected assignment ID. */
 		selected?: string;
 		/** Callback when assignment changes. */
 		onChange?: (assignmentId: string) => void;
 	}
 
-	let { selected = "soil_contamination", onChange }: Props = $props();
-
-	// Phase 2 stub: hardcoded from assignments.yaml structure
-	const assignments: Assignment[] = [
-		{ id: "soil_contamination", label: "Soil Contamination by Factories" },
-		{ id: "a1-web-konzeption", label: "A1 — Web-Konzeption", disabled: true },
-	];
+	let { assignments, selected = "", onChange }: Props = $props();
 
 	function handleChange(e: Event) {
 		const target = e.currentTarget as HTMLSelectElement;
@@ -31,9 +27,13 @@
 <div class="assign-select-wrapper">
 	<label for="assignment-select" class="sr-only">Assignment</label>
 	<select id="assignment-select" class="assign-select" value={selected} onchange={handleChange}>
-		{#each assignments as asgn (asgn.id)}
-			<option value={asgn.id} disabled={asgn.disabled}>{asgn.label}</option>
-		{/each}
+		{#if assignments.length === 0}
+			<option value="" disabled hidden>No assignments configured</option>
+		{:else}
+			{#each assignments as asgn (asgn.id)}
+				<option value={asgn.id} disabled={asgn.disabled}>{asgn.label}</option>
+			{/each}
+		{/if}
 	</select>
 	<span class="select-chevron"><ChevronDown size={14} /></span>
 </div>
