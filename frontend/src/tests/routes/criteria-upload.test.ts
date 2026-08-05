@@ -190,6 +190,31 @@ describe("POST /api/assignments/[id]/criteria", () => {
 		expect(registry.assignments[0]?.criteria_files).toEqual(["data/criteria/general.yaml"]);
 	});
 
+	it("does not duplicate criteria_files when the same file is uploaded again", async () => {
+		// First upload appends once…
+		const first = await uploadCriteria(
+			uploadEvent("soil_contamination", "soil_v2.yaml", VALID_CRITERIA_YAML),
+		);
+		expect(first.status).toBe(201);
+
+		// …a re-upload of the same file must not append a second entry.
+		const second = await uploadCriteria(
+			uploadEvent("soil_contamination", "soil_v2.yaml", VALID_CRITERIA_YAML),
+		);
+		expect(second.status).toBe(201);
+		const body = (await second.json()) as { criteria_files: string[] };
+		expect(body.criteria_files).toEqual([
+			"data/criteria/general.yaml",
+			"data/criteria/soil_v2.yaml",
+		]);
+
+		const registry = await readRegistry();
+		expect(registry.assignments[0]?.criteria_files).toEqual([
+			"data/criteria/general.yaml",
+			"data/criteria/soil_v2.yaml",
+		]);
+	});
+
 	it("rejects a non-.yaml file with 400", async () => {
 		await expectApiError(
 			uploadCriteria(uploadEvent("soil_contamination", "criteria.txt", VALID_CRITERIA_YAML)),

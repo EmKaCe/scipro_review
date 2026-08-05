@@ -101,10 +101,13 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	// Append the file to the assignment's criteria_files via the shared writer.
+	// Re-uploading the same file must not duplicate the registry entry.
 	let updated;
 	try {
 		updated = await updateAssignment(id, {
-			criteria_files: [...existing.criteria_files, relativePath],
+			criteria_files: existing.criteria_files.includes(relativePath)
+				? [...existing.criteria_files]
+				: [...existing.criteria_files, relativePath],
 		});
 	} catch (err) {
 		if (err instanceof AssignmentWriteError) {
