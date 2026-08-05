@@ -582,6 +582,42 @@ export async function fetchMaterials(assignmentId: string): Promise<MaterialsSta
 	);
 }
 
+/** One persisted material file in the materials upload response. */
+export interface MaterialUploadResult {
+	name: string;
+	kind: "material-file" | "material-data";
+	replaced: boolean;
+	bytes: number;
+	/** Error message when this file failed to persist (per-file failure). */
+	error?: string;
+}
+
+/**
+ * POST /api/assignments/[id]/materials — upload assignment materials
+ * (assignment PDF, key notebook, input-data files). Multipart field `file`
+ * per file; the server classifies each via file-service (pdf / key.ipynb →
+ * materials root, data extensions → input_data/) and returns the updated
+ * material status plus per-file results. Files matching the student
+ * submission naming pattern are rejected by the endpoint.
+ */
+export async function uploadMaterials(
+	assignmentId: string,
+	files: File[],
+): Promise<{ status: MaterialsStatus; results: MaterialUploadResult[] }> {
+	const form = new FormData();
+	for (const file of files) {
+		form.append("file", file);
+	}
+	const body = await requestJson<{
+		status: MaterialsStatus;
+		uploaded: MaterialUploadResult[];
+	}>(`/api/assignments/${encodeURIComponent(assignmentId)}/materials`, {
+		method: "POST",
+		body: form,
+	});
+	return { status: body.status, results: body.uploaded };
+}
+
 /** DELETE /api/assignments/[id]/materials — delete one material file or clear all. */
 export async function deleteMaterial(
 	assignmentId: string,

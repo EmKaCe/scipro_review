@@ -1,15 +1,20 @@
 <script lang="ts">
 	import { onMount } from "svelte";
+	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import CircleX from "@lucide/svelte/icons/circle-x";
 	import Database from "@lucide/svelte/icons/database";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import FolderX from "@lucide/svelte/icons/folder-x";
+	import Loader from "@lucide/svelte/icons/loader";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import Upload from "@lucide/svelte/icons/upload";
 
 	import {
 		deleteMaterial,
 		fetchMaterials,
+		uploadMaterials,
+		type MaterialUploadResult,
 		type MaterialsStatus,
 	} from "$lib/services/submissions-api.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
@@ -25,6 +30,9 @@
 
 	let busy = $state(false);
 	let deleting = $state<string | null>(null);
+	let uploading = $state(false);
+	let uploadResults = $state<MaterialUploadResult[]>([]);
+	let inputRef: HTMLInputElement | undefined = $state(undefined);
 
 	function kindLabel(kind: MaterialsStatus["files"][number]["kind"]): string {
 		return kind === "material-data" ? "Input data" : "Material";
@@ -32,6 +40,39 @@
 
 	function kindIcon(kind: MaterialsStatus["files"][number]["kind"]) {
 		return kind === "material-data" ? Database : FileText;
+	}
+
+	function handlePick() {
+		inputRef?.click();
+	}
+
+	async function handleFiles(e: Event) {
+		const list = (e.currentTarget as HTMLInputElement).files;
+		if (!list || list.length === 0) return;
+		const files = Array.from(list);
+		uploading = true;
+		uploadResults = [];
+		try {
+			const { status, results } = await uploadMaterials(assignmentId, files);
+			uploadResults = results;
+			onChange(status);
+			const ok = results.filter((r) => !r.error).length;
+			const failed = results.length - ok;
+			addToast(
+				"success",
+				`${ok} material file(s) uploaded${failed > 0 ? ` · ${failed} failed` : ""}`,
+				4000,
+			);
+		} catch (err) {
+			addToast(
+				"error",
+				err instanceof Error ? err.message : "Failed to upload materials",
+				4000,
+			);
+		} finally {
+			uploading = false;
+			if (inputRef) inputRef.value = "";
+		}
 	}
 
 	async function handleDeleteFile(name: string) {
@@ -96,6 +137,50 @@
 			(key, PDF)
 		</span>
 	</div>
+
+	<input
+		type="file"
+		multiple
+		accept=".pdf,.ipynb,.csv,.tsv,.txt,.dat,.xlsx,.xls,.json,.npz,.npy,.pkl,.pickle,.parquet,.h5,.hdf5,.mat,.zip,.gz"
+		class="hidden-input"
+		bind:this={inputRef}
+		onchange={handleFiles}
+	/>
+
+	<div class="mm-upload-bar">
+		<button class="mm-upload" type="button" disabled={uploading || busy} onclick={handlePick}>
+			{#if uploading}
+				<Loader size={13} class="mm-spin" />
+				Uploading…
+			{:else}
+				<Upload size={13} />
+				Upload materials
+			{/if}
+		</button>
+		<span class="mm-upload-hint">PDF, key notebook, and input-data files</span>
+	</div>
+
+	{#if uploadResults.length > 0}
+		<ul class="mm-upload-results">
+			{#each uploadResults as result (result.name)}
+				<li class="mm-row" class:mm-error-row={result.error}>
+					{#if result.error}
+						<CircleAlert size={13} class="mm-error-icon" />
+					{:else}
+						<CircleCheck size={13} class="mm-ok-icon" />
+					{/if}
+					<span class="mm-row-kind">{kindLabel(result.kind)}</span>
+					<span class="mm-row-name" class:mm-error-name={result.error}>{result.name}</span
+					>
+					{#if result.error}
+						<span class="mm-error-text">{result.error}</span>
+					{:else if result.replaced}
+						<span class="mm-replaced">Replaced</span>
+					{/if}
+				</li>
+			{/each}
+		</ul>
+	{/if}
 
 	{#if !materials || materials.files.length === 0}
 		<div class="mm-empty">
@@ -162,6 +247,89 @@
 	.mm-subtitle {
 		font-size: 11px;
 		color: var(--muted-foreground);
+	}
+	.hidden-input {
+		display: none;
+	}
+	.mm-upload-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		margin-bottom: 10px;
+	}
+	.mm-upload {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius-md);
+		background: var(--bg);
+		color: var(--fg);
+		font-size: 12px;
+		font-weight: 500;
+		padding: 5px 12px;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			border-color 0.15s;
+	}
+	.mm-upload:hover:not(:disabled) {
+		background: color-mix(in oklch, var(--fg) 5%, transparent);
+		border-color: var(--muted);
+	}
+	.mm-upload:disabled {
+		opacity: 0.5;
+		cursor: default;
+	}
+	.mm-upload-hint {
+		font-size: 11px;
+		color: var(--muted-foreground);
+	}
+	:global(.mm-spin) {
+		animation: mm-spin 0.9s linear infinite;
+	}
+	@keyframes mm-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.mm-upload-results {
+		list-style: none;
+		margin: 0 0 10px;
+		padding: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.mm-upload-results .mm-row {
+		background: transparent;
+	}
+	.mm-error-row {
+		background: color-mix(in oklch, var(--error) 6%, transparent);
+	}
+	:global(.mm-ok-icon) {
+		color: var(--success);
+		flex-shrink: 0;
+	}
+	:global(.mm-error-icon) {
+		color: var(--error);
+		flex-shrink: 0;
+	}
+	.mm-error-name {
+		color: var(--error);
+	}
+	.mm-error-text {
+		font-size: 11px;
+		color: var(--error);
+		flex-shrink: 0;
+	}
+	.mm-replaced {
+		font-size: 10px;
+		font-weight: 500;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--muted-foreground);
+		flex-shrink: 0;
 	}
 	.mm-empty {
 		display: flex;
