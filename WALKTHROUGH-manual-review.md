@@ -184,3 +184,14 @@ Ran against the real stack while preparing this walkthrough:
 
 - Gate to re-run before any push: `unset ADAPTER NODE_ENV KI_CONNECT_API_KEY; pnpm vitest run` → executor `pytest -q` (unset the API-key/port vars too) → `npx tsc --noEmit -p tsconfig.json` → `pnpm check` → `npx eslint .` → `npx prettier --check .`.
 - Next phase: Phase 4 (Mastra copilot + pre-evaluation). The 3f plan doc (`2026-08-03_phase-3f-remainder.md`) and `refined-master-plan.md` (D6) are the starting points.
+
+## 10. Phase 3g additions (2026-08-05) — assignment & data management
+
+Live-verified against the running stack (see `.hermes/plans/2026-08-05_phase-3g-assignment-management.md`):
+
+1. **Assignment selector is live**: dashboard dropdown lists `GET /api/assignments` (Soil Contamination + Atom Interaction + any created); first enabled is the default; empty state shows "No assignments configured".
+2. **`/settings/assignments`** (linked as "Manage Assignments" in the dashboard action bar): create (id/title/enabled/criteria files/dimensions), edit, delete (409-guarded when submissions exist), criteria YAML upload with schema + general.yaml-collision validation.
+3. **Config serves from DATA_DIR**: `GET /api/config/criteria?assignment=<id>` (merged rubric; 404 unknown / 500 corrupt) and `GET /api/config/grading`; the teacher build no longer depends on the static copy — deleting `static/data/criteria/*.yaml` does not break the rubric.
+4. **Materials manager** now has "Upload materials" (PDF / key / input-data via `POST /api/assignments/[id]/materials`) with per-file result rows.
+5. **Error surfacing**: dashboard `ConfigErrorBanner` (dismissible) + per-submission rubric notice when the rubric is null — no silent nulls.
+6. **Multi-assignment E2E**: switch to Atom Interaction → 0 submissions (isolated), plagiarism badge clears, rubric loads from DATA_DIR (11 categories incl. `valid_values`, `pandas`, `plotting_data`), materials upload lands in `input_data/`.
