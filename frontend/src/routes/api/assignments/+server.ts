@@ -15,9 +15,16 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { error, json } from "@sveltejs/kit";
+import type { RequestEvent } from "@sveltejs/kit";
 import * as yaml from "js-yaml";
 
 import { getDataDir } from "$lib/server/metadata";
+import {
+	AssignmentWriteError,
+	createAssignment,
+	toAssignmentSummary,
+	type AssignmentCreateInput,
+} from "$lib/server/assignments-writer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,9 +83,40 @@ export async function GET(): Promise<Response> {
 	return json({ assignments });
 }
 
+/**
+ * POST /api/assignments — create a new assignment.
+ *
+ * Body: { id, title, enabled?, criteria_files?, dimensions? }. Appends the
+ * new entry to the `assignments` list. 201 with the created summary.
+ * 400 on invalid input, 409 when the id already exists.
+ */
+export async function POST(event: RequestEvent): Promise<Response> {
+	let input: AssignmentCreateInput;
+	try {
+		input = (await event.request.json()) as AssignmentCreateInput;
+	} catch {
+		throw error(400, "Expected a JSON body");
+	}
+
+	try {
+		const created = await createAssignment(input);
+		return json(toAssignmentSummary(created), { status: 201 });
+	} catch (err) {
+		throw toHttpError(err);
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Map a writer error to a SvelteKit HttpError (message lives in body.message). */
+function toHttpError(err: unknown): never {
+	if (err instanceof AssignmentWriteError) {
+		throw error(err.status, err.message);
+	}
+	throw error(500, (err as Error).message);
+}
 
 /** Validate one YAML entry; returns null when malformed. */
 function toSummary(entry: unknown): AssignmentSummary | null {

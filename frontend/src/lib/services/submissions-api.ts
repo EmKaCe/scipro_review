@@ -519,6 +519,41 @@ export async function fetchAssignments(): Promise<AssignmentsResponse> {
 	return requestJson<AssignmentsResponse>("/api/assignments");
 }
 
+/** Payload accepted by POST /api/assignments (create). */
+export interface AssignmentCreateInput {
+	id: string;
+	title: string;
+	enabled?: boolean;
+	criteria_files?: string[];
+	dimensions?: string[];
+}
+
+/** POST /api/assignments — create an assignment (appends to the registry). */
+export async function createAssignment(input: AssignmentCreateInput): Promise<AssignmentSummary> {
+	return requestJson<AssignmentSummary>("/api/assignments", {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
+/** PUT /api/assignments/[id] — partially update an assignment. */
+export async function updateAssignment(
+	id: string,
+	input: Partial<Omit<AssignmentCreateInput, "id">>,
+): Promise<AssignmentSummary> {
+	return requestJson<AssignmentSummary>(`/api/assignments/${encodeURIComponent(id)}`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(input),
+	});
+}
+
+/** DELETE /api/assignments/[id] — remove an assignment (409 when it has submissions). */
+export async function deleteAssignment(id: string): Promise<void> {
+	await requestRaw(`/api/assignments/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 /** GET /api/assignments/[id]/materials — current materials state for an assignment. */
 export async function fetchMaterials(assignmentId: string): Promise<MaterialsStatus> {
 	return requestJson<MaterialsStatus>(
