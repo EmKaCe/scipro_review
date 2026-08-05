@@ -10,7 +10,7 @@
  *   type            -> injected from caller-supplied cell metadata
  *                     (default "code")
  *   marker          -> "different" by default, "error" when `error` is set
- *                     (Phase 3 D6: no cell comparison until Phase 4)
+ *                     (cell comparison ships with pre-evaluation)
  *
  * Environment:
  *   EXECUTOR_URL — base URL of the executor (default: http://executor:8766)
@@ -32,7 +32,7 @@ export interface ExecutorCellResult {
 	error: string | null;
 	traceback: string[] | null;
 	/**
-	 * Original (pre-cleaning) source. Planned for Phase 3b.1 — optional so the
+	 * Original (pre-cleaning) source. Optional so the
 	 * client stays compatible with the current executor response.
 	 */
 	original_source?: string;
@@ -44,7 +44,7 @@ export interface ExecutorPreprocessingInfo {
 	edit_types: Record<string, number>;
 	llm_preprocessing: "completed" | "skipped" | "error";
 	llm_analysis: boolean;
-	/** Per-cell edit log (`cell_index` -> edits). Planned for Phase 3b.1. */
+	/** Per-cell edit log (`cell_index` -> edits). */
 	cell_edits?: Record<
 		string,
 		Array<{ edit_type: string; note: string; old_text?: string; new_text?: string }>
@@ -60,7 +60,7 @@ export interface ExecutorExecuteResponse {
 	error_cells: number;
 	duration_seconds: number;
 	preprocessing: ExecutorPreprocessingInfo;
-	/** Data files the sandbox detected as modified by the notebook. 3b.1. */
+	/** Data files the sandbox detected as modified by the notebook. */
 	modified_files?: string[];
 }
 
@@ -138,7 +138,7 @@ export interface ExecutedCell {
 	error: string | null;
 	traceback: string[] | null;
 	execution_count: number | null;
-	/** "different" by default, "error" when `error` is set (Phase 3 D6). */
+	/** "different" by default, "error" when `error` is set. */
 	marker: CellMarker;
 }
 
@@ -182,7 +182,7 @@ export interface BatchExecutionResult {
 }
 
 // ---------------------------------------------------------------------------
-// Autofix (Phase 3c.1 — KI Connect fix suggestions for failed cells)
+// Autofix (KI Connect fix suggestions for failed cells)
 // ---------------------------------------------------------------------------
 
 export interface AutofixRequest {

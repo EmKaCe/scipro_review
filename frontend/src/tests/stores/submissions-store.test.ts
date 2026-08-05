@@ -1,5 +1,5 @@
 /**
- * @file L5 tests for the rune-based submissions store (3f.1).
+ * @file L5 tests for the rune-based submissions store.
  *
  * Mocks the submissions-api module and exercises the store with fake timers:
  * load/error state, the D5 2-second polling loop (start/stop/idempotence,

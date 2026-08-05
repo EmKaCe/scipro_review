@@ -1,5 +1,5 @@
 /**
- * @file L5 API-contract tests for the Phase 3b assignments routes.
+ * @file L5 API-contract tests for the assignments routes.
  *
  * Imports the route handlers directly and drives them with minimal Request
  * stubs against a throwaway DATA_DIR (mkdtemp), covering:

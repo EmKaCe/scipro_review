@@ -1,5 +1,5 @@
 /**
- * @file Phase 3d.2 — KI Connect semantic plagiarism comparison.
+ * @file KI Connect semantic plagiarism comparison.
  *
  * Thin wrapper around the existing `$lib/server/ki-connect.ts` client for
  * the LLM pass of the plagiarism check: for pairs flagged by the structural

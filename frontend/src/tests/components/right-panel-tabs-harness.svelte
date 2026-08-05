@@ -2,9 +2,9 @@
 	/**
 	 * Test harness for right-panel-tabs.svelte: owns `categorySelections`
 	 * state and wires the component's `onSelectionsChange` callback back into
-	 * it (the controlled-component pattern the real page uses), so tests can
-	 * assert that rubric checkbox/comment/deduction/notes edits flow back up
-	 * (Phase 3f A4). Also computes the P3-2 sentiment counts from local state
+	 * (the controlled-component pattern the real page uses), so tests can
+	 * assert that rubric checkbox/comment/deduction/notes edits flow back up.
+	 * Also computes the sentiment counts from local state
 	 * and passes them down as the `sentimentCounts` prop.
 	 */
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";

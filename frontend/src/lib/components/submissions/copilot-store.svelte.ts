@@ -1,8 +1,8 @@
 /**
  * @file Copilot store — manages copilot chat state, messages, and stub interactions.
  *
- * Phase 2: All stub — messages are hardcoded examples, commands show toast responses.
- * Phase 4: Connected to Mastra agent for real AI interactions.
+ * All stub — messages are hardcoded examples, commands show toast responses.
+ * Real Mastra agent integration ships later.
  */
 
 export interface CopilotMessage {
@@ -23,7 +23,7 @@ export interface PendingSuggestion {
 
 /**
  * Creates a reactive copilot state object.
- * In Phase 2 this returns stub data. Phase 4 replaces the implementations.
+ * Currently returns hardcoded stub data; the real agent implementations ship later.
  */
 export function createCopilotStore() {
 	let messages = $state<CopilotMessage[]>([]);
@@ -49,7 +49,7 @@ export function createCopilotStore() {
 		};
 		messages = [...messages, userMsg];
 
-		// Stub response — Phase 4 replaces with real Mastra agent call
+		// Placeholder response until the agentic copilot ships
 		isStreaming = true;
 		setTimeout(() => {
 			const response: CopilotMessage = {

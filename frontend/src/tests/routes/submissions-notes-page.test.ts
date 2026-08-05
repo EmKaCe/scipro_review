@@ -1,6 +1,6 @@
 /**
- * @file L4 page test — clean-state items (2026-08-03): real status chip,
- * top-level teacher notes editor, and Generate/Reset (original 3f.5).
+ * @file L4 page test — clean-state items: real status chip,
+ * top-level teacher notes editor, and Generate/Reset.
  *
  * Renders the per-submission page with stores + heavy children mocked, then
  * asserts:

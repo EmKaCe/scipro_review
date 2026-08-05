@@ -1,7 +1,6 @@
 /**
  * @file L5 API-contract test: GET /api/submissions passes the per-submission
- * execution error message through to the dashboard rows (SubmissionMeta.error,
- * Phase 3f C2).
+ * execution error message through to the dashboard rows (SubmissionMeta.error).
  *
  * Real temp DATA_DIR (assignments.yaml + metadata.json on disk) and real
  * Request/Response objects — same conventions as submissions-api.test.ts.

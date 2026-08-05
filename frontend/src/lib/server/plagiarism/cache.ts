@@ -21,7 +21,7 @@ import type { PairReviewStatus, PlagiarismPair } from "./structural";
 // Types
 // ---------------------------------------------------------------------------
 
-/** Cached plagiarism comparison for one assignment (Phase 3d data model). */
+/** Cached plagiarism comparison for one assignment. */
 export interface PlagiarismResult {
 	status: "pending" | "checking" | "done" | "error";
 	assignmentId: string;

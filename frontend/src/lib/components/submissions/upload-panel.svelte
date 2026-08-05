@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * @file Upload Panel — real upload flow (Phase 3f B2).
+	 * @file Upload Panel — real upload flow.
 	 *
 	 * Empty → uploading → results. Files go straight to the backend via
 	 * submissionsStore.upload; the server classifies each file and returns

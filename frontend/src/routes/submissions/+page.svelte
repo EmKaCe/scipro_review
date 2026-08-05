@@ -54,7 +54,7 @@
 	/**
 	 * Set when the assignment configuration (assignments list or materials)
 	 * fails to load — surfaced as a dismissible banner above the table so a
-	 * broken config is never a silent null (Phase 3g T3).
+	 * broken config is never a silent null.
 	 */
 	let configError = $state<string | null>(null);
 	let searchQuery = $state("");
@@ -118,7 +118,7 @@
 	}
 
 	// -----------------------------------------------------------------------
-	// Data loading (Phase 3b store — real API)
+	// Data loading
 	// -----------------------------------------------------------------------
 	$effect(() => {
 		// No assignment yet (still fetching the list) — skip the empty-id call.
@@ -490,7 +490,6 @@
 		</div>
 
 		<!-- ── Compact upload zone (below table) ── -->
-		<!-- Phase 2 stub: upload zone opens the inline UploadPanel with mock classification data -->
 		<UploadBar compact={true} onClick={handleToggleUploadPanel} />
 	</div>
 {/if}

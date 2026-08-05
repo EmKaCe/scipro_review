@@ -1,5 +1,5 @@
 /**
- * @file L4 page test — rubric load failure notice (Phase 3g T3).
+ * @file L4 page test — rubric load failure notice.
  *
  * Renders the per-submission page with stores + heavy children mocked (same
  * skeleton as submissions-notes-page.test.ts), then asserts the right-panel
@@ -154,7 +154,7 @@ const NOTICE_TEXT = "Rubric could not be loaded for this assignment.";
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("submissions/[id] — rubric load failure notice (Phase 3g T3)", () => {
+describe("submissions/[id] — rubric load failure notice", () => {
 	beforeEach(() => {
 		vi.mocked(submissionsStore.select).mockReset();
 		vi.mocked(submissionsStore.select).mockResolvedValue(DETAIL);

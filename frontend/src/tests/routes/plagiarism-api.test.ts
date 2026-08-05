@@ -1,5 +1,5 @@
 /**
- * @file L5 API-contract tests for the /api/plagiarism routes (Phase 3d.3).
+ * @file L5 API-contract tests for the /api/plagiarism routes.
  *
  * Real temp DATA_DIR (assignments.yaml + metadata + .ipynb files on disk),
  * real Request/Response objects, the real structural engine, and a mocked

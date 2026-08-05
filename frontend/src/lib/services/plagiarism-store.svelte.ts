@@ -1,5 +1,5 @@
 /**
- * @file Rune-based plagiarism store (Phase 3c).
+ * @file Rune-based plagiarism store.
  *
  * Owns the cached plagiarism comparison for the active assignment:
  *

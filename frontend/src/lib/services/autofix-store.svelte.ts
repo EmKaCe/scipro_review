@@ -1,5 +1,5 @@
 /**
- * @file Rune-based autofix store (Phase 3c.1 / P3-3).
+ * @file Rune-based autofix store.
  *
  * Per-submission, per-cell fix-suggestion state:
  *

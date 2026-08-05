@@ -11,9 +11,8 @@
  *                   (default 3)
  *
  * Pipeline: load all submission notebooks of the assignment, run the pure
- * structural comparison (Phase 3d.1), keep the flagged pairs (Phase 3d
- * thresholds), optionally enrich them with semantic scores (Phase 3d.2),
- * then write the result to data/plagiarism/<assignment>.json and return it.
+ * structural comparison, keep the flagged pairs, optionally enrich them
+ * with semantic scores, then write the result to data/plagiarism/<assignment>.json and return it.
  */
 
 import { error, json } from "@sveltejs/kit";

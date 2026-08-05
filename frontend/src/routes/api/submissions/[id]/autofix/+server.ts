@@ -1,6 +1,6 @@
 /**
  * @file POST /api/submissions/[id]/autofix — suggest a fix for one failed
- *       cell of a submission (Phase 3c.1).
+ *       cell of a submission.
  *
  * Proxies the executor's /autofix endpoint (KI Connect). The teacher stays
  * in control: the suggestion is returned read-only and the UI only copies

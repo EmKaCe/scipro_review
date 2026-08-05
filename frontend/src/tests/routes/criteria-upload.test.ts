@@ -1,7 +1,7 @@
 // @vitest-environment node
 /**
  * @file API-contract tests for POST /api/assignments/[id]/criteria
- * (Phase 3g Task 5): validated criteria YAML upload.
+ * (validated criteria YAML upload).
  *
  * Real temp DATA_DIR (mkdtemp) with a seeded assignments.yaml and a small
  * general.yaml; direct handler imports and minimal RequestEvent stubs like

@@ -1,5 +1,5 @@
 /**
- * @file L4 component test — assignment-form (Phase 3g Task 5).
+ * @file L4 component test — assignment-form.
  *
  * Renders the create/edit form, asserts the 5 dimension checkboxes and the
  * id/title/enabled/criteria_files fields, and drives submit: a valid submit

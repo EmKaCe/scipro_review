@@ -1,5 +1,5 @@
 /**
- * @file L5 API-contract tests for the submissions API client (3f.1).
+ * @file L5 API-contract tests for the submissions API client.
  *
  * Mocks global fetch and asserts request shapes (method, URL, JSON/FormData
  * bodies, query params), response parsing, and ApiError mapping for HTTP and
@@ -431,7 +431,7 @@ describe("uploadCriteria", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Materials (Phase 3f B3)
+// Materials
 // ---------------------------------------------------------------------------
 
 describe("fetchMaterials", () => {

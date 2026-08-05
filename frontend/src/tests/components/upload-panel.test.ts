@@ -1,5 +1,5 @@
 /**
- * @file L4 component tests for the real upload flow (Phase 3f B2).
+ * @file L4 component tests for the real upload flow.
  *
  * Mocks submissions-store so the panel can be driven without a network:
  * the stubbed `upload` resolves a single submission-kind result, and the

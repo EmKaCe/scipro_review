@@ -1,5 +1,5 @@
 /**
- * @file Typed client for the teacher submissions API (Phase 3f.1).
+ * @file Typed client for the teacher submissions API.
  *
  * Thin wrapper around fetch() for every /api endpoint the frontend talks to.
  * Methods return the API JSON shapes as-is — translation into UI models
@@ -692,7 +692,7 @@ export async function setPairReviewStatus(
 }
 
 // ---------------------------------------------------------------------------
-// Autofix (Phase 3c.1)
+// Autofix
 // ---------------------------------------------------------------------------
 
 /** Fix suggestion for a failed cell (wire shape of POST /api/submissions/[id]/autofix). */

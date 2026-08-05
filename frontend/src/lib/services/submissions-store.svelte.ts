@@ -1,9 +1,8 @@
 /**
- * @file Rune-based submissions store (Phase 3f.1).
+ * @file Rune-based submissions store.
  *
- * Replaces the Phase 2 stub service (hardcoded mock data) with a live store
- * backed by submissions-api.ts. Owns the dashboard list, the selected
- * submission detail, load/error state, and the D5 status-polling loop:
+ * Owns the dashboard list, the selected submission detail, load/error state,
+ * and the status-polling loop:
  *
  *   - startPolling() polls GET /api/submissions every 2 seconds;
  *   - polling auto-stops as soon as no submission is `pending` or `executing`;
@@ -331,15 +330,15 @@ export class SubmissionsStore {
 export const submissionsStore = new SubmissionsStore();
 
 // ---------------------------------------------------------------------------
-// Legacy sync wrappers (Phase 2 interface, kept for existing imports)
+// Legacy sync wrappers (kept for existing imports)
 // ---------------------------------------------------------------------------
 
-/** Snapshot of the currently loaded submissions (was: stub data). */
+/** Snapshot of the currently loaded submissions. */
 export function listSubmissions(): SubmissionMeta[] {
 	return [...submissionsStore.submissions];
 }
 
-/** Cached detail for one submission, or null when not loaded (was: stub data). */
+/** Cached detail for one submission, or null when not loaded. */
 export function getSubmission(id: string): SubmissionDetail | null {
 	return submissionsStore.getDetail(id);
 }

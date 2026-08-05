@@ -32,7 +32,7 @@ export interface GradingState {
 	dimensions: Record<string, number>;
 	/** Per-category feedback (v2 CategoryFeedback shape, keyed by category key). */
 	feedback?: Record<string, CategoryFeedback>;
-	/** Free-form teacher notes (Phase 3f Generate button output). */
+	/** Free-form teacher notes (Generate button output). */
 	notes?: string;
 	/** ISO timestamp of the last grading change. */
 	updatedAt: string;
@@ -85,7 +85,7 @@ export class MetadataError extends Error {
 // ---------------------------------------------------------------------------
 
 /**
- * Allowed lifecycle transitions. Phase 3 drives pending -> executing ->
+ * Allowed lifecycle transitions. Lifecycle: pending -> executing ->
  * executed | error; grading finalizes executed -> graded. Re-runs are allowed
  * from error/executed back to executing.
  */

@@ -1,5 +1,5 @@
 /**
- * @file Light L4 page test — teacher YAML Import wiring (Phase 3f E5).
+ * @file Light L4 page test — teacher YAML Import wiring.
  *
  * Renders the per-submission page with the data stores and heavy child
  * components mocked, then asserts the header-config Import wiring:

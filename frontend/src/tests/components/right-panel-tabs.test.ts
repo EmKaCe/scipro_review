@@ -1,5 +1,5 @@
 /**
- * @file L4 component test — rubric comment/deduction wiring (Phase 3f A4).
+ * @file L4 component test — rubric comment/deduction wiring.
  *
  * Renders right-panel-tabs with a one-category rubric through a bindable
  * harness, checks a sub-point, edits the comment and deduction fields, and
@@ -155,8 +155,8 @@ describe("right-panel-tabs.svelte — rubric feedback wiring (A4)", () => {
 
 		// Live counts are computed on the page side (sentimentCounts prop)
 		// from the bindable state — asserting the rendered header reflects the
-		// click. Guards the Svelte 5 bindable/$derived staleness bug seen
-		// 2026-08-03 (child-side assignments did not re-trigger a local
+		// click. Guards the Svelte 5 bindable/$derived staleness bug
+		// (child-side assignments did not re-trigger a local
 		// derived over the bindable prop).
 		const header = screen.getByText(/^Rubric/).closest("button")!;
 		expect(header.textContent).toContain("1");

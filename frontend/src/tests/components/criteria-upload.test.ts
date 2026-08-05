@@ -1,5 +1,5 @@
 /**
- * @file L4 component test — criteria-upload (Phase 3g Task 5).
+ * @file L4 component test — criteria-upload.
  *
  * Renders the upload control with a mocked submissions-api, drives the file
  * input + upload button: the success path calls uploadCriteria with the

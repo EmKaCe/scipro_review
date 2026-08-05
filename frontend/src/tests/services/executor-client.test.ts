@@ -337,7 +337,7 @@ describe("health", () => {
 });
 
 // ---------------------------------------------------------------------------
-// /autofix — request contract + translation (Phase 3c.1)
+// /autofix — request contract + translation
 // ---------------------------------------------------------------------------
 
 describe("suggestAutofix", () => {

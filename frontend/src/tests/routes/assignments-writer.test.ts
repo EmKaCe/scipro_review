@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * @file API-contract tests for the assignments write side (Phase 3g Task 4):
+ * @file API-contract tests for the assignments write side:
  *   POST /api/assignments           — create (append, validate, 409 duplicate)
  *   PUT  /api/assignments/[id]      — partial update (404 unknown)
  *   DELETE /api/assignments/[id]    — remove (409 with submissions dir, else 204)

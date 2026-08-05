@@ -1,5 +1,5 @@
 /**
- * @file Teacher-YAML import service (Phase 3f / 3i).
+ * @file Teacher-YAML import service.
  *
  * Turns a teacher grading YAML string (the format produced by
  * `export-service.buildGradingYaml`) into a parsed, validated payload and

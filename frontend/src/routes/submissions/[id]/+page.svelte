@@ -97,7 +97,7 @@
 	/**
 	 * Set when the rubric for this assignment fails to load (getCriteriaForAssignment
 	 * returned null) — shown as an inline notice in the right panel Rubric tab area
-	 * so a broken criteria config is never a silent null (Phase 3g T3).
+	 * so a broken criteria config is never a silent null.
 	 */
 	let rubricError = $state<string | null>(null);
 	let categorySelections = $state<Record<string, CategorySelections>>({});
@@ -214,7 +214,7 @@
 		error = null;
 		try {
 			// Real data: submissionsStore.select() fetches the detail from the
-			// API and caches it (Phase 3b data layer).
+			// API and caches it.
 			const sub = await submissionsStore.select(id);
 			submission = sub;
 			autofixStore.reset();
@@ -847,7 +847,7 @@
 			<aside class="right-panel">
 				{#if rubricError}
 					<!-- Inline notice: rubric could not be loaded (right panel Rubric
-					     tab area) — no silent null for the teacher (Phase 3g T3). -->
+					     tab area) — no silent null for the teacher. -->
 					<div class="rubric-error-notice" role="alert">
 						<TriangleAlert size={15} style="flex-shrink: 0" />
 						<span>{rubricError}</span>
@@ -1055,7 +1055,7 @@
 		max-width: 50%;
 	}
 
-	/* ── Rubric load failure notice (Phase 3g T3) ── */
+	/* ── Rubric load failure notice ── */
 	.rubric-error-notice {
 		display: flex;
 		align-items: flex-start;

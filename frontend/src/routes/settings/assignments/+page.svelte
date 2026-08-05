@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * @file /settings/assignments — assignment management surface (Phase 3g Task 5).
+	 * @file /settings/assignments — assignment management surface.
 	 *
 	 * Lists assignments (enabled only, via GET /api/assignments — disabled
 	 * entries appear after being created/toggled), and offers create / edit /

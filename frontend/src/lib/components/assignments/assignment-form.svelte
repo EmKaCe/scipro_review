@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * @file Assignment form — create/edit an assignment (Phase 3g Task 5).
+	 * @file Assignment form — create/edit an assignment.
 	 *
 	 * Fields: id (disabled when editing), title, enabled, criteria_files
 	 * (comma-separated), and the 5 known grading dimensions as checkboxes

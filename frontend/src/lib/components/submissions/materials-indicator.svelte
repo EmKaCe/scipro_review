@@ -8,7 +8,7 @@
 	}
 
 	interface Props {
-		/** Material statuses. Phase 2: always present. */
+		/** Material statuses. */
 		materials?: MaterialStatus[];
 	}
 

@@ -1,5 +1,5 @@
 /**
- * @file Phase 3d.1 — structural plagiarism comparison engine (pure TypeScript).
+ * @file Structural plagiarism comparison engine (pure TypeScript).
  *
  * Deterministic, LLM-free pairwise comparison of Jupyter notebook submissions
  * using token n-gram / Jaccard overlap:
@@ -101,7 +101,7 @@ export interface PlagiarismPairDetails {
 /**
  * One compared pair of submissions. `cellOverlap` / `notebookOverlap` are
  * the structural scores from this engine; `semanticScore` / `semanticVerdict`
- * are filled in by the Phase 3d.2 semantic pass (absent when not run).
+ * are filled in by the semantic pass (absent when not run).
  */
 export interface PlagiarismPair {
 	/** Canonical ordering: studentA < studentB (localeCompare). */

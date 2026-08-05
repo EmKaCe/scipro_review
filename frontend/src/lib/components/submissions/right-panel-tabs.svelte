@@ -40,7 +40,7 @@
 		 * Edits are reported up via `onSelectionsChange` (the page then passes
 		 * the new value back down). NOT a bindable: a `$bindable` + `$derived`
 		 * combination here did not re-render on child-side assignments (Svelte
-		 * 5.56.8 prop-tracking quirk, seen live 2026-08-03 — checkbox clicks
+		 * 5.56.8 prop-tracking quirk — checkbox clicks
 		 * updated state but never re-rendered the tab header).
 		 */
 		categorySelections: Record<string, CategorySelections>;

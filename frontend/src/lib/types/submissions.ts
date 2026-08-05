@@ -1,12 +1,8 @@
 /**
  * @file Teacher-facing submission, cell, and status types for the grading dashboard.
  *
- * These types define the data shapes used by the submissions dashboard,
- * per-submission review page, and stub data service.
- *
- * Phase 2: Stub data from submissions-store.ts.
- * Phase 3: Real data from API routes, executed notebook output.
- * Phase 4: LLM pre-evaluation data enriches existing types.
+ * These types define the data shapes used by the submissions dashboard and
+ * per-submission review page.
  */
 
 import type { CategoryFeedback } from "./evaluation.js";
@@ -78,7 +74,7 @@ export interface SubmissionMeta {
 	cellSummary?: string;
 	/** Last execution error message (when status is "error"). */
 	error?: string | null;
-	/** LLM-suggested overall grade (Phase 4). */
+	/** LLM-suggested overall grade from pre-evaluation. */
 	preEvalGrade?: number;
 	/** Teacher's final grade. */
 	teacherGrade?: number;

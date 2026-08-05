@@ -1,6 +1,6 @@
 <script lang="ts">
 	/**
-	 * @file Criteria YAML upload (Phase 3g Task 5).
+	 * @file Criteria YAML upload.
 	 *
 	 * File input (.yaml) + upload button backed by the uploadCriteria client
 	 * wrapper. Server 400 messages are shown inline; on success the

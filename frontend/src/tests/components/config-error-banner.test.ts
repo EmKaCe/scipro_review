@@ -1,5 +1,5 @@
 /**
- * @file L3 component test — config-error-banner (Phase 3g T3).
+ * @file L3 component test — config-error-banner.
  *
  * The banner surfaces a failed assignment-config load (assignments registry /
  * materials) on the dashboard. It is purely props-driven: `message` is the

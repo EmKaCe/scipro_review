@@ -1,5 +1,5 @@
 /**
- * @file L5 tests for the structural plagiarism engine (Phase 3d.1).
+ * @file L5 tests for the structural plagiarism engine.
  *
  * Covers: identical/shared/unrelated notebooks, normalization (comments,
  * docstrings, whitespace), configurable n-gram size, boilerplate

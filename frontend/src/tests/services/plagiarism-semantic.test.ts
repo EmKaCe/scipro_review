@@ -1,5 +1,5 @@
 /**
- * @file L5 tests for the semantic (KI Connect) plagiarism wrapper (Phase 3d.2).
+ * @file L5 tests for the semantic (KI Connect) plagiarism wrapper.
  *
  * Covers graceful degradation (no API key, LLM failure, malformed response
  * -> null), response parsing/clamping, pair capping, and result merging.
