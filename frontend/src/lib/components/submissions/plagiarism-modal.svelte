@@ -20,6 +20,7 @@
 	import Play from "@lucide/svelte/icons/play";
 	import X from "@lucide/svelte/icons/x";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import { Button } from "$lib/components/ui/button/index.js";
 
 	interface Props {
 		/** Assignment the modal reports on. */
@@ -94,8 +95,9 @@
 						<span class="plagiarism-meta-line">{checkedLabel}</span>
 					</div>
 					<div class="modal-header-controls">
-						<button
-							class="btn btn-outline btn-xs"
+						<Button
+							variant="outline"
+							size="xs"
 							onclick={handleRun}
 							disabled={isChecking}
 						>
@@ -105,10 +107,16 @@
 								<Play size={12} />
 							{/if}
 							{isChecking ? "Checking…" : "Re-run check"}
-						</button>
-						<button class="modal-close-btn" onclick={onClose} aria-label="Close">
+						</Button>
+						<Button
+							variant="ghost"
+							size="icon"
+							class="h-7 w-7"
+							onclick={onClose}
+							aria-label="Close"
+						>
 							<X size={16} />
-						</button>
+						</Button>
 					</div>
 				</div>
 			</div>
@@ -127,8 +135,9 @@
 							<ShieldCheck size={22} />
 						</div>
 						<p>No results yet. Run a check for this assignment.</p>
-						<button
-							class="btn btn-outline btn-sm"
+						<Button
+							variant="outline"
+							size="sm"
 							onclick={handleRun}
 							disabled={isChecking}
 						>
@@ -138,7 +147,7 @@
 								<Play size={13} />
 							{/if}
 							{isChecking ? "Checking…" : "Run check"}
-						</button>
+						</Button>
 					</div>
 				{:else if result.pairs.length === 0}
 					<!-- Checked, nothing flagged -->
@@ -258,25 +267,6 @@
 		gap: 8px;
 		flex-shrink: 0;
 	}
-	.modal-close-btn {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		height: 26px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--muted-foreground);
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			color 0.15s;
-	}
-	.modal-close-btn:hover {
-		background: var(--muted);
-		color: var(--fg);
-	}
 
 	.modal-card-body {
 		padding: 16px 18px;
@@ -284,41 +274,6 @@
 		flex: 1;
 	}
 
-	/* ── Buttons (match app btn classes) ── */
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-weight: 500;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			color 0.15s,
-			opacity 0.15s;
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-outline {
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--fg);
-		border-radius: var(--radius-md);
-	}
-	.btn-outline:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.btn-xs {
-		padding: 3px 10px;
-		font-size: 11px;
-	}
-	.btn-sm {
-		padding: 5px 12px;
-		font-size: 12px;
-	}
 	.spin {
 		animation: spin 0.9s linear infinite;
 	}

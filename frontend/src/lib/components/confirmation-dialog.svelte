@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import X from "@lucide/svelte/icons/x";
+	import { Button } from "$lib/components/ui/button/index.js";
 
 	/** Props for the confirmation dialog modal component. */
 	interface Props {
@@ -120,13 +121,15 @@
 							>
 								{title}
 							</h3>
-							<button
+							<Button
+								variant="ghost"
+								size="icon"
+								class="h-7 w-7 shrink-0"
 								onclick={oncancel}
-								class="shrink-0 rounded-[var(--radius)] p-1 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
 								aria-label="Close"
 							>
 								<X size={16} />
-							</button>
+							</Button>
 						</div>
 						<div class="mt-1 text-sm leading-relaxed text-muted-foreground">
 							<!-- eslint-disable svelte/no-at-html-tags -- Messages are trusted/internal HTML -->
@@ -156,25 +159,15 @@
 				</div>
 
 				<div class="mt-6 flex justify-end gap-2">
-					<button
-						onclick={oncancel}
-						class="rounded-[var(--radius)] border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-					>
-						Cancel
-					</button>
-					<button
+					<Button variant="outline" onclick={oncancel}>Cancel</Button>
+					<Button
+						variant={variant === "danger" ? "destructive" : "default"}
 						onclick={handleConfirm}
 						disabled={!canConfirm}
 						autofocus
-						class="rounded-[var(--radius)] px-4 py-2 text-sm font-medium transition-colors {variant ===
-						'danger'
-							? 'bg-destructive text-white hover:opacity-90'
-							: 'bg-primary text-primary-foreground hover:opacity-90'} {!canConfirm
-							? 'cursor-not-allowed opacity-50'
-							: ''}"
 					>
 						{confirmLabel}
-					</button>
+					</Button>
 				</div>
 			</div>
 		</div>

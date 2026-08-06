@@ -3,10 +3,14 @@
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import { statusConfig } from "$lib/components/submissions/status-config.js";
+	import { Checkbox } from "$lib/components/ui/checkbox/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import ArrowRight from "@lucide/svelte/icons/arrow-right";
 	import Search from "@lucide/svelte/icons/search";
 	import Upload from "@lucide/svelte/icons/upload";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import type { Snippet } from "svelte";
 	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
 	import PlagiarismModal from "$lib/components/submissions/plagiarism-modal.svelte";
 
@@ -18,10 +22,20 @@
 		assignmentId: string;
 		onSearchChange: (q: string) => void;
 		onStatusFilterChange: (f: string) => void;
-		/** Archive (soft-hide) or restore a submission. */
-		onArchive: (id: string, action: "archive" | "restore") => void;
-		/** Permanently delete a submission (caller confirms first). */
-		onDelete: (id: string) => void;
+		/** Set of currently selected submission ids (bulk bar drives actions). */
+		selectedIds: ReadonlySet<string>;
+		/** Toggle a single row's selection. */
+		onToggleSelect: (id: string) => void;
+		/** Add a contiguous range of ids (shift-click on an unselected row). */
+		onSelectRange: (ids: string[]) => void;
+		/** Remove a contiguous range of ids (shift-click on a selected row). */
+		onDeselectRange: (ids: string[]) => void;
+		/** Replace the selection with all currently visible ids. */
+		onSelectAllVisible: (ids: string[]) => void;
+		/** Clear the selection. */
+		onClearSelection: () => void;
+		/** Extra actions rendered in the toolbar (right side, after Plagiarism). */
+		toolbarActions?: Snippet;
 	}
 
 	let {
@@ -31,8 +45,13 @@
 		assignmentId,
 		onSearchChange,
 		onStatusFilterChange,
-		onArchive,
-		onDelete,
+		selectedIds,
+		onToggleSelect,
+		onSelectRange,
+		onDeselectRange,
+		onSelectAllVisible,
+		onClearSelection,
+		toolbarActions,
 	}: Props = $props();
 
 	// ── Plagiarism modal + badge (P3-1) ──
@@ -107,6 +126,53 @@
 		}
 	}
 
+	// ── Selection (bulk bar) ──
+	let lastClickedId = $state<string | null>(null);
+
+	/** Ids of the currently visible (filtered + sorted) rows. */
+	let visibleIds = $derived(sorted.map((s) => s.id));
+
+	/** Every visible row is selected (header checkbox fully checked). */
+	let allVisibleSelected = $derived(
+		visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id)),
+	);
+
+	/** At least one visible row is selected (header checkbox indeterminate). */
+	let headerIndeterminate = $derived(
+		visibleIds.some((id) => selectedIds.has(id)) && !allVisibleSelected,
+	);
+
+	/** Header checkbox click: select all visible, or clear when all selected. */
+	function handleSelectAllClick() {
+		if (allVisibleSelected) {
+			onClearSelection();
+		} else {
+			onSelectAllVisible(visibleIds);
+		}
+	}
+
+	function handleRowCheckboxClick(e: MouseEvent, id: string) {
+		if (e.shiftKey && lastClickedId && lastClickedId !== id) {
+			// Shift-click extends the selection over the contiguous range
+			// (anchor -> target). Clicking a selected row de-selects the
+			// range instead.
+			const start = sorted.findIndex((s) => s.id === lastClickedId);
+			const end = sorted.findIndex((s) => s.id === id);
+			if (start !== -1 && end !== -1) {
+				const [lo, hi] = start < end ? [start, end] : [end, start];
+				const range = sorted.slice(lo, hi + 1).map((s) => s.id);
+				if (selectedIds.has(id)) {
+					onDeselectRange(range);
+				} else {
+					onSelectRange(range);
+				}
+			}
+		} else {
+			onToggleSelect(id);
+		}
+		lastClickedId = id;
+	}
+
 	// sortArrow replaced by SortArrow component
 
 	// ── Status display config: shared module (page header chip uses it too) ──
@@ -146,13 +212,20 @@
 			<option value="archived">Archived</option>
 		</select>
 		<div class="toolbar-actions">
-			<button class="btn-plagiarism" onclick={() => (plagiarismModalOpen = true)}>
-				<ShieldCheck size={13} />
+			<button
+				class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+				title="Review plagiarism detections for this assignment"
+				onclick={() => (plagiarismModalOpen = true)}
+			>
+				<ShieldCheck size={14} />
 				Plagiarism
 				{#if unreviewed > 0}
 					<span class="plagiarism-count-badge">{unreviewed}</span>
 				{/if}
 			</button>
+			{#if toolbarActions}
+				{@render toolbarActions()}
+			{/if}
 		</div>
 	</div>
 
@@ -161,6 +234,14 @@
 		<table class="submissions-table">
 			<thead>
 				<tr>
+					<th class="col-select" aria-label="Select all submissions">
+						<Checkbox
+							checked={allVisibleSelected}
+							indeterminate={headerIndeterminate}
+							onclick={handleSelectAllClick}
+							aria-label="Select all visible submissions"
+						/>
+					</th>
 					<th
 						class="col-id"
 						onclick={() => toggleSort("studentId")}
@@ -246,6 +327,13 @@
 					{@const cfg = statusConfig[sub.status] ?? statusConfig.pending}
 					{@const StatusIcon = cfg.icon}
 					<tr>
+						<td class="col-select">
+							<Checkbox
+								checked={selectedIds.has(sub.id)}
+								onclick={(e) => handleRowCheckboxClick(e, sub.id)}
+								aria-label={`Select ${sub.studentId}`}
+							/>
+						</td>
 						<td class="col-id">
 							<a href="{base}/submissions/{sub.id}" class="student-link"
 								>{sub.studentId}</a
@@ -263,33 +351,16 @@
 						>
 						<td class="col-grade cell-bold">{gradeDisplay(sub)}</td>
 						<td class="col-actions">
-							<a href="{base}/submissions/{sub.id}" class="btn-open">
-								Open <ArrowRight size={12} />
+							<a
+								href="{base}/submissions/{sub.id}"
+								class={cn(
+									buttonVariants({ variant: "outline", size: "sm" }),
+									"gap-1",
+								)}
+								title="Open submission"
+							>
+								Open <ArrowRight size={14} />
 							</a>
-							{#if sub.status === "archived"}
-								<button
-									class="btn-row-action"
-									title="Restore to the active batch"
-									onclick={() => onArchive(sub.id, "restore")}
-								>
-									Restore
-								</button>
-								<button
-									class="btn-row-action btn-row-danger"
-									title="Permanently delete"
-									onclick={() => onDelete(sub.id)}
-								>
-									Delete
-								</button>
-							{:else}
-								<button
-									class="btn-row-action"
-									title="Archive (hidden from the active batch, restorable)"
-									onclick={() => onArchive(sub.id, "archive")}
-								>
-									Archive
-								</button>
-							{/if}
 						</td>
 					</tr>
 				{/each}
@@ -394,28 +465,6 @@
 		align-items: center;
 		gap: 8px;
 	}
-	.btn-plagiarism {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 30px;
-		padding: 0 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--fg);
-		font-size: 12px;
-		font-weight: 500;
-		cursor: pointer;
-		white-space: nowrap;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-	}
-	.btn-plagiarism:hover {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
 	.plagiarism-count-badge {
 		display: inline-flex;
 		align-items: center;
@@ -479,24 +528,28 @@
 		background: color-mix(in oklch, var(--accent) 2%, var(--bg));
 	}
 
-	/* ── Column widths ── */
+	/* ── Column widths (percent columns sum to ~80%; select/actions are fixed) ── */
+	.col-select {
+		width: 44px;
+		text-align: center;
+	}
 	.col-id {
-		width: 13%;
+		width: 16%;
 	}
 	.col-status {
-		width: 14%;
-	}
-	.col-cells {
 		width: 15%;
 	}
+	.col-cells {
+		width: 17%;
+	}
 	.col-preeval {
-		width: 13%;
+		width: 15%;
 	}
 	.col-grade {
-		width: 12%;
+		width: 14%;
 	}
 	.col-actions {
-		width: 10%;
+		width: 120px;
 		text-align: right;
 		white-space: nowrap;
 	}
@@ -563,63 +616,6 @@
 	}
 	.student-link:hover {
 		color: var(--primary);
-	}
-
-	/* ── Open button ── */
-	.btn-open {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		padding: 4px 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--fg);
-		background: transparent;
-		cursor: pointer;
-		text-decoration: none;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-	}
-	.btn-open:hover {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-on);
-	}
-
-	/* ── Row action buttons (Archive / Restore / Delete) ── */
-	.btn-row-action {
-		display: inline-flex;
-		align-items: center;
-		gap: 4px;
-		margin-left: 6px;
-		padding: 4px 10px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--fg);
-		background: transparent;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-	}
-	.btn-row-action:hover {
-		background: var(--accent);
-		border-color: var(--accent);
-		color: var(--accent-on);
-	}
-	.btn-row-danger {
-		color: var(--error);
-		border-color: color-mix(in oklch, var(--error) 30%, transparent);
-	}
-	.btn-row-danger:hover {
-		background: var(--error);
-		border-color: var(--error);
-		color: #fff;
 	}
 
 	/* ── Empty row ── */

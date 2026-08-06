@@ -1,15 +1,15 @@
 /**
- * @file L4 component test — criteria-editor (visual criteria editor).
+ * @file L4 component test — criteria editor tabs (visual editor + save).
  *
- * Renders the editor with a mocked submissions-api + criteria-loader cache
- * and toast store, asserts category/main-point/sub-point CRUD rendering, the
- * save payload (incl. comment/point_deduction flags), client-side validation,
- * and the success/failure paths.
+ * Renders the tabs wrapper with a mocked submissions-api + criteria-loader
+ * cache and toast store, asserts category/main-point/sub-point CRUD
+ * rendering, the save payload (incl. comment/point_deduction flags),
+ * client-side validation, and the success/failure paths.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 
-import CriteriaEditor from "$lib/components/assignments/criteria-editor.svelte";
+import CriteriaEditorTabs from "$lib/components/assignments/criteria-editor-tabs.svelte";
 import * as api from "$lib/services/submissions-api.js";
 import type { CriteriaFile } from "$lib/types/criteria.js";
 
@@ -71,9 +71,9 @@ beforeEach(() => {
 	});
 });
 
-describe("CriteriaEditor", () => {
+describe("CriteriaEditorTabs", () => {
 	it("renders existing categories with main points, sub-points and flag states", () => {
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});
 
@@ -100,8 +100,48 @@ describe("CriteriaEditor", () => {
 		expect(deductionBoxes.filter((c) => (c as HTMLInputElement).checked)).toHaveLength(1);
 	});
 
+	it("switches to the Raw YAML tab showing the serialized draft", () => {
+		render(CriteriaEditorTabs, {
+			props: { assignmentId: "soil_contamination", initial: INITIAL },
+		});
+
+		fireEvent.click(screen.getByRole("tab", { name: /Raw YAML/ }));
+		const textarea = screen.getByLabelText("Raw criteria YAML") as HTMLTextAreaElement;
+		expect(textarea.value).toContain("code_formatting");
+		expect(textarea.value).toContain("consistent indentation");
+		expect(textarea.value).toContain("point_deduction: true");
+	});
+
+	it("parses raw YAML edits back into the shared draft (preview updates)", () => {
+		render(CriteriaEditorTabs, {
+			props: { assignmentId: "soil_contamination", initial: INITIAL },
+		});
+
+		fireEvent.click(screen.getByRole("tab", { name: /Raw YAML/ }));
+		const textarea = screen.getByLabelText("Raw criteria YAML") as HTMLTextAreaElement;
+		// Rename the category title in the raw text.
+		const edited = textarea.value.replace("Code Formatting", "Formatting (edited)");
+		fireEvent.input(textarea, { target: { value: edited } });
+
+		// Switch to Preview: the edited title renders there.
+		fireEvent.click(screen.getByRole("tab", { name: /Preview/ }));
+		expect(screen.getByText("Formatting (edited)")).toBeTruthy();
+	});
+
+	it("shows an inline error for invalid YAML and keeps the last valid draft", async () => {
+		render(CriteriaEditorTabs, {
+			props: { assignmentId: "soil_contamination", initial: INITIAL },
+		});
+
+		fireEvent.click(screen.getByRole("tab", { name: /Raw YAML/ }));
+		const textarea = screen.getByLabelText("Raw criteria YAML") as HTMLTextAreaElement;
+		fireEvent.input(textarea, { target: { value: "categories: [unclosed" } });
+
+		expect(await screen.findByText(/YAML problem/)).toBeTruthy();
+	});
+
 	it("adds a category, main point and sub-point interactively", async () => {
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});
 
@@ -116,10 +156,14 @@ describe("CriteriaEditor", () => {
 	});
 
 	it("includes comment/point_deduction flags in the save payload", async () => {
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});
 
+		// Make the draft dirty so Save is enabled.
+		await fireEvent.input(screen.getByDisplayValue("Code Formatting"), {
+			target: { value: "Code Formatting v2" },
+		});
 		await fireEvent.click(screen.getByText("Save criteria"));
 
 		await waitFor(() => expect(mockedSave).toHaveBeenCalledTimes(1));
@@ -147,7 +191,7 @@ describe("CriteriaEditor", () => {
 			}
 		>;
 		const category = categories.code_formatting!;
-		expect(category.title).toBe("Code Formatting");
+		expect(category.title).toBe("Code Formatting v2");
 		expect(category.positive[0]!.sub_points[0]).toMatchObject({
 			text: "consistent indentation",
 			comment: true,
@@ -161,7 +205,7 @@ describe("CriteriaEditor", () => {
 	});
 
 	it("blocks save on an empty category title with an inline error and no API call", async () => {
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: null },
 		});
 
@@ -177,10 +221,13 @@ describe("CriteriaEditor", () => {
 	});
 
 	it("clears the rubric cache and toasts on success", async () => {
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});
 
+		await fireEvent.input(screen.getByDisplayValue("Code Formatting"), {
+			target: { value: "Code Formatting v2" },
+		});
 		await fireEvent.click(screen.getByText("Save criteria"));
 
 		await waitFor(() => expect(mockedClearCache).toHaveBeenCalledTimes(1));
@@ -193,15 +240,18 @@ describe("CriteriaEditor", () => {
 
 	it("keeps editor state and shows the message when saving fails", async () => {
 		mockedSave.mockRejectedValue(new Error("category key x already exists in general.yaml"));
-		render(CriteriaEditor, {
+		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});
 
+		await fireEvent.input(screen.getByDisplayValue("Code Formatting"), {
+			target: { value: "Code Formatting v2" },
+		});
 		await fireEvent.click(screen.getByText("Save criteria"));
 
 		expect(await screen.findByText(/already exists in general.yaml/)).toBeTruthy();
 		expect(mockedClearCache).not.toHaveBeenCalled();
 		// Editor state survives — the category is still rendered.
-		expect(screen.getByDisplayValue("Code Formatting")).toBeTruthy();
+		expect(screen.getByDisplayValue("Code Formatting v2")).toBeTruthy();
 	});
 });

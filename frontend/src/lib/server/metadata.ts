@@ -316,6 +316,37 @@ export async function removeSubmission(assignmentId: string, studentId: string):
 }
 
 /**
+ * Reset a submission's grading progress: clears rubric/dimensions/feedback/
+ * notes and the final grade, reverting the status to "executed". This is a
+ * teacher-initiated admin reset — deliberately not a lifecycle transition
+ * (graded -> executed is not in STATUS_TRANSITIONS).
+ */
+export async function resetSubmission(
+	assignmentId: string,
+	studentId: string,
+): Promise<SubmissionRecord> {
+	assertSafeSegment(studentId, "studentId");
+	const records = await readMetadata(assignmentId);
+	const existing = records[studentId];
+	if (!existing) {
+		throw new MetadataError(
+			`Submission "${studentId}" not found in assignment "${assignmentId}"`,
+		);
+	}
+	const now = new Date().toISOString();
+	const record: SubmissionRecord = {
+		...existing,
+		status: "executed",
+		teacherGrade: undefined,
+		grading: { rubric: {}, dimensions: {}, updatedAt: now },
+		updatedAt: now,
+	};
+	records[studentId] = record;
+	await writeMetadata(assignmentId, records);
+	return record;
+}
+
+/**
  * Soft-archive a submission: set status "archived" and remember the
  * pre-archive status on the record so a later restore can return to it.
  */

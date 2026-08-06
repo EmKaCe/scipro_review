@@ -12,6 +12,7 @@
 	import FileUp from "@lucide/svelte/icons/file-up";
 	import Loader from "@lucide/svelte/icons/loader";
 
+	import { Button } from "$lib/components/ui/button/index.js";
 	import { uploadCriteria } from "$lib/services/submissions-api.js";
 
 	interface Props {
@@ -61,8 +62,9 @@
 			onchange={handleFileChange}
 			aria-label="Criteria YAML file"
 		/>
-		<button
-			class="btn-upload"
+		<Button
+			variant="outline"
+			size="sm"
 			type="button"
 			onclick={handleUpload}
 			disabled={!file || uploading}
@@ -74,7 +76,7 @@
 				<FileUp size={14} />
 				Upload criteria
 			{/if}
-		</button>
+		</Button>
 	</div>
 	{#if file}
 		<p class="file-name">{file.name}</p>
@@ -106,31 +108,6 @@
 	.file-input {
 		max-width: 260px;
 		font-size: 13px;
-	}
-	.btn-upload {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 14px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: transparent;
-		color: var(--fg);
-		font-size: 13px;
-		font-weight: 500;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-	}
-	.btn-upload:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.btn-upload:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
 	}
 	.file-name {
 		margin: 0;

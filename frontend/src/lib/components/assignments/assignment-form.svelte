@@ -16,6 +16,7 @@
 	 */
 
 	import type { AssignmentSummary } from "$lib/services/submissions-api.js";
+	import { Button } from "$lib/components/ui/button/index.js";
 
 	/** The 5 grading dimensions the rubric knows about (see grading.ts). */
 	export const DIMENSION_CATALOG = [
@@ -198,9 +199,9 @@
 	{#if submitError}<p class="field-error submit-error">{submitError}</p>{/if}
 
 	<div class="form-actions">
-		<button type="submit" class="btn-submit" disabled={busy}>
+		<Button type="submit" disabled={busy}>
 			{busy ? "Saving…" : editing ? "Save changes" : "Create assignment"}
-		</button>
+		</Button>
 	</div>
 </form>
 
@@ -285,24 +286,5 @@
 	.form-actions {
 		display: flex;
 		justify-content: flex-end;
-	}
-	.btn-submit {
-		height: 34px;
-		padding: 0 16px;
-		border: 1px solid var(--accent);
-		border-radius: var(--radius);
-		background: var(--accent);
-		color: var(--accent-on);
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: opacity 0.15s;
-	}
-	.btn-submit:hover:not(:disabled) {
-		opacity: 0.9;
-	}
-	.btn-submit:disabled {
-		opacity: 0.55;
-		cursor: not-allowed;
 	}
 </style>

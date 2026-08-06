@@ -3,21 +3,37 @@
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { base } from "$app/paths";
+	import { slide } from "svelte/transition";
+	import { SvelteSet } from "svelte/reactivity";
+	import { zipSync, strToU8 } from "fflate";
+	import { Button } from "$lib/components/ui/button/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
 	import ConfigErrorBanner from "$lib/components/submissions/config-error-banner.svelte";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+	import X from "@lucide/svelte/icons/x";
+	import Download from "@lucide/svelte/icons/download";
+	import Archive from "@lucide/svelte/icons/archive";
+	import ArchiveRestore from "@lucide/svelte/icons/archive-restore";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import Play from "@lucide/svelte/icons/play";
+	import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
+	import Sparkles from "@lucide/svelte/icons/sparkles";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import HardDriveDownload from "@lucide/svelte/icons/hard-drive-download";
+	import FolderCog from "@lucide/svelte/icons/folder-cog";
+	import Upload from "@lucide/svelte/icons/upload";
 
 	import AssignmentSelector from "$lib/components/submissions/assignment-selector.svelte";
-	import UploadBar from "$lib/components/submissions/upload-bar.svelte";
 	import UploadPanel from "$lib/components/submissions/upload-panel.svelte";
 	import MaterialsIndicator from "$lib/components/submissions/materials-indicator.svelte";
 	import MaterialsManager from "$lib/components/submissions/materials-manager.svelte";
 	import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import ConfirmationDialog from "$lib/components/confirmation-dialog.svelte";
-	import Archive from "@lucide/svelte/icons/archive";
 	import {
 		downloadBackup,
 		fetchAssignments,
@@ -60,11 +76,85 @@
 	let searchQuery = $state("");
 	let statusFilter = $state("all");
 	let uploadPanelOpen = $state(false);
-	let processing = $state(false);
 	/** Materials manager panel visibility (dashboard). */
 	let materialsOpen = $state(false);
 	/** Materials state for the selected assignment (B3 — real API). */
 	let materials = $state<MaterialsStatus | null>(null);
+
+	// -----------------------------------------------------------------------
+	// Bulk selection (checkboxes + bulk action bar)
+	// -----------------------------------------------------------------------
+	/** Ids selected in the dashboard table (bulk actions apply to these). */
+	let selectedIds = new SvelteSet<string>();
+	/** True while a bulk action (archive/delete/export/reset) is running. */
+	let bulkBusy = $state(false);
+	/** Human label of the running bulk action (progress line). */
+	let bulkAction = $state<string | null>(null);
+	/** Bulk delete confirm dialog. */
+	let bulkDeleteOpen = $state(false);
+	/** Bulk reset confirm dialog. */
+	let bulkResetOpen = $state(false);
+
+	/**
+	 * Action scope: the selection when rows are selected, otherwise the whole
+	 * batch. One bar, one button set — the scope is shown in the label.
+	 */
+	let scopeIds = $derived(selectedIds.size > 0 ? [...selectedIds] : submissions.map((s) => s.id));
+	let scopeList = $derived(submissions.filter((s) => scopeIds.includes(s.id)));
+
+	/** Human scope label for the bar + confirm dialogs. */
+	let scopeLabel = $derived(
+		selectedIds.size > 0
+			? `${selectedIds.size} selected`
+			: `All ${submissions.length} submissions`,
+	);
+
+	/** Ids visible under the current search/status filter (bar "Select all in view"). */
+	let visibleIds = $derived(
+		submissions
+			.filter((s) => {
+				if (s.status === "archived" && statusFilter !== "archived") return false;
+				if (statusFilter !== "all" && s.status !== statusFilter) return false;
+				if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
+					return false;
+				return true;
+			})
+			.map((s) => s.id),
+	);
+
+	/** Action eligibility based on the scope rows' statuses. */
+	let bulkCanArchive = $derived(scopeList.some((s) => s.status !== "archived"));
+	let bulkCanRestore = $derived(scopeList.some((s) => s.status === "archived"));
+	let bulkCanProcess = $derived(
+		scopeList.some((s) => s.status === "pending" || s.status === "executing"),
+	);
+	let bulkCanReset = $derived(
+		scopeList.some((s) => s.status === "graded" || s.status === "pre-evaluated"),
+	);
+	let bulkCanPreEval = $derived(
+		scopeList.some((s) => s.status === "executed" || s.status === "pre-evaluated"),
+	);
+
+	/** Short id preview for the destructive confirm dialogs. */
+	let selectionPreview = $derived(
+		scopeIds.length <= 5
+			? scopeIds.join(", ")
+			: `${scopeIds.slice(0, 5).join(", ")} +${scopeIds.length - 5} more`,
+	);
+
+	/** Bulk delete confirm body (explicit batch, no typed id required). */
+	let bulkDeleteMessage = $derived(
+		scopeIds.length === 0
+			? ""
+			: `Permanently delete <span class="font-medium text-foreground">${scopeIds.length}</span> submission(s)? This removes the notebooks, execution results, and plagiarism pairs. This cannot be undone.<br><span class="font-mono text-xs">${selectionPreview}</span>`,
+	);
+
+	/** Bulk reset confirm body. */
+	let bulkResetMessage = $derived(
+		scopeIds.length === 0
+			? ""
+			: `Reset grading progress on <span class="font-medium text-foreground">${scopeIds.length}</span> submission(s)? Clears rubric selections, scores, notes, and the final grade; status returns to Executed.<br><span class="font-mono text-xs">${selectionPreview}</span>`,
+	);
 
 	// -----------------------------------------------------------------------
 	// Teacher backup (download / restore the whole data directory)
@@ -185,46 +275,13 @@
 	}
 
 	// -----------------------------------------------------------------------
-	// Submission lifecycle: archive / restore / delete
+	// Submission lifecycle: archive / restore / delete (bulk actions)
 	// -----------------------------------------------------------------------
-	/** Pending delete target (confirm dialog). */
-	let deleteTarget = $state<SubmissionMeta | null>(null);
-	let deleting = $state(false);
 
-	async function handleArchive(id: string, action: "archive" | "restore") {
-		try {
-			await submissionsStore.archive(id, action);
-			addToast("success", action === "archive" ? `Archived ${id}` : `Restored ${id}`, 3000);
-		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Archive action failed", 4000);
-		}
-	}
-
-	function requestDelete(id: string) {
-		const meta = submissions.find((s) => s.id === id) ?? null;
-		deleteTarget = meta;
-	}
-
-	async function handleDelete() {
-		const target = deleteTarget;
-		if (!target || deleting) return;
-		deleting = true;
-		try {
-			await submissionsStore.delete(target.id);
-			addToast("success", `Deleted ${target.id}`, 3000);
-		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Delete failed", 4000);
-		} finally {
-			deleting = false;
-			deleteTarget = null;
-		}
-	}
-
-	// -----------------------------------------------------------------------
-	// Handlers
-	// -----------------------------------------------------------------------
 	function handleAssignmentChange(id: string) {
 		selectedAssignment = id;
+		// A different batch — the old selection no longer applies.
+		selectedIds.clear();
 		// loadSubmissions() re-runs via the $effect on selectedAssignment.
 	}
 
@@ -239,33 +296,6 @@
 		void loadSubmissions();
 	}
 
-	async function handleProcessAll() {
-		if (processing) return;
-		const pending = submissions.filter((s) => s.status === "pending");
-		if (pending.length === 0) {
-			addToast("info", "No pending submissions to process", 3000);
-			return;
-		}
-		processing = true;
-		submissionsStore.startPolling(); // live row statuses while the synchronous batch runs
-		try {
-			const resp = await submissionsStore.process();
-			addToast(
-				"success",
-				`Processed ${resp.succeeded} of ${resp.submitted} submission(s)${resp.failed > 0 ? `, ${resp.failed} failed` : ""}`,
-				5000,
-			);
-		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Batch processing failed", 5000);
-		} finally {
-			processing = false;
-		}
-	}
-
-	function handlePreEvaluateAll() {
-		addToast("info", "Pre-evaluation coming in Phase 4", 4000);
-	}
-
 	function handleToggleUploadPanel() {
 		uploadPanelOpen = !uploadPanelOpen;
 	}
@@ -277,7 +307,181 @@
 		} catch {
 			materials = null;
 		}
+		// Auto-select the freshly uploaded rows so the teacher can immediately
+		// Process/Archive them from the bulk bar.
+		const before = new Set(submissions.map((s) => s.id));
 		submissions = submissionsStore.submissions;
+		const uploaded = submissions.filter((s) => !before.has(s.id)).map((s) => s.id);
+		if (uploaded.length > 0) {
+			for (const id of uploaded) selectedIds.add(id);
+			addToast("info", `${uploaded.length} uploaded submission(s) auto-selected`, 3000);
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Bulk selection + actions
+	// -----------------------------------------------------------------------
+	function handleToggleSelect(id: string) {
+		if (selectedIds.has(id)) {
+			selectedIds.delete(id);
+		} else {
+			selectedIds.add(id);
+		}
+	}
+
+	function handleSelectRange(ids: string[]) {
+		for (const id of ids) selectedIds.add(id);
+	}
+
+	function handleDeselectRange(ids: string[]) {
+		for (const id of ids) selectedIds.delete(id);
+	}
+
+	function handleSelectAllVisible() {
+		selectedIds.clear();
+		for (const id of visibleIds) selectedIds.add(id);
+	}
+
+	function handleClearSelection() {
+		selectedIds.clear();
+	}
+
+	/** Run a bulk op with busy/progress state and shared error handling. */
+	async function runBulk(label: string, fn: () => Promise<void>) {
+		if (bulkBusy) return;
+		bulkBusy = true;
+		bulkAction = label;
+		try {
+			await fn();
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : `${label} failed`, 4000);
+		} finally {
+			bulkBusy = false;
+			bulkAction = null;
+		}
+	}
+
+	/** Drop archived ids from the selection after archive/restore/delete. */
+	function removeFromSelection(ids: string[]) {
+		for (const id of ids) selectedIds.delete(id);
+	}
+
+	async function handleBulkArchive() {
+		const ids = scopeIds.filter((id) => {
+			const sub = submissions.find((s) => s.id === id);
+			return sub && sub.status !== "archived";
+		});
+		if (ids.length === 0) return;
+		await runBulk("Archiving", async () => {
+			await submissionsStore.archiveMany(ids, "archive");
+			removeFromSelection(ids);
+			addToast("success", `Archived ${ids.length} submission(s)`, 3000);
+		});
+	}
+
+	async function handleBulkRestore() {
+		const ids = scopeIds.filter((id) => {
+			const sub = submissions.find((s) => s.id === id);
+			return sub && sub.status === "archived";
+		});
+		if (ids.length === 0) return;
+		await runBulk("Restoring", async () => {
+			await submissionsStore.archiveMany(ids, "restore");
+			removeFromSelection(ids);
+			addToast("success", `Restored ${ids.length} submission(s)`, 3000);
+		});
+	}
+
+	async function handleBulkDelete() {
+		const ids = scopeIds;
+		if (ids.length === 0) return;
+		await runBulk("Deleting", async () => {
+			await submissionsStore.deleteMany(ids);
+			removeFromSelection(ids);
+			addToast("success", `Deleted ${ids.length} submission(s)`, 3000);
+		});
+		bulkDeleteOpen = false;
+	}
+
+	function downloadBlob(fileName: string, blob: Blob) {
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement("a");
+		link.href = url;
+		link.download = fileName;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
+	/** Export the scope rows: single YAML when one, a zip bundle when many. */
+	async function handleBulkExport(kind: "student" | "teacher") {
+		const ids = scopeIds;
+		if (ids.length === 0 || bulkBusy) return;
+		bulkBusy = true;
+		bulkAction = kind === "student" ? "Exporting" : "Exporting teacher copies";
+		try {
+			if (ids.length === 1) {
+				const { fileName, content } = await submissionsStore.export(ids[0], kind);
+				downloadBlob(fileName, new Blob([content], { type: "text/yaml" }));
+			} else {
+				const files: Record<string, Uint8Array> = {};
+				for (const id of ids) {
+					const { fileName, content } = await submissionsStore.export(id, kind);
+					files[fileName] = strToU8(content);
+				}
+				const zipped = zipSync(files);
+				downloadBlob(
+					`submissions-${kind}-${new Date().toISOString().slice(0, 10)}.zip`,
+					new Blob([zipped], { type: "application/zip" }),
+				);
+			}
+			addToast("success", `Exported ${ids.length} submission(s)`, 3000);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Export failed", 4000);
+		} finally {
+			bulkBusy = false;
+			bulkAction = null;
+		}
+	}
+
+	async function handleBulkProcess() {
+		const ids = scopeIds.filter((id) => {
+			const sub = submissions.find((s) => s.id === id);
+			return sub && (sub.status === "pending" || sub.status === "executing");
+		});
+		if (ids.length === 0 || bulkBusy) return;
+		bulkBusy = true;
+		bulkAction = "Processing";
+		submissionsStore.startPolling(); // live row statuses while the batch runs
+		try {
+			const resp = await submissionsStore.process(ids);
+			addToast(
+				"success",
+				`Processed ${resp.succeeded} of ${resp.submitted} submission(s)${resp.failed > 0 ? `, ${resp.failed} failed` : ""}`,
+				5000,
+			);
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Batch processing failed", 5000);
+		} finally {
+			bulkBusy = false;
+			bulkAction = null;
+		}
+	}
+
+	async function handleBulkReset() {
+		const ids = scopeIds.filter((id) => {
+			const sub = submissions.find((s) => s.id === id);
+			return sub && (sub.status === "graded" || sub.status === "pre-evaluated");
+		});
+		if (ids.length === 0) return;
+		await runBulk("Resetting", async () => {
+			await submissionsStore.resetMany(ids);
+			addToast("success", `Reset ${ids.length} submission(s) to executed`, 3000);
+		});
+		bulkResetOpen = false;
+	}
+
+	function handleBulkPreEvaluate() {
+		addToast("info", "Pre-evaluation coming in Phase 4", 4000);
 	}
 </script>
 
@@ -380,18 +584,21 @@
 				selected={selectedAssignment}
 				onChange={handleAssignmentChange}
 			/>
-			<button class="btn-upload-more" onclick={handleToggleUploadPanel}>
+			<Button variant="outline" size="sm" onclick={handleToggleUploadPanel}>
+				<Upload size={14} />
 				{uploadPanelOpen ? "Close Upload" : "Upload More"}
-			</button>
+			</Button>
 		</div>
 
 		<!-- ── Upload Panel (inline, toggled by "Upload More" button) ── -->
 		{#if uploadPanelOpen}
-			<UploadPanel
-				inline={true}
-				assignmentId={selectedAssignment}
-				onUploaded={handleUploaded}
-			/>
+			<div transition:slide={{ duration: 180 }}>
+				<UploadPanel
+					inline={true}
+					assignmentId={selectedAssignment}
+					onUploaded={handleUploaded}
+				/>
+			</div>
 		{/if}
 
 		<!-- ── Materials: indicator (toggles the manager) + management panel ── -->
@@ -428,44 +635,30 @@
 			{searchQuery}
 			{statusFilter}
 			assignmentId={selectedAssignment}
+			{selectedIds}
+			onToggleSelect={handleToggleSelect}
+			onSelectRange={handleSelectRange}
+			onDeselectRange={handleDeselectRange}
+			onSelectAllVisible={handleSelectAllVisible}
+			onClearSelection={handleClearSelection}
 			onSearchChange={handleSearchChange}
 			onStatusFilterChange={handleStatusFilterChange}
-			onArchive={handleArchive}
-			onDelete={requestDelete}
-		/>
-
-		<!-- ── Action bar ── -->
-		{#if assignmentsError}
-			<p class="assignments-error">Assignments unavailable: {assignmentsError}</p>
-		{/if}
-		<div class="action-bar">
-			<div class="action-left">
-				<button
-					class="btn-action btn-primary"
-					onclick={handleProcessAll}
-					disabled={processing}
+		>
+			{#snippet toolbarActions()}
+				<a
+					class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+					href={`${base}/settings/assignments`}
+					title="Manage the assignment registry"
 				>
-					{processing
-						? `Processing ${submissions.filter((s) => s.status === "executing").length}/${submissions.filter((s) => s.status === "pending").length + submissions.filter((s) => s.status === "executing").length}…`
-						: "Process All"}
-				</button>
-				<button
-					class="btn-action btn-outline"
-					onclick={handlePreEvaluateAll}
-					disabled={!submissions.some(
-						(s) => s.status === "executed" || s.status === "pre-evaluated",
-					)}
-				>
-					Pre-evaluate All
-				</button>
-				<a class="btn-action btn-outline" href={`${base}/settings/assignments`}>
+					<FolderCog size={14} />
 					Manage Assignments
 				</a>
 				{#snippet backupIcon()}
-					<Archive size={14} />
+					<HardDriveDownload size={14} />
 				{/snippet}
 				<MenuButton
 					label="Backup"
+					title="Download or restore a teacher backup of the data directory"
 					primaryOnClick={handleDownloadBackup}
 					items={[
 						{
@@ -476,8 +669,6 @@
 						},
 					]}
 					icon={backupIcon}
-					groupClass="btn-action btn-outline"
-					variantClass="gap-1.5"
 				/>
 				<input
 					type="file"
@@ -486,26 +677,152 @@
 					bind:this={backupFileInput}
 					onchange={handleRestoreBackup}
 				/>
+			{/snippet}
+		</SubmissionsDashboard>
+
+		<!-- ── Bulk action bar: one button set; scope = selection or all ── -->
+		{#if assignmentsError}
+			<p class="assignments-error">Assignments unavailable: {assignmentsError}</p>
+		{/if}
+		<div class="bulk-bar">
+			<div class="bulk-info" aria-live="polite">
+				<span class="bulk-count">
+					{scopeLabel}
+					<span class="bulk-context">({visibleIds.length} in view)</span>
+				</span>
+				{#if selectedIds.size > 0}
+					<Button
+						variant="ghost"
+						size="sm"
+						title="Select every submission currently visible"
+						onclick={handleSelectAllVisible}
+						disabled={bulkBusy}
+					>
+						<ListChecks size={14} />
+						Select all in view
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						title="Clear the current selection"
+						aria-label="Clear selection"
+						onclick={handleClearSelection}
+						disabled={bulkBusy}
+					>
+						<X size={14} />
+					</Button>
+				{/if}
+				{#if bulkBusy && bulkAction}
+					<span class="bulk-progress">{bulkAction}…</span>
+				{/if}
+			</div>
+			<div class="bulk-actions">
+				{#if bulkCanRestore}
+					<Button
+						variant="outline"
+						size="sm"
+						title="Restore the archived submissions to the active batch"
+						onclick={handleBulkRestore}
+						disabled={bulkBusy}
+					>
+						<ArchiveRestore size={14} />
+						Restore
+					</Button>
+				{:else}
+					<Button
+						variant="outline"
+						size="sm"
+						title="Archive the submissions (hidden, restorable)"
+						onclick={handleBulkArchive}
+						disabled={bulkBusy || !bulkCanArchive}
+					>
+						<Archive size={14} />
+						Archive
+					</Button>
+				{/if}
+				<Button
+					variant="outline"
+					size="sm"
+					title="Permanently delete the submissions"
+					onclick={() => (bulkDeleteOpen = true)}
+					disabled={bulkBusy}
+					class="text-destructive hover:text-destructive"
+				>
+					<Trash2 size={14} />
+					Delete
+				</Button>
+				{#snippet bulkExportIcon()}
+					<Download size={14} />
+				{/snippet}
+				<MenuButton
+					label="Export"
+					title="Export the submissions (student or teacher copy)"
+					primaryOnClick={() => handleBulkExport("student")}
+					items={[
+						{
+							id: "teacher",
+							label: "Export teacher YAML",
+							description: "Full record + plagiarism audit (-teacher)",
+							onclick: () => handleBulkExport("teacher"),
+						},
+					]}
+					icon={bulkExportIcon}
+				/>
+				<Button
+					variant="default"
+					size="sm"
+					title="Execute the pending submissions"
+					onclick={handleBulkProcess}
+					disabled={bulkBusy || !bulkCanProcess}
+				>
+					<Play size={14} />
+					Process
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					title="Reset grading progress on the submissions"
+					onclick={() => (bulkResetOpen = true)}
+					disabled={bulkBusy || !bulkCanReset}
+				>
+					<RotateCcw size={14} />
+					Reset
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
+					title="Pre-evaluate the submissions (Phase 4)"
+					onclick={handleBulkPreEvaluate}
+					disabled={bulkBusy || !bulkCanPreEval}
+				>
+					<Sparkles size={14} />
+					Pre-evaluate
+				</Button>
 			</div>
 		</div>
-
-		<!-- ── Compact upload zone (below table) ── -->
-		<UploadBar compact={true} onClick={handleToggleUploadPanel} />
 	</div>
 {/if}
 
-<!-- Delete confirmation (destructive, requires typing the student ID). -->
+<!-- Bulk delete confirmation (the batch is explicit in the message). -->
 <ConfirmationDialog
-	open={deleteTarget !== null}
-	title="Delete Submission"
-	message={deleteTarget
-		? `Permanently delete <span class="font-medium text-foreground">${deleteTarget.studentId}</span>? This removes the notebook, its execution results, and its plagiarism pairs. This cannot be undone.`
-		: ""}
+	open={bulkDeleteOpen}
+	title="Delete Submissions"
+	message={bulkDeleteMessage}
 	confirmLabel="Delete"
 	variant="danger"
-	requireTyping={deleteTarget?.studentId ?? ""}
-	onconfirm={handleDelete}
-	oncancel={() => (deleteTarget = null)}
+	onconfirm={handleBulkDelete}
+	oncancel={() => (bulkDeleteOpen = false)}
+/>
+
+<!-- Bulk reset confirmation. -->
+<ConfirmationDialog
+	open={bulkResetOpen}
+	title="Reset Submissions"
+	message={bulkResetMessage}
+	confirmLabel="Reset"
+	variant="danger"
+	onconfirm={handleBulkReset}
+	oncancel={() => (bulkResetOpen = false)}
 />
 
 <style>
@@ -526,27 +843,6 @@
 		gap: 12px;
 		flex-wrap: wrap;
 	}
-	.btn-upload-more {
-		display: inline-flex;
-		align-items: center;
-		height: 34px;
-		padding: 0 16px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: transparent;
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--fg);
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-		white-space: nowrap;
-	}
-	.btn-upload-more:hover {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
 
 	/* ── Mobile dashboard ── */
 	@media (max-width: 767px) {
@@ -557,10 +853,6 @@
 		.assign-upload-row {
 			flex-direction: column;
 			align-items: stretch;
-		}
-		.btn-upload-more {
-			width: 100%;
-			justify-content: center;
 		}
 	}
 
@@ -585,59 +877,52 @@
 		color: var(--primary);
 	}
 
-	/* ── Action bar ── */
-	.action-bar {
-		display: flex;
-		align-items: center;
-		justify-content: flex-start;
-	}
+	/* ── Bulk action bar (single set; scope = selection or all) ── */
 	.assignments-error {
 		margin: 0;
 		font-size: 13px;
 		color: var(--destructive);
 	}
-	.action-left {
+	.bulk-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		flex-wrap: wrap;
+		padding: 10px 14px;
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+	}
+	.bulk-info {
 		display: flex;
 		align-items: center;
 		gap: 8px;
+		flex-wrap: wrap;
 	}
-	.btn-action {
+	.bulk-count {
 		display: inline-flex;
-		align-items: center;
+		align-items: baseline;
 		gap: 6px;
-		height: 32px;
-		padding: 0 14px;
-		border-radius: var(--radius);
 		font-size: 13px;
-		font-weight: 500;
-		white-space: nowrap;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			opacity 0.15s;
-	}
-	.btn-action:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-	.btn-primary {
-		background: var(--accent);
-		color: var(--accent-on);
-		border: 1px solid var(--accent);
-	}
-	.btn-primary:hover:not(:disabled) {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-	.btn-outline {
-		background: transparent;
+		font-weight: 600;
 		color: var(--fg);
-		border: 1px solid var(--border);
 	}
-	.btn-outline:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
+	.bulk-context {
+		font-size: 12px;
+		font-weight: 400;
+		color: var(--muted-foreground);
+	}
+	.bulk-progress {
+		font-size: 12px;
+		font-style: italic;
+		color: var(--muted-foreground);
+	}
+	.bulk-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex-wrap: wrap;
 	}
 
 	/* ── Responsive ── */
@@ -649,7 +934,7 @@
 			flex-direction: column;
 			align-items: stretch;
 		}
-		.action-bar {
+		.bulk-bar {
 			flex-direction: column;
 			align-items: flex-start;
 		}

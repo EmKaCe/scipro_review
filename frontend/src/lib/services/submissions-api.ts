@@ -466,6 +466,14 @@ export async function archiveSubmission(
 	);
 }
 
+/** POST /api/submissions/[id]/reset — clear grading state, revert to "executed". */
+export async function resetSubmission(id: string, assignmentId?: string): Promise<SubmissionMeta> {
+	return requestJson<SubmissionMeta>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}/reset`, assignmentId),
+		{ method: "POST" },
+	);
+}
+
 /**
  * GET /api/submissions/[id]/export — download the grading YAML document.
  *

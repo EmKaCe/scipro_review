@@ -6,13 +6,16 @@
 	 * the CriteriaEditor for category / main-point / sub-point CRUD.
 	 */
 
-	import ArrowLeft from "@lucide/svelte/icons/arrow-left";
+	import X from "@lucide/svelte/icons/x";
 	import { onMount } from "svelte";
 
 	import { base } from "$app/paths";
 	import { page } from "$app/state";
 
-	import CriteriaEditor from "$lib/components/assignments/criteria-editor.svelte";
+	import CriteriaEditorTabs from "$lib/components/assignments/criteria-editor-tabs.svelte";
+	import { Button } from "$lib/components/ui/button/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import { getCriteria } from "$lib/services/submissions-api.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import type { CriteriaFile } from "$lib/types/criteria.js";
@@ -66,8 +69,11 @@
 				this assignment's own criteria are editable here.
 			</p>
 		</div>
-		<a class="btn-back" href={`${base}/settings/assignments`}>
-			<ArrowLeft size={14} />
+		<a
+			class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+			href={`${base}/settings/assignments`}
+		>
+			<X size={14} />
 			Back to assignments
 		</a>
 	</div>
@@ -77,10 +83,10 @@
 	{:else if loadError}
 		<div class="empty-card error-card">
 			<p>{loadError}</p>
-			<button class="btn-outline" onclick={load}>Retry</button>
+			<Button variant="outline" size="sm" onclick={load}>Retry</Button>
 		</div>
 	{:else}
-		<CriteriaEditor {assignmentId} initial={initialCriteria} />
+		<CriteriaEditorTabs {assignmentId} initial={initialCriteria} />
 	{/if}
 </div>
 
@@ -109,22 +115,6 @@
 		margin: 4px 0 0;
 		font-size: 13px;
 		color: var(--muted-foreground);
-	}
-	.btn-back {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		padding: 7px 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: var(--bg);
-		color: var(--fg);
-		font-size: 13px;
-		text-decoration: none;
-		transition: border-color 0.15s;
-	}
-	.btn-back:hover {
-		border-color: var(--accent);
 	}
 	.empty-card {
 		display: flex;

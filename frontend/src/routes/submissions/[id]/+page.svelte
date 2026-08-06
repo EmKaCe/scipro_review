@@ -25,6 +25,9 @@
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
+	import { Button } from "$lib/components/ui/button/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -603,16 +606,17 @@
 			<h2 class="mt-4 text-lg font-semibold text-foreground">Something went wrong</h2>
 			<p class="mt-2 text-sm text-muted-foreground">{error}</p>
 			<div class="mt-6 flex items-center justify-center gap-3">
-				<button
+				<Button
+					variant="default"
+					size="sm"
 					onclick={() => page.params.id && loadData(page.params.id)}
-					class="inline-flex items-center gap-2 rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
 				>
 					<RefreshCw size={14} />
 					Try again
-				</button>
+				</Button>
 				<a
 					href="{base}/submissions"
-					class="inline-flex items-center gap-1 rounded-[var(--radius)] border border-border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
 				>
 					Go to Dashboard
 				</a>
@@ -906,13 +910,13 @@
 							},
 						]}
 						icon={exportIcon}
-						groupClass="mob-btn mob-btn-outline"
-						variantClass="gap-1 px-2 py-0 text-xs font-medium"
+						variant="outline"
+						size="sm"
 					/>
-					<button class="mob-btn mob-btn-primary" onclick={handleSaveGrade}>
-						<Save size={11} />
+					<Button variant="success" size="sm" onclick={handleSaveGrade}>
+						<Save size={14} />
 						Save Grade
-					</button>
+					</Button>
 				</div>
 			</div>
 		{/if}
@@ -931,13 +935,15 @@
 				<div class="guard-modal-head">
 					<TriangleAlert size={16} style="color: var(--destructive); flex-shrink: 0" />
 					<h3>Unreviewed plagiarism detections</h3>
-					<button
-						class="guard-modal-close"
+					<Button
+						variant="ghost"
+						size="icon"
+						class="h-7 w-7"
 						aria-label="Close"
 						onclick={() => (exportGuardOpen = false)}
 					>
 						<X size={14} />
-					</button>
+					</Button>
 				</div>
 				<p class="guard-modal-text">
 					<strong>{unreviewedCount}</strong> potential plagiarism detection{unreviewedCount !==
@@ -948,12 +954,12 @@
 				</p>
 				<p class="guard-counts">{guardCounts}</p>
 				<div class="guard-modal-actions">
-					<button class="btn-guard btn-guard-ghost" onclick={handleGuardGoReview}>
+					<Button variant="outline" size="sm" onclick={handleGuardGoReview}>
 						Go to review
-					</button>
-					<button class="btn-guard btn-guard-primary" onclick={handleGuardProceed}>
+					</Button>
+					<Button variant="default" size="sm" onclick={handleGuardProceed}>
 						{exportGuardAction === "Save Grade" ? "Save anyway" : "Export anyway"}
-					</button>
+					</Button>
 				</div>
 			</div>
 		</div>
@@ -1234,41 +1240,6 @@
 		align-items: center;
 		gap: 6px;
 	}
-	.mob-btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 6px 12px;
-		border-radius: var(--radius-md);
-		font-size: 12px;
-		font-weight: 500;
-		cursor: pointer;
-		white-space: nowrap;
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			opacity 0.15s;
-	}
-	/* Applied via MenuButton groupClass (component prop — analyzer can't see it). */
-	:global(.mob-btn-outline) {
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--fg);
-	}
-	:global(.mob-btn-outline:hover) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.mob-btn-primary {
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		color: var(--accent-on);
-	}
-	.mob-btn-primary:hover {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-
 	/* ── Export guard modal (P3-1) ── */
 	.guard-modal {
 		position: fixed;
@@ -1301,22 +1272,6 @@
 		font-weight: 600;
 		color: var(--fg);
 	}
-	.guard-modal-close {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 24px;
-		height: 24px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius-md);
-		background: transparent;
-		color: var(--muted-foreground);
-		cursor: pointer;
-	}
-	.guard-modal-close:hover {
-		background: var(--muted);
-		color: var(--fg);
-	}
 	.guard-modal-text {
 		margin-top: 12px;
 		font-size: 13px;
@@ -1337,37 +1292,6 @@
 		justify-content: flex-end;
 		gap: 8px;
 		margin-top: 16px;
-	}
-	.btn-guard {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		padding: 6px 14px;
-		border-radius: var(--radius-md);
-		font-size: 12px;
-		font-weight: 500;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s;
-	}
-	.btn-guard-ghost {
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--fg);
-	}
-	.btn-guard-ghost:hover {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.btn-guard-primary {
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		color: var(--accent-on);
-	}
-	.btn-guard-primary:hover {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
 	}
 
 	/* ── Status badge (shared config, same palette as the dashboard) ── */

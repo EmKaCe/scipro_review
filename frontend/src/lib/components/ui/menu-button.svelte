@@ -5,7 +5,12 @@
 	 * Primary click runs `primaryOnClick`; the caret toggles a menu of
 	 * secondary options. Closes on outside click / Escape. No portal —
 	 * renders in place with `position: absolute` (parent must be relative).
+	 *
+	 * Styled with the shared shadcn `buttonVariants` so it matches every
+	 * other button in the app.
 	 */
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
 	import type { Snippet } from "svelte";
 
@@ -28,12 +33,16 @@
 		items: MenuItem[];
 		/** Optional leading icon for the primary button. */
 		icon?: Snippet;
+		/** Tooltip for the primary button (defaults to the label). */
+		title?: string;
 		/** "right" (default) or "left" menu alignment. */
 		align?: "right" | "left";
-		/** Extra class for the primary button styling variant. */
-		variantClass?: string;
-		/** Extra class for the group wrapper (border, responsive visibility…). */
-		groupClass?: string;
+		/** Shared button variant (default: outline). */
+		variant?: "default" | "outline" | "secondary" | "ghost" | "destructive" | "success";
+		/** Shared button size (default: sm). */
+		size?: "default" | "sm" | "xs";
+		/** Extra classes for the wrapper. */
+		class?: string;
 	}
 
 	let {
@@ -41,9 +50,11 @@
 		primaryOnClick,
 		items,
 		icon,
+		title,
 		align = "right",
-		variantClass = "",
-		groupClass = "",
+		variant = "outline",
+		size = "sm",
+		class: className,
 	}: Props = $props();
 
 	let open = $state(false);
@@ -81,108 +92,50 @@
 	});
 </script>
 
-<div class="menu-button {groupClass}" bind:this={rootEl}>
-	<button class="menu-button-primary {variantClass}" onclick={handlePrimary} title={label}>
+<div class={cn("relative inline-flex items-stretch", className)} bind:this={rootEl}>
+	<button
+		class={cn(
+			buttonVariants({ variant, size }),
+			"gap-1.5",
+			items.length > 0 ? "rounded-r-none" : "",
+		)}
+		onclick={handlePrimary}
+		title={title ?? label}
+	>
 		{#if icon}{@render icon()}{/if}
 		<span>{label}</span>
 	</button>
 	{#if items.length > 0}
 		<button
-			class="menu-button-caret"
-			aria-label="More export options"
+			class={cn(buttonVariants({ variant, size }), "-ml-px w-8 rounded-l-none px-0")}
+			aria-label="More options"
 			aria-expanded={open}
 			onclick={() => (open = !open)}
 		>
-			<ChevronDown
-				size={14}
-				class="menu-caret-icon"
-				style={open ? "transform: rotate(180deg)" : ""}
-			/>
+			<ChevronDown size={14} class={cn("transition-transform", open && "rotate-180")} />
 		</button>
 	{/if}
 	{#if open}
 		<div
-			class="menu-button-popover {align === 'left' ? 'menu-align-left' : 'menu-align-right'}"
+			class={cn(
+				"absolute z-50 min-w-56 rounded-md border bg-popover p-1 text-popover-foreground shadow-md",
+				align === "left" ? "left-0" : "right-0",
+			)}
+			style="top: calc(100% + 4px)"
 		>
 			{#each items as item (item.id)}
-				<button class="menu-button-item" onclick={() => handleItem(item)}>
-					<span class="menu-item-label">{item.label}</span>
+				<button
+					class="flex w-full flex-col items-start gap-0.5 rounded-sm px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+					onclick={() => handleItem(item)}
+				>
+					<span class="font-medium">{item.label}</span>
 					{#if item.description}
-						<span class="menu-item-desc">{item.description}</span>
+						<span class="text-xs leading-tight text-muted-foreground"
+							>{item.description}</span
+						>
 					{/if}
 				</button>
 			{/each}
 		</div>
 	{/if}
 </div>
-
-<style>
-	.menu-button {
-		position: relative;
-		display: inline-flex;
-		align-items: stretch;
-	}
-	.menu-button-primary {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		border-radius: 0;
-	}
-	.menu-button-caret {
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 26px;
-		border-left: 1px solid color-mix(in oklch, var(--border) 55%, transparent);
-		border-radius: 0;
-		transition: background 0.15s;
-	}
-	.menu-button-caret:hover {
-		background: color-mix(in oklch, var(--fg) 6%, transparent);
-	}
-	.menu-caret-icon {
-		transition: transform 0.15s;
-		color: var(--muted-foreground);
-	}
-	.menu-button-popover {
-		position: absolute;
-		top: calc(100% + 4px);
-		z-index: 50;
-		min-width: 230px;
-		padding: 4px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: var(--card);
-		box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
-	}
-	.menu-align-right {
-		right: 0;
-	}
-	.menu-align-left {
-		left: 0;
-	}
-	.menu-button-item {
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 1px;
-		width: 100%;
-		padding: 7px 9px;
-		border-radius: calc(var(--radius) - 2px);
-		text-align: left;
-		transition: background 0.15s;
-	}
-	.menu-button-item:hover {
-		background: color-mix(in oklch, var(--fg) 6%, transparent);
-	}
-	.menu-item-label {
-		font-size: 13px;
-		font-weight: 500;
-		color: var(--fg);
-	}
-	.menu-item-desc {
-		font-size: 11px;
-		color: var(--muted-foreground);
-		line-height: 1.35;
-	}
-</style>

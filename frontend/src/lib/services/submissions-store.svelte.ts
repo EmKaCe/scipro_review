@@ -28,6 +28,7 @@ import {
 	importTeacherYaml as importTeacherYamlApi,
 	processSubmission,
 	processSubmissions,
+	resetSubmission as resetSubmissionApi,
 	saveGrading as saveGradingApi,
 	uploadSubmissions,
 	type BatchProcessResponse,
@@ -272,12 +273,42 @@ export class SubmissionsStore {
 		return record;
 	}
 
+	/** Archive/restore several submissions, then refresh the list once. */
+	async archiveMany(ids: string[], action: "archive" | "restore" = "archive"): Promise<void> {
+		const assignmentId = this.requireAssignment();
+		for (const id of ids) {
+			await archiveSubmissionApi(id, assignmentId, action);
+		}
+		await this.refresh();
+	}
+
 	/** Permanently delete a submission, then refresh the list. */
 	async delete(id: string): Promise<void> {
 		await deleteSubmission(id, this.assignmentId ?? undefined);
 		this.details.delete(id);
 		if (this.selected?.id === id) {
 			this.selected = null;
+		}
+		await this.refresh();
+	}
+
+	/** Permanently delete several submissions, then refresh the list once. */
+	async deleteMany(ids: string[]): Promise<void> {
+		for (const id of ids) {
+			await deleteSubmission(id, this.assignmentId ?? undefined);
+			this.details.delete(id);
+			if (this.selected?.id === id) {
+				this.selected = null;
+			}
+		}
+		await this.refresh();
+	}
+
+	/** Reset grading progress for several submissions (status -> "executed"). */
+	async resetMany(ids: string[]): Promise<void> {
+		for (const id of ids) {
+			const record = await resetSubmissionApi(id, this.assignmentId ?? undefined);
+			this.applyRecord(record);
 		}
 		await this.refresh();
 	}

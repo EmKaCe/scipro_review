@@ -21,6 +21,9 @@
 	} from "$lib/components/assignments/assignment-form.svelte";
 	import CriteriaUpload from "$lib/components/assignments/criteria-upload.svelte";
 	import ConfirmationDialog from "$lib/components/confirmation-dialog.svelte";
+	import { Button } from "$lib/components/ui/button/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import {
 		type AssignmentSummary,
 		createAssignment,
@@ -161,7 +164,10 @@
 				Manage the assignment registry, criteria files, and grading dimensions.
 			</p>
 		</div>
-		<a class="btn-back" href={`${base}/settings`}>
+		<a
+			class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+			href={`${base}/settings`}
+		>
 			<X size={14} />
 			Back to settings
 		</a>
@@ -172,26 +178,32 @@
 	{:else if listError}
 		<div class="empty-card error-card">
 			<p>{listError}</p>
-			<button class="btn-outline" onclick={load}>
+			<Button variant="outline" size="sm" onclick={load}>
 				<RefreshCw size={14} />
 				Retry
-			</button>
+			</Button>
 		</div>
 	{:else}
 		<div class="toolbar">
-			<button class="btn-primary" onclick={startCreate}>
+			<Button variant="default" size="sm" onclick={startCreate}>
 				<Plus size={14} />
 				New assignment
-			</button>
+			</Button>
 		</div>
 
 		{#if formOpen}
 			<section class="card form-card">
 				<div class="card-header">
 					<h2>{editing ? `Edit ${editing.id}` : "New assignment"}</h2>
-					<button class="icon-btn" onclick={closeForm} aria-label="Close form">
+					<Button
+						variant="ghost"
+						size="icon"
+						class="h-7 w-7"
+						onclick={closeForm}
+						aria-label="Close form"
+					>
 						<X size={16} />
-					</button>
+					</Button>
 				</div>
 				<AssignmentForm initial={editing} onSubmit={handleSubmit} busy={saving} />
 			</section>
@@ -217,22 +229,33 @@
 					</div>
 					<div class="row-actions">
 						<a
-							class="btn-outline"
+							class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
 							href={`${base}/settings/assignments/${a.id}/criteria`}
+							title="Edit the rubric criteria for this assignment"
 						>
 							Edit criteria
 						</a>
-						<button class="btn-outline" onclick={() => (uploadTarget = a)}>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => (uploadTarget = a)}
+							title="Upload a criteria YAML file"
+						>
 							Upload criteria
-						</button>
-						<button class="btn-outline" onclick={() => startEdit(a)}>
-							<Pencil size={13} />
+						</Button>
+						<Button variant="outline" size="sm" onclick={() => startEdit(a)}>
+							<Pencil size={14} />
 							Edit
-						</button>
-						<button class="btn-danger" onclick={() => (deleteTarget = a)}>
-							<Trash2 size={13} />
+						</Button>
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={() => (deleteTarget = a)}
+							class="text-destructive hover:text-destructive"
+						>
+							<Trash2 size={14} />
 							Delete
-						</button>
+						</Button>
 					</div>
 				</li>
 				{#if uploadTarget?.id === a.id}
@@ -286,69 +309,10 @@
 		font-size: 13.5px;
 		color: var(--muted-foreground);
 	}
-	.btn-back {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		background: transparent;
-		color: var(--fg);
-		font-size: 13px;
-		font-weight: 500;
-		text-decoration: none;
-		white-space: nowrap;
-	}
 	.toolbar {
 		display: flex;
 		align-items: center;
 		gap: 8px;
-	}
-	.btn-primary,
-	.btn-outline,
-	.btn-danger {
-		display: inline-flex;
-		align-items: center;
-		gap: 6px;
-		height: 32px;
-		padding: 0 12px;
-		border-radius: var(--radius);
-		font-size: 13px;
-		font-weight: 500;
-		white-space: nowrap;
-		cursor: pointer;
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			opacity 0.15s;
-	}
-	.btn-primary {
-		background: var(--accent);
-		color: var(--accent-on);
-		border: 1px solid var(--accent);
-	}
-	.btn-primary:hover:not(:disabled) {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-	.btn-outline {
-		background: transparent;
-		color: var(--fg);
-		border: 1px solid var(--border);
-	}
-	.btn-outline:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.btn-danger {
-		background: transparent;
-		color: var(--destructive);
-		border: 1px solid color-mix(in oklch, var(--destructive) 40%, transparent);
-	}
-	.btn-danger:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--destructive) 8%, transparent);
 	}
 	.card {
 		border: 1px solid var(--border);

@@ -12,6 +12,9 @@
 	import { goto } from "$app/navigation";
 	import { settings, setTheme } from "$lib/stores/settings.svelte.js";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
+	import { Button } from "$lib/components/ui/button/index.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 
 	interface Props {
 		/** Whether to show the back navigation button. */
@@ -145,14 +148,16 @@
 	<!-- Right -->
 	<div class="header-actions flex flex-1 items-center justify-end gap-1">
 		{#if showSave}
-			<button
+			<Button
+				variant="success"
+				size="sm"
 				title="Save (Ctrl+S)"
 				onclick={onsaveclick}
-				class="hidden shrink-0 items-center gap-1.5 rounded-[var(--radius)] bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90 sm:flex"
+				class="hidden shrink-0 sm:flex"
 			>
 				<Save size={14} />
 				Save
-			</button>
+			</Button>
 		{/if}
 
 		{#if showExport}
@@ -164,28 +169,32 @@
 				primaryOnClick={() => onexportclick?.()}
 				items={exportMenuItems ?? []}
 				icon={exportIcon}
-				groupClass="hidden shrink-0 overflow-hidden rounded-[var(--radius)] border border-border sm:flex"
-				variantClass="gap-1.5 px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+				class="hidden shrink-0 sm:flex"
 			/>
 		{/if}
 
 		{#if showImport}
-			<button
+			<Button
+				variant="outline"
+				size="sm"
 				onclick={onimportclick}
 				aria-label="Import review"
-				class="flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+				title="Import a review (YAML or JSON)"
+				class="shrink-0"
 			>
-				<Upload size={16} />
+				<Upload size={14} />
 				<span class="hidden sm:inline">Import</span>
-			</button>
+			</Button>
 		{/if}
 
-		<button
+		<Button
+			variant="ghost"
+			size="icon"
 			onclick={toggleTheme}
 			aria-label={settings.theme === "system"
 				? "System theme"
 				: `Switch to ${themeCycle[settings.theme]} mode`}
-			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			class="h-8 w-8"
 		>
 			{#if settings.theme === "dark"}
 				<Moon size={16} />
@@ -194,12 +203,12 @@
 			{:else}
 				<Sun size={16} />
 			{/if}
-		</button>
+		</Button>
 
 		<a
 			href="{base}/settings"
 			aria-label="Settings"
-			class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+			class={cn(buttonVariants({ variant: "ghost", size: "icon" }), "h-8 w-8")}
 		>
 			<Settings size={16} />
 		</a>

@@ -52,6 +52,7 @@
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
+	import { Button } from "$lib/components/ui/button/index.js";
 	import Play from "@lucide/svelte/icons/play";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 
@@ -130,14 +131,14 @@
 <div class="plagiarism-tab">
 	<div class="plag-toolbar">
 		<h2>Plagiarism</h2>
-		<button class="btn btn-ghost btn-xs" onclick={handleRerun} disabled={isChecking}>
+		<Button variant="ghost" size="xs" onclick={handleRerun} disabled={isChecking}>
 			{#if isChecking}
 				<LoaderCircle size={11} class="spin" />
 			{:else}
 				<Play size={11} />
 			{/if}
 			{isChecking ? "Checking…" : "Re-run check"}
-		</button>
+		</Button>
 	</div>
 
 	{#if error}
@@ -179,14 +180,16 @@
 						<span class="plag-resolved-chip chip-{status}">{statusLabel(status)}</span>
 						<!-- Undo a resolution: back to unreviewed (PATCH endpoint
 						     accepts "unreviewed"; badge + actions return). -->
-						<button
-							class="btn btn-ghost btn-xs plag-undo"
+						<Button
+							variant="ghost"
+							size="xs"
+							class="plag-undo"
 							title="Reset to unreviewed"
 							onclick={() => handleResolve(pair, "unreviewed")}
 						>
 							<Undo2 size={11} />
 							Undo
-						</button>
+						</Button>
 					{/if}
 				</div>
 
@@ -215,24 +218,27 @@
 
 				{#if !resolved}
 					<div class="plag-actions">
-						<button
-							class="btn btn-primary btn-xs"
+						<Button
+							variant="default"
+							size="xs"
 							onclick={() => handleResolve(pair, "accepted")}
 						>
 							Accept
-						</button>
-						<button
-							class="btn btn-outline btn-xs"
+						</Button>
+						<Button
+							variant="outline"
+							size="xs"
 							onclick={() => handleResolve(pair, "dismissed")}
 						>
 							Dismiss
-						</button>
-						<button
-							class="btn btn-ghost btn-xs"
+						</Button>
+						<Button
+							variant="ghost"
+							size="xs"
 							onclick={() => handleResolve(pair, "ignored")}
 						>
 							Ignore
-						</button>
+						</Button>
 					</div>
 				{/if}
 			</div>
@@ -424,54 +430,6 @@
 		margin-top: 10px;
 		padding-top: 8px;
 		border-top: 1px dashed var(--border);
-	}
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-weight: 500;
-		cursor: pointer;
-		border-radius: var(--radius-md);
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			color 0.15s,
-			opacity 0.15s;
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-xs {
-		padding: 3px 10px;
-		font-size: 11px;
-	}
-	.btn-primary {
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		color: var(--accent-on);
-	}
-	.btn-primary:hover:not(:disabled) {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-	.btn-outline {
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--fg);
-	}
-	.btn-outline:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
-	}
-	.btn-ghost {
-		background: transparent;
-		border: 1px solid transparent;
-		color: var(--muted-foreground);
-	}
-	.btn-ghost:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		color: var(--fg);
 	}
 	.spin {
 		animation: spin 0.9s linear infinite;

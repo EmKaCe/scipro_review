@@ -24,6 +24,7 @@
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import Copy from "@lucide/svelte/icons/copy";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import { Button } from "$lib/components/ui/button/index.js";
 
 	interface Props {
 		/** 0-based cell index in the notebook. */
@@ -159,21 +160,19 @@
 		{:else}
 			<div class="autofix-note">The fix service was not reachable for this cell.</div>
 			<div class="autofix-footer">
-				<button class="btn btn-outline btn-xs" onclick={handleSuggest}>
-					Suggest fix
-				</button>
+				<Button variant="outline" size="xs" onclick={handleSuggest}>Suggest fix</Button>
 			</div>
 		{/if}
 	{:else if suggestion.skipped}
 		<!-- Service reachable but returned nothing usable. -->
 		<div class="autofix-note">The fix service was not reachable for this cell.</div>
 		<div class="autofix-footer">
-			<button class="btn btn-outline btn-xs" onclick={handleSuggest} disabled={requesting}>
+			<Button variant="outline" size="xs" onclick={handleSuggest} disabled={requesting}>
 				{#if requesting}
 					<LoaderCircle size={11} class="spin" />
 				{/if}
 				Suggest fix
-			</button>
+			</Button>
 		</div>
 	{:else}
 		<!-- Suggestion available: read-only summary + source toggle. -->
@@ -183,12 +182,22 @@
 
 		{#if suggestion.patchedSource}
 			<div class="autofix-toggle">
-				<button class:active={!showPatched} onclick={() => (showPatched = false)}>
+				<Button
+					variant="ghost"
+					size="xs"
+					class={!showPatched ? "bg-accent text-accent-foreground" : ""}
+					onclick={() => (showPatched = false)}
+				>
 					Original
-				</button>
-				<button class:active={showPatched} onclick={() => (showPatched = true)}>
+				</Button>
+				<Button
+					variant="ghost"
+					size="xs"
+					class={showPatched ? "bg-accent text-accent-foreground" : ""}
+					onclick={() => (showPatched = true)}
+				>
 					Patched
-				</button>
+				</Button>
 			</div>
 			<div class="autofix-code">
 				{#if showPatched}
@@ -203,10 +212,10 @@
 			{#if confidencePct()}
 				<span class="autofix-confidence">Confidence {confidencePct()}</span>
 			{/if}
-			<button class="btn btn-outline btn-xs" onclick={handleCopyToNotes}>
+			<Button variant="outline" size="xs" onclick={handleCopyToNotes}>
 				<Copy size={11} />
 				Copy to notes
-			</button>
+			</Button>
 		</div>
 
 		<!-- Notes editor: the teacher edits the suggestion before it lands. -->
@@ -219,19 +228,13 @@
 					oninput={(e) => autofixStore.notes.set(cellIndex, e.currentTarget.value)}
 					placeholder="Write your note for the student…"></textarea>
 				<div class="autofix-notes-actions">
-					<button
-						class="btn btn-primary btn-xs"
-						onclick={handleSaveNote}
-						disabled={saving}
-					>
+					<Button variant="default" size="xs" onclick={handleSaveNote} disabled={saving}>
 						{#if saving}
 							<LoaderCircle size={11} class="spin" />
 						{/if}
 						{isSaved ? "Save again" : "Save"}
-					</button>
-					<button class="btn btn-outline btn-xs" onclick={handleResetNote}>
-						Reset
-					</button>
+					</Button>
+					<Button variant="outline" size="xs" onclick={handleResetNote}>Reset</Button>
 				</div>
 			</div>
 		{/if}
@@ -288,20 +291,6 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		overflow: hidden;
-	}
-	.autofix-toggle button {
-		padding: 3px 10px;
-		font-size: 11px;
-		font-weight: 500;
-		color: var(--muted-foreground);
-		background: transparent;
-		border: none;
-		cursor: pointer;
-	}
-	.autofix-toggle button.active {
-		background: color-mix(in oklch, var(--fg) 6%, transparent);
-		color: var(--fg);
-		font-weight: 600;
 	}
 	.autofix-code {
 		margin-top: 6px;
@@ -369,45 +358,6 @@
 		display: flex;
 		gap: 6px;
 		margin-top: 6px;
-	}
-	.btn {
-		display: inline-flex;
-		align-items: center;
-		gap: 5px;
-		font-weight: 500;
-		cursor: pointer;
-		border-radius: var(--radius-md);
-		transition:
-			background 0.15s,
-			border-color 0.15s,
-			color 0.15s,
-			opacity 0.15s;
-	}
-	.btn:disabled {
-		opacity: 0.5;
-		cursor: not-allowed;
-	}
-	.btn-xs {
-		padding: 3px 10px;
-		font-size: 11px;
-	}
-	.btn-primary {
-		background: var(--accent);
-		border: 1px solid var(--accent);
-		color: var(--accent-on);
-	}
-	.btn-primary:hover:not(:disabled) {
-		background: var(--accent-hover);
-		border-color: var(--accent-hover);
-	}
-	.btn-outline {
-		background: transparent;
-		border: 1px solid var(--border);
-		color: var(--fg);
-	}
-	.btn-outline:hover:not(:disabled) {
-		background: color-mix(in oklch, var(--fg) 4%, transparent);
-		border-color: var(--muted);
 	}
 	/* Lucide icons render <svg> via components — :global for the analyzer. */
 	:global(.spin) {
