@@ -25,15 +25,39 @@ const SUGGESTION = {
 	syntaxValid: true,
 };
 
+const VERIFY_OK = {
+	fixed: true,
+	patchedSource: "import helper\nresult = helper(values)",
+	reRunOutput: "42",
+	reRunError: null,
+	fixedCells: [],
+	totalCells: 2,
+	executedCells: 2,
+	errorCells: 0,
+};
+
+const VERIFY_FAIL = {
+	fixed: false,
+	patchedSource: "import helper\nresult = helper(values)",
+	reRunOutput: "",
+	reRunError: "NameError: name 'helper' is not defined",
+	fixedCells: null,
+	totalCells: 2,
+	executedCells: 1,
+	errorCells: 1,
+};
+
 vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof api>();
 	return {
 		...actual,
 		suggestAutofix: vi.fn(),
+		verifyAutofix: vi.fn(),
 	};
 });
 
 const mockedSuggest = vi.mocked(api.suggestAutofix);
+const mockedVerify = vi.mocked(api.verifyAutofix);
 
 function renderCard() {
 	return render(AutofixCard, {
@@ -82,6 +106,67 @@ describe("AutofixCard suggestion flow", () => {
 			expect.objectContaining({ cellIndex: 2 }),
 			"soil_contamination",
 		);
+	});
+
+	it("does NOT claim 'Fixed' for a syntax-valid suggestion before verification", async () => {
+		mockedSuggest.mockResolvedValue(SUGGESTION);
+		renderCard();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Suggest fix" }));
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Verify fix" })).toBeTruthy();
+		});
+
+		// Syntax-valid is not execution-verified: the badge stays honest.
+		expect(screen.getByText("Needs review")).toBeTruthy();
+		expect(screen.queryByText("Fixed")).toBeNull();
+		expect(screen.queryByText("Verified")).toBeNull();
+	});
+
+	it("verifies the patch against the whole notebook and shows the verified state", async () => {
+		mockedSuggest.mockResolvedValue(SUGGESTION);
+		mockedVerify.mockResolvedValue(VERIFY_OK);
+		renderCard();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Suggest fix" }));
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Verify fix" })).toBeTruthy();
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Verify fix" }));
+
+		await waitFor(() => {
+			expect(screen.getByText("Verified")).toBeTruthy();
+		});
+		expect(mockedVerify).toHaveBeenCalledTimes(1);
+		expect(mockedVerify).toHaveBeenCalledWith(
+			"2026SS_03",
+			expect.objectContaining({
+				cellIndex: 2,
+				patchedSource: SUGGESTION.patchedSource,
+			}),
+			"soil_contamination",
+		);
+		expect(screen.getByText(/Verified — runs clean with the whole notebook/)).toBeTruthy();
+		expect(screen.getByText(/output: 42/)).toBeTruthy();
+	});
+
+	it("shows the real consequence when the patch still fails in the notebook", async () => {
+		mockedSuggest.mockResolvedValue(SUGGESTION);
+		mockedVerify.mockResolvedValue(VERIFY_FAIL);
+		renderCard();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Suggest fix" }));
+		await waitFor(() => {
+			expect(screen.getByRole("button", { name: "Verify fix" })).toBeTruthy();
+		});
+		await fireEvent.click(screen.getByRole("button", { name: "Verify fix" }));
+
+		await waitFor(() => {
+			expect(screen.getByText(/Still fails in the notebook/)).toBeTruthy();
+		});
+		expect(screen.getByText(/NameError: name 'helper' is not defined/)).toBeTruthy();
+		// Still not verified — the badge stays honest.
+		expect(screen.queryByText("Verified")).toBeNull();
 	});
 
 	it("renders the error note when suggestAutofix rejects", async () => {

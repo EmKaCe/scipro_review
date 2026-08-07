@@ -31,13 +31,13 @@ from pydantic import BaseModel
 import time as _time
 
 from ki_connect import KiConnectClient
-from auto_fix import apply_autofix_pass, autofix_cell, is_valid_python
+from auto_fix import apply_autofix_pass, apply_manual_fix, autofix_cell, is_valid_python
 from logs import install as install_log_buffer, snapshot as logs_snapshot, total as logs_total
 from preprocessor import PreprocessingResult, preprocess_notebook
 from runner import (
+    CellOutput,
     _DATA_EXTENSIONS,
     execute_notebook as run_notebook,
-    execute_single_cell,
 )
 
 # ---------------------------------------------------------------------------
@@ -316,20 +316,34 @@ class AutoFixResponse(BaseModel):
     """Result of the deterministic ast.parse sanity check."""
 
 
+class AutoFixRunCell(BaseModel):
+    """One notebook cell sent as context for manual fix verification."""
+
+    source: str
+    """The cell source as executed (index-aligned with the notebook)."""
+
+    cell_type: str = "code"
+    """``code`` or ``markdown`` — only code cells can be patched."""
+
+
 class AutoFixRunRequest(BaseModel):
-    """Request to re-run a single patched cell (Phase 3c.2)."""
+    """Verify a teacher-supplied patch for one cell in FULL notebook context.
 
-    cell_source: str
-    """The original (failed) cell source."""
+    The manual flow gets the same guarantee as the automatic autofix stage:
+    the patch is verified by re-running the WHOLE notebook (a single-cell
+    re-run loses kernel state built by earlier cells — the ``_00``
+    regression). The request carries the notebook's executed cells so the
+    executor can rebuild it; nothing is ever mutated.
+    """
 
-    cell_error: str
-    """The original error message — echoed back in the response."""
+    cells: list[AutoFixRunCell]
+    """The full notebook, index-aligned, as executed (before the patch)."""
+
+    target_cell_index: int
+    """Index of the cell being patched (must be a code cell)."""
 
     patched_source: str
-    """The fixed source to execute. Must parse as valid Python."""
-
-    traceback: list[str] | None = None
-    """Original traceback (informational)."""
+    """The fixed source to verify. Must parse as valid Python."""
 
     assignment_id: str | None = None
     """Assignment id — stages the assignment's input data in the sandbox."""
@@ -345,22 +359,27 @@ class AutoFixRunRequest(BaseModel):
 
 
 class AutoFixRunResponse(BaseModel):
-    """Result of re-executing a single patched cell."""
-
-    original_error: str
-    """The error the cell failed with before the fix."""
-
-    patched_source: str
-    """The fixed source that was re-executed."""
-
-    re_run_output: str = ""
-    """Text output produced by the patched cell."""
-
-    re_run_error: str | None = None
-    """New error after the re-run — None when the patch worked."""
+    """Result of verifying a patched cell against the whole notebook."""
 
     fixed: bool
-    """True when the patched cell executed without error (max 1 attempt)."""
+    """True only when the whole-notebook re-run came back clean."""
+
+    patched_source: str
+    """The fixed source that was verified."""
+
+    re_run_output: str = ""
+    """The patched cell's output after the whole-notebook re-run."""
+
+    re_run_error: str | None = None
+    """The patched cell's error after the re-run — None when it ran clean."""
+
+    fixed_cells: list[CellResult] | None = None
+    """The verified fixed execution when the re-run was clean, else None
+    (no half-fixed artifact is ever published)."""
+
+    total_cells: int = 0
+    executed_cells: int = 0
+    error_cells: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -903,49 +922,91 @@ async def auto_fix(req: AutoFixRequest) -> AutoFixResponse:
     response_model=AutoFixRunResponse,
 )
 async def autofix_run(req: AutoFixRunRequest) -> AutoFixRunResponse:
-    """Re-execute a single patched cell (Phase 3c.2, max 1 attempt).
+    """Verify a teacher-supplied cell patch in FULL notebook context (3c.2).
 
-    Patches the failed cell by building a one-cell notebook from
-    ``patched_source`` and executing it via nbclient in a fresh sandbox
-    (staging the assignment's input data when ``assignment_id`` is given).
-    Exactly one attempt — if the patched cell still fails, both errors are
-    returned and ``fixed`` is false; there is no re-fix loop.
+    The manual "Suggest fix" flow gets the same guarantee as the automatic
+    autofix stage: the patch is applied to a private working copy and the
+    WHOLE notebook is re-run in a fresh sandbox — a single-cell re-run
+    loses kernel state built by earlier cells (the ``_00`` regression).
+    Nothing is ever mutated; ``fixed`` is True only when the whole re-run
+    came back clean. Exactly one attempt: the patch is teacher-chosen.
     """
-    # Deterministic guard: refuse to re-run a patch that cannot parse.
+    # Deterministic guard: refuse to verify a patch that cannot parse.
     if not is_valid_python(req.patched_source):
         raise HTTPException(
             status_code=400,
-            detail="patched_source is not valid Python — refusing to re-run",
+            detail="patched_source is not valid Python — refusing to verify",
+        )
+    if not 0 <= req.target_cell_index < len(req.cells):
+        raise HTTPException(
+            status_code=400,
+            detail=f"target_cell_index {req.target_cell_index} out of range (len {len(req.cells)})",
+        )
+    if req.cells[req.target_cell_index].cell_type != "code":
+        raise HTTPException(
+            status_code=400,
+            detail="target cell is not a code cell — refusing to verify",
         )
 
     logger.info(
-        "autofix-run: assignment=%s timeout=%d kernel=%s",
+        "autofix-run: assignment=%s target=%d/%d timeout=%d kernel=%s",
         req.assignment_id,
+        req.target_cell_index,
+        len(req.cells),
         req.timeout,
         req.kernel_name,
     )
 
+    # Rebuild the executed notebook state (sources + types only — outputs
+    # are not needed to re-run) and hand it to the non-destructive verifier.
+    cells = [
+        CellOutput(
+            cell_index=i,
+            execution_count=None,
+            source=c.source,
+            output_text="",
+        )
+        for i, c in enumerate(req.cells)
+    ]
+    cell_types = {i: c.cell_type for i, c in enumerate(req.cells)}
+
     try:
-        cell = execute_single_cell(
-            source=req.patched_source,
+        info = apply_manual_fix(
+            cells,
+            req.target_cell_index,
+            req.patched_source,
+            cell_types=cell_types,
+            assignment_id=req.assignment_id or "",
+            data_dir=DATA_DIR,
             timeout=req.timeout,
             kernel_name=req.kernel_name,
-            data_dir=DATA_DIR,
-            assignment_id=req.assignment_id or "",
         )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.exception("Autofix re-run failed")
+        logger.exception("Manual autofix verify failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Autofix re-run failed: {e}",
+            detail=f"Manual autofix verify failed: {e}",
         )
 
     return AutoFixRunResponse(
-        original_error=req.cell_error,
+        fixed=bool(info["fixed"]),
         patched_source=req.patched_source,
-        re_run_output=cell.output_text,
-        re_run_error=cell.error,
-        fixed=cell.error is None,
+        re_run_output=info.get("re_run_output") or "",
+        re_run_error=info.get("re_run_error"),
+        fixed_cells=(
+            _cells_to_response(
+                info["fixed_cells"],
+                {i: c.source for i, c in enumerate(req.cells)},
+                cell_types,
+            )
+            if info["fixed_cells"]
+            else None
+        ),
+        total_cells=info["total_cells"],
+        executed_cells=info["executed_cells"],
+        error_cells=info["error_cells"],
     )
 
 

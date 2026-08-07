@@ -5,6 +5,10 @@
  *
  *   - suggest()     — POST /api/submissions/[id]/autofix (KI Connect via
  *                     the executor); stores the suggestion for the cell
+ *   - verify()      — POST /api/submissions/[id]/autofix/verify; verifies a
+ *                     suggested patch against the WHOLE notebook (never a
+ *                     single-cell re-run — that loses kernel state built
+ *                     by earlier cells); stores the verified result
  *   - saveNote()    — persists the teacher's EDITED note into the
  *                     submission notes (appended with a cell prefix);
  *                     the original suggestion stays in `suggestions` for
@@ -18,8 +22,10 @@ import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 import {
 	suggestAutofix as suggestAutofixApi,
+	verifyAutofix as verifyAutofixApi,
 	saveGrading,
 	type AutofixSuggestion,
+	type AutofixVerifyResult,
 } from "./submissions-api.js";
 
 // ---------------------------------------------------------------------------
@@ -37,6 +43,12 @@ export class AutofixStore {
 	requesting = $state<SvelteSet<number>>(new SvelteSet());
 	/** Request errors per cell index. */
 	errors = $state<SvelteMap<number, string>>(new SvelteMap());
+	/** Verified manual-fix results per cell index. */
+	verifyResults = $state<SvelteMap<number, AutofixVerifyResult | null>>(new SvelteMap());
+	/** Cell indices with an in-flight verify request. */
+	verifying = $state<SvelteSet<number>>(new SvelteSet());
+	/** Verify request errors per cell index. */
+	verifyErrors = $state<SvelteMap<number, string>>(new SvelteMap());
 
 	/** Whether a suggestion request is in flight for a cell. */
 	isRequesting(cellIndex: number): boolean {
@@ -79,6 +91,49 @@ export class AutofixStore {
 		return this.suggestions.has(cellIndex);
 	}
 
+	/** Verified manual-fix result for a cell (undefined = not verified yet). */
+	verifyResultFor(cellIndex: number): AutofixVerifyResult | null | undefined {
+		return this.verifyResults.get(cellIndex);
+	}
+
+	/** Whether a verify request is in flight for a cell. */
+	isVerifying(cellIndex: number): boolean {
+		return this.verifying.has(cellIndex);
+	}
+
+	/**
+	 * Verify a suggested patch against the WHOLE notebook (the route builds
+	 * the context from the stored execution result). Never a single-cell
+	 * re-run — that loses kernel state built by earlier cells. Stores the
+	 * result and any error; never throws.
+	 */
+	async verify(
+		submissionId: string,
+		assignmentId: string,
+		cellIndex: number,
+		patchedSource: string,
+	): Promise<AutofixVerifyResult | null> {
+		this.verifying.add(cellIndex);
+		this.verifyErrors.delete(cellIndex);
+		try {
+			const result = await verifyAutofixApi(
+				submissionId,
+				{ cellIndex, patchedSource },
+				assignmentId,
+			);
+			this.verifyResults.set(cellIndex, result);
+			return result;
+		} catch (err) {
+			this.verifyErrors.set(
+				cellIndex,
+				err instanceof Error ? err.message : "Failed to verify the fix",
+			);
+			return null;
+		} finally {
+			this.verifying.delete(cellIndex);
+		}
+	}
+
 	/**
 	 * Persist the teacher's edited note into the submission notes.
 	 * Appends a `[Cell N] …` block to the existing notes (merge happens
@@ -109,6 +164,9 @@ export class AutofixStore {
 		this.saved = new SvelteSet();
 		this.requesting = new SvelteSet();
 		this.errors = new SvelteMap();
+		this.verifyResults = new SvelteMap();
+		this.verifying = new SvelteSet();
+		this.verifyErrors = new SvelteMap();
 	}
 }
 

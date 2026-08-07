@@ -15,7 +15,10 @@ The automatic stage (``apply_autofix_pass``) is NON-DESTRUCTIVE: it
 iterates on a private working copy and returns the verified fixed
 execution (``fixed_cells``) separately when the whole-notebook re-run
 comes back clean; the input cells are never modified. The teacher-driven
-single-cell re-run endpoint lives in ``app.py`` (``/execute/autofix-run``).
+manual flow (``apply_manual_fix`` + ``/execute/autofix-run`` in
+``app.py``) gets the same guarantee: a teacher-supplied patch is verified
+by re-running the WHOLE notebook — single-cell re-runs are gone (they
+lose kernel state built by earlier cells, the ``_00`` regression).
 
 Usage:
     result = autofix_cell(
@@ -296,6 +299,71 @@ def apply_autofix_pass(
         fixed_cells = None
 
     return {"attempts": attempts, "succeeded": succeeded, "fixed_cells": fixed_cells}
+
+
+def apply_manual_fix(
+    cells: list[CellOutput],
+    target_cell_index: int,
+    patched_source: str,
+    *,
+    cell_types: dict[int, str] | None = None,
+    assignment_id: str = "",
+    data_dir: Path | None = None,
+    timeout: int = 30,
+    kernel_name: str = "python3",
+) -> dict[str, Any]:
+    """Verify a teacher-supplied cell patch in FULL notebook context.
+
+    The manual "Suggest fix" flow gets the same guarantee as the automatic
+    stage (the _00 regression): a single-cell re-run loses kernel state
+    built by earlier cells, so a patch is verified by re-running the WHOLE
+    notebook in a fresh sandbox. NON-DESTRUCTIVE — the input ``cells`` are
+    never modified; the patch is applied to a private working copy.
+
+    Exactly one attempt: the patch is teacher-chosen (there is no LLM loop).
+
+    Returns:
+        ``{"fixed", "fixed_cells", "re_run_error", "re_run_output",
+        "total_cells", "executed_cells", "error_cells"}`` where ``fixed``
+        is True only when the whole re-run came back clean; ``fixed_cells``
+        is the verified fixed execution then, else None (no half-fixed
+        artifact is ever published); ``re_run_error``/``re_run_output``
+        describe the TARGET cell after the re-run so the teacher sees the
+        real consequence in context.
+
+    Raises:
+        ValueError: when ``target_cell_index`` is out of range.
+    """
+    if not 0 <= target_cell_index < len(cells):
+        raise ValueError(
+            f"target_cell_index {target_cell_index} out of range (len {len(cells)})"
+        )
+
+    types = cell_types or {}
+    working = copy.deepcopy(cells)  # private copy; originals untouched
+    working[target_cell_index].source = patched_source
+
+    rerun = _rerun_whole_notebook(
+        working,
+        cell_types=types,
+        assignment_id=assignment_id,
+        data_dir=data_dir,
+        timeout=timeout,
+        kernel_name=kernel_name,
+    )
+
+    fixed = not any(c.error is not None for c in rerun.cells)
+    target_after = rerun.cells[target_cell_index] if target_cell_index < len(rerun.cells) else None
+
+    return {
+        "fixed": fixed,
+        "fixed_cells": rerun.cells if fixed else None,
+        "re_run_error": target_after.error if target_after and not fixed else None,
+        "re_run_output": target_after.output_text if target_after else "",
+        "total_cells": rerun.total_cells,
+        "executed_cells": sum(1 for c in rerun.cells if c.execution_count is not None),
+        "error_cells": sum(1 for c in rerun.cells if c.error is not None),
+    }
 
 
 def autofix_cell(

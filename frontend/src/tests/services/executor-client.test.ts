@@ -616,6 +616,122 @@ describe("suggestAutofix", () => {
 });
 
 // ---------------------------------------------------------------------------
+// /execute/autofix-run — manual fix verification (whole-notebook context)
+// ---------------------------------------------------------------------------
+
+describe("verifyAutofix", () => {
+	const WIRE_VERIFY = {
+		fixed: true,
+		patched_source: "print(x)",
+		re_run_output: "5\n",
+		re_run_error: null,
+		fixed_cells: [
+			{
+				cell_index: 0,
+				cell_type: "code",
+				source: "x = 5",
+				original_source: "x = 5",
+				output_text: "",
+				error: null,
+				traceback: null,
+				execution_count: 1,
+			},
+			{
+				cell_index: 1,
+				cell_type: "code",
+				source: "print(x)",
+				original_source: "print(x",
+				output_text: "5\n",
+				error: null,
+				traceback: null,
+				execution_count: 2,
+			},
+		],
+		total_cells: 2,
+		executed_cells: 2,
+		error_cells: 0,
+	};
+
+	it("POSTs the whole-notebook wire body to /execute/autofix-run", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(WIRE_VERIFY));
+
+		await client().verifyAutofix({
+			cells: [
+				{ source: "x = 5", cellType: "code" },
+				{ source: "print(x", cellType: "code" },
+			],
+			targetCellIndex: 1,
+			patchedSource: "print(x)",
+			assignmentId: "soil_contamination",
+			timeout: 30,
+		});
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("http://executor.test/execute/autofix-run");
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(init.body as string)).toEqual({
+			cells: [
+				{ source: "x = 5", cell_type: "code" },
+				{ source: "print(x", cell_type: "code" },
+			],
+			target_cell_index: 1,
+			patched_source: "print(x)",
+			assignment_id: "soil_contamination",
+			timeout: 30,
+		});
+	});
+
+	it("translates the wire response (fixed + fixed_cells) into the frontend shape", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(WIRE_VERIFY));
+
+		const result = await client().verifyAutofix({
+			cells: [{ source: "x = 5", cellType: "code" }],
+			targetCellIndex: 0,
+			patchedSource: "x = 5",
+		});
+
+		expect(result.fixed).toBe(true);
+		expect(result.patchedSource).toBe("print(x)");
+		expect(result.reRunOutput).toBe("5\n");
+		expect(result.reRunError).toBeNull();
+		expect(result.fixedCells).not.toBeNull();
+		expect(result.fixedCells!.length).toBe(2);
+		expect(result.fixedCells![1].index).toBe(1);
+		expect(result.fixedCells![1].source).toBe("print(x)");
+		expect(result.fixedCells![1].error).toBeNull();
+		expect(result.totalCells).toBe(2);
+		expect(result.errorCells).toBe(0);
+	});
+
+	it("maps a not-fixed response (no half-fixed artifact)", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				fixed: false,
+				patched_source: "import nope",
+				re_run_output: "",
+				re_run_error: "ModuleNotFoundError: No module named 'nope'",
+				fixed_cells: null,
+				total_cells: 1,
+				executed_cells: 0,
+				error_cells: 1,
+			}),
+		);
+
+		const result = await client().verifyAutofix({
+			cells: [{ source: "import os", cellType: "code" }],
+			targetCellIndex: 0,
+			patchedSource: "import nope",
+		});
+
+		expect(result.fixed).toBe(false);
+		expect(result.reRunError).toContain("ModuleNotFoundError");
+		expect(result.fixedCells).toBeNull();
+		expect(result.errorCells).toBe(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Errors
 // ---------------------------------------------------------------------------
 

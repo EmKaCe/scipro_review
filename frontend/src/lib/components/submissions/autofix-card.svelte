@@ -62,6 +62,9 @@
 	let requestError = $derived(autofixStore.errors.get(cellIndex));
 	let noteDraft = $derived(autofixStore.notes.get(cellIndex) ?? "");
 	let isSaved = $derived(autofixStore.saved.has(cellIndex));
+	let verifyResult = $derived(autofixStore.verifyResultFor(cellIndex));
+	let verifying = $derived(autofixStore.isVerifying(cellIndex));
+	let verifyError = $derived(autofixStore.verifyErrors.get(cellIndex));
 
 	let editorOpen = $state(false);
 	let showPatched = $state(true);
@@ -79,6 +82,16 @@
 		});
 		// If the suggestion arrived and is usable, surface the notes editor
 		// hint through the card itself; the teacher opens it explicitly.
+	}
+
+	async function handleVerify() {
+		// The patched source is only SYNTAX-valid at this point — claiming
+		// "Fixed" would be dishonest. Verification re-runs the WHOLE
+		// notebook (never a single cell: that loses kernel state built by
+		// earlier cells — the _00 regression) and reports the truth.
+		const patched = suggestion?.patchedSource;
+		if (!patched) return;
+		await autofixStore.verify(submissionId, assignmentId, cellIndex, patched);
 	}
 
 	async function handleCopyToNotes() {
@@ -128,13 +141,13 @@
 		</span>
 		{#if suggestion && !suggestion.skipped}
 			<span
-				class="autofix-badge {suggestion.syntaxValid
+				class="autofix-badge {verifyResult?.fixed
 					? 'autofix-badge-fixed'
 					: 'autofix-badge-failing'}"
 			>
-				{#if suggestion.syntaxValid}
+				{#if verifyResult?.fixed}
 					<CircleCheck size={11} />
-					Fixed
+					Verified
 				{:else}
 					<TriangleAlert size={11} />
 					Needs review
@@ -214,11 +227,46 @@
 			{#if confidencePct()}
 				<span class="autofix-confidence">Confidence {confidencePct()}</span>
 			{/if}
+			{#if suggestion.patchedSource && !verifyResult?.fixed}
+				<Button variant="outline" size="xs" onclick={handleVerify} disabled={verifying}>
+					{#if verifying}
+						<LoaderCircle size={11} class="spin" />
+					{/if}
+					{verifying ? "Verifying…" : "Verify fix"}
+				</Button>
+			{/if}
 			<Button variant="outline" size="xs" onclick={handleCopyToNotes}>
 				<Copy size={11} />
 				Copy to notes
 			</Button>
 		</div>
+
+		{#if verifyError}
+			<div class="autofix-note autofix-error">
+				<TriangleAlert size={12} />
+				<span>Verification failed: {verifyError}</span>
+			</div>
+		{:else if verifyResult}
+			{#if verifyResult.fixed}
+				<div class="autofix-note autofix-verified">
+					<CircleCheck size={12} />
+					<span>
+						Verified — runs clean with the whole notebook
+						{#if verifyResult.reRunOutput}
+							· output: {verifyResult.reRunOutput}
+						{/if}
+					</span>
+				</div>
+			{:else}
+				<div class="autofix-note autofix-error">
+					<TriangleAlert size={12} />
+					<span>
+						Still fails in the notebook:
+						{verifyResult.reRunError ?? "unknown error"}
+					</span>
+				</div>
+			{/if}
+		{/if}
 
 		<!-- Notes editor: the teacher edits the suggestion before it lands. -->
 		{#if editorOpen}
@@ -321,6 +369,9 @@
 	}
 	.autofix-error {
 		color: var(--error);
+	}
+	.autofix-verified {
+		color: var(--success);
 	}
 	.autofix-footer {
 		display: flex;

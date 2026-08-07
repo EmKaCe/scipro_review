@@ -11,7 +11,7 @@
  * @see frontend/src/lib/types/submissions.ts — frontend data shapes
  */
 
-import type { SubmissionDetail, SubmissionMeta } from "$lib/types/submissions.js";
+import type { SubmissionDetail, SubmissionMeta, CellInfo } from "$lib/types/submissions.js";
 import type { CategoryFeedback } from "$lib/types/evaluation.js";
 import type { CriteriaFile } from "$lib/types/criteria.js";
 
@@ -790,6 +790,46 @@ export async function suggestAutofix(
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),
+		},
+	);
+}
+
+/**
+ * Verified result of a manual fix (wire shape of
+ * POST /api/submissions/[id]/autofix/verify). `fixed` is True only when
+ * the whole-notebook re-run came back clean — a single-cell re-run loses
+ * kernel state built by earlier cells, so the manual flow verifies in
+ * full context, never in isolation.
+ */
+export interface AutofixVerifyResult {
+	fixed: boolean;
+	patchedSource: string;
+	/** The patched cell's output after the whole-notebook re-run. */
+	reRunOutput: string;
+	/** The patched cell's error after the re-run — null when it ran clean. */
+	reRunError: string | null;
+	/** The verified fixed execution when the re-run was clean, else null. */
+	fixedCells: CellInfo[] | null;
+	totalCells: number;
+	executedCells: number;
+	errorCells: number;
+}
+
+/** POST /api/submissions/[id]/autofix/verify — verify a fix in full context. */
+export async function verifyAutofix(
+	id: string,
+	cell: { cellIndex: number; patchedSource: string },
+	assignmentId?: string,
+): Promise<AutofixVerifyResult> {
+	return requestJson<AutofixVerifyResult>(
+		withAssignment(`/api/submissions/${encodeURIComponent(id)}/autofix/verify`, assignmentId),
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				cellIndex: cell.cellIndex,
+				patchedSource: cell.patchedSource,
+			}),
 		},
 	);
 }

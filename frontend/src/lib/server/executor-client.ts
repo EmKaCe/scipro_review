@@ -259,6 +259,79 @@ export function toWireAutofixRequest(request: AutofixRequest): Record<string, un
 	};
 }
 
+/**
+ * One notebook cell sent as context for manual fix verification
+ * (POST /execute/autofix-run). The executor re-runs the WHOLE notebook —
+ * a single-cell re-run loses kernel state built by earlier cells.
+ */
+export interface AutofixVerifyCell {
+	/** The cell source as executed (index-aligned with the notebook). */
+	source: string;
+	/** ``code`` or ``markdown`` — only code cells can be patched. */
+	cellType: "code" | "markdown";
+}
+
+/** Wire request for POST /execute/autofix-run (manual fix verification). */
+export interface AutofixVerifyRequest {
+	/** The full notebook, index-aligned, as executed (before the patch). */
+	cells: AutofixVerifyCell[];
+	/** Index of the cell being patched (must be a code cell). */
+	targetCellIndex: number;
+	/** The fixed source to verify. Must parse as valid Python. */
+	patchedSource: string;
+	/** Assignment id — stages the assignment's input data in the sandbox. */
+	assignmentId?: string | null;
+	/** Per-cell execution timeout in seconds (defaults to executor default). */
+	timeout?: number;
+}
+
+/**
+ * Verified result of a manual fix (mirrors the executor's
+ * AutoFixRunResponse). `fixed` is True only when the whole-notebook re-run
+ * came back clean; `fixedCells` is the verified fixed execution then, else
+ * null — no half-fixed artifact is ever published.
+ */
+export interface AutofixVerifyResult {
+	fixed: boolean;
+	patchedSource: string;
+	/** The patched cell's output after the whole-notebook re-run. */
+	reRunOutput: string;
+	/** The patched cell's error after the re-run — null when it ran clean. */
+	reRunError: string | null;
+	fixedCells: ExecutedCell[] | null;
+	totalCells: number;
+	executedCells: number;
+	errorCells: number;
+}
+
+/** Convert a frontend AutofixVerifyRequest into the executor wire body. */
+export function toWireAutofixVerifyRequest(request: AutofixVerifyRequest): Record<string, unknown> {
+	return {
+		cells: request.cells.map((c) => ({ source: c.source, cell_type: c.cellType })),
+		target_cell_index: request.targetCellIndex,
+		patched_source: request.patchedSource,
+		assignment_id: request.assignmentId ?? null,
+		timeout: request.timeout ?? undefined,
+	};
+}
+
+/** Translate the executor's AutoFixRunResponse into the frontend shape. */
+export function translateAutofixVerifyResult(wire: Record<string, unknown>): AutofixVerifyResult {
+	const rawFixed = Array.isArray(wire.fixed_cells)
+		? (wire.fixed_cells as ExecutorCellResult[])
+		: null;
+	return {
+		fixed: wire.fixed === true,
+		patchedSource: typeof wire.patched_source === "string" ? wire.patched_source : "",
+		reRunOutput: typeof wire.re_run_output === "string" ? wire.re_run_output : "",
+		reRunError: typeof wire.re_run_error === "string" ? wire.re_run_error : null,
+		fixedCells: rawFixed ? rawFixed.map((c) => translateCell(c)) : null,
+		totalCells: typeof wire.total_cells === "number" ? wire.total_cells : 0,
+		executedCells: typeof wire.executed_cells === "number" ? wire.executed_cells : 0,
+		errorCells: typeof wire.error_cells === "number" ? wire.error_cells : 0,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Executor pipeline logs (teacher "Pipeline log" panel)
 // ---------------------------------------------------------------------------
@@ -552,6 +625,28 @@ export class ExecutorClient {
 			unknown
 		>;
 		return translateAutofixSuggestion(wire);
+	}
+
+	/**
+	 * Verify a teacher-supplied cell patch in FULL notebook context.
+	 *
+	 * The executor re-runs the WHOLE notebook from a private working copy
+	 * with the patch applied (a single-cell re-run loses kernel state built
+	 * by earlier cells — the `_00` regression). Nothing is mutated; `fixed`
+	 * is True only when the whole re-run came back clean. A whole-notebook
+	 * re-run can take as long as the original execution, so callers pass
+	 * the per-notebook HTTP budget (settings.executor.notebookTimeoutMs).
+	 */
+	async verifyAutofix(
+		request: AutofixVerifyRequest,
+		timeoutMs?: number,
+	): Promise<AutofixVerifyResult> {
+		const wire = (await this.post(
+			"/execute/autofix-run",
+			toWireAutofixVerifyRequest(request),
+			timeoutMs,
+		)) as Record<string, unknown>;
+		return translateAutofixVerifyResult(wire);
 	}
 
 	// ------------------------------------------------------------------

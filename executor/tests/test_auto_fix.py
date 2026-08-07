@@ -5,10 +5,12 @@ cells are never mutated; a verified clean fixed execution is returned
 separately as ``fixed_cells``, otherwise None — the teacher only ever sees
 the original + a proposal), dependent-cell cascade (first error fixed →
 downstream resolves), skip cases, endpoint response shapes, and the
-single-cell re-run endpoint. The automatic pass re-runs the WHOLE notebook
-after each applied fix — a single-cell re-run loses kernel state built by
-earlier cells (`_00` regression). Re-run endpoint tests execute real
-kernels like the Phase 3b suite; autofix-LLM calls are always mocked.
+manual-fix verify endpoint (whole-notebook verify of a teacher-supplied
+patch). Both the automatic pass and the manual flow re-run the WHOLE
+notebook after applying a fix — a single-cell re-run loses kernel state
+built by earlier cells (`_00` regression); single-cell re-runs are gone.
+Endpoint tests execute real kernels like the Phase 3b suite; autofix-LLM
+calls are always mocked.
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from fastapi.testclient import TestClient
 
 import app as app_module
 import auto_fix as auto_fix_module
-from auto_fix import apply_autofix_pass, autofix_cell, is_valid_python
+from auto_fix import apply_autofix_pass, apply_manual_fix, autofix_cell, is_valid_python
 from runner import CellOutput, ExecutionResult
 
 VALID_FIX = {
@@ -411,6 +413,59 @@ def test_autofix_pass_skips_healthy_cells(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# apply_manual_fix — manual "Suggest fix" verification (NON-DESTRUCTIVE,
+# whole-notebook context; single-cell re-runs are gone — the _00 regression)
+# ---------------------------------------------------------------------------
+
+
+def _manual(original: list[CellOutput], target: int, patched: str) -> dict:
+    """Run the manual verifier and return its info dict."""
+    return apply_manual_fix(
+        original,
+        target,
+        patched,
+        cell_types={i: "code" for i in range(len(original))},
+    )
+
+
+def test_manual_fix_verifies_patch_without_mutating(monkeypatch):
+    monkeypatch.setattr(auto_fix_module, "execute_notebook", _fake_rerun(clean=True))
+    original = [_error_cell(0), _error_cell(1)]
+
+    info = _manual(original, 1, "x = 42")
+
+    assert info["fixed"] is True
+    assert info["fixed_cells"] is not None
+    assert len(info["fixed_cells"]) == 2
+    assert info["fixed_cells"][1].error is None
+    assert info["fixed_cells"][1].source == "x = 42"
+    # ORIGINALS untouched — the incident's core guarantee.
+    assert original[0].source == "x = 1/0"
+    assert original[1].source == "x = 1/0"
+
+
+def test_manual_fix_no_fixed_cells_when_rerun_not_clean(monkeypatch):
+    monkeypatch.setattr(
+        auto_fix_module, "execute_notebook", _fake_rerun(clean=False, errors_per_pass=[2])
+    )
+    original = [_error_cell(0), _error_cell(1)]
+
+    info = _manual(original, 1, "x = 42")
+
+    assert info["fixed"] is False
+    assert info["fixed_cells"] is None
+    # The target's consequence in context is surfaced honestly.
+    assert info["re_run_error"] == "RuntimeError: boom"
+    assert info["error_cells"] == 2
+
+
+def test_manual_fix_out_of_range_target_raises(monkeypatch):
+    monkeypatch.setattr(auto_fix_module, "execute_notebook", _fake_rerun(clean=True))
+    with pytest.raises(ValueError, match="out of range"):
+        _manual([_error_cell(0)], 3, "x = 42")
+
+
+# ---------------------------------------------------------------------------
 # POST /auto-fix — endpoint tests
 # ---------------------------------------------------------------------------
 
@@ -492,36 +547,55 @@ def test_auto_fix_endpoint_discovers_assignment_data_files(
 
 
 # ---------------------------------------------------------------------------
-# POST /execute/autofix-run — re-run endpoint tests (real kernels)
+# POST /execute/autofix-run — manual fix verify endpoint tests (real kernels)
 # ---------------------------------------------------------------------------
 
 
-def test_autofix_run_endpoint_fixed_when_patched_cell_passes(api_client):
+def test_autofix_run_endpoint_verifies_patch_in_whole_notebook(api_client):
+    """The `_00` shape: the patched cell depends on earlier kernel state.
+
+    Cell 0 defines ``x``; cell 1 has a syntax error and is patched. The
+    whole-notebook re-run keeps cell 0's state, so the patch resolves — an
+    isolated single-cell re-run would raise NameError (the regression).
+    """
     resp = api_client.post(
         "/execute/autofix-run",
         json={
-            "cell_source": "x = 1 / 0",
-            "cell_error": "ZeroDivisionError: division by zero",
-            "patched_source": "x = 21\nprint(x)",
+            "cells": [
+                {"source": "x = 5", "cell_type": "code"},
+                {"source": "print(x", "cell_type": "code"},
+            ],
+            "target_cell_index": 1,
+            "patched_source": "print(x)",
             "assignment_id": "",
         },
     )
 
     assert resp.status_code == 200
     body = resp.json()
-    assert body["original_error"] == "ZeroDivisionError: division by zero"
-    assert body["patched_source"] == "x = 21\nprint(x)"
+    assert body["patched_source"] == "print(x)"
     assert body["fixed"] is True
     assert body["re_run_error"] is None
-    assert "21" in body["re_run_output"]
+    assert "5" in body["re_run_output"]
+    # The verified fixed execution is returned (aligned, authentic originals).
+    assert body["fixed_cells"] is not None
+    assert len(body["fixed_cells"]) == 2
+    fixed1 = body["fixed_cells"][1]
+    assert fixed1["error"] is None
+    assert fixed1["source"] == "print(x)"
+    assert fixed1["original_source"] == "print(x"  # student's original, not the patch
+    assert body["error_cells"] == 0
 
 
 def test_autofix_run_endpoint_not_fixed_when_still_failing(api_client):
     resp = api_client.post(
         "/execute/autofix-run",
         json={
-            "cell_source": "import numpy as np",
-            "cell_error": "ModuleNotFoundError: No module named 'numpy'",
+            "cells": [
+                {"source": "import numpy as np", "cell_type": "code"},
+                {"source": "import os", "cell_type": "code"},
+            ],
+            "target_cell_index": 1,
             "patched_source": "import definitely_not_a_real_module_xyz",
             "assignment_id": "",
         },
@@ -532,22 +606,59 @@ def test_autofix_run_endpoint_not_fixed_when_still_failing(api_client):
     assert body["fixed"] is False
     assert body["re_run_error"] is not None
     assert "ModuleNotFoundError" in body["re_run_error"]
-    # Max-1-attempt semantics: the original error is preserved alongside
-    assert body["original_error"].startswith("ModuleNotFoundError")
+    # No half-fixed artifact is ever published.
+    assert body["fixed_cells"] is None
+    assert body["error_cells"] == 1
 
 
 def test_autofix_run_endpoint_rejects_invalid_patched_source(api_client):
     resp = api_client.post(
         "/execute/autofix-run",
         json={
-            "cell_source": "def broken(:",
-            "cell_error": "SyntaxError: invalid syntax",
+            "cells": [
+                {"source": "def broken(:", "cell_type": "code"},
+            ],
+            "target_cell_index": 0,
             "patched_source": "def still_broken(:",
         },
     )
 
     assert resp.status_code == 400
     assert "not valid Python" in resp.json()["detail"]
+
+
+def test_autofix_run_endpoint_rejects_out_of_range_target(api_client):
+    resp = api_client.post(
+        "/execute/autofix-run",
+        json={
+            "cells": [
+                {"source": "x = 1", "cell_type": "code"},
+                {"source": "print(x)", "cell_type": "code"},
+            ],
+            "target_cell_index": 5,
+            "patched_source": "print(x)",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "out of range" in resp.json()["detail"]
+
+
+def test_autofix_run_endpoint_rejects_markdown_target(api_client):
+    resp = api_client.post(
+        "/execute/autofix-run",
+        json={
+            "cells": [
+                {"source": "x = 1", "cell_type": "code"},
+                {"source": "# A markdown cell", "cell_type": "markdown"},
+            ],
+            "target_cell_index": 1,
+            "patched_source": "print(x)",
+        },
+    )
+
+    assert resp.status_code == 400
+    assert "not a code cell" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------
