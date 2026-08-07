@@ -9,7 +9,6 @@
 	import { Button } from "$lib/components/ui/button/index.js";
 	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
 	import { cn } from "$lib/utils.js";
-	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
 	import ConfigErrorBanner from "$lib/components/submissions/config-error-banner.svelte";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
@@ -40,7 +39,7 @@
 		fetchMaterials,
 		restoreBackup,
 	} from "$lib/services/submissions-api.js";
-	import type { MaterialsStatus } from "$lib/services/submissions-api.js";
+	import type { MaterialsStatus, SubmissionUploadResult } from "$lib/services/submissions-api.js";
 
 	// -----------------------------------------------------------------------
 	// Header config
@@ -59,7 +58,10 @@
 	// -----------------------------------------------------------------------
 	// State
 	// -----------------------------------------------------------------------
-	let submissions = $state<SubmissionMeta[]>([]);
+	// Single source of truth: the store. Any mutation (upload, delete,
+	// archive, restore, reset, process) refreshes the store's list, and the
+	// table here updates reactively — no manual re-sync after actions.
+	let submissions = $derived(submissionsStore.submissions);
 	let isLoading = $state(true);
 	let error = $state<string | null>(null);
 	let selectedAssignment = $state("");
@@ -90,6 +92,12 @@
 	let bulkBusy = $state(false);
 	/** Human label of the running bulk action (progress line). */
 	let bulkAction = $state<string | null>(null);
+	/** Process start timestamp — drives the elapsed stopwatch in the bar. */
+	let processStartedAt = $state<number | null>(null);
+	/** Process target count — drives "N of M done" from live statuses. */
+	let processTargetCount = $state(0);
+	/** Elapsed seconds while processing (ticks via interval while active). */
+	let processElapsed = $state(0);
 	/** Bulk delete confirm dialog. */
 	let bulkDeleteOpen = $state(false);
 	/** Bulk reset confirm dialog. */
@@ -126,7 +134,9 @@
 	let bulkCanArchive = $derived(scopeList.some((s) => s.status !== "archived"));
 	let bulkCanRestore = $derived(scopeList.some((s) => s.status === "archived"));
 	let bulkCanProcess = $derived(
-		scopeList.some((s) => s.status === "pending" || s.status === "executing"),
+		scopeList.some(
+			(s) => s.status === "pending" || s.status === "executing" || s.status === "error",
+		),
 	);
 	let bulkCanReset = $derived(
 		scopeList.some((s) => s.status === "graded" || s.status === "pre-evaluated"),
@@ -141,6 +151,37 @@
 			? scopeIds.join(", ")
 			: `${scopeIds.slice(0, 5).join(", ")} +${scopeIds.length - 5} more`,
 	);
+
+	/** Number of the current process batch that has settled (executed/error). */
+	let processDone = $derived(
+		processStartedAt === null
+			? 0
+			: submissions.filter((s) => processTargetIds.has(s.id) && s.status !== "executing")
+					.length,
+	);
+	/** Ids targeted by the current process run (settled rows leave the set). */
+	const processTargetIds = new SvelteSet<string>();
+
+	// Stopwatch: tick every second while a process run is active.
+	$effect(() => {
+		if (processStartedAt === null) return;
+		processElapsed = Math.floor((Date.now() - processStartedAt) / 1000);
+		const timer = setInterval(() => {
+			processElapsed = Math.floor((Date.now() - (processStartedAt ?? Date.now())) / 1000);
+		}, 1000);
+		return () => clearInterval(timer);
+	});
+
+	/** Format elapsed seconds as m:ss (or h:mm:ss past an hour). */
+	function formatElapsed(total: number): string {
+		const s = Math.max(0, Math.floor(total));
+		const h = Math.floor(s / 3600);
+		const m = Math.floor((s % 3600) / 60);
+		const sec = s % 60;
+		const mm = h > 0 ? String(m).padStart(2, "0") : String(m);
+		const ss = String(sec).padStart(2, "0");
+		return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+	}
 
 	/** Bulk delete confirm body (explicit batch, no typed id required). */
 	let bulkDeleteMessage = $derived(
@@ -266,7 +307,6 @@
 		error = null;
 		try {
 			await submissionsStore.load(selectedAssignment);
-			submissions = submissionsStore.submissions;
 		} catch (e) {
 			error = e instanceof Error ? e.message : "Failed to load submissions";
 		} finally {
@@ -301,17 +341,18 @@
 	}
 
 	/** After a successful panel upload: refresh materials + keep the list fresh. */
-	async function handleUploaded() {
+	async function handleUploaded(results: SubmissionUploadResult[]) {
 		try {
 			materials = await fetchMaterials(selectedAssignment);
 		} catch {
 			materials = null;
 		}
-		// Auto-select the freshly uploaded rows so the teacher can immediately
-		// Process/Archive them from the bulk bar.
-		const before = new Set(submissions.map((s) => s.id));
-		submissions = submissionsStore.submissions;
-		const uploaded = submissions.filter((s) => !before.has(s.id)).map((s) => s.id);
+		// Auto-select the freshly uploaded submission rows so the teacher can
+		// immediately Process/Archive them from the bulk bar. The upload
+		// response carries the classified student ids — no list diffing.
+		const uploaded = results
+			.filter((r) => !r.error && r.kind === "submission" && r.studentId)
+			.map((r) => r.studentId!);
 		if (uploaded.length > 0) {
 			for (const id of uploaded) selectedIds.add(id);
 			addToast("info", `${uploaded.length} uploaded submission(s) auto-selected`, 3000);
@@ -446,11 +487,19 @@
 	async function handleBulkProcess() {
 		const ids = scopeIds.filter((id) => {
 			const sub = submissions.find((s) => s.id === id);
-			return sub && (sub.status === "pending" || sub.status === "executing");
+			return (
+				sub &&
+				(sub.status === "pending" || sub.status === "executing" || sub.status === "error")
+			);
 		});
 		if (ids.length === 0 || bulkBusy) return;
 		bulkBusy = true;
 		bulkAction = "Processing";
+		processTargetIds.clear();
+		for (const id of ids) processTargetIds.add(id);
+		processTargetCount = ids.length;
+		processStartedAt = Date.now();
+		processElapsed = 0;
 		submissionsStore.startPolling(); // live row statuses while the batch runs
 		try {
 			const resp = await submissionsStore.process(ids);
@@ -464,6 +513,9 @@
 		} finally {
 			bulkBusy = false;
 			bulkAction = null;
+			processStartedAt = null;
+			processTargetCount = 0;
+			processTargetIds.clear();
 		}
 	}
 
@@ -713,7 +765,15 @@
 					</Button>
 				{/if}
 				{#if bulkBusy && bulkAction}
-					<span class="bulk-progress">{bulkAction}…</span>
+					<span class="bulk-progress">
+						<span class="progress-spinner" aria-hidden="true"></span>
+						{bulkAction}… {#if processStartedAt !== null && processTargetCount > 0}
+							<span class="progress-count">
+								{Math.min(processDone, processTargetCount)}/{processTargetCount} ·
+								{formatElapsed(processElapsed)}
+							</span>
+						{/if}
+					</span>
 				{/if}
 			</div>
 			<div class="bulk-actions">
@@ -914,9 +974,30 @@
 		color: var(--muted-foreground);
 	}
 	.bulk-progress {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 		font-size: 12px;
 		font-style: italic;
 		color: var(--muted-foreground);
+	}
+	.progress-spinner {
+		width: 12px;
+		height: 12px;
+		border-radius: 999px;
+		border: 2px solid color-mix(in oklch, var(--accent) 30%, transparent);
+		border-top-color: var(--accent);
+		animation: progress-spin 0.8s linear infinite;
+	}
+	@keyframes progress-spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
+	.progress-count {
+		font-style: normal;
+		font-variant-numeric: tabular-nums;
+		color: var(--fg);
 	}
 	.bulk-actions {
 		display: flex;

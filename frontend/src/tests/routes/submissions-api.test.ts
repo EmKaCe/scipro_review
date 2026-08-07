@@ -375,7 +375,8 @@ describe("GET /api/submissions/[id]", () => {
 			type: "code",
 			source: "import numpy as np",
 			output: "",
-			marker: "different",
+			// No pre-evaluation has run — honest marker is "pending".
+			marker: "pending",
 		});
 		expect(cells[1]).toMatchObject({
 			index: 1,
@@ -628,37 +629,31 @@ describe("POST /api/submissions/upload", () => {
 // ---------------------------------------------------------------------------
 
 describe("POST /api/submissions/process", () => {
-	it("batch-executes pending submissions and transitions each status", async () => {
+	it("executes runnable submissions one-by-one and transitions each status", async () => {
 		await seedSubmission("2026SS_01", "pending");
 		await seedSubmission("2026SS_02", "pending");
-		await seedSubmission("2026SS_03", "executed"); // not pending -> untouched
+		await seedSubmission("2026SS_03", "executed"); // not runnable -> untouched
 
-		mockClient.executeBatch.mockResolvedValue({
-			results: [
-				{
-					notebookPath: notebookPath("2026SS_01"),
-					success: true,
-					totalCells: 4,
-					executedCells: 4,
-					errorCells: 0,
-					durationSeconds: 1.2,
-					error: null,
-				},
-				{
-					notebookPath: notebookPath("2026SS_02"),
-					success: false,
-					totalCells: 3,
-					executedCells: 2,
-					errorCells: 1,
-					durationSeconds: 0.8,
-					error: "NameError: name 'x' is not defined",
-				},
-			],
-			totalNotebooks: 2,
-			succeeded: 1,
-			failed: 1,
-			totalDurationSeconds: 2.0,
-		});
+		mockClient.executeNotebook
+			.mockResolvedValueOnce(fullExecutionResult("2026SS_01"))
+			.mockResolvedValueOnce({
+				...fullExecutionResult("2026SS_02"),
+				success: false,
+				errorCells: 1,
+				cells: [
+					{
+						index: 0,
+						type: "code",
+						source: "x = 1",
+						original_source: "x = 1",
+						output: "",
+						error: "NameError: name 'x' is not defined",
+						traceback: null,
+						execution_count: null,
+						marker: "error",
+					},
+				],
+			});
 
 		const body = await readJson(
 			await batchPOST(
@@ -668,12 +663,19 @@ describe("POST /api/submissions/process", () => {
 			),
 		);
 
-		expect(mockClient.executeBatch).toHaveBeenCalledWith({
-			notebooks: [
-				{ notebookPath: notebookPath("2026SS_01") },
-				{ notebookPath: notebookPath("2026SS_02") },
-			],
-		});
+		expect(mockClient.executeNotebook).toHaveBeenCalledTimes(2);
+		expect(mockClient.executeNotebook).toHaveBeenNthCalledWith(
+			1,
+			{ notebookPath: notebookPath("2026SS_01") },
+			undefined,
+			{ requestTimeoutMs: expect.any(Number) },
+		);
+		expect(mockClient.executeNotebook).toHaveBeenNthCalledWith(
+			2,
+			{ notebookPath: notebookPath("2026SS_02") },
+			undefined,
+			{ requestTimeoutMs: expect.any(Number) },
+		);
 		expect(body).toMatchObject({
 			assignmentId: ASSIGNMENT,
 			submitted: 2,
@@ -684,48 +686,74 @@ describe("POST /api/submissions/process", () => {
 		const records = await listSubmissions(ASSIGNMENT);
 		const byId = new Map(records.map((r) => [r.id, r]));
 		expect(byId.get("2026SS_01")?.status).toBe("executed");
-		expect(byId.get("2026SS_01")?.cellSummary).toBe("4 cells");
+		expect(byId.get("2026SS_01")?.cellSummary).toBe("2 cells");
 		expect(byId.get("2026SS_02")?.status).toBe("error");
 		expect(byId.get("2026SS_02")?.error).toBe("NameError: name 'x' is not defined");
 		expect(byId.get("2026SS_03")?.status).toBe("executed"); // untouched
 
 		const results = await readResults(ASSIGNMENT);
-		expect(results["2026SS_01"]).toMatchObject({ success: true, cells: [], totalCells: 4 });
+		expect(results["2026SS_01"]).toMatchObject({ success: true, totalCells: 2 });
 		expect(results["2026SS_02"]).toMatchObject({
 			success: false,
 			error: "NameError: name 'x' is not defined",
 		});
 	});
 
-	it("marks all targets error and 500s when the executor call itself fails", async () => {
+	it("isolates per-notebook executor failures (one row errors, the rest still run)", async () => {
 		await seedSubmission("2026SS_01", "pending");
-		mockClient.executeBatch.mockRejectedValue(new Error("ECONNREFUSED executor:8766"));
+		await seedSubmission("2026SS_02", "pending");
+		mockClient.executeNotebook
+			.mockRejectedValueOnce(new Error("Executor request timed out after 30000ms"))
+			.mockResolvedValueOnce(fullExecutionResult("2026SS_02"));
 
-		await expectApiError(
-			batchPOST(
+		const body = await readJson(
+			await batchPOST(
 				makeEvent("/api/submissions/process", {
 					request: jsonRequest("/api/submissions/process", {}),
 				}),
 			),
-			500,
-			"ECONNREFUSED",
 		);
 
-		const [record] = await listSubmissions(ASSIGNMENT);
-		expect(record.status).toBe("error");
-		expect(record.error).toContain("ECONNREFUSED");
+		expect(body).toMatchObject({ submitted: 2, succeeded: 1, failed: 1 });
+
+		const records = await listSubmissions(ASSIGNMENT);
+		const byId = new Map(records.map((r) => [r.id, r]));
+		expect(byId.get("2026SS_01")?.status).toBe("error");
+		expect(byId.get("2026SS_01")?.error).toContain("timed out");
+		expect(byId.get("2026SS_02")?.status).toBe("executed");
+	});
+
+	it("re-runs error-status submissions (retry after a failed batch)", async () => {
+		await seedSubmission("2026SS_01", "error", { error: "Executor request timed out" });
+		await seedSubmission("2026SS_02", "executed"); // not runnable -> untouched
+		mockClient.executeNotebook.mockResolvedValueOnce(fullExecutionResult("2026SS_01"));
+
+		const body = await readJson(
+			await batchPOST(
+				makeEvent("/api/submissions/process", {
+					request: jsonRequest("/api/submissions/process", {}),
+				}),
+			),
+		);
+
+		expect(mockClient.executeNotebook).toHaveBeenCalledWith(
+			{ notebookPath: notebookPath("2026SS_01") },
+			undefined,
+			{ requestTimeoutMs: expect.any(Number) },
+		);
+		expect(body).toMatchObject({ submitted: 1, succeeded: 1, failed: 0 });
+
+		const records = await listSubmissions(ASSIGNMENT);
+		const byId = new Map(records.map((r) => [r.id, r]));
+		expect(byId.get("2026SS_01")?.status).toBe("executed");
+		expect(byId.get("2026SS_01")?.error).toBeNull();
+		expect(byId.get("2026SS_02")?.status).toBe("executed"); // untouched
 	});
 
 	it("respects the ids subset and 404s unknown ids", async () => {
 		await seedSubmission("2026SS_01", "pending");
 		await seedSubmission("2026SS_02", "pending");
-		mockClient.executeBatch.mockResolvedValue({
-			results: [],
-			total_notebooks: 0,
-			succeeded: 0,
-			failed: 0,
-			total_duration_seconds: 0,
-		});
+		mockClient.executeNotebook.mockResolvedValueOnce(fullExecutionResult("2026SS_02"));
 
 		const body = await readJson(
 			await batchPOST(
@@ -735,9 +763,11 @@ describe("POST /api/submissions/process", () => {
 			),
 		);
 		expect(body.submitted).toBe(1);
-		expect(mockClient.executeBatch.mock.calls[0]?.[0]?.notebooks).toEqual([
+		expect(mockClient.executeNotebook).toHaveBeenCalledWith(
 			{ notebookPath: notebookPath("2026SS_02") },
-		]);
+			undefined,
+			{ requestTimeoutMs: expect.any(Number) },
+		);
 
 		await expectApiError(
 			batchPOST(

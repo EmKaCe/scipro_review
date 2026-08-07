@@ -11,15 +11,19 @@ import { fireEvent, render, screen } from "@testing-library/svelte";
 
 import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
 import type { SubmissionMeta } from "$lib/types/submissions.js";
+import { ApiError } from "$lib/services/submissions-api.js";
 
 vi.mock("$app/paths", () => ({ base: "" }));
 
-vi.mock("$lib/services/plagiarism-store.svelte.js", () => ({
-	plagiarismStore: {
-		load: vi.fn().mockResolvedValue(null),
-		unreviewedCount: vi.fn(() => 0),
-	},
+// Mock the API client only; the plagiarism store itself is real.
+const api = vi.hoisted(() => ({
+	fetchPlagiarismResults: vi.fn(),
 }));
+
+vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("$lib/services/submissions-api.js")>();
+	return { ...actual, ...api };
+});
 
 vi.mock("$lib/components/submissions/plagiarism-modal.svelte", () => ({
 	default: () => {},
@@ -81,6 +85,9 @@ function renderDashboard(selected: ReadonlySet<string> = new Set()) {
 describe("submissions-dashboard selection", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		// No plagiarism check has been run for this assignment yet — the real
+		// store turns the 404 into a null result, so the badge stays hidden.
+		api.fetchPlagiarismResults.mockRejectedValue(new ApiError(404, "No plagiarism check yet"));
 	});
 
 	it("renders a checkbox per row with an accessible label", () => {

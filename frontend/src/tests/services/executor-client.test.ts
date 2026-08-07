@@ -18,6 +18,19 @@ import {
 	type ExecutorExecuteResponse,
 } from "$lib/server/executor-client";
 
+// Deterministic settings for timeout tests: no fs I/O inside the fake-timer
+// window. Only the timeout test needs the executor keys; others use defaults.
+vi.mock("$lib/server/settings", () => ({
+	loadSettings: vi.fn(async () => ({
+		executor: {
+			requestTimeoutMs: 30_000,
+			notebookTimeoutMs: 60_000,
+			cellTimeoutS: 30,
+		},
+		llm: { baseUrl: "https://example.invalid", model: "test", timeoutMs: 60_000 },
+	})),
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -155,14 +168,16 @@ describe("executeNotebook — cell translation", () => {
 		expect(result.errorCells).toBe(1);
 	});
 
-	it("defaults marker to 'different' and switches to 'error' when error is set", async () => {
+	it("marks non-error cells 'pending' and 'error' when execution fails", async () => {
 		fetchMock.mockResolvedValue(jsonResponse(wireExecuteResponse()));
 
 		const result = await client().executeNotebook({
 			notebookPath: "submissions/soil/2026SS_03.ipynb",
 		});
 
-		expect(result.cells[0]!.marker).toBe("different");
+		// Markers (same/different/questionable) come from Phase 4
+		// pre-evaluation; until then the honest values are pending/error.
+		expect(result.cells[0]!.marker).toBe("pending");
 		expect(result.cells[1]!.marker).toBe("error");
 	});
 
@@ -225,6 +240,42 @@ describe("executeNotebook — cell translation", () => {
 		const result = await client().executeNotebook(
 			{ notebookPath: "submissions/soil/2026SS_03.ipynb" },
 			[{ type: "markdown" }],
+		);
+
+		expect(result.cells[0]!.type).toBe("markdown");
+		expect(result.cells[1]!.type).toBe("code");
+	});
+
+	it("prefers the executor-reported cell_type over caller metadata", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse(
+				wireExecuteResponse([
+					{
+						cell_index: 0,
+						execution_count: null,
+						source: "# Title",
+						output_text: "",
+						error: null,
+						traceback: null,
+						cell_type: "markdown",
+					},
+					{
+						cell_index: 1,
+						execution_count: null,
+						source: "x = 1",
+						output_text: "",
+						error: null,
+						traceback: null,
+						cell_type: "code",
+					},
+				]),
+			),
+		);
+
+		// Caller metadata would say "code" for both — the wire must win.
+		const result = await client().executeNotebook(
+			{ notebookPath: "submissions/soil/2026SS_03.ipynb" },
+			[{ type: "code" }, { type: "code" }],
 		);
 
 		expect(result.cells[0]!.type).toBe("markdown");
@@ -304,6 +355,52 @@ describe("executeBatch", () => {
 		expect(result.totalDurationSeconds).toBe(1.1);
 		expect(result.results[0]!.notebookPath).toBe("submissions/soil/2026SS_03.ipynb");
 		expect(result.results[0]!.success).toBe(true);
+	});
+
+	it("scales the request timeout with batch size (large batches must not abort at the single-request default)", async () => {
+		vi.useFakeTimers();
+		// The settings module is mocked above: notebookTimeoutMs = 60s.
+		try {
+			// A fetch that only settles when the abort signal fires.
+			let aborted = false;
+			vi.stubGlobal(
+				"fetch",
+				vi.fn(
+					(_url: string, init?: RequestInit) =>
+						new Promise<Response>((_resolve, reject) => {
+							init?.signal?.addEventListener("abort", () => {
+								aborted = true;
+								const err = new Error("The operation was aborted");
+								err.name = "AbortError";
+								reject(err);
+							});
+						}),
+				),
+			);
+
+			// 3 notebooks × 60s budget = 180s, not the 30s single-request default.
+			const promise = client().executeBatch({
+				notebooks: [
+					{ notebookPath: "submissions/soil/2026SS_01.ipynb" },
+					{ notebookPath: "submissions/soil/2026SS_02.ipynb" },
+					{ notebookPath: "submissions/soil/2026SS_03.ipynb" },
+				],
+			});
+
+			// Advance past the single-request default — batch must NOT abort yet.
+			await vi.advanceTimersByTimeAsync(35_000);
+			expect(aborted).toBe(false);
+
+			// At the scaled budget the abort fires and surfaces as a timeout.
+			const expectation = expect(promise).rejects.toBeInstanceOf(ExecutorTimeoutError);
+			await vi.advanceTimersByTimeAsync(150_000);
+			expect(aborted).toBe(true);
+			await expectation;
+		} finally {
+			vi.useRealTimers();
+			vi.unstubAllGlobals();
+			vi.stubGlobal("fetch", fetchMock);
+		}
 	});
 });
 

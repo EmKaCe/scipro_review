@@ -36,6 +36,12 @@ export interface ExecutorCellResult {
 	 * client stays compatible with the current executor response.
 	 */
 	original_source?: string;
+	/**
+	 * Cell type from the original notebook ("code" | "markdown").
+	 * The executor reports it since it knows the source notebook;
+	 * falls back to caller-supplied metadata in translateCell.
+	 */
+	cell_type?: string;
 }
 
 export interface ExecutorPreprocessingInfo {
@@ -281,6 +287,14 @@ export class ExecutorTimeoutError extends ExecutorError {
 
 const DEFAULT_BASE_URL = "http://executor:8766";
 const DEFAULT_TIMEOUT_MS = 30_000;
+/**
+ * Per-notebook budget for batch execution requests. A batch of N notebooks
+ * runs sequentially on the executor (each spins up a kernel), so the HTTP
+ * request needs a timeout proportional to the batch size — the shared
+ * single-request default would abort a large batch mid-run and lose every
+ * result. 60s per notebook is ~5x the measured wall time per notebook.
+ */
+const BATCH_NOTEBOOK_TIMEOUT_MS = 60_000;
 
 function getEnv(key: string, fallback: string): string {
 	if (typeof process !== "undefined" && process.env && process.env[key]) {
@@ -298,7 +312,10 @@ export interface ExecutorClientOptions {
 
 /** Translate one wire cell into the frontend shape. */
 export function translateCell(cell: ExecutorCellResult, metadata?: CellMetadata): ExecutedCell {
-	const type: "code" | "markdown" = metadata?.type === "markdown" ? "markdown" : "code";
+	// Prefer the executor-reported type (it read the original notebook);
+	// fall back to caller-supplied metadata, then "code".
+	const type: "code" | "markdown" =
+		cell.cell_type === "markdown" || metadata?.type === "markdown" ? "markdown" : "code";
 	const originalSource = cell.original_source ?? metadata?.source ?? cell.source;
 	return {
 		index: cell.cell_index,
@@ -309,7 +326,11 @@ export function translateCell(cell: ExecutorCellResult, metadata?: CellMetadata)
 		error: cell.error,
 		traceback: cell.traceback,
 		execution_count: cell.execution_count,
-		marker: cell.error ? "error" : "different",
+		// Markers (same/different/questionable) come from Phase 4
+		// pre-evaluation — the executor does not compute them. Until then the
+		// only honest marker is "error" (execution status) or "pending" (no
+		// comparison data yet).
+		marker: cell.error ? "error" : "pending",
 	};
 }
 
@@ -337,20 +358,53 @@ export class ExecutorClient {
 	}
 
 	/**
+	 * Resolve request timeouts from data/settings.yaml (which the Settings UI
+	 * edits), falling back to the constructor/env default when the file is
+	 * unreadable. Read per call so a settings save takes effect immediately —
+	 * the file is tiny and the repo convention is to re-read config per call.
+	 */
+	private async resolveTimeouts(): Promise<{
+		requestMs: number;
+		cellS: number;
+		notebookMs: number;
+	}> {
+		try {
+			const { loadSettings } = await import("./settings");
+			const s = await loadSettings();
+			return {
+				requestMs: s.executor.requestTimeoutMs,
+				cellS: s.executor.cellTimeoutS,
+				notebookMs: s.executor.notebookTimeoutMs,
+			};
+		} catch {
+			return { requestMs: this.timeoutMs, cellS: 30, notebookMs: BATCH_NOTEBOOK_TIMEOUT_MS };
+		}
+	}
+
+	/**
 	 * Execute a single notebook.
 	 *
 	 * @param request   Notebook + execution options.
 	 * @param cellMetadata Optional original cell metadata (type + original source)
 	 *                     from the uploaded notebook; used to inject `type` and
 	 *                     `original_source` into translated cells.
+	 * @param opts.requestTimeoutMs Override the HTTP request timeout (e.g. the
+	 *                     per-notebook batch budget). Falls back to settings.
 	 */
 	async executeNotebook(
 		request: ExecuteRequest,
 		cellMetadata?: CellMetadata[],
+		opts: { requestTimeoutMs?: number } = {},
 	): Promise<ExecutionResult> {
+		const { requestMs, cellS } = await this.resolveTimeouts();
+		const wire = toWireRequest(request);
+		// Per-cell execution timeout comes from settings when the caller did
+		// not pin it (default 30s is too tight for slower machines).
+		wire.timeout = request.timeout ?? cellS;
 		const data = (await this.post(
 			"/execute",
-			toWireRequest(request),
+			wire,
+			opts.requestTimeoutMs ?? requestMs,
 		)) as ExecutorExecuteResponse;
 		const cells = data.cells.map((cell, i) =>
 			translateCell(cell, cellMetadata?.[cell.cell_index] ?? cellMetadata?.[i]),
@@ -377,11 +431,25 @@ export class ExecutorClient {
 
 	/** Execute multiple notebooks sequentially. */
 	async executeBatch(request: BatchExecuteRequest): Promise<BatchExecutionResult> {
+		const { requestMs, cellS, notebookMs } = await this.resolveTimeouts();
+		const wireNotebooks = request.notebooks.map((n) => {
+			const wire = toWireRequest(n);
+			wire.timeout = n.timeout ?? cellS;
+			return wire;
+		});
 		const body: Record<string, unknown> = {
-			notebooks: request.notebooks.map(toWireRequest),
+			notebooks: wireNotebooks,
 			stop_on_first_error: request.stopOnFirstError ?? false,
 		};
-		const data = (await this.post("/execute/batch", body)) as ExecutorBatchResponse;
+		// Sequential batch execution takes ~13s per notebook; the shared
+		// single-request timeout would abort large batches mid-run and lose
+		// every result. Scale the request timeout with the batch size.
+		const batchTimeoutMs = Math.max(requestMs, request.notebooks.length * notebookMs);
+		const data = (await this.post(
+			"/execute/batch",
+			body,
+			batchTimeoutMs,
+		)) as ExecutorBatchResponse;
 		return {
 			results: data.results.map((r) => ({
 				notebookPath: r.notebook_path,
@@ -450,7 +518,7 @@ export class ExecutorClient {
 		});
 	}
 
-	private post(path: string, body: unknown): Promise<unknown> {
+	private post(path: string, body: unknown, timeoutMs?: number): Promise<unknown> {
 		return this.request(
 			path,
 			{
@@ -458,7 +526,7 @@ export class ExecutorClient {
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
 			},
-			this.timeoutMs,
+			timeoutMs ?? this.timeoutMs,
 		);
 	}
 

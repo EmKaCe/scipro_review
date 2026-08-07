@@ -330,3 +330,56 @@ def test_untouched_input_data_not_reported(tmp_path):
         data_dir=data_dir, assignment_id="soil",
     )
     assert result.modified_files == []
+
+
+def test_cell_type_preserved_in_response(tmp_path):
+    """Markdown cells keep their original cell_type in the executor response."""
+    from app import _cells_to_response
+
+    nb_dir = tmp_path / "data" / "submissions" / "soil"
+    nb_dir.mkdir(parents=True)
+    nb = nb_dir / "2026SS_03.ipynb"
+
+    nb_json = {
+        "cells": [
+            {
+                "cell_type": "markdown",
+                "execution_count": None,
+                "id": "cell-0",
+                "metadata": {},
+                "outputs": [],
+                "source": ["# Task 1\\n"],
+            },
+            {
+                "cell_type": "code",
+                "execution_count": None,
+                "id": "cell-1",
+                "metadata": {},
+                "outputs": [],
+                "source": ["x = 1\\n"],
+            },
+        ],
+        "metadata": {
+            "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+            "language_info": {"name": "python", "version": "3.12"},
+        },
+        "nbformat": 4,
+        "nbformat_minor": 5,
+    }
+    nb.write_text(json.dumps(nb_json), encoding="utf-8")
+
+    result = execute_notebook(
+        nb, timeout=30, kernel_name="python3",
+        data_dir=tmp_path / "data", assignment_id="soil",
+    )
+    # execute_notebook itself does not carry cell types — the response
+    # builder must derive them from pre-processing, which is what the
+    # /execute route does. Simulate that mapping here.
+    cell_types = {0: "markdown", 1: "code"}
+    cells = _cells_to_response(result.cells, cell_types=cell_types)
+
+    assert cells[0].cell_type == "markdown"
+    assert cells[1].cell_type == "code"
+    # Missing type falls back to "code"
+    cells_no_types = _cells_to_response(result.cells)
+    assert cells_no_types[0].cell_type == "code"

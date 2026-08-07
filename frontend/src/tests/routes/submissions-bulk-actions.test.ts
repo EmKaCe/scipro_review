@@ -1,9 +1,11 @@
 /**
  * @file L4 page test — submissions dashboard bulk selection + actions.
  *
- * Renders the real dashboard page with the submissions store + API client
- * mocked, keeps SubmissionsDashboard + ConfirmationDialog real, and asserts
- * the bulk bar lifecycle: selection -> eligibility -> action calls.
+ * Renders the real dashboard page with the API client mocked and the REAL
+ * submissions store (reactivity): bulk mutations go through store methods,
+ * and the table re-renders from the refreshed server list. Keeps
+ * SubmissionsDashboard + ConfirmationDialog real, and asserts the bulk bar
+ * lifecycle: selection -> eligibility -> action calls.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
@@ -12,7 +14,93 @@ import Page from "../../routes/submissions/+page.svelte";
 import type { SubmissionMeta } from "$lib/types/submissions.js";
 
 // ---------------------------------------------------------------------------
-// Mocks
+// Mocks — API client only; the store itself is real.
+// ---------------------------------------------------------------------------
+
+const api = vi.hoisted(() => {
+	// Server-side truth simulated as a mutable array; fetchSubmissions
+	// returns it, and the mutation endpoints update it so the store's
+	// post-action refresh re-renders the table from the new state.
+	const server: SubmissionMeta[] = [];
+	return {
+		server,
+		fetchAssignments: vi.fn(async () => ({
+			assignments: [{ id: "soil_contamination", title: "Soil Contamination", enabled: true }],
+		})),
+		fetchMaterials: vi.fn(async () => ({ hasPdf: true, hasKey: true, hasInputData: true })),
+		fetchSubmissions: vi.fn(async () => ({
+			assignmentId: "soil_contamination",
+			submissions: [...api.server],
+		})),
+		archiveSubmission: vi.fn(async (id: string, _assignmentId: string) => {
+			const record = api.server.find((s) => s.id === id) ?? api.server[0]!;
+			api.server = api.server.map((s) =>
+				s.id === id ? { ...s, status: "archived" as const } : s,
+			);
+			return { ...record, status: "archived" as const };
+		}),
+		deleteSubmission: vi.fn(async (id: string) => {
+			api.server = api.server.filter((s) => s.id !== id);
+			return { deleted: id, assignmentId: "soil_contamination" };
+		}),
+		resetSubmission: vi.fn(async (id: string) => {
+			const record = api.server.find((s) => s.id === id) ?? api.server[0]!;
+			api.server = api.server.map((s) =>
+				s.id === id ? { ...s, status: "executed" as const } : s,
+			);
+			return { ...record, status: "executed" as const };
+		}),
+		exportSubmission: vi.fn(async (id: string) => ({
+			fileName: `${id}.yaml`,
+			content: `student_id: ${id}\n`,
+		})),
+		processSubmissions: vi.fn(async (ids: string[]) => ({
+			assignmentId: "soil_contamination",
+			submitted: ids.length,
+			succeeded: ids.length,
+			failed: 0,
+			totalDurationSeconds: 1,
+			results: ids.map((studentId) => ({ studentId, success: true, error: null })),
+		})),
+		downloadBackup: vi.fn(),
+		restoreBackup: vi.fn(),
+	};
+});
+
+vi.mock("$lib/services/submissions-api.js", () => api);
+
+vi.mock("$lib/stores/toast.svelte.js", () => ({
+	addToast: vi.fn(),
+}));
+
+vi.mock("$lib/stores/header.svelte.js", () => ({
+	headerConfig: {
+		headerState: "dashboard",
+		showBack: false,
+		showImport: false,
+		showSave: false,
+		showExport: false,
+	},
+}));
+
+vi.mock("$app/paths", () => ({ base: "" }));
+
+// Leaf children — not the subject under test.
+vi.mock("$lib/components/submissions/assignment-selector.svelte", () => ({
+	default: () => {},
+}));
+vi.mock("$lib/components/submissions/upload-panel.svelte", () => ({ default: () => {} }));
+vi.mock("$lib/components/submissions/materials-indicator.svelte", () => ({ default: () => {} }));
+vi.mock("$lib/components/submissions/materials-manager.svelte", () => ({ default: () => {} }));
+vi.mock("$lib/components/submissions/config-error-banner.svelte", () => ({ default: () => {} }));
+vi.mock("$lib/components/ui/skeleton-pulse.svelte", () => ({ default: () => {} }));
+
+// jsdom has no URL.createObjectURL — the export download helper needs it.
+Object.defineProperty(URL, "createObjectURL", { value: vi.fn(() => "blob:test"), writable: true });
+Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), writable: true });
+
+// ---------------------------------------------------------------------------
+// Fixtures
 // ---------------------------------------------------------------------------
 
 const FIXTURES: SubmissionMeta[] = [
@@ -46,68 +134,6 @@ const FIXTURES: SubmissionMeta[] = [
 	},
 ];
 
-const mockStore = vi.hoisted(() => ({
-	assignmentId: "soil_contamination",
-	submissions: [] as SubmissionMeta[],
-	includeArchived: false,
-	load: vi.fn(async () => mockStore.submissions),
-	refresh: vi.fn(),
-	archiveMany: vi.fn(async () => {}),
-	deleteMany: vi.fn(async () => {}),
-	resetMany: vi.fn(async () => {}),
-	process: vi.fn(async () => ({ submitted: 1, succeeded: 1, failed: 0 })),
-	export: vi.fn(async (id: string, kind: string) => ({
-		fileName: `${id}${kind === "teacher" ? "-teacher" : ""}.yaml`,
-		content: `student_id: ${id}\n`,
-	})),
-	startPolling: vi.fn(),
-	delete: vi.fn(),
-	archive: vi.fn(),
-}));
-
-vi.mock("$lib/services/submissions-store.js", () => ({
-	submissionsStore: mockStore,
-}));
-
-vi.mock("$lib/services/submissions-api.js", () => ({
-	fetchAssignments: vi.fn(async () => ({
-		assignments: [{ id: "soil_contamination", title: "Soil Contamination", enabled: true }],
-	})),
-	fetchMaterials: vi.fn(async () => ({ hasPdf: true, hasKey: true, hasInputData: true })),
-	downloadBackup: vi.fn(),
-	restoreBackup: vi.fn(),
-}));
-
-vi.mock("$lib/stores/toast.svelte.js", () => ({
-	addToast: vi.fn(),
-}));
-
-vi.mock("$lib/stores/header.svelte.js", () => ({
-	headerConfig: {
-		headerState: "dashboard",
-		showBack: false,
-		showImport: false,
-		showSave: false,
-		showExport: false,
-	},
-}));
-
-vi.mock("$app/paths", () => ({ base: "" }));
-
-// Leaf children — not the subject under test.
-vi.mock("$lib/components/submissions/assignment-selector.svelte", () => ({
-	default: () => {},
-}));
-vi.mock("$lib/components/submissions/upload-panel.svelte", () => ({ default: () => {} }));
-vi.mock("$lib/components/submissions/materials-indicator.svelte", () => ({ default: () => {} }));
-vi.mock("$lib/components/submissions/materials-manager.svelte", () => ({ default: () => {} }));
-vi.mock("$lib/components/submissions/config-error-banner.svelte", () => ({ default: () => {} }));
-vi.mock("$lib/components/ui/skeleton-pulse.svelte", () => ({ default: () => {} }));
-
-// jsdom has no URL.createObjectURL — the export download helper needs it.
-Object.defineProperty(URL, "createObjectURL", { value: vi.fn(() => "blob:test"), writable: true });
-Object.defineProperty(URL, "revokeObjectURL", { value: vi.fn(), writable: true });
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -133,7 +159,7 @@ function clickDialogConfirm(label: string) {
 describe("submissions dashboard bulk bar", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		mockStore.submissions = [...FIXTURES];
+		api.server = [...FIXTURES];
 	});
 
 	it("shows the single bulk bar with an all-batch scope when nothing is selected", async () => {
@@ -173,7 +199,15 @@ describe("submissions dashboard bulk bar", () => {
 		fireEvent.click(checkboxFor("2026SS_01"));
 		fireEvent.click(screen.getByText("Archive"));
 		await waitFor(() => {
-			expect(mockStore.archiveMany).toHaveBeenCalledWith(["2026SS_01"], "archive");
+			expect(api.archiveSubmission).toHaveBeenCalledWith(
+				"2026SS_01",
+				"soil_contamination",
+				"archive",
+			);
+		});
+		// The archived row leaves the visible table (status filter hides it).
+		await waitFor(() => {
+			expect(screen.queryByText("2026SS_01")).toBeNull();
 		});
 	});
 
@@ -182,7 +216,32 @@ describe("submissions dashboard bulk bar", () => {
 		fireEvent.click(checkboxFor("2026SS_75"));
 		fireEvent.click(screen.getByText("Process"));
 		await waitFor(() => {
-			expect(mockStore.process).toHaveBeenCalledWith(["2026SS_75"]);
+			expect(api.processSubmissions).toHaveBeenCalledWith(
+				["2026SS_75"],
+				"soil_contamination",
+			);
+		});
+	});
+
+	it("enables Process for error rows and re-runs them (retry after a failed batch)", async () => {
+		// Simulate the failed-batch state: one row stuck in error.
+		api.server = [
+			{ ...FIXTURES[0]!, status: "error", error: "Executor request timed out" },
+			FIXTURES[1]!,
+			FIXTURES[2]!,
+		];
+		await renderPage();
+
+		fireEvent.click(checkboxFor("2026SS_01"));
+		const processBtn = screen.getByText("Process") as HTMLButtonElement;
+		expect(processBtn.disabled).toBe(false);
+
+		fireEvent.click(processBtn);
+		await waitFor(() => {
+			expect(api.processSubmissions).toHaveBeenCalledWith(
+				["2026SS_01"],
+				"soil_contamination",
+			);
 		});
 	});
 
@@ -196,7 +255,7 @@ describe("submissions dashboard bulk bar", () => {
 		expect(screen.getByText("Reset Submissions")).not.toBeNull();
 		clickDialogConfirm("Reset");
 		await waitFor(() => {
-			expect(mockStore.resetMany).toHaveBeenCalledWith(["2026SS_03"]);
+			expect(api.resetSubmission).toHaveBeenCalledWith("2026SS_03", "soil_contamination");
 		});
 	});
 
@@ -207,7 +266,11 @@ describe("submissions dashboard bulk bar", () => {
 		expect(screen.getByText("Delete Submissions")).not.toBeNull();
 		clickDialogConfirm("Delete");
 		await waitFor(() => {
-			expect(mockStore.deleteMany).toHaveBeenCalledWith(["2026SS_01"]);
+			expect(api.deleteSubmission).toHaveBeenCalledWith("2026SS_01", "soil_contamination");
+		});
+		// The deleted row leaves the table reactively (store refresh).
+		await waitFor(() => {
+			expect(screen.queryByText("2026SS_01")).toBeNull();
 		});
 	});
 
@@ -216,7 +279,11 @@ describe("submissions dashboard bulk bar", () => {
 		fireEvent.click(checkboxFor("2026SS_01"));
 		fireEvent.click(screen.getByText("Export"));
 		await waitFor(() => {
-			expect(mockStore.export).toHaveBeenCalledWith("2026SS_01", "student");
+			expect(api.exportSubmission).toHaveBeenCalledWith(
+				"2026SS_01",
+				"soil_contamination",
+				"student",
+			);
 		});
 	});
 
@@ -226,8 +293,16 @@ describe("submissions dashboard bulk bar", () => {
 		fireEvent.click(checkboxFor("2026SS_03"));
 		fireEvent.click(screen.getByText("Export"));
 		await waitFor(() => {
-			expect(mockStore.export).toHaveBeenCalledWith("2026SS_01", "student");
-			expect(mockStore.export).toHaveBeenCalledWith("2026SS_03", "student");
+			expect(api.exportSubmission).toHaveBeenCalledWith(
+				"2026SS_01",
+				"soil_contamination",
+				"student",
+			);
+			expect(api.exportSubmission).toHaveBeenCalledWith(
+				"2026SS_03",
+				"soil_contamination",
+				"student",
+			);
 		});
 	});
 

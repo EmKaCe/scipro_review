@@ -21,8 +21,12 @@
 		inline?: boolean;
 		/** Assignment the uploaded files belong to. */
 		assignmentId: string;
-		/** Invoked after a successful (non-throwing) upload. */
-		onUploaded?: () => void;
+		/**
+		 * Invoked after a successful (non-throwing) upload with the per-file
+		 * server results — lets the parent auto-select the new rows without
+		 * diffing a possibly-stale local list.
+		 */
+		onUploaded?: (results: SubmissionUploadResult[]) => void;
 		/** Invoked when the user dismisses the results via Done. */
 		onClose?: () => void;
 	}
@@ -34,6 +38,11 @@
 	let uploadingCount = $state(0);
 	let error = $state<string | null>(null);
 	let inputRef: HTMLInputElement | undefined = $state(undefined);
+
+	// Drag-and-drop depth counter — dragleave fires when entering child
+	// elements, so a boolean would flicker. Only 0 means "no drag active".
+	let dragDepth = $state(0);
+	let isDragActive = $derived(dragDepth > 0);
 
 	let hasResults = $derived(results.length > 0);
 	let okCount = $derived(results.filter((r) => !r.error).length);
@@ -68,7 +77,11 @@
 	async function handleFiles(e: Event) {
 		const list = (e.currentTarget as HTMLInputElement).files;
 		if (!list || list.length === 0) return;
-		const files = Array.from(list);
+		await uploadFiles(Array.from(list));
+	}
+
+	async function uploadFiles(files: File[]) {
+		if (files.length === 0) return;
 		uploading = true;
 		uploadingCount = files.length;
 		error = null;
@@ -79,7 +92,7 @@
 			}
 			const res = await submissionsStore.upload(files);
 			results = res.results;
-			onUploaded?.();
+			onUploaded?.(res.results);
 			const ok = res.results.filter((r) => !r.error).length;
 			const failed = res.results.length - ok;
 			addToast(
@@ -92,6 +105,32 @@
 		} finally {
 			uploading = false;
 			if (inputRef) inputRef.value = "";
+		}
+	}
+
+	// ── Drag & drop ────────────────────────────────────────────────────────
+	// Without dragover.preventDefault() the browser refuses the drop, and
+	// without an explicit drop handler the OS file drop is ignored entirely.
+	function handleDragEnter(e: DragEvent) {
+		e.preventDefault();
+		dragDepth += 1;
+	}
+
+	function handleDragLeave(e: DragEvent) {
+		e.preventDefault();
+		dragDepth = Math.max(0, dragDepth - 1);
+	}
+
+	function handleDragOver(e: DragEvent) {
+		e.preventDefault();
+	}
+
+	function handleDrop(e: DragEvent) {
+		e.preventDefault();
+		dragDepth = 0;
+		const files = e.dataTransfer?.files;
+		if (files && files.length > 0) {
+			void uploadFiles(Array.from(files));
 		}
 	}
 
@@ -180,10 +219,15 @@
 		<!-- Compressed drop bar (still active → picks more files) -->
 		<div
 			class="drop-bar"
+			class:drop-bar-active={isDragActive}
 			role="button"
 			tabindex="0"
 			onclick={handlePick}
 			onkeydown={(e) => e.key === "Enter" && handlePick()}
+			ondragenter={handleDragEnter}
+			ondragleave={handleDragLeave}
+			ondragover={handleDragOver}
+			ondrop={handleDrop}
 		>
 			<span class="drop-bar-icon"><Upload size={16} /></span>
 			<span class="drop-bar-text">Drop more files or click to add</span>
@@ -197,10 +241,15 @@
 		<!-- ── Empty state: drop zone ── -->
 		<div
 			class="drop-zone"
+			class:drop-zone-active={isDragActive}
 			role="button"
 			tabindex="0"
 			onclick={handlePick}
 			onkeydown={(e) => e.key === "Enter" && handlePick()}
+			ondragenter={handleDragEnter}
+			ondragleave={handleDragLeave}
+			ondragover={handleDragOver}
+			ondrop={handleDrop}
 		>
 			<span class="drop-zone-icon"><Upload size={32} /></span>
 			<p class="drop-zone-title">Drop files here or click to browse</p>
@@ -298,6 +347,11 @@
 		border-color: var(--accent);
 		background: color-mix(in oklch, var(--accent) 2%, transparent);
 	}
+	.drop-zone-active,
+	.drop-zone-active:hover {
+		border-color: var(--accent);
+		background: color-mix(in oklch, var(--accent) 6%, transparent);
+	}
 	.drop-zone-disabled {
 		opacity: 0.45;
 		pointer-events: none;
@@ -372,6 +426,11 @@
 	}
 	.drop-bar:hover {
 		border-color: var(--accent);
+	}
+	.drop-bar-active,
+	.drop-bar-active:hover {
+		border-color: var(--accent);
+		background: color-mix(in oklch, var(--accent) 10%, transparent);
 	}
 	.drop-bar-icon {
 		display: inline-flex;

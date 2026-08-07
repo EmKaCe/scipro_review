@@ -29,6 +29,8 @@ export type SubmissionStatus =
 
 /** Marker indicating how a student's cell compares to the reference key. */
 export type CellMarker =
+	/** No comparison data yet — pre-evaluation (Phase 4) has not run. */
+	| "pending"
 	/** Student used the same method/algorithm as the reference (rare). */
 	| "same"
 	/** Student solved it differently — neutral, expected (default). */

@@ -12,19 +12,33 @@ import type { SubmissionDetail, SubmissionMeta } from "$lib/types/submissions.js
 
 import {
 	ApiError,
+	archiveSubmission,
 	checkPlagiarism,
+	createAssignment,
+	deleteAssignment,
+	deleteMaterial,
+	deleteSubmission,
+	downloadBackup,
 	exportSubmission,
 	fetchAssignments,
 	fetchMaterials,
 	fetchPlagiarismResults,
 	fetchSubmission,
 	fetchSubmissions,
+	getCriteria,
 	gradeSubmission,
 	importTeacherYaml,
 	processSubmission,
 	processSubmissions,
+	resetSubmission,
+	restoreBackup,
+	saveCriteria,
 	saveGrading,
+	setPairReviewStatus,
+	suggestAutofix,
+	updateAssignment,
 	uploadCriteria,
+	uploadMaterials,
 	uploadSubmissions,
 } from "$lib/services/submissions-api.js";
 
@@ -310,6 +324,122 @@ describe("gradeSubmission", () => {
 	});
 });
 
+describe("deleteSubmission", () => {
+	it("DELETEs /api/submissions/[id] with the assignment param", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({ deleted: "2026SS_03", assignmentId: ASSIGNMENT }),
+		);
+
+		const result = await deleteSubmission("2026SS_03", ASSIGNMENT);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`);
+		expect(init.method).toBe("DELETE");
+		expect(result).toEqual({ deleted: "2026SS_03", assignmentId: ASSIGNMENT });
+	});
+});
+
+describe("archiveSubmission", () => {
+	it("POSTs the action to /api/submissions/[id]/archive", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(meta("2026SS_03", "archived")));
+
+		const result = await archiveSubmission("2026SS_03", ASSIGNMENT, "archive");
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03/archive?assignment=${ASSIGNMENT}`);
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(String(init.body))).toEqual({ action: "archive" });
+		expect(result).toMatchObject({ status: "archived" });
+	});
+
+	it("defaults the action to archive when omitted", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(meta("2026SS_03", "archived")));
+
+		await archiveSubmission("2026SS_03", ASSIGNMENT);
+
+		const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+		expect(JSON.parse(String(init.body))).toEqual({ action: "archive" });
+	});
+});
+
+describe("resetSubmission", () => {
+	it("POSTs /api/submissions/[id]/reset with the assignment param", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(meta("2026SS_03", "executed")));
+
+		const result = await resetSubmission("2026SS_03", ASSIGNMENT);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03/reset?assignment=${ASSIGNMENT}`);
+		expect(init.method).toBe("POST");
+		expect(result).toMatchObject({ status: "executed" });
+	});
+});
+
+describe("suggestAutofix", () => {
+	it("POSTs the cell payload to /api/submissions/[id]/autofix", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				skipped: false,
+				suggestion: "use np.exp",
+				explanation: "replace ** with np.exp",
+				confidence: 0.9,
+				fixType: "vectorize",
+				patchedSource: "np.exp(x)",
+				syntaxValid: true,
+			}),
+		);
+
+		const result = await suggestAutofix(
+			"2026SS_03",
+			{ cellIndex: 2, cellSource: "x ** 2", cellError: "TypeError" },
+			ASSIGNMENT,
+		);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/submissions/2026SS_03/autofix?assignment=${ASSIGNMENT}`);
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(String(init.body))).toEqual({
+			cellIndex: 2,
+			cellSource: "x ** 2",
+			cellError: "TypeError",
+		});
+		expect(result).toMatchObject({ skipped: false, confidence: 0.9 });
+	});
+
+	it("includes the traceback only when provided", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				skipped: true,
+				suggestion: null,
+				explanation: null,
+				confidence: null,
+				fixType: null,
+				patchedSource: null,
+				syntaxValid: null,
+			}),
+		);
+
+		await suggestAutofix(
+			"2026SS_03",
+			{
+				cellIndex: 1,
+				cellSource: "x",
+				cellError: "NameError",
+				traceback: ["line 1", "line 2"],
+			},
+			ASSIGNMENT,
+		);
+
+		const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+		expect(JSON.parse(String(init.body))).toEqual({
+			cellIndex: 1,
+			cellSource: "x",
+			cellError: "NameError",
+			traceback: ["line 1", "line 2"],
+		});
+	});
+});
+
 describe("importTeacherYaml", () => {
 	it("POSTs the yaml text as a JSON envelope with the assignment param", async () => {
 		const yaml = "student_id: 2026SS_03\nassignment: soil_contamination";
@@ -379,6 +509,67 @@ describe("fetchAssignments", () => {
 	});
 });
 
+describe("createAssignment", () => {
+	it("POSTs the assignment payload as JSON", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({ id: "new_assignment", title: "New", enabled: true, criteria_files: [] }),
+		);
+
+		const result = await createAssignment({
+			id: "new_assignment",
+			title: "New",
+			criteria_files: ["data/criteria/general.yaml"],
+		});
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/assignments");
+		expect(init.method).toBe("POST");
+		expect(JSON.parse(String(init.body))).toEqual({
+			id: "new_assignment",
+			title: "New",
+			criteria_files: ["data/criteria/general.yaml"],
+		});
+		expect(result.id).toBe("new_assignment");
+	});
+});
+
+describe("updateAssignment", () => {
+	it("PUTs the partial payload to /api/assignments/[id]", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({ id: ASSIGNMENT, title: "Renamed", enabled: false, criteria_files: [] }),
+		);
+
+		const result = await updateAssignment(ASSIGNMENT, { title: "Renamed", enabled: false });
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}`);
+		expect(init.method).toBe("PUT");
+		expect(JSON.parse(String(init.body))).toEqual({ title: "Renamed", enabled: false });
+		expect(result.title).toBe("Renamed");
+	});
+});
+
+describe("deleteAssignment", () => {
+	it("DELETEs /api/assignments/[id] without parsing a body", async () => {
+		fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+		await deleteAssignment("obsolete");
+
+		expect(fetchMock).toHaveBeenCalledWith("/api/assignments/obsolete", {
+			method: "DELETE",
+		});
+	});
+
+	it("maps a 409 conflict to ApiError", async () => {
+		fetchMock.mockResolvedValue(jsonResponse({ message: "Assignment has submissions" }, 409));
+
+		await expect(deleteAssignment("soil_contamination")).rejects.toMatchObject({
+			status: 409,
+			message: "Assignment has submissions",
+		});
+	});
+});
+
 describe("uploadCriteria", () => {
 	it("POSTs the file as multipart field 'file' and maps the 201 response", async () => {
 		fetchMock.mockResolvedValue(
@@ -427,6 +618,56 @@ describe("uploadCriteria", () => {
 			status: 400,
 			message: "category key code_formatting already exists in general.yaml",
 		});
+	});
+});
+
+describe("getCriteria", () => {
+	it("GETs /api/assignments/[id]/criteria and returns the file + content", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				fileName: "data/criteria/soil_contamination.yaml",
+				content: { version: 2, categories: [] },
+			}),
+		);
+
+		const result = await getCriteria(ASSIGNMENT);
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			`/api/assignments/${ASSIGNMENT}/criteria`,
+			undefined,
+		);
+		expect(result.fileName).toBe("data/criteria/soil_contamination.yaml");
+		expect(result.content).toMatchObject({ version: 2 });
+	});
+
+	it("returns nulls when no assignment-specific criteria exist", async () => {
+		fetchMock.mockResolvedValue(jsonResponse({ fileName: null, content: null }));
+
+		const result = await getCriteria(ASSIGNMENT);
+
+		expect(result).toEqual({ fileName: null, content: null });
+	});
+});
+
+describe("saveCriteria", () => {
+	it("PUTs the categories envelope to /api/assignments/[id]/criteria", async () => {
+		const categories = {
+			code_formatting: { key: "code_formatting", label: "Formatting", options: [] },
+		};
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				fileName: "data/criteria/soil_contamination.yaml",
+				content: { version: 2, categories: [] },
+			}),
+		);
+
+		const result = await saveCriteria(ASSIGNMENT, categories);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}/criteria`);
+		expect(init.method).toBe("PUT");
+		expect(JSON.parse(String(init.body))).toEqual({ categories });
+		expect(result.fileName).toBe("data/criteria/soil_contamination.yaml");
 	});
 });
 
@@ -498,6 +739,110 @@ describe("fetchMaterials", () => {
 			"/api/assignments/soil%20contamination/materials",
 			undefined,
 		);
+	});
+});
+
+describe("uploadMaterials", () => {
+	it("POSTs files as multipart field 'file' and maps uploaded → results", async () => {
+		const files = [new File(["x"], "assignment.pdf", { type: "application/pdf" })];
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: {
+					assignmentId: ASSIGNMENT,
+					hasPdf: true,
+					hasKey: false,
+					hasInputData: false,
+					files: [
+						{
+							name: "assignment.pdf",
+							kind: "material-file",
+							relativePath: "materials/assignment.pdf",
+						},
+					],
+				},
+				uploaded: [
+					{ name: "assignment.pdf", kind: "material-file", replaced: false, bytes: 1 },
+				],
+			}),
+		);
+
+		const result = await uploadMaterials(ASSIGNMENT, files);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}/materials`);
+		expect(init.method).toBe("POST");
+		const form = init.body as FormData;
+		expect(form.getAll("file")).toHaveLength(1);
+		expect(form.get("file")).toBe(files[0]);
+		expect(result.status.hasPdf).toBe(true);
+		expect(result.results).toEqual([
+			{ name: "assignment.pdf", kind: "material-file", replaced: false, bytes: 1 },
+		]);
+	});
+});
+
+describe("deleteMaterial", () => {
+	it("DELETEs the material endpoint with the name query param", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: {
+					assignmentId: ASSIGNMENT,
+					hasPdf: false,
+					hasKey: false,
+					hasInputData: false,
+					files: [],
+				},
+				removed: ["assignment.pdf"],
+			}),
+		);
+
+		const result = await deleteMaterial(ASSIGNMENT, "assignment.pdf");
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			`/api/assignments/${ASSIGNMENT}/materials?name=assignment.pdf`,
+			{ method: "DELETE" },
+		);
+		expect(result.removed).toEqual(["assignment.pdf"]);
+	});
+
+	it("URL-encodes the material name", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: {
+					assignmentId: ASSIGNMENT,
+					hasPdf: false,
+					hasKey: false,
+					hasInputData: false,
+					files: [],
+				},
+				removed: [],
+			}),
+		);
+
+		await deleteMaterial(ASSIGNMENT, "my file.pdf");
+
+		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}/materials?name=my%20file.pdf`);
+	});
+
+	it("omits the query param when no name is given (clear all)", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: {
+					assignmentId: ASSIGNMENT,
+					hasPdf: false,
+					hasKey: false,
+					hasInputData: false,
+					files: [],
+				},
+				removed: [],
+			}),
+		);
+
+		await deleteMaterial(ASSIGNMENT);
+
+		const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe(`/api/assignments/${ASSIGNMENT}/materials`);
 	});
 });
 
@@ -584,6 +929,97 @@ describe("plagiarism endpoints", () => {
 			undefined,
 		);
 		expect(result.pairs[0]).toMatchObject({ cellOverlap: 0.87, flags: ["shared_imports"] });
+	});
+
+	it("setPairReviewStatus PATCHes the pair + status to /api/plagiarism/results", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: "done",
+				assignmentId: ASSIGNMENT,
+				generatedAt: "2026-07-31T12:00:00Z",
+				pairs: [],
+				totalPairs: 0,
+				comparedSubmissions: [],
+			}),
+		);
+
+		const result = await setPairReviewStatus("2026SS_01", "2026SS_02", "accepted", ASSIGNMENT);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/plagiarism/results");
+		expect(init.method).toBe("PATCH");
+		expect(JSON.parse(String(init.body))).toEqual({
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			reviewStatus: "accepted",
+			assignmentId: ASSIGNMENT,
+		});
+		expect(result).toMatchObject({ status: "done" });
+	});
+
+	it("setPairReviewStatus omits the assignment when not given", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				status: "done",
+				assignmentId: ASSIGNMENT,
+				generatedAt: "",
+				pairs: [],
+				totalPairs: 0,
+				comparedSubmissions: [],
+			}),
+		);
+
+		await setPairReviewStatus("2026SS_01", "2026SS_02", "dismissed");
+
+		const init = (fetchMock.mock.calls[0] as [string, RequestInit])[1];
+		expect(JSON.parse(String(init.body))).toEqual({
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			reviewStatus: "dismissed",
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Backup
+// ---------------------------------------------------------------------------
+
+describe("backup endpoints", () => {
+	it("downloadBackup parses the content-disposition filename and array buffer", async () => {
+		fetchMock.mockResolvedValue(
+			new Response(new Uint8Array([1, 2, 3, 4]), {
+				status: 200,
+				headers: { "content-disposition": 'attachment; filename="backup-2026-08-01.zip"' },
+			}),
+		);
+
+		const result = await downloadBackup();
+
+		expect(fetchMock).toHaveBeenCalledWith("/api/backup", undefined);
+		expect(result.fileName).toBe("backup-2026-08-01.zip");
+		expect(new Uint8Array(result.content)).toEqual(new Uint8Array([1, 2, 3, 4]));
+	});
+
+	it("downloadBackup falls back to the default name without a disposition header", async () => {
+		fetchMock.mockResolvedValue(new Response(new Uint8Array([0]), { status: 200 }));
+
+		const result = await downloadBackup();
+
+		expect(result.fileName).toBe("sci-pro-teacher-backup.zip");
+	});
+
+	it("restoreBackup POSTs the file as multipart field 'file'", async () => {
+		const file = new File(["zip"], "backup.zip", { type: "application/zip" });
+		fetchMock.mockResolvedValue(jsonResponse({ restored: 42 }));
+
+		const result = await restoreBackup(file);
+
+		const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+		expect(url).toBe("/api/backup");
+		expect(init.method).toBe("POST");
+		const form = init.body as FormData;
+		expect(form.get("file")).toBe(file);
+		expect(result.restored).toBe(42);
 	});
 });
 

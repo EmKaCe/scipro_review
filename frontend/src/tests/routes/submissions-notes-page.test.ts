@@ -2,8 +2,8 @@
  * @file L4 page test — clean-state items: real status chip,
  * top-level teacher notes editor, and Generate/Reset.
  *
- * Renders the per-submission page with stores + heavy children mocked, then
- * asserts:
+ * Renders the per-submission page with the API client mocked and the REAL
+ * stores (heavy children mocked), then asserts:
  *   - the header chip renders the REAL status label (no hardcoded "Executed");
  *   - the notes editor restores the persisted top-level notes and the header
  *     Save persists edits (GradingPatch.notes);
@@ -20,30 +20,21 @@ import type { MergedRubric } from "$lib/types/criteria.js";
 import { categoryKeyOf } from "$lib/types/criteria.js";
 
 // ---------------------------------------------------------------------------
-// Mocks (same skeleton as submissions-import-page.test.ts)
+// Mocks — API client only; the stores themselves are real.
 // ---------------------------------------------------------------------------
 
-vi.mock("$lib/services/submissions-store.js", () => ({
-	submissionsStore: {
-		select: vi.fn(),
-		saveGrading: vi.fn(),
-		export: vi.fn(),
-		importTeacherYaml: vi.fn(),
-	},
+const api = vi.hoisted(() => ({
+	fetchSubmission: vi.fn(),
+	saveGrading: vi.fn(),
+	exportSubmission: vi.fn(),
+	importTeacherYaml: vi.fn(),
+	fetchPlagiarismResults: vi.fn(),
 }));
 
-vi.mock("$lib/services/plagiarism-store.svelte.js", () => ({
-	plagiarismStore: {
-		load: vi.fn().mockResolvedValue(null),
-		unreviewedCount: vi.fn(() => 0),
-		countByStatus: vi.fn(() => 0),
-		ignoreAllUnreviewed: vi.fn().mockResolvedValue(undefined),
-	},
-}));
-
-vi.mock("$lib/services/autofix-store.svelte.js", () => ({
-	autofixStore: { reset: vi.fn() },
-}));
+vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("$lib/services/submissions-api.js")>();
+	return { ...actual, ...api };
+});
 
 vi.mock("$lib/stores/toast.svelte.js", () => ({
 	addToast: vi.fn(),
@@ -77,8 +68,8 @@ vi.mock("$lib/components/ui/menu-button.svelte", () => ({ default: () => {} }));
 vi.mock("$lib/components/ui/skeleton-pulse.svelte", () => ({ default: () => {} }));
 
 // Real singletons — assertions read what the page actually writes/calls.
+import { ApiError } from "$lib/services/submissions-api.js";
 import { headerConfig } from "$lib/stores/header.svelte.js";
-import { submissionsStore } from "$lib/services/submissions-store.js";
 import { addToast } from "$lib/stores/toast.svelte.js";
 import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
 
@@ -164,10 +155,17 @@ const DETAIL: SubmissionDetail = {
 
 describe("submissions/[id] — clean state: chip, notes editor, Generate/Reset", () => {
 	beforeEach(() => {
-		vi.mocked(submissionsStore.select).mockReset();
-		vi.mocked(submissionsStore.select).mockResolvedValue(DETAIL);
-		vi.mocked(submissionsStore.saveGrading).mockReset();
-		vi.mocked(submissionsStore.saveGrading).mockResolvedValue(DETAIL);
+		vi.clearAllMocks();
+		api.fetchSubmission.mockResolvedValue(DETAIL);
+		api.saveGrading.mockResolvedValue(DETAIL);
+		api.exportSubmission.mockResolvedValue({
+			fileName: "2026SS_03.yaml",
+			content: "student_id: 2026SS_03\n",
+		});
+		api.importTeacherYaml.mockResolvedValue(DETAIL);
+		// No plagiarism check has been run for this assignment yet — the real
+		// store's load() turns the 404 into a null result (badge/guard off).
+		api.fetchPlagiarismResults.mockRejectedValue(new ApiError(404, "No plagiarism check yet"));
 		vi.mocked(getCriteriaForAssignment).mockReset();
 		vi.mocked(getCriteriaForAssignment).mockResolvedValue(RUBRIC);
 		vi.mocked(addToast).mockClear();
@@ -198,9 +196,9 @@ describe("submissions/[id] — clean state: chip, notes editor, Generate/Reset",
 
 		await fireEvent.input(textarea, { target: { value: "existing top-level note + edit" } });
 		headerConfig.onsaveclick?.();
-		await waitFor(() => expect(vi.mocked(submissionsStore.saveGrading)).toHaveBeenCalled());
+		await waitFor(() => expect(api.saveGrading).toHaveBeenCalled());
 
-		const patch = vi.mocked(submissionsStore.saveGrading).mock.calls[0][1];
+		const patch = api.saveGrading.mock.calls[0][1];
 		expect(patch.notes).toBe("existing top-level note + edit");
 		// The rest of the grading payload still travels with the save.
 		expect(patch.dimensions).toBeDefined();
@@ -234,9 +232,9 @@ describe("submissions/[id] — clean state: chip, notes editor, Generate/Reset",
 		await fireEvent.click(screen.getByText("Reset"));
 
 		headerConfig.onsaveclick?.();
-		await waitFor(() => expect(vi.mocked(submissionsStore.saveGrading)).toHaveBeenCalled());
+		await waitFor(() => expect(api.saveGrading).toHaveBeenCalled());
 
-		const patch = vi.mocked(submissionsStore.saveGrading).mock.calls[0][1];
+		const patch = api.saveGrading.mock.calls[0][1];
 		expect(patch.notes).toBe("");
 		expect(patch.feedback).toBeDefined();
 		expect(patch.feedback!.code_formatting.checked).toEqual([]);

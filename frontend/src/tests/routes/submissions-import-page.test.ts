@@ -1,8 +1,9 @@
 /**
  * @file Light L4 page test — teacher YAML Import wiring.
  *
- * Renders the per-submission page with the data stores and heavy child
- * components mocked, then asserts the header-config Import wiring:
+ * Renders the per-submission page with the API client mocked and the REAL
+ * stores (heavy child components mocked), then asserts the header-config
+ * Import wiring:
  *   - showImport flips true once the submission loads, and onimportclick
  *     opens the hidden file picker;
  *   - choosing a *-teacher.yaml imports it via
@@ -17,30 +18,21 @@ import Page from "../../routes/submissions/[id]/+page.svelte";
 import type { SubmissionDetail } from "$lib/types/submissions.js";
 
 // ---------------------------------------------------------------------------
-// Mocks
+// Mocks — API client only; the stores themselves are real.
 // ---------------------------------------------------------------------------
 
-vi.mock("$lib/services/submissions-store.js", () => ({
-	submissionsStore: {
-		select: vi.fn(),
-		saveGrading: vi.fn(),
-		export: vi.fn(),
-		importTeacherYaml: vi.fn(),
-	},
+const api = vi.hoisted(() => ({
+	fetchSubmission: vi.fn(),
+	saveGrading: vi.fn(),
+	exportSubmission: vi.fn(),
+	importTeacherYaml: vi.fn(),
+	fetchPlagiarismResults: vi.fn(),
 }));
 
-vi.mock("$lib/services/plagiarism-store.svelte.js", () => ({
-	plagiarismStore: {
-		load: vi.fn().mockResolvedValue(null),
-		unreviewedCount: vi.fn(() => 0),
-		countByStatus: vi.fn(() => 0),
-		ignoreAllUnreviewed: vi.fn().mockResolvedValue(undefined),
-	},
-}));
-
-vi.mock("$lib/services/autofix-store.svelte.js", () => ({
-	autofixStore: { reset: vi.fn() },
-}));
+vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("$lib/services/submissions-api.js")>();
+	return { ...actual, ...api };
+});
 
 vi.mock("$lib/stores/toast.svelte.js", () => ({
 	addToast: vi.fn(),
@@ -74,9 +66,8 @@ vi.mock("$lib/components/ui/menu-button.svelte", () => ({ default: () => {} }));
 vi.mock("$lib/components/ui/skeleton-pulse.svelte", () => ({ default: () => {} }));
 
 // Real singleton — the assertions read the actual header store the page writes.
+import { ApiError } from "$lib/services/submissions-api.js";
 import { headerConfig } from "$lib/stores/header.svelte.js";
-import { submissionsStore } from "$lib/services/submissions-store.js";
-import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 import { addToast } from "$lib/stores/toast.svelte.js";
 
 // jsdom does not implement matchMedia; the page's mobile-breakpoint effect
@@ -120,10 +111,12 @@ const DETAIL: SubmissionDetail = {
 
 describe("submissions/[id] — teacher YAML Import wiring (E5)", () => {
 	beforeEach(() => {
-		vi.mocked(submissionsStore.select).mockReset();
-		vi.mocked(submissionsStore.select).mockResolvedValue(DETAIL);
-		vi.mocked(submissionsStore.importTeacherYaml).mockReset();
-		vi.mocked(plagiarismStore.load).mockClear();
+		vi.clearAllMocks();
+		api.fetchSubmission.mockResolvedValue(DETAIL);
+		api.importTeacherYaml.mockReset();
+		// No plagiarism check has been run for this assignment yet — the real
+		// store's load() turns the 404 into a null result (badge/guard off).
+		api.fetchPlagiarismResults.mockRejectedValue(new ApiError(404, "No plagiarism check yet"));
 		vi.mocked(addToast).mockClear();
 		// Reset the shared header singleton (the page's effect owns it).
 		headerConfig.showImport = false;
@@ -138,13 +131,13 @@ describe("submissions/[id] — teacher YAML Import wiring (E5)", () => {
 
 	it("sets showImport + onimportclick once the submission loads", async () => {
 		render(Page);
-		await waitFor(() => expect(vi.mocked(submissionsStore.select)).toHaveBeenCalled());
+		await waitFor(() => expect(api.fetchSubmission).toHaveBeenCalled());
 		await waitFor(() => expect(headerConfig.showImport).toBe(true));
 		expect(headerConfig.onimportclick).toBeTypeOf("function");
 	});
 
 	it("onimportclick opens the hidden picker; a chosen YAML imports, refreshes plagiarism, toasts", async () => {
-		vi.mocked(submissionsStore.importTeacherYaml).mockResolvedValue({
+		api.importTeacherYaml.mockResolvedValue({
 			...DETAIL,
 			status: "graded",
 			teacherGrade: 12,
@@ -168,24 +161,26 @@ describe("submissions/[id] — teacher YAML Import wiring (E5)", () => {
 		await fireEvent.change(input, { target: { files: [file] } });
 
 		await waitFor(() =>
-			expect(vi.mocked(submissionsStore.importTeacherYaml)).toHaveBeenCalledWith(
+			expect(api.importTeacherYaml).toHaveBeenCalledWith(
 				"2026SS_03",
 				"student_id: 2026SS_03",
+				undefined,
 			),
 		);
-		// Badges/statuses may have changed — the page reloads the assignment's pairs.
-		expect(vi.mocked(plagiarismStore.load)).toHaveBeenCalledWith("soil_contamination");
-		expect(vi.mocked(addToast)).toHaveBeenCalledWith(
-			"success",
-			"Imported 2026SS_03-teacher.yaml",
-			3500,
-		);
+		// Badges/statuses may have changed — the page reloads the assignment's
+		// pairs (real store, awaited) before toasting success.
+		await waitFor(() => {
+			expect(api.fetchPlagiarismResults).toHaveBeenCalledWith("soil_contamination");
+			expect(vi.mocked(addToast)).toHaveBeenCalledWith(
+				"success",
+				"Imported 2026SS_03-teacher.yaml",
+				3500,
+			);
+		});
 	});
 
 	it("toasts the error message when the import fails", async () => {
-		vi.mocked(submissionsStore.importTeacherYaml).mockRejectedValue(
-			new Error("Malformed teacher YAML"),
-		);
+		api.importTeacherYaml.mockRejectedValue(new Error("Malformed teacher YAML"));
 
 		render(Page);
 		await waitFor(() => expect(headerConfig.showImport).toBe(true));

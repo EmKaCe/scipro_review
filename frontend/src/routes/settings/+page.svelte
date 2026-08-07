@@ -2,6 +2,7 @@
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import AppearanceCard from "$lib/components/settings/appearance-card.svelte";
 	import DataManagementCard from "$lib/components/settings/data-management-card.svelte";
+	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
 	import AboutCard from "$lib/components/settings/about-card.svelte";
 	import DangerZoneCard from "$lib/components/settings/danger-zone-card.svelte";
 
@@ -27,6 +28,7 @@
 <div class="mx-auto max-w-2xl px-4 py-8">
 	<div class="space-y-6">
 		<AppearanceCard />
+		<ExecutionAiCard />
 		<DataManagementCard />
 		<AboutCard />
 		<DangerZoneCard />

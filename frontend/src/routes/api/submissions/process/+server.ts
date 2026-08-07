@@ -1,30 +1,36 @@
 /**
- * @file POST /api/submissions/process — batch-execute pending submissions.
+ * @file POST /api/submissions/process — batch-execute runnable submissions.
  *
  * Body (JSON):
  *   assignmentId? — target assignment (default: first enabled assignment)
- *   ids?          — optional subset of student ids; only pending submissions
+ *   ids?          — optional subset of student ids; only runnable submissions
  *                   in the subset are executed. Unknown ids -> 404.
  *
- * Pipeline: selected records transition pending -> executing, the executor's
- * /execute/batch runs them, then each record becomes executed | error. A
- * per-submission entry is written to results.json (batch responses carry no
- * cell data — entries have cells: [] until a single [id]/process run). If
- * the executor itself fails (connection/timeout/5xx), every selected record
- * is marked error and the route returns 500 with the detail.
+ * Runnable = pending (first run) or error (retry after a failed run).
+ * Executing/executed/graded are left untouched by the batch path.
+ *
+ * Pipeline: each target is executed one at a time (per-notebook executor
+ * call) and its record transitions executing -> executed | error as it
+ * finishes. Per-row updates mean the dashboard's 2s polling shows live
+ * progress (rows flip one by one) instead of waiting for one monolithic
+ * batch call. Timeouts come from data/settings.yaml (request + per-cell),
+ * so slower machines can be accommodated without a restart. One notebook
+ * failing does not abort the others — each row records its own error and
+ * the loop continues.
  */
 
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
-import { getExecutorClient, type BatchExecutionResult } from "$lib/server/executor-client";
+import { getExecutorClient } from "$lib/server/executor-client";
 import { listSubmissions, updateStatus, upsertSubmission } from "$lib/server/metadata";
 import {
 	deriveCellSummary,
 	setResult,
 	type StoredExecutionResult,
 } from "$lib/server/results-store";
+import { loadSettings } from "$lib/server/settings";
 
 const EMPTY_PREPROCESSING = {
 	cellsModified: 0,
@@ -56,7 +62,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 
 	const records = await listSubmissions(assignmentId);
-	let targets = records.filter((r) => r.status === "pending");
+	// Runnable targets: pending (first run) and error (retry after a failed
+	// run). Executing/executed/graded are left untouched by the batch path.
+	let targets = records.filter((r) => r.status === "pending" || r.status === "error");
 
 	const ids = body.ids;
 	if (Array.isArray(ids) && ids.length > 0) {
@@ -79,79 +87,91 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		});
 	}
 
-	// pending -> executing for everything we are about to run.
-	for (const target of targets) {
-		await updateStatus(assignmentId, target.id, "executing");
-	}
+	const client = getExecutorClient();
+	const settings = await loadSettings();
+	const results: Array<{ studentId: string; success: boolean; error: string | null }> = [];
+	const startedAt = Date.now();
 
-	let batch: BatchExecutionResult;
-	try {
-		batch = await getExecutorClient().executeBatch({
-			notebooks: targets.map((t) => ({ notebookPath: t.notebookPath })),
-		});
-	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		for (const target of targets) {
+	for (const target of targets) {
+		// pending/error -> executing so the dashboard shows the run in progress.
+		await updateStatus(assignmentId, target.id, "executing");
+
+		try {
+			const execution = await client.executeNotebook(
+				{
+					notebookPath: target.notebookPath,
+					// assignmentContext intentionally omitted — the per-submission
+					// route supplies it; a batch run stays deterministic.
+				},
+				undefined,
+				// A batch row gets the per-notebook budget (settings), not the
+				// tighter single-request default — slower machines need it.
+				{ requestTimeoutMs: settings.executor.notebookTimeoutMs },
+			);
+			const duration = execution.durationSeconds;
+
+			if (execution.success) {
+				await updateStatus(assignmentId, target.id, "executed");
+				const stored: StoredExecutionResult = {
+					success: true,
+					notebookPath: target.notebookPath,
+					cells: execution.cells,
+					totalCells: execution.totalCells,
+					executedCells: execution.executedCells,
+					errorCells: execution.errorCells,
+					durationSeconds: duration,
+					preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+					modifiedFiles: execution.modifiedFiles ?? [],
+				};
+				await setResult(assignmentId, target.id, stored);
+				await upsertSubmission(assignmentId, target.id, {
+					cellSummary: deriveCellSummary(stored),
+					error: null,
+				});
+				results.push({ studentId: target.id, success: true, error: null });
+			} else {
+				const message = firstCellError(execution.cells) ?? "Execution failed";
+				await updateStatus(assignmentId, target.id, "error");
+				await upsertSubmission(assignmentId, target.id, { error: message });
+				await setResult(assignmentId, target.id, {
+					success: false,
+					notebookPath: target.notebookPath,
+					cells: execution.cells,
+					totalCells: execution.totalCells,
+					executedCells: execution.executedCells,
+					errorCells: execution.errorCells,
+					durationSeconds: duration,
+					preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+					modifiedFiles: execution.modifiedFiles ?? [],
+					error: message,
+				});
+				results.push({ studentId: target.id, success: false, error: message });
+			}
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
 			await updateStatus(assignmentId, target.id, "error");
 			await upsertSubmission(assignmentId, target.id, { error: message });
-		}
-		throw error(500, `Batch execution failed: ${message}`);
-	}
-
-	const byPath = new Map(targets.map((t) => [t.notebookPath, t.id]));
-	const results = [];
-
-	for (const item of batch.results) {
-		const studentId = byPath.get(item.notebookPath);
-		if (!studentId) {
-			continue; // executor returned an unknown notebook — ignore
-		}
-
-		if (item.success) {
-			await updateStatus(assignmentId, studentId, "executed");
-			const stored: StoredExecutionResult = {
-				success: true,
-				notebookPath: item.notebookPath,
-				cells: [],
-				totalCells: item.totalCells,
-				executedCells: item.executedCells,
-				errorCells: item.errorCells,
-				durationSeconds: item.durationSeconds,
-				preprocessing: EMPTY_PREPROCESSING,
-				modifiedFiles: [],
-			};
-			await setResult(assignmentId, studentId, stored);
-			await upsertSubmission(assignmentId, studentId, {
-				cellSummary: deriveCellSummary(stored),
-				error: null,
-			});
-			results.push({ studentId, success: true, error: null });
-		} else {
-			const message = item.error ?? "Execution failed";
-			await updateStatus(assignmentId, studentId, "error");
-			await upsertSubmission(assignmentId, studentId, { error: message });
-			await setResult(assignmentId, studentId, {
-				success: false,
-				notebookPath: item.notebookPath,
-				cells: [],
-				totalCells: item.totalCells,
-				executedCells: item.executedCells,
-				errorCells: item.errorCells,
-				durationSeconds: item.durationSeconds,
-				preprocessing: EMPTY_PREPROCESSING,
-				modifiedFiles: [],
-				error: message,
-			});
-			results.push({ studentId, success: false, error: message });
+			results.push({ studentId: target.id, success: false, error: message });
 		}
 	}
+
+	const totalDurationSeconds = (Date.now() - startedAt) / 1000;
 
 	return json({
 		assignmentId,
 		submitted: targets.length,
 		succeeded: results.filter((r) => r.success).length,
 		failed: results.filter((r) => !r.success).length,
-		totalDurationSeconds: batch.totalDurationSeconds,
+		totalDurationSeconds,
 		results,
 	});
+}
+
+/** First cell-level error message, or null when all cells executed. */
+function firstCellError(cells: unknown[]): string | null {
+	for (const cell of cells) {
+		const error = (cell as { error?: string | null }).error;
+		if (typeof error === "string" && error.length > 0) return error;
+	}
+	return null;
 }

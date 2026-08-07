@@ -1,9 +1,8 @@
 /**
  * @file L4 page test — rubric load failure notice.
  *
- * Renders the per-submission page with stores + heavy children mocked (same
- * skeleton as submissions-notes-page.test.ts), then asserts the right-panel
- * notice:
+ * Renders the per-submission page with the API client mocked and the REAL
+ * stores (heavy children mocked), then asserts the right-panel notice:
  *   - `getCriteriaForAssignment` resolving null (loader failure) → the
  *     "Rubric could not be loaded" notice renders in the right panel;
  *   - a successful rubric → no notice.
@@ -20,30 +19,18 @@ import type { MergedRubric } from "$lib/types/criteria.js";
 import { categoryKeyOf } from "$lib/types/criteria.js";
 
 // ---------------------------------------------------------------------------
-// Mocks (same skeleton as submissions-notes-page.test.ts)
+// Mocks — API client only; the stores themselves are real.
 // ---------------------------------------------------------------------------
 
-vi.mock("$lib/services/submissions-store.js", () => ({
-	submissionsStore: {
-		select: vi.fn(),
-		saveGrading: vi.fn(),
-		export: vi.fn(),
-		importTeacherYaml: vi.fn(),
-	},
+const api = vi.hoisted(() => ({
+	fetchSubmission: vi.fn(),
+	fetchPlagiarismResults: vi.fn(),
 }));
 
-vi.mock("$lib/services/plagiarism-store.svelte.js", () => ({
-	plagiarismStore: {
-		load: vi.fn().mockResolvedValue(null),
-		unreviewedCount: vi.fn(() => 0),
-		countByStatus: vi.fn(() => 0),
-		ignoreAllUnreviewed: vi.fn().mockResolvedValue(undefined),
-	},
-}));
-
-vi.mock("$lib/services/autofix-store.svelte.js", () => ({
-	autofixStore: { reset: vi.fn() },
-}));
+vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
+	const actual = await importOriginal<typeof import("$lib/services/submissions-api.js")>();
+	return { ...actual, ...api };
+});
 
 vi.mock("$lib/stores/toast.svelte.js", () => ({
 	addToast: vi.fn(),
@@ -76,7 +63,7 @@ vi.mock("$lib/components/submissions/right-panel-tabs.svelte", () => ({
 vi.mock("$lib/components/ui/menu-button.svelte", () => ({ default: () => {} }));
 vi.mock("$lib/components/ui/skeleton-pulse.svelte", () => ({ default: () => {} }));
 
-import { submissionsStore } from "$lib/services/submissions-store.js";
+import { ApiError } from "$lib/services/submissions-api.js";
 import { getCriteriaForAssignment } from "$lib/services/criteria-loader.js";
 
 if (typeof window !== "undefined" && typeof window.matchMedia !== "function") {
@@ -156,8 +143,11 @@ const NOTICE_TEXT = "Rubric could not be loaded for this assignment.";
 
 describe("submissions/[id] — rubric load failure notice", () => {
 	beforeEach(() => {
-		vi.mocked(submissionsStore.select).mockReset();
-		vi.mocked(submissionsStore.select).mockResolvedValue(DETAIL);
+		vi.clearAllMocks();
+		api.fetchSubmission.mockResolvedValue(DETAIL);
+		// No plagiarism check has been run for this assignment yet — the real
+		// store's load() turns the 404 into a null result (badge/guard off).
+		api.fetchPlagiarismResults.mockRejectedValue(new ApiError(404, "No plagiarism check yet"));
 		vi.mocked(getCriteriaForAssignment).mockReset();
 		vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
 	});

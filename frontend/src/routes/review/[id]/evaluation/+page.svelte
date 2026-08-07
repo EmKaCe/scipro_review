@@ -6,9 +6,7 @@
 	import { goto } from "$app/navigation";
 	import { base } from "$app/paths";
 	import { page } from "$app/state";
-	import { marked } from "marked";
-	import katex from "katex";
-	import "katex/dist/katex.min.css";
+	import { renderMarkdown } from "$lib/utils/markdown.js";
 	import EvaluationMetadata from "$lib/components/evaluation-metadata.svelte";
 	import EvaluationActionBar from "$lib/components/evaluation-action-bar.svelte";
 	import EvaluationSkeleton from "$lib/components/skeleton/evaluation-skeleton.svelte";
@@ -76,52 +74,15 @@
 				: "empty",
 	);
 
-	// Rendered Markdown HTML — strip YAML frontmatter, protect LaTeX, parse markdown, render KaTeX, wrap sentiments
+	// Rendered Markdown HTML — strip YAML frontmatter, render markdown + math
+	// via the shared util, wrap sentiments.
 	let renderedHtml = $derived.by(() => {
 		if (!generatedText) return "";
 		// Strip YAML frontmatter (between --- delimiters)
 		let text = generatedText.replace(/^---[\s\S]*?---\n*/, "");
 
-		// Protect display math $$...$$ blocks
-		const displayMathBlocks: string[] = [];
-		text = text.replace(/\$\$([\s\S]*?)\$\$/g, (_match, latex) => {
-			displayMathBlocks.push(latex);
-			return `__DISPLAYMATH_${displayMathBlocks.length - 1}__`;
-		});
-
-		// Protect inline math $...$ blocks (single $, not $$)
-		const inlineMathBlocks: string[] = [];
-		text = text.replace(/(?<!\$)\$(?!\$)([^$\n]+?)\$(?!\$)/g, (_match, latex) => {
-			inlineMathBlocks.push(latex);
-			return `__INLINEMATH_${inlineMathBlocks.length - 1}__`;
-		});
-
-		// Parse markdown
-		let html = marked.parse(text, { async: false }) as string;
-
-		// Restore and render display math with KaTeX
-		html = html.replace(/__DISPLAYMATH_(\d+)__/g, (_match, index) => {
-			try {
-				return katex.renderToString(displayMathBlocks[Number(index)], {
-					throwOnError: false,
-					displayMode: true,
-				});
-			} catch {
-				return displayMathBlocks[Number(index)];
-			}
-		});
-
-		// Restore and render inline math with KaTeX
-		html = html.replace(/__INLINEMATH_(\d+)__/g, (_match, index) => {
-			try {
-				return katex.renderToString(inlineMathBlocks[Number(index)], {
-					throwOnError: false,
-					displayMode: false,
-				});
-			} catch {
-				return inlineMathBlocks[Number(index)];
-			}
-		});
+		// Markdown + KaTeX math + code highlighting
+		let html = renderMarkdown(text);
 
 		// Post-process sentiment markers into styled divs
 		html = html.replace(

@@ -1,0 +1,8 @@
+executor:
+  request_timeout_ms: 30000
+  notebook_timeout_ms: 120000
+  cell_timeout_s: 30
+llm:
+  base_url: https://chat.kiconnect.nrw/api/v1
+  model: qwen3-30b-a3b-instruct-2507
+  timeout_ms: 60000

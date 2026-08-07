@@ -4,9 +4,11 @@
 	import GitFork from "@lucide/svelte/icons/git-fork";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import type { LucideIcon } from "@lucide/svelte";
-	import { marked } from "marked";
 	import AutofixCard from "./autofix-card.svelte";
+	import { renderMarkdown, highlightCode } from "$lib/utils/markdown.js";
+	import "highlight.js/styles/github-dark.min.css";
 
 	interface Props {
 		cells: readonly CellInfo[];
@@ -22,13 +24,18 @@
 
 	let { cells, submissionId, assignmentId, existingNotes = "", onNotesSaved }: Props = $props();
 
-	function renderMarkdown(src: string): string {
-		try {
-			return marked.parse(src, { async: false }) as string;
-		} catch {
-			return src;
-		}
+	/** Line-number gutter for a code cell. */
+	function lineNumbers(source: string): number[] {
+		const count = source.split("\n").length;
+		return Array.from({ length: Math.max(1, count) }, (_, i) => i + 1);
 	}
+
+	/** True when at least one cell carries a real Phase 4 comparison marker. */
+	let hasComparison = $derived(
+		cells.some(
+			(c) => c.marker === "same" || c.marker === "different" || c.marker === "questionable",
+		),
+	);
 
 	const markerConfig: Record<string, { label: string; icon: LucideIcon; class: string }> = {
 		same: {
@@ -55,8 +62,19 @@
 </script>
 
 <div class="cell-list">
+	{#if !hasComparison}
+		<div class="phase-notice">
+			<Sparkles size={13} />
+			<span>
+				Approach markers (same / different / questionable) arrive with pre-evaluation —
+				Phase 4.
+			</span>
+		</div>
+	{/if}
+
 	{#each cells as cell (cell.index)}
 		{@const marker = markerConfig[cell.marker] ?? markerConfig.different}
+		{@const showMarker = cell.marker === "error" || hasComparison}
 		<div
 			class="cell-card {cell.marker === 'error'
 				? 'cell-error'
@@ -69,16 +87,23 @@
 			<div class="cell-header">
 				<span class="cell-num">Cell {cell.index + 1}</span>
 				<span class="cell-type">· {cell.type}</span>
-				<span class="cell-marker {marker.class}">
-					{#if marker.icon}
-						{@const MarkerIcon = marker.icon}
-						<MarkerIcon size={12} />
-					{/if}
-					{marker.label}
-				</span>
+				{#if showMarker}
+					<span class="cell-marker {marker.class}">
+						{#if marker.icon}
+							{@const MarkerIcon = marker.icon}
+							<MarkerIcon size={12} />
+						{/if}
+						{marker.label}
+					</span>
+				{/if}
 			</div>
 			{#if cell.type === "code"}
-				<div class="cell-code"><pre>{cell.source}</pre></div>
+				<div class="cell-code">
+					<div class="code-gutter" aria-hidden="true">
+						{#each lineNumbers(cell.source) as n (n)}<span>{n}</span>{/each}
+					</div>
+					<pre class="hljs">{@html highlightCode(cell.source)}</pre>
+				</div>
 				{#if cell.error}
 					<div class="cell-error-block">{cell.error}</div>
 				{/if}
@@ -111,6 +136,17 @@
 		flex-direction: column;
 		gap: 12px;
 		padding: 12px 16px;
+	}
+	.phase-notice {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 10px;
+		border-radius: var(--radius);
+		border: 1px dashed color-mix(in oklch, var(--accent) 40%, transparent);
+		background: color-mix(in oklch, var(--accent) 6%, transparent);
+		color: var(--muted-foreground);
+		font-size: 12px;
 	}
 	.cell-card {
 		border: 1px solid var(--border);
@@ -170,17 +206,31 @@
 		color: var(--destructive);
 	}
 	.cell-code {
+		display: flex;
 		background: oklch(0.148 0.004 228.8);
 		color: oklch(0.987 0.002 197.1);
-		padding: 10px 12px;
 		font-family: ui-monospace, "SFMono-Regular", monospace;
 		font-size: 12px;
 		line-height: 1.5;
-		overflow-x: auto;
+	}
+	.code-gutter {
+		flex-shrink: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		padding: 10px 8px 10px 12px;
+		border-right: 1px solid oklch(0.3 0.01 228.8);
+		background: oklch(0.19 0.005 228.8);
+		color: oklch(0.65 0.01 228.8);
+		user-select: none;
+		text-align: right;
 	}
 	.cell-code pre {
 		margin: 0;
+		padding: 10px 12px;
 		white-space: pre;
+		overflow-x: auto;
+		flex: 1;
 	}
 	.cell-output {
 		padding: 8px 12px;

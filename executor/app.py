@@ -141,6 +141,8 @@ class CellResult(BaseModel):
     output_text: str
     error: str | None = None
     traceback: list[str] | None = None
+    cell_type: str = "code"
+    """Cell type from the original notebook ("code" | "markdown")."""
 
 
 class PreprocessingInfo(BaseModel):
@@ -493,6 +495,7 @@ def _build_preprocessing_info(pre: PreprocessingResult) -> PreprocessingInfo:
 def _cells_to_response(
     cells: list,
     original_sources: dict[int, str] | None = None,
+    cell_types: dict[int, str] | None = None,
 ) -> list[CellResult]:
     """Convert runner CellOutput objects to Pydantic models.
 
@@ -501,9 +504,14 @@ def _cells_to_response(
         original_sources: Map of cell_index → student's untouched source
             (from ``PreprocessingResult.original_cells``). Falls back to
             the executed source when a cell has no recorded original.
+        cell_types: Map of cell_index → original cell type
+            (from ``PreprocessingResult.normalized_cells``). Falls back to
+            "code" when a cell has no recorded type.
     """
     if original_sources is None:
         original_sources = {}
+    if cell_types is None:
+        cell_types = {}
     return [
         CellResult(
             cell_index=c.cell_index,
@@ -513,6 +521,7 @@ def _cells_to_response(
             output_text=c.output_text,
             error=c.error,
             traceback=c.traceback,
+            cell_type=cell_types.get(c.cell_index, "code"),
         )
         for c in cells
     ]
@@ -585,7 +594,15 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
     return ExecuteResponse(
         success=exec_result.success,
         notebook_path=req.notebook_path,
-        cells=_cells_to_response(exec_result.cells, pre_result.original_cells),
+        cells=_cells_to_response(
+            exec_result.cells,
+            pre_result.original_cells,
+            {
+                nc["index"]: nc["type"]
+                for nc in pre_result.normalized_cells
+                if nc.get("type") is not None
+            },
+        ),
         total_cells=exec_result.total_cells,
         executed_cells=exec_result.executed_cells,
         error_cells=exec_result.error_cells,
