@@ -67,6 +67,12 @@ export interface ExecutorExecuteResponse {
 	success: boolean;
 	notebook_path: string;
 	cells: ExecutorCellResult[];
+	/**
+	 * Verified fixed execution from the automatic autofix stage, aligned by
+	 * cell_index. Absent/null unless the pass produced a clean re-run — the
+	 * original `cells` are never modified (student work stays authentic).
+	 */
+	fixed_cells?: ExecutorCellResult[] | null;
 	total_cells: number;
 	executed_cells: number;
 	error_cells: number;
@@ -171,6 +177,12 @@ export interface ExecutionResult {
 	success: boolean;
 	notebookPath: string;
 	cells: ExecutedCell[];
+	/**
+	 * Verified fixed execution from the automatic autofix stage, aligned by
+	 * index. null unless the pass produced a clean re-run — `cells` are the
+	 * authentic original execution and are never modified.
+	 */
+	fixedCells: ExecutedCell[] | null;
 	totalCells: number;
 	executedCells: number;
 	errorCells: number;
@@ -441,10 +453,16 @@ export class ExecutorClient {
 		const cells = data.cells.map((cell, i) =>
 			translateCell(cell, cellMetadata?.[cell.cell_index] ?? cellMetadata?.[i]),
 		);
+		// The verified fixed execution carries its own original_source/cell_type
+		// from the executor — no caller metadata needed (same indices as cells).
+		const fixedCells = data.fixed_cells
+			? data.fixed_cells.map((cell) => translateCell(cell))
+			: null;
 		return {
 			success: data.success,
 			notebookPath: data.notebook_path,
 			cells,
+			fixedCells,
 			totalCells: data.total_cells,
 			executedCells: data.executed_cells,
 			errorCells: data.error_cells,

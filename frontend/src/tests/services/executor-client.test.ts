@@ -301,6 +301,82 @@ describe("executeNotebook — cell translation", () => {
 		});
 		expect(result.modifiedFiles).toEqual(["input_data/soil_contamination.csv"]);
 	});
+
+	it("translates fixed_cells into fixedCells (null when absent)", async () => {
+		const wire = wireExecuteResponse([
+			{
+				cell_index: 0,
+				execution_count: 1,
+				source: "x = 5",
+				output_text: "",
+				error: null,
+				traceback: null,
+			},
+			{
+				cell_index: 1,
+				execution_count: null,
+				source: "y = (x + 1",
+				output_text: "",
+				error: "SyntaxError: invalid syntax",
+				traceback: ["SyntaxError: invalid syntax"],
+			},
+			{
+				cell_index: 2,
+				execution_count: null,
+				source: "print(y)",
+				output_text: "",
+				error: "NameError: name 'y' is not defined",
+				traceback: ["NameError: name 'y' is not defined"],
+			},
+		]);
+		wire.fixed_cells = [
+			{
+				cell_index: 0,
+				execution_count: 1,
+				source: "x = 5",
+				output_text: "",
+				error: null,
+				traceback: null,
+			},
+			{
+				cell_index: 1,
+				execution_count: 2,
+				source: "y = (x + 1)",
+				output_text: "",
+				error: null,
+				traceback: null,
+			},
+			{
+				cell_index: 2,
+				execution_count: 3,
+				source: "print(y)",
+				output_text: "6\n",
+				error: null,
+				traceback: null,
+			},
+		];
+		fetchMock.mockResolvedValue(jsonResponse(wire));
+
+		const result = await client().executeNotebook({
+			notebookPath: "submissions/soil/2026SS_03.ipynb",
+		});
+
+		// The verified fixed execution is translated separately, aligned by
+		// index; the original cells keep their errors (authentic work).
+		expect(result.fixedCells).not.toBeNull();
+		expect(result.fixedCells).toHaveLength(3);
+		expect(result.fixedCells![1]!.source).toBe("y = (x + 1)");
+		expect(result.fixedCells![1]!.error).toBeNull();
+		expect(result.fixedCells![2]!.output).toBe("6\n");
+		expect(result.cells[1]!.error).toBe("SyntaxError: invalid syntax");
+
+		// Absent fixed_cells → null, not undefined.
+		fetchMock.mockResolvedValue(jsonResponse(wireExecuteResponse()));
+		const without = await client().executeNotebook({
+			notebookPath: "submissions/soil/2026SS_03.ipynb",
+		});
+		expect(without.fixedCells).toBeNull();
+	});
 });
 
 // ---------------------------------------------------------------------------
