@@ -121,7 +121,7 @@
 	// dispositions are durable and ride the grading save.
 	// -----------------------------------------------------------------------
 	/** Indices of cells currently showing their auto-fixed version. */
-	let fixedView = $state(new SvelteSet<number>());
+	let fixedView = new SvelteSet<number>();
 	/** Teacher's per-cell decision on each verified fix (durable). */
 	let dispositions = $state<Record<string, "accepted" | "ignored">>({});
 
@@ -259,7 +259,7 @@
 			// Restore autofix dispositions (durable). The VIEW set stays
 			// empty — reload always shows the authentic original first.
 			dispositions = { ...(saved?.autofixDispositions ?? {}) };
-			fixedView = new SvelteSet<number>();
+			fixedView.clear();
 
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
@@ -469,7 +469,7 @@
 
 	/** Reset the ephemeral view set — everything back to the authentic original. */
 	function resetFixedView() {
-		fixedView = new SvelteSet<number>();
+		fixedView.clear();
 	}
 
 	async function doExport(kind: "student" | "teacher" = "student") {

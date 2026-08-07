@@ -53,13 +53,13 @@
 	}: Props = $props();
 
 	/** Local view set when the page does not pass one down. */
-	let localFixedView = $state(new SvelteSet<number>());
+	let localFixedView = new SvelteSet<number>();
 	/** Which cells show the fixed version (page-owned or local). */
 	const activeFixedView = $derived(fixedView ?? localFixedView);
 	/** Cell index -> verified fixed cell (aligned with `cells`). */
 	const fixedByIndex = $derived(new SvelteMap(fixedCells?.map((c) => [c.index, c]) ?? []));
 	/** Per-cell open/closed state of the delta block (view state, ephemeral). */
-	let openDeltas = $state(new SvelteSet<number>());
+	let openDeltas = new SvelteSet<number>();
 
 	/** Toggle a cell between original and fixed view (mutates the view set). */
 	function toggleFixed(index: number): void {
