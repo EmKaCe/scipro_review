@@ -116,6 +116,16 @@
 	let importInput: HTMLInputElement | undefined = $state(undefined);
 
 	// -----------------------------------------------------------------------
+	// Non-destructive autofix view state (3c.3): view set is EPHEMERAL
+	// (never persisted — reload always shows the authentic original);
+	// dispositions are durable and ride the grading save.
+	// -----------------------------------------------------------------------
+	/** Indices of cells currently showing their auto-fixed version. */
+	let fixedView = $state(new SvelteSet<number>());
+	/** Teacher's per-cell decision on each verified fix (durable). */
+	let dispositions = $state<Record<string, "accepted" | "ignored">>({});
+
+	// -----------------------------------------------------------------------
 	// Mobile state (P3-6): 5-tab bar + bottom bar
 	// -----------------------------------------------------------------------
 	let mobileTab = $state<MobileTab>("cells");
@@ -246,6 +256,11 @@
 			// Restore the top-level notes editor from the persisted record.
 			notesDraft = saved?.notes ?? "";
 
+			// Restore autofix dispositions (durable). The VIEW set stays
+			// empty — reload always shows the authentic original first.
+			dispositions = { ...(saved?.autofixDispositions ?? {}) };
+			fixedView = new SvelteSet<number>();
+
 			// Load rubric for this assignment
 			const mergedRubric = await getCriteriaForAssignment(sub.assignmentId);
 			rubric = mergedRubric;
@@ -347,11 +362,26 @@
 
 	async function doSaveGrade() {
 		if (!submission) return;
+		// Never silent at grading time: surface which cells are being saved
+		// in the derived (auto-fixed) view so the teacher cannot mistake
+		// pipeline output for student work.
+		if (fixedView.size > 0) {
+			const cells = [...fixedView]
+				.map((i) => i + 1)
+				.sort((a, b) => a - b)
+				.join(", ");
+			addToast(
+				"info",
+				`Saving ${fixedView.size} cell(s) in auto-fixed view (cells ${cells}) — dispositions included`,
+				4000,
+			);
+		}
 		try {
 			const record = await submissionsStore.saveGrading(submission.id, {
 				dimensions: { ...gradingInputs },
 				feedback: selectionsToFeedback(categorySelections),
 				notes: notesDraft,
+				autofixDispositions: dispositions,
 			});
 			// Keep local state fresh: autofix existingNotes must reflect the merge.
 			const savedGrading = (record as { grading?: SubmissionDetail["grading"] }).grading;
@@ -430,6 +460,16 @@
 	 */
 	function handleNotesSaved(notes: string) {
 		notesDraft = notes;
+	}
+
+	/** Record the teacher's decision on a verified fix (durable on Save). */
+	function handleDisposition(cellIndex: number, disposition: "accepted" | "ignored") {
+		dispositions = { ...dispositions, [String(cellIndex)]: disposition };
+	}
+
+	/** Reset the ephemeral view set — everything back to the authentic original. */
+	function resetFixedView() {
+		fixedView = new SvelteSet<number>();
 	}
 
 	async function doExport(kind: "student" | "teacher" = "student") {
@@ -789,9 +829,26 @@
 				<!-- Reference comparison -->
 				<ReferenceComparison submissionCells={cells} />
 
+				<!-- Sticky page-level counter for the derived view: only visible
+				     while at least one cell shows its auto-fixed version. -->
+				{#if fixedView.size > 0}
+					<div class="fixed-view-bar">
+						<Sparkles size={13} />
+						<span>
+							{fixedView.size} cell(s) showing auto-fixed versions
+						</span>
+						<button type="button" class="fixed-view-reset" onclick={resetFixedView}>
+							Show all original
+						</button>
+					</div>
+				{/if}
+
 				<!-- Cell execution output -->
 				<ExecutionOutput
 					{cells}
+					fixedCells={submission.fixedCells}
+					{fixedView}
+					onDisposition={handleDisposition}
 					submissionId={submission.studentId}
 					assignmentId={submission.assignmentId}
 					existingNotes={notesDraft}
@@ -1381,5 +1438,34 @@
 	}
 	.notes-textarea::placeholder {
 		color: var(--muted-foreground);
+	}
+
+	/* ── Sticky derived-view counter (3c.3) ── */
+	.fixed-view-bar {
+		position: sticky;
+		top: 0;
+		z-index: 20;
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin: 0 16px;
+		padding: 6px 10px;
+		border: 1px solid color-mix(in oklch, var(--warning) 50%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in oklch, var(--warning) 14%, var(--bg));
+		color: var(--warning);
+		font-size: 12px;
+		font-weight: 600;
+	}
+	.fixed-view-reset {
+		margin-left: auto;
+		background: none;
+		border: none;
+		padding: 0;
+		color: inherit;
+		font-size: inherit;
+		font-weight: 600;
+		text-decoration: underline;
+		cursor: pointer;
 	}
 </style>

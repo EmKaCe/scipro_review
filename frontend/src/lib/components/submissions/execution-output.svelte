@@ -34,6 +34,11 @@
 		 * the component keeps its own local set. Never persisted.
 		 */
 		fixedView?: SvelteSet<number>;
+		/**
+		 * Teacher decision on a verified fix (durable via the grading save).
+		 * Fired from the Accept/Ignore buttons on the fixed-view strip.
+		 */
+		onDisposition?: (cellIndex: number, disposition: "accepted" | "ignored") => void;
 	}
 
 	let {
@@ -44,6 +49,7 @@
 		onNotesSaved,
 		fixedCells = null,
 		fixedView,
+		onDisposition,
 	}: Props = $props();
 
 	/** Local view set when the page does not pass one down. */
@@ -174,6 +180,22 @@
 					<div class="autofix-strip">
 						<Sparkles size={12} />
 						<span>Auto-fixed — KI-verified fix</span>
+						{#if onDisposition}
+							<button
+								type="button"
+								class="strip-btn"
+								onclick={() => onDisposition(cell.index, "accepted")}
+							>
+								Accept
+							</button>
+							<button
+								type="button"
+								class="strip-btn"
+								onclick={() => onDisposition(cell.index, "ignored")}
+							>
+								Ignore
+							</button>
+						{/if}
 						<button
 							type="button"
 							class="strip-link"
@@ -346,6 +368,19 @@
 		font-weight: 600;
 		text-decoration: underline;
 		cursor: pointer;
+	}
+	.strip-btn {
+		padding: 1px 8px;
+		border: 1px solid color-mix(in oklch, var(--warning) 50%, transparent);
+		border-radius: 999px;
+		background: transparent;
+		color: inherit;
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.strip-btn:hover {
+		background: color-mix(in oklch, var(--warning) 25%, transparent);
 	}
 	.cell-marker {
 		margin-left: auto;

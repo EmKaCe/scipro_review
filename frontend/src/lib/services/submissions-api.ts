@@ -132,6 +132,11 @@ export interface GradingPatch {
 	feedback?: Record<string, CategoryFeedback>;
 	/** Free-form teacher notes. */
 	notes?: string;
+	/**
+	 * Teacher's per-cell decision on each verified auto-fix: cell index ->
+	 * "accepted" | "ignored". The only durable autofix data.
+	 */
+	autofixDispositions?: Record<string, "accepted" | "ignored">;
 }
 
 /** Executor cell in wire form (snake_case) as returned by process endpoints. */
