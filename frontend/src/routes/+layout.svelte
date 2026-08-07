@@ -6,6 +6,7 @@
 	import favicon from "$lib/assets/favicon.svg";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { settings, syncSettingsToStorage } from "$lib/stores/settings.svelte.js";
+	import { TooltipProvider } from "$lib/components/ui/tooltip/index.js";
 
 	let { children } = $props();
 
@@ -42,24 +43,26 @@
 
 <svelte:head><link rel="icon" href={favicon} /></svelte:head>
 
-<div class="flex min-h-screen flex-col">
-	<AppHeader
-		showBack={headerConfig.showBack}
-		breadcrumb={headerConfig.breadcrumb}
-		showImport={headerConfig.showImport}
-		onimportclick={headerConfig.onimportclick}
-		showSave={headerConfig.showSave}
-		onsaveclick={headerConfig.onsaveclick}
-		showExport={headerConfig.showExport}
-		onexportclick={headerConfig.onexportclick}
-		exportMenuItems={headerConfig.exportMenuItems ?? []}
-		headerState={headerConfig.headerState ?? "dashboard"}
-		class="print:hidden"
-	/>
-	<main class="flex min-h-0 flex-1 flex-col">
-		{@render children()}
-	</main>
-	<AppFooter class="print:hidden" />
-</div>
+<TooltipProvider>
+	<div class="flex min-h-screen flex-col">
+		<AppHeader
+			showBack={headerConfig.showBack}
+			breadcrumb={headerConfig.breadcrumb}
+			showImport={headerConfig.showImport}
+			onimportclick={headerConfig.onimportclick}
+			showSave={headerConfig.showSave}
+			onsaveclick={headerConfig.onsaveclick}
+			showExport={headerConfig.showExport}
+			onexportclick={headerConfig.onexportclick}
+			exportMenuItems={headerConfig.exportMenuItems ?? []}
+			headerState={headerConfig.headerState ?? "dashboard"}
+			class="print:hidden"
+		/>
+		<main class="flex min-h-0 flex-1 flex-col">
+			{@render children()}
+		</main>
+		<AppFooter class="print:hidden" />
+	</div>
 
-<ToastContainer class="print:hidden" />
+	<ToastContainer class="print:hidden" />
+</TooltipProvider>

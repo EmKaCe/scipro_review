@@ -8,6 +8,9 @@
 	import PlagiarismTab from "./plagiarism-tab.svelte";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import Gauge from "@lucide/svelte/icons/gauge";
+	import Bot from "@lucide/svelte/icons/bot";
 	import { findCategoryEntry } from "$lib/types/criteria.js";
 	import { SvelteSet } from "svelte/reactivity";
 
@@ -174,8 +177,10 @@
 			<button
 				class="tab"
 				class:active={activeTab === "rubric"}
+				aria-pressed={activeTab === "rubric"}
 				onclick={() => onTabChange("rubric")}
 			>
+				<ListChecks size={12} />
 				Rubric
 				<!-- Sentiment counts: positive / neutral / negative items flagged
 				     (checked) for this submission — live from checkbox state (P3-2). -->
@@ -194,8 +199,10 @@
 			<button
 				class="tab"
 				class:active={activeTab === "grading"}
+				aria-pressed={activeTab === "grading"}
 				onclick={() => onTabChange("grading")}
 			>
+				<Gauge size={12} />
 				Grading
 				{#if gradeResult}
 					<span class="tab-badge">{gradePct.toFixed(0)}%</span>
@@ -204,6 +211,7 @@
 			<button
 				class="tab"
 				class:active={activeTab === "plagiarism"}
+				aria-pressed={activeTab === "plagiarism"}
 				onclick={() => onTabChange("plagiarism")}
 			>
 				<ShieldCheck size={12} />
@@ -215,8 +223,10 @@
 			<button
 				class="tab"
 				class:active={activeTab === "copilot"}
+				aria-pressed={activeTab === "copilot"}
 				onclick={() => onTabChange("copilot")}
 			>
+				<Bot size={12} />
 				Copilot
 			</button>
 		</div>

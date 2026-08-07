@@ -4,6 +4,7 @@
 	import FileText from "@lucide/svelte/icons/file-text";
 	import AlertCircle from "@lucide/svelte/icons/alert-circle";
 	import CustomCheckbox from "$lib/components/ui/custom-checkbox.svelte";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 	import { formatFileSize } from "$lib/utils.js";
 
 	type ImportState = "empty" | "selected" | "error";
@@ -168,13 +169,16 @@
 						Import one or more review files to view or continue editing.
 					</p>
 				</div>
-				<button
-					onclick={onclose}
-					class="rounded-[var(--radius)] p-1 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
-					aria-label="Close"
-				>
-					<X size={16} />
-				</button>
+				<Tooltip>
+					<TooltipTrigger
+						onclick={onclose}
+						class="flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+						aria-label="Close"
+					>
+						<X size={16} />
+					</TooltipTrigger>
+					<TooltipContent>Close</TooltipContent>
+				</Tooltip>
 			</div>
 
 			<!-- Dialog Body -->
@@ -267,20 +271,24 @@
 										{formatFileSize(file.size)}
 									</p>
 								</div>
-								<button
-									onclick={() => removeFile(i)}
-									class="shrink-0 rounded-[var(--radius)] p-1.5 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
-									aria-label="Remove file"
-								>
-									<X size={14} />
-								</button>
+								<Tooltip>
+									<TooltipTrigger
+										onclick={() => removeFile(i)}
+										class="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+										aria-label="Remove file"
+									>
+										<X size={14} />
+									</TooltipTrigger>
+									<TooltipContent>Remove file</TooltipContent>
+								</Tooltip>
 							</div>
 						{/each}
 						{#if selectedFiles.length > 1}
 							<button
 								onclick={clearFiles}
-								class="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+								class="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
 							>
+								<X size={12} />
 								Clear all
 							</button>
 						{/if}
@@ -320,10 +328,11 @@
 					onclick={handleImport}
 					disabled={!canImport}
 					autofocus
-					class="h-9 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity {canImport
+					class="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity {canImport
 						? 'cursor-pointer hover:opacity-90'
 						: 'cursor-not-allowed opacity-50'}"
 				>
+					<Upload size={14} />
 					Import
 				</button>
 			</div>

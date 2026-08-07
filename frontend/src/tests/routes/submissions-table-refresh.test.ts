@@ -11,6 +11,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 
 import type { SubmissionMeta } from "$lib/types/submissions.js";
 
+// Static import (not dynamic): the page pulls in the bits-ui tooltip graph,
+// whose first-load transform exceeds the per-test timeout in a fresh worker.
+import SubmissionsPage from "../../routes/submissions/+page.svelte";
+
 // ---------------------------------------------------------------------------
 // Mocks — API client only; the store itself is real.
 // ---------------------------------------------------------------------------
@@ -104,7 +108,7 @@ describe("submissions dashboard — table refresh after mutations", () => {
 	});
 
 	it("removes a deleted row from the table without a page reload", async () => {
-		render(await import("../../routes/submissions/+page.svelte").then((m) => m.default));
+		render(SubmissionsPage);
 		await screen.findByText("2026SS_01");
 
 		// Delete one row through the confirm dialog.
@@ -123,7 +127,7 @@ describe("submissions dashboard — table refresh after mutations", () => {
 	});
 
 	it("keeps the selection bar consistent after the deleted row disappears", async () => {
-		render(await import("../../routes/submissions/+page.svelte").then((m) => m.default));
+		render(SubmissionsPage);
 		await screen.findByText("2026SS_01");
 
 		fireEvent.click(screen.getByLabelText("Select 2026SS_01"));

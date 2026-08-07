@@ -12,6 +12,7 @@
 	import Loader from "@lucide/svelte/icons/loader";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
+	import Check from "@lucide/svelte/icons/check";
 	import { submissionsStore } from "$lib/services/submissions-store.js";
 	import type { SubmissionUploadResult } from "$lib/services/submissions-api.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
@@ -235,7 +236,10 @@
 
 		<!-- Done → back to empty -->
 		<div class="results-footer">
-			<button class="done-btn" type="button" onclick={handleDone}>Done</button>
+			<button class="done-btn" type="button" onclick={handleDone}>
+				<Check size={14} />
+				Done
+			</button>
 		</div>
 	{:else}
 		<!-- ── Empty state: drop zone ── -->

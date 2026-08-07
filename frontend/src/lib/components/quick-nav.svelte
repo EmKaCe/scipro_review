@@ -2,6 +2,8 @@
 	import Save from "@lucide/svelte/icons/save";
 	import Undo2 from "@lucide/svelte/icons/undo-2";
 	import Redo2 from "@lucide/svelte/icons/redo-2";
+	import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 
 	/** A category entry for quick navigation. */
 	interface NavCategory {
@@ -120,9 +122,10 @@
 			{/each}
 			<button
 				onclick={onToggleAll}
-				class="ml-1 h-8 rounded-[var(--radius)] px-2.5 text-xs font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+				class="ml-1 flex h-8 items-center gap-1 rounded-[var(--radius)] px-2.5 text-xs font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
 				aria-expanded={allExpanded}
 			>
+				<ChevronsUpDown size={14} />
 				{allExpanded ? "Collapse All" : "Expand All"}
 			</button>
 		</div>
@@ -149,13 +152,16 @@
 				{allExpanded ? "Collapse All" : "Expand All"}
 			</button>
 			{#if showSave}
-				<button
-					onclick={onSave}
-					title="Save (Ctrl+S)"
-					class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-				>
-					<Save size={14} />
-				</button>
+				<Tooltip>
+					<TooltipTrigger
+						onclick={onSave}
+						aria-label="Save (Ctrl+S)"
+						class="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius)] bg-primary px-3 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+					>
+						<Save size={14} />
+					</TooltipTrigger>
+					<TooltipContent>Save (Ctrl+S)</TooltipContent>
+				</Tooltip>
 			{/if}
 		</div>
 	</div>
@@ -163,24 +169,30 @@
 	<!-- Right: Save + Undo/Redo (desktop only) -->
 	<div class="hidden shrink-0 items-center gap-1 lg:flex">
 		{#if onUndo}
-			<button
-				onclick={onUndo}
-				disabled={!canUndo}
-				class="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:opacity-40 dark:hover:bg-white/10"
-				aria-label="Undo (Ctrl+Z)"
-			>
-				<Undo2 size={14} />
-			</button>
+			<Tooltip>
+				<TooltipTrigger
+					onclick={onUndo}
+					disabled={!canUndo}
+					class="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:opacity-40 dark:hover:bg-white/10"
+					aria-label="Undo (Ctrl+Z)"
+				>
+					<Undo2 size={14} />
+				</TooltipTrigger>
+				<TooltipContent>Undo (Ctrl+Z)</TooltipContent>
+			</Tooltip>
 		{/if}
 		{#if onRedo}
-			<button
-				onclick={onRedo}
-				disabled={!canRedo}
-				class="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:opacity-40 dark:hover:bg-white/10"
-				aria-label="Redo (Ctrl+Shift+Z)"
-			>
-				<Redo2 size={14} />
-			</button>
+			<Tooltip>
+				<TooltipTrigger
+					onclick={onRedo}
+					disabled={!canRedo}
+					class="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground disabled:opacity-40 dark:hover:bg-white/10"
+					aria-label="Redo (Ctrl+Shift+Z)"
+				>
+					<Redo2 size={14} />
+				</TooltipTrigger>
+				<TooltipContent>Redo (Ctrl+Shift+Z)</TooltipContent>
+			</Tooltip>
 		{/if}
 		{#if showSave}
 			<button

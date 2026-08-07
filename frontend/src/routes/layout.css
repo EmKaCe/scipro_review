@@ -7,6 +7,28 @@
 @plugin "@tailwindcss/forms";
 @plugin "@tailwindcss/typography";
 
+/* Global focus-visible ring (WCAG 2.1 AA 2.4.7) — one consistent keyboard
+   indicator for every interactive element. Component-scoped :focus-visible
+   rules (custom checkbox/switch, panel divider) have higher specificity and
+   intentionally override this. The shadcn Button relies on this ring too
+   (its variant base no longer carries its own). */
+:where(
+	button,
+	[role="button"],
+	[role="checkbox"],
+	[role="switch"],
+	[role="tab"],
+	a,
+	input,
+	select,
+	textarea,
+	summary,
+	[tabindex]:not([tabindex="-1"])
+):focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+
 :root {
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.148 0.004 228.8);

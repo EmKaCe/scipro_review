@@ -21,6 +21,7 @@
 	import X from "@lucide/svelte/icons/x";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import { Button } from "$lib/components/ui/button/index.js";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 
 	interface Props {
 		/** Assignment the modal reports on. */
@@ -108,15 +109,16 @@
 							{/if}
 							{isChecking ? "Checking…" : "Re-run check"}
 						</Button>
-						<Button
-							variant="ghost"
-							size="icon"
-							class="h-7 w-7"
-							onclick={onClose}
-							aria-label="Close"
-						>
-							<X size={16} />
-						</Button>
+						<Tooltip>
+							<TooltipTrigger
+								onclick={onClose}
+								class="flex h-7 w-7 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+								aria-label="Close"
+							>
+								<X size={16} />
+							</TooltipTrigger>
+							<TooltipContent>Close</TooltipContent>
+						</Tooltip>
 					</div>
 				</div>
 			</div>

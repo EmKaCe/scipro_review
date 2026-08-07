@@ -51,7 +51,7 @@
 			<p class="flex-1 text-sm leading-relaxed text-foreground">{toast.message}</p>
 			<button
 				onclick={() => removeToast(toast.id)}
-				class="shrink-0 text-muted-foreground transition-colors hover:text-foreground"
+				class="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
 				aria-label="Dismiss"
 			>
 				<XCircle size={14} />

@@ -197,7 +197,7 @@
 						type="button"
 						variant="ghost"
 						size="icon"
-						class="h-6 w-6"
+						class="h-7 w-7"
 						aria-label="Move category up"
 						disabled={categoryIndex === 0}
 						onclick={() => moveCategory(categoryIndex, -1)}
@@ -208,7 +208,7 @@
 						type="button"
 						variant="ghost"
 						size="icon"
-						class="h-6 w-6"
+						class="h-7 w-7"
 						aria-label="Move category down"
 						disabled={categoryIndex === categories.length - 1}
 						onclick={() => moveCategory(categoryIndex, 1)}
@@ -257,7 +257,7 @@
 									type="button"
 									variant="ghost"
 									size="icon"
-									class="h-6 w-6"
+									class="h-7 w-7"
 									aria-label="Move main point up"
 									disabled={mainPointIndex === 0}
 									onclick={() =>
@@ -269,7 +269,7 @@
 									type="button"
 									variant="ghost"
 									size="icon"
-									class="h-6 w-6"
+									class="h-7 w-7"
 									aria-label="Move main point down"
 									disabled={mainPointIndex === category[sentiment].length - 1}
 									onclick={() =>
@@ -389,7 +389,7 @@
 												type="button"
 												variant="ghost"
 												size="icon"
-												class="h-6 w-6"
+												class="h-7 w-7"
 												aria-label="Move sub-point up"
 												disabled={subPointIndex === 0}
 												onclick={() =>
@@ -407,7 +407,7 @@
 												type="button"
 												variant="ghost"
 												size="icon"
-												class="h-6 w-6"
+												class="h-7 w-7"
 												aria-label="Move sub-point down"
 												disabled={subPointIndex ===
 													mainPoint.sub_points.length - 1}

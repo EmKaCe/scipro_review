@@ -7,6 +7,7 @@
 	 */
 
 	import X from "@lucide/svelte/icons/x";
+	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 	import { onMount } from "svelte";
 
 	import { base } from "$app/paths";
@@ -83,7 +84,10 @@
 	{:else if loadError}
 		<div class="empty-card error-card">
 			<p>{loadError}</p>
-			<Button variant="outline" size="sm" onclick={load}>Retry</Button>
+			<Button variant="outline" size="sm" onclick={load}>
+				<RefreshCw size={14} />
+				Retry
+			</Button>
 		</div>
 	{:else}
 		<CriteriaEditorTabs {assignmentId} initial={initialCriteria} />

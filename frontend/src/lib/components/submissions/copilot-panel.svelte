@@ -105,6 +105,8 @@
 				class="send-btn"
 				onclick={handleSend}
 				disabled={!copilot.inputValue.trim() || copilot.isStreaming}
+				aria-label="Send message"
+				title="Send message"
 			>
 				<Send size={14} />
 			</button>

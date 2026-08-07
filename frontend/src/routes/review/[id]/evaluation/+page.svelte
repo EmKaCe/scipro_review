@@ -12,6 +12,7 @@
 	import EvaluationSkeleton from "$lib/components/skeleton/evaluation-skeleton.svelte";
 	import EmptyState from "$lib/components/ui/empty-state.svelte";
 	import FileText from "@lucide/svelte/icons/file-text";
+	import ArrowLeft from "@lucide/svelte/icons/arrow-left";
 
 	// Configure header for this page
 	$effect(() => {
@@ -157,8 +158,9 @@
 			{#snippet action()}
 				<button
 					onclick={handleBack}
-					class="h-9 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 				>
+					<ArrowLeft size={14} />
 					Back to Review
 				</button>
 			{/snippet}

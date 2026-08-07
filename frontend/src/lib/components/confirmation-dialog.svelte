@@ -1,7 +1,10 @@
 <script lang="ts">
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import X from "@lucide/svelte/icons/x";
+	import Check from "@lucide/svelte/icons/check";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import { Button } from "$lib/components/ui/button/index.js";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 
 	/** Props for the confirmation dialog modal component. */
 	interface Props {
@@ -121,15 +124,23 @@
 							>
 								{title}
 							</h3>
-							<Button
-								variant="ghost"
-								size="icon"
-								class="h-7 w-7 shrink-0"
-								onclick={oncancel}
-								aria-label="Close"
-							>
-								<X size={16} />
-							</Button>
+							<Tooltip>
+								<TooltipTrigger>
+									{#snippet child({ props })}
+										<Button
+											{...props}
+											variant="ghost"
+											size="icon"
+											class="h-7 w-7 shrink-0"
+											onclick={oncancel}
+											aria-label="Close"
+										>
+											<X size={16} />
+										</Button>
+									{/snippet}
+								</TooltipTrigger>
+								<TooltipContent>Close</TooltipContent>
+							</Tooltip>
 						</div>
 						<div class="mt-1 text-sm leading-relaxed text-muted-foreground">
 							<!-- eslint-disable svelte/no-at-html-tags -- Messages are trusted/internal HTML -->
@@ -166,6 +177,11 @@
 						disabled={!canConfirm}
 						autofocus
 					>
+						{#if variant === "danger"}
+							<Trash2 size={14} />
+						{:else}
+							<Check size={14} />
+						{/if}
 						{confirmLabel}
 					</Button>
 				</div>

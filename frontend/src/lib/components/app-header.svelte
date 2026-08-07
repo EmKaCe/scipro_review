@@ -14,6 +14,7 @@
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import { Button } from "$lib/components/ui/button/index.js";
 	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 	import { cn } from "$lib/utils.js";
 
 	interface Props {
@@ -94,13 +95,16 @@
 	<!-- Left -->
 	<div class="flex min-w-0 flex-1 items-center gap-2">
 		{#if showBack}
-			<button
-				onclick={goBack}
-				class="back-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-				aria-label="Go back"
-			>
-				<ArrowLeft size={16} />
-			</button>
+			<Tooltip>
+				<TooltipTrigger
+					onclick={goBack}
+					class="back-btn flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					aria-label="Go back"
+				>
+					<ArrowLeft size={16} />
+				</TooltipTrigger>
+				<TooltipContent>Go back</TooltipContent>
+			</Tooltip>
 		{/if}
 
 		<a
@@ -187,23 +191,35 @@
 			</Button>
 		{/if}
 
-		<Button
-			variant="ghost"
-			size="icon"
-			onclick={toggleTheme}
-			aria-label={settings.theme === "system"
-				? "System theme"
-				: `Switch to ${themeCycle[settings.theme]} mode`}
-			class="h-8 w-8"
-		>
-			{#if settings.theme === "dark"}
-				<Moon size={16} />
-			{:else if settings.theme === "system"}
-				<Monitor size={16} />
-			{:else}
-				<Sun size={16} />
-			{/if}
-		</Button>
+		<Tooltip>
+			<TooltipTrigger>
+				{#snippet child({ props })}
+					<Button
+						{...props}
+						variant="ghost"
+						size="icon"
+						onclick={toggleTheme}
+						aria-label={settings.theme === "system"
+							? "System theme"
+							: `Switch to ${themeCycle[settings.theme]} mode`}
+						class="h-8 w-8"
+					>
+						{#if settings.theme === "dark"}
+							<Moon size={16} />
+						{:else if settings.theme === "system"}
+							<Monitor size={16} />
+						{:else}
+							<Sun size={16} />
+						{/if}
+					</Button>
+				{/snippet}
+			</TooltipTrigger>
+			<TooltipContent>
+				{settings.theme === "system"
+					? "System theme"
+					: `Switch to ${themeCycle[settings.theme]} mode`}
+			</TooltipContent>
+		</Tooltip>
 
 		<a
 			href="{base}/settings"

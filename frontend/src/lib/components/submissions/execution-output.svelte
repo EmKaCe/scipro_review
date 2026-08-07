@@ -158,6 +158,7 @@
 					<button
 						type="button"
 						class="cell-toggle"
+						aria-pressed={showFixed}
 						onclick={() => toggleFixed(cell.index)}
 					>
 						{showFixed ? "Show original" : "Show auto-fixed"}
@@ -167,6 +168,7 @@
 					<button
 						type="button"
 						class="cell-toggle"
+						aria-pressed={openDeltas.has(cell.index)}
 						onclick={() => toggleDelta(cell.index)}
 					>
 						{openDeltas.has(cell.index) ? "Hide delta" : "Show delta"}

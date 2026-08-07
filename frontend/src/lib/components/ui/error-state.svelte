@@ -1,5 +1,7 @@
 <script lang="ts">
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
+	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+	import Home from "@lucide/svelte/icons/home";
 	import type { Snippet } from "svelte";
 
 	/** Props for the error state component with retry and home navigation. */
@@ -35,17 +37,19 @@
 		<div class="flex items-center justify-center gap-2">
 			{#if onRetry}
 				<button
-					class="h-9 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+					class="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
 					onclick={onRetry}
 				>
+					<RefreshCw size={14} />
 					Try Again
 				</button>
 			{/if}
 			{#if onHome}
 				<button
-					class="h-9 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
 					onclick={onHome}
 				>
+					<Home size={14} />
 					Go Home
 				</button>
 			{/if}

@@ -27,7 +27,7 @@
 	aria-checked={indeterminate ? "mixed" : checked ? "true" : "false"}
 	data-state={indeterminate ? "indeterminate" : checked ? "checked" : "unchecked"}
 	class={cn(
-		"peer flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input shadow focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground",
+		"peer flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border border-input shadow disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground",
 		className,
 	)}
 	{...rest}

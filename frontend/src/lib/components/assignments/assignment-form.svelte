@@ -17,6 +17,9 @@
 
 	import type { AssignmentSummary } from "$lib/services/submissions-api.js";
 	import { Button } from "$lib/components/ui/button/index.js";
+	import Loader from "@lucide/svelte/icons/loader";
+	import Save from "@lucide/svelte/icons/save";
+	import Plus from "@lucide/svelte/icons/plus";
 
 	/** The 5 grading dimensions the rubric knows about (see grading.ts). */
 	export const DIMENSION_CATALOG = [
@@ -200,7 +203,16 @@
 
 	<div class="form-actions">
 		<Button type="submit" disabled={busy}>
-			{busy ? "Saving…" : editing ? "Save changes" : "Create assignment"}
+			{#if busy}
+				<Loader size={14} class="animate-spin" />
+				Saving…
+			{:else if editing}
+				<Save size={14} />
+				Save changes
+			{:else}
+				<Plus size={14} />
+				Create assignment
+			{/if}
 		</Button>
 	</div>
 </form>

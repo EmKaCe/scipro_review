@@ -8,6 +8,7 @@
 	import Search from "@lucide/svelte/icons/search";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Inbox from "@lucide/svelte/icons/inbox";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 
 	/** Props for the saved reviews list with search, filter, and bulk actions. */
 	interface Props {
@@ -137,20 +138,27 @@
 		>
 			{filteredReviews.length}
 		</span>
-		<button
-			class="ml-auto rounded-[var(--radius)] p-1 text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
-			aria-label="Toggle section"
-			onclick={() => (isCollapsed = !isCollapsed)}
-		>
-			<ChevronDown
-				size={16}
-				class="transition-transform duration-200 {isCollapsed ? 'rotate-180' : ''}"
-			/>
-		</button>
+		<Tooltip>
+			<TooltipTrigger
+				class="ml-auto flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+				aria-label="Toggle section"
+				aria-expanded={!isCollapsed}
+				aria-controls="saved-reviews-content"
+				onclick={() => (isCollapsed = !isCollapsed)}
+			>
+				<ChevronDown
+					size={16}
+					class="transition-transform duration-200 {isCollapsed ? 'rotate-180' : ''}"
+				/>
+			</TooltipTrigger>
+			<TooltipContent
+				>{isCollapsed ? "Expand saved reviews" : "Collapse saved reviews"}</TooltipContent
+			>
+		</Tooltip>
 	</div>
 
 	{#if !isCollapsed}
-		<div class="space-y-4">
+		<div id="saved-reviews-content" class="space-y-4">
 			<!-- Filter Bar -->
 			<div class="flex flex-col gap-3 sm:flex-row">
 				<select

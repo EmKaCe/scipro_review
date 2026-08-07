@@ -4,6 +4,8 @@
 	import ProgressBar from "$lib/components/ui/progress-bar.svelte";
 	import GradeBadge from "$lib/components/ui/grade-badge.svelte";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import ExternalLink from "@lucide/svelte/icons/external-link";
+	import { Tooltip, TooltipTrigger, TooltipContent } from "$lib/components/ui/tooltip/index.js";
 
 	/** Props for the reviews data table with sorting and selection. */
 	interface Props {
@@ -142,18 +144,22 @@
 						<td class="p-2 sm:p-3">
 							<div class="flex items-center gap-1">
 								<button
-									class="h-8 min-h-[44px] rounded-[var(--radius)] border border-primary px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5 sm:h-7 sm:min-h-0"
+									class="flex h-8 min-h-[44px] items-center gap-1 rounded-[var(--radius)] border border-primary px-2.5 text-xs font-medium text-primary transition-colors hover:bg-primary/5 sm:h-7 sm:min-h-0"
 									onclick={() => onOpen(r.id)}
 								>
+									<ExternalLink size={12} />
 									Open
 								</button>
-								<button
-									class="flex h-8 min-h-[44px] w-8 min-w-[44px] items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:min-h-0 sm:w-7 sm:min-w-0"
-									onclick={() => onDelete(r.id)}
-									aria-label="Delete review"
-								>
-									<Trash2 size={14} />
-								</button>
+								<Tooltip>
+									<TooltipTrigger
+										class="flex h-8 min-h-[44px] w-8 min-w-[44px] items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:min-h-0 sm:w-7 sm:min-w-0"
+										onclick={() => onDelete(r.id)}
+										aria-label="Delete review"
+									>
+										<Trash2 size={14} />
+									</TooltipTrigger>
+									<TooltipContent>Delete review</TooltipContent>
+								</Tooltip>
 							</div>
 						</td>
 					</tr>

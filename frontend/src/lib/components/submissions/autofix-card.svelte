@@ -20,6 +20,7 @@
 	import { autofixStore } from "$lib/services/autofix-store.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import Wrench from "@lucide/svelte/icons/wrench";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import Copy from "@lucide/svelte/icons/copy";
@@ -196,10 +197,11 @@
 		{/if}
 
 		{#if suggestion.patchedSource}
-			<div class="autofix-toggle">
+			<div class="autofix-toggle" role="group" aria-label="Source view">
 				<Button
 					variant="ghost"
 					size="xs"
+					aria-pressed={!showPatched}
 					class={!showPatched ? "bg-accent text-accent-foreground" : ""}
 					onclick={() => (showPatched = false)}
 				>
@@ -208,6 +210,7 @@
 				<Button
 					variant="ghost"
 					size="xs"
+					aria-pressed={showPatched}
 					class={showPatched ? "bg-accent text-accent-foreground" : ""}
 					onclick={() => (showPatched = true)}
 				>
@@ -231,6 +234,8 @@
 				<Button variant="outline" size="xs" onclick={handleVerify} disabled={verifying}>
 					{#if verifying}
 						<LoaderCircle size={11} class="spin" />
+					{:else}
+						<ShieldCheck size={11} />
 					{/if}
 					{verifying ? "Verifying…" : "Verify fix"}
 				</Button>

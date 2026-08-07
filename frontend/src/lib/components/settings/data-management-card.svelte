@@ -1,6 +1,7 @@
 <script lang="ts">
 	import Database from "@lucide/svelte/icons/database";
 	import Download from "@lucide/svelte/icons/download";
+	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import { reviewStore } from "$lib/stores/review.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { formatFileSize } from "$lib/utils.js";
@@ -58,8 +59,9 @@
 			</div>
 			<button
 				onclick={clearStorage}
-				class="h-8 rounded-[var(--radius)] px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+				class="inline-flex h-8 items-center gap-1.5 rounded-[var(--radius)] px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
 			>
+				<Trash2 size={12} />
 				Clear cache
 			</button>
 		</div>
