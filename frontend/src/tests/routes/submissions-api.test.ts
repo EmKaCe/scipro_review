@@ -1331,6 +1331,38 @@ describe("GET /api/submissions/[id]/export", () => {
 		expect(yaml).toContain("  code_quality_design: 1.5");
 	});
 
+	it("teacher YAML carries autofix_dispositions; student YAML stays clean", async () => {
+		await seedSubmission("2026SS_03", "graded", {
+			teacherGrade: 12,
+			grading: {
+				rubric: { data_quality: "complete" },
+				dimensions: { code_quality_design: 1.5 },
+				notes: "Good work",
+				autofixDispositions: { "18": "accepted", "2": "ignored" },
+				updatedAt: new Date().toISOString(),
+			},
+		});
+
+		const teacher = await exportGET(
+			makeEvent(`/api/submissions/2026SS_03/export?assignment=${ASSIGNMENT}&kind=teacher`, {
+				params: { id: "2026SS_03" },
+			}),
+		);
+		expect(teacher.status).toBe(200);
+		const teacherYaml = await teacher.text();
+		expect(teacherYaml).toContain("autofix_dispositions:");
+		expect(teacherYaml).toContain("  18: accepted");
+		expect(teacherYaml).toContain("  2: ignored");
+
+		const student = await exportGET(
+			makeEvent(`/api/submissions/2026SS_03/export?assignment=${ASSIGNMENT}`, {
+				params: { id: "2026SS_03" },
+			}),
+		);
+		const studentYaml = await student.text();
+		expect(studentYaml).not.toContain("autofix_dispositions");
+	});
+
 	it("404s unknown submissions", async () => {
 		await expectApiError(
 			exportGET(

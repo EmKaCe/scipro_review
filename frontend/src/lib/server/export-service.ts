@@ -61,6 +61,11 @@ export interface GradingExport {
 	feedback?: Record<string, CategoryFeedback>;
 	/** Free-form teacher notes. */
 	notes?: string;
+	/**
+	 * Teacher's per-cell decision on each verified auto-fix (teacher-only —
+	 * never in the student-facing copy). Cell index -> accepted | ignored.
+	 */
+	autofixDispositions?: Record<string, "accepted" | "ignored">;
 	/** ISO timestamp of upload. */
 	createdAt: string;
 	/** ISO timestamp of the last change. */
@@ -84,6 +89,7 @@ export function buildGradingExport(
 		scores: record.grading?.dimensions,
 		feedback: record.grading?.feedback,
 		notes: record.grading?.notes,
+		autofixDispositions: record.grading?.autofixDispositions,
 		createdAt: record.createdAt,
 		updatedAt: record.updatedAt,
 	};
@@ -140,6 +146,14 @@ export function gradingExportToYaml(data: GradingExport): string {
 		lines.push("notes: |-");
 		for (const line of data.notes.replace(/\r\n/g, "\n").split("\n")) {
 			lines.push(line === "" ? "" : `  ${line}`);
+		}
+	}
+
+	const dispositions = data.autofixDispositions;
+	if (dispositions !== undefined && Object.keys(dispositions).length > 0) {
+		lines.push("autofix_dispositions:");
+		for (const [key, value] of Object.entries(dispositions)) {
+			lines.push(`  ${yamlKey(key)}: ${yamlScalar(value)}`);
 		}
 	}
 
