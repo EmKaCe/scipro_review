@@ -318,6 +318,65 @@ describe("GET /api/submissions", () => {
 			"2026SS_02",
 		]);
 	});
+
+	it("flags autofixAvailable from the stored result (verified fix only)", async () => {
+		await seedSubmission("2026SS_01", "executed", { cellSummary: "4 cells" });
+		await seedSubmission("2026SS_02", "executed");
+		await seedSubmission("2026SS_03", "executed");
+		await writeResults(ASSIGNMENT, {
+			"2026SS_02": {
+				success: true,
+				notebookPath: notebookPath("2026SS_02"),
+				cells: [],
+				totalCells: 12,
+				executedCells: 10,
+				errorCells: 2,
+				durationSeconds: 1,
+				preprocessing: {
+					cellsModified: 0,
+					totalEdits: 0,
+					editTypes: {},
+					llmPreprocessing: "skipped",
+					llmAnalysis: false,
+				},
+				modifiedFiles: [],
+				fixedCells: null,
+				// A verified clean fixed execution exists — the badge affordance.
+				autofix: { attempts: 1, succeeded: 1 },
+			},
+			"2026SS_03": {
+				success: true,
+				notebookPath: notebookPath("2026SS_03"),
+				cells: [],
+				totalCells: 8,
+				executedCells: 6,
+				errorCells: 2,
+				durationSeconds: 1,
+				preprocessing: {
+					cellsModified: 0,
+					totalEdits: 0,
+					editTypes: {},
+					llmPreprocessing: "skipped",
+					llmAnalysis: false,
+				},
+				modifiedFiles: [],
+				fixedCells: null,
+				// No clean fixed version — no badge.
+				autofix: { attempts: 1, succeeded: 0 },
+			},
+		} as unknown as ResultsFile);
+
+		const body = await readJson<{ submissions: Array<Record<string, unknown>> }>(
+			await listGET(makeEvent("/api/submissions")),
+		);
+		const byId = Object.fromEntries(body.submissions.map((s) => [s.studentId, s]));
+		// No stored result → false.
+		expect(byId["2026SS_01"]!.autofixAvailable).toBe(false);
+		// Verified fix (succeeded: 1) → true.
+		expect(byId["2026SS_02"]!.autofixAvailable).toBe(true);
+		// Unclean pass (succeeded: 0) → false.
+		expect(byId["2026SS_03"]!.autofixAvailable).toBe(false);
+	});
 });
 
 // ---------------------------------------------------------------------------

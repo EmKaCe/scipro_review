@@ -33,13 +33,19 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const submissions = records
 		.filter((record) => includeArchived || record.status !== "archived")
 		.map((record) => {
+			const stored = results[record.id];
+			const enriched: Record<string, unknown> = { ...record };
 			if (record.cellSummary === undefined) {
-				const summary = deriveCellSummary(results[record.id]);
+				const summary = deriveCellSummary(stored);
 				if (summary !== undefined) {
-					return { ...record, cellSummary: summary };
+					enriched.cellSummary = summary;
 				}
 			}
-			return record;
+			// Badge affordance: a verified clean auto-fix exists for this
+			// submission (the original still shows its errors — this flag
+			// points the teacher at the original↔fixed toggle).
+			enriched.autofixAvailable = stored?.autofix?.succeeded === 1;
+			return enriched;
 		});
 
 	return json({ assignmentId, submissions });

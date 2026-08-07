@@ -159,4 +159,31 @@ describe("submissions-dashboard selection", () => {
 		fireEvent.click(screen.getByLabelText("Select all visible submissions"));
 		expect(callbacks.onClearSelection).toHaveBeenCalled();
 	});
+
+	it("renders the Auto-fix available badge only for rows with a verified fix", () => {
+		const withFix = SUBMISSIONS.map((s) =>
+			s.id === "2026SS_02" ? { ...s, autofixAvailable: true } : s,
+		);
+		render(SubmissionsDashboard, {
+			props: {
+				submissions: withFix,
+				searchQuery: "",
+				statusFilter: "all",
+				assignmentId: "soil_contamination",
+				selectedIds: new Set<string>(),
+				onSearchChange: vi.fn(),
+				onStatusFilterChange: vi.fn(),
+				onToggleSelect: vi.fn(),
+				onSelectRange: vi.fn(),
+				onDeselectRange: vi.fn(),
+				onSelectAllVisible: vi.fn(),
+				onClearSelection: vi.fn(),
+			},
+		});
+
+		// Exactly the flagged row carries the badge.
+		expect(screen.getAllByText("Auto-fix available")).toHaveLength(1);
+		const row = screen.getByText("Auto-fix available").closest("tr")!;
+		expect(row.textContent).toContain("2026SS_02");
+	});
 });

@@ -10,6 +10,7 @@
 	import Search from "@lucide/svelte/icons/search";
 	import Upload from "@lucide/svelte/icons/upload";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import type { Snippet } from "svelte";
 	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
 	import PlagiarismModal from "$lib/components/submissions/plagiarism-modal.svelte";
@@ -345,7 +346,18 @@
 								{cfg.label}
 							</span>
 						</td>
-						<td class="col-cells cell-muted">{sub.cellSummary ?? "—"}</td>
+						<td class="col-cells cell-muted">
+							{sub.cellSummary ?? "—"}
+							{#if sub.autofixAvailable}
+								<span
+									class="autofix-badge"
+									title="A verified auto-fix is available — open the submission to compare"
+								>
+									<Sparkles size={11} />
+									Auto-fix available
+								</span>
+							{/if}
+						</td>
 						<td class="col-preeval cell-muted"
 							>{sub.preEvalGrade != null ? sub.preEvalGrade.toFixed(1) : "—"}</td
 						>
@@ -576,6 +588,23 @@
 		font-weight: 500;
 		line-height: 1.4;
 		border: 1px solid transparent;
+	}
+	/* Verified auto-fix affordance (3c.3): points the teacher at the
+	   original↔fixed toggle without hiding the original error summary. */
+	.autofix-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-left: 6px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 1.4;
+		background: color-mix(in oklch, var(--warning) 18%, transparent);
+		color: var(--warning);
+		border: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+		white-space: nowrap;
 	}
 	.status-pending {
 		background: color-mix(in oklch, var(--muted) 10%, transparent);

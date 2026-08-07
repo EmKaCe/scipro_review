@@ -74,6 +74,13 @@ export interface SubmissionMeta {
 	status: SubmissionStatus;
 	/** Summary of cell comparison: "6 cells, 1 diff". */
 	cellSummary?: string;
+	/**
+	 * True when the stored result carries a VERIFIED clean auto-fix
+	 * (autofix.succeeded === 1) — the dashboard badge affordance pointing
+	 * the teacher at the original↔fixed toggle. Derived from results.json,
+	 * never stored on the record.
+	 */
+	autofixAvailable?: boolean;
 	/** Last execution error message (when status is "error"). */
 	error?: string | null;
 	/** LLM-suggested overall grade from pre-evaluation. */
