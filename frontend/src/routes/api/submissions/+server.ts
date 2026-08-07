@@ -42,9 +42,12 @@ export async function GET(event: RequestEvent): Promise<Response> {
 				}
 			}
 			// Badge affordance: a verified clean auto-fix exists for this
-			// submission (the original still shows its errors — this flag
-			// points the teacher at the original↔fixed toggle).
-			enriched.autofixAvailable = stored?.autofix?.succeeded === 1;
+			// submission AND the fixed execution is stored (old-engine
+			// results carry succeeded=1 without fixedCells — no toggle, so
+			// no badge). The original still shows its errors — this flag
+			// points the teacher at the original↔fixed toggle.
+			enriched.autofixAvailable =
+				stored?.autofix?.succeeded === 1 && (stored?.fixedCells?.length ?? 0) > 0;
 			return enriched;
 		});
 

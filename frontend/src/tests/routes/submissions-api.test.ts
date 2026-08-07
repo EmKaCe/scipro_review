@@ -323,6 +323,7 @@ describe("GET /api/submissions", () => {
 		await seedSubmission("2026SS_01", "executed", { cellSummary: "4 cells" });
 		await seedSubmission("2026SS_02", "executed");
 		await seedSubmission("2026SS_03", "executed");
+		await seedSubmission("2026SS_04", "executed");
 		await writeResults(ASSIGNMENT, {
 			"2026SS_02": {
 				success: true,
@@ -340,8 +341,40 @@ describe("GET /api/submissions", () => {
 					llmAnalysis: false,
 				},
 				modifiedFiles: [],
-				fixedCells: null,
 				// A verified clean fixed execution exists — the badge affordance.
+				fixedCells: [
+					{
+						index: 0,
+						type: "code",
+						source: "x = 5",
+						original_source: "x = 5",
+						output: "",
+						error: null,
+						traceback: null,
+						execution_count: 1,
+						marker: "pending",
+					},
+				],
+				autofix: { attempts: 1, succeeded: 1 },
+			},
+			"2026SS_04": {
+				success: true,
+				notebookPath: notebookPath("2026SS_04"),
+				cells: [],
+				totalCells: 8,
+				executedCells: 6,
+				errorCells: 2,
+				durationSeconds: 1,
+				preprocessing: {
+					cellsModified: 0,
+					totalEdits: 0,
+					editTypes: {},
+					llmPreprocessing: "skipped",
+					llmAnalysis: false,
+				},
+				modifiedFiles: [],
+				// Old-engine legacy: succeeded=1 but NO fixedCells — no toggle,
+				// so no badge (the derivation must not mislead).
 				autofix: { attempts: 1, succeeded: 1 },
 			},
 			"2026SS_03": {
@@ -372,10 +405,12 @@ describe("GET /api/submissions", () => {
 		const byId = Object.fromEntries(body.submissions.map((s) => [s.studentId, s]));
 		// No stored result → false.
 		expect(byId["2026SS_01"]!.autofixAvailable).toBe(false);
-		// Verified fix (succeeded: 1) → true.
+		// Verified fix with stored fixedCells (succeeded: 1) → true.
 		expect(byId["2026SS_02"]!.autofixAvailable).toBe(true);
 		// Unclean pass (succeeded: 0) → false.
 		expect(byId["2026SS_03"]!.autofixAvailable).toBe(false);
+		// Legacy result: succeeded: 1 but no fixedCells → false (no toggle).
+		expect(byId["2026SS_04"]!.autofixAvailable).toBe(false);
 	});
 });
 
