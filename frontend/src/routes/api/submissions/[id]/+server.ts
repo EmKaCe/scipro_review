@@ -51,9 +51,13 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	}
 
 	const results = await readResults(assignmentId);
-	const cells = normalizeStoredCells(results[studentId]?.cells);
+	const stored = results[studentId];
+	const cells = normalizeStoredCells(stored?.cells);
+	// The verified fixed execution (when present) is normalized the same way
+	// as `cells` — same indices, separate array, so the UI can toggle per cell.
+	const fixedCells = normalizeStoredCells(stored?.fixedCells);
 
-	return json({ ...record, cells });
+	return json({ ...record, cells, fixedCells });
 }
 
 export async function DELETE(event: RequestEvent): Promise<Response> {

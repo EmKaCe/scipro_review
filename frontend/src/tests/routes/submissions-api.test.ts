@@ -166,6 +166,7 @@ interface GradedRecordBody {
 		rubric?: Record<string, unknown>;
 		notes?: string;
 		feedback?: Record<string, unknown>;
+		autofixDispositions?: Record<string, string>;
 	};
 }
 
@@ -400,6 +401,7 @@ describe("GET /api/submissions/[id]", () => {
 			),
 		);
 		expect(body.cells).toEqual([]);
+		expect(body.fixedCells).toEqual([]);
 
 		await expectApiError(
 			detailGET(
@@ -410,6 +412,103 @@ describe("GET /api/submissions/[id]", () => {
 			404,
 			'Submission "2026SS_99" not found',
 		);
+	});
+
+	it("exposes fixedCells from the stored result, normalized like cells", async () => {
+		await seedSubmission("2026SS_03", "executed");
+		await writeResults(ASSIGNMENT, {
+			"2026SS_03": {
+				success: true,
+				notebookPath: notebookPath("2026SS_03"),
+				// Authentic original execution — the syntax error is still there.
+				cells: [
+					{
+						index: 0,
+						type: "code",
+						source: "x = 5",
+						original_source: "x = 5",
+						output: "",
+						error: null,
+						traceback: null,
+						execution_count: 1,
+						marker: "pending",
+					},
+					{
+						index: 1,
+						type: "code",
+						source: "y = (x + 1",
+						original_source: "y = (x + 1",
+						output: "",
+						error: "SyntaxError: invalid syntax",
+						traceback: ["SyntaxError: invalid syntax"],
+						execution_count: null,
+						marker: "error",
+					},
+				],
+				// Verified fixed execution, aligned by index — clean, no comment.
+				fixedCells: [
+					{
+						index: 0,
+						type: "code",
+						source: "x = 5",
+						original_source: "x = 5",
+						output: "",
+						error: null,
+						traceback: null,
+						execution_count: 1,
+						marker: "pending",
+					},
+					{
+						index: 1,
+						type: "code",
+						source: "y = (x + 1)",
+						original_source: "y = (x + 1",
+						output: "",
+						error: null,
+						traceback: null,
+						execution_count: 2,
+						marker: "pending",
+					},
+				],
+				totalCells: 2,
+				executedCells: 2,
+				errorCells: 1,
+				durationSeconds: 0.5,
+				preprocessing: {
+					cellsModified: 0,
+					totalEdits: 0,
+					editTypes: {},
+					llmPreprocessing: "skipped",
+					llmAnalysis: false,
+				},
+				modifiedFiles: [],
+				autofix: { attempts: 1, succeeded: 1 },
+			},
+		} as unknown as ResultsFile);
+
+		const body = await readJson(
+			await detailGET(
+				makeEvent(`/api/submissions/2026SS_03?assignment=${ASSIGNMENT}`, {
+					params: { id: "2026SS_03" },
+				}),
+			),
+		);
+
+		// Originals stay authentic; the fixed version is separate.
+		const cells = body.cells as Array<Record<string, unknown>>;
+		expect(cells).toHaveLength(2);
+		expect(cells[1]).toMatchObject({
+			index: 1,
+			error: "SyntaxError: invalid syntax",
+		});
+		const fixedCells = body.fixedCells as Array<Record<string, unknown>>;
+		expect(fixedCells).toHaveLength(2);
+		expect(fixedCells[1]).toMatchObject({
+			index: 1,
+			source: "y = (x + 1)",
+		});
+		// The verified fixed cell is clean — no error survives the fix.
+		expect(fixedCells[1].error).toBeUndefined();
 	});
 });
 
@@ -1048,6 +1147,57 @@ describe("POST /api/submissions/[id]/save", () => {
 			),
 			400,
 			"feedback",
+		);
+	});
+
+	it("persists autofixDispositions and merges per cell", async () => {
+		await seedSubmission("2026SS_03", "executed");
+
+		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
+		const first = await readJson<GradedRecordBody>(
+			await savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						autofixDispositions: { "18": "accepted" },
+					}),
+				}),
+			),
+		);
+		expect(first.grading?.autofixDispositions).toEqual({ "18": "accepted" });
+
+		// A second save for a different cell merges, not replaces.
+		const second = await readJson<GradedRecordBody>(
+			await savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						autofixDispositions: { "2": "ignored" },
+					}),
+				}),
+			),
+		);
+		expect(second.grading?.autofixDispositions).toEqual({
+			"18": "accepted",
+			"2": "ignored",
+		});
+	});
+
+	it("400s malformed autofixDispositions", async () => {
+		await seedSubmission("2026SS_03", "executed");
+
+		const url = `/api/submissions/2026SS_03/save?assignment=${ASSIGNMENT}`;
+		await expectApiError(
+			savePOST(
+				makeEvent(url, {
+					params: { id: "2026SS_03" },
+					request: jsonRequest(url, {
+						autofixDispositions: { "18": "maybe" },
+					}),
+				}),
+			),
+			400,
+			"autofixDispositions",
 		);
 	});
 });

@@ -53,6 +53,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		dimensions?: Record<string, number>;
 		feedback?: Record<string, CategoryFeedback>;
 		notes?: string;
+		autofixDispositions?: Record<string, "accepted" | "ignored">;
 	} = {};
 	if (input.rubric !== undefined) {
 		if (!isStringMap(input.rubric)) {
@@ -80,6 +81,25 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			throw error(400, "notes must be a string");
 		}
 		grading.notes = input.notes;
+	}
+	if (input.autofixDispositions !== undefined) {
+		if (
+			input.autofixDispositions === null ||
+			typeof input.autofixDispositions !== "object" ||
+			Array.isArray(input.autofixDispositions) ||
+			!Object.values(input.autofixDispositions).every(
+				(v) => v === "accepted" || v === "ignored",
+			)
+		) {
+			throw error(
+				400,
+				'autofixDispositions must be an object mapping cell indices to "accepted" or "ignored"',
+			);
+		}
+		grading.autofixDispositions = input.autofixDispositions as Record<
+			string,
+			"accepted" | "ignored"
+		>;
 	}
 
 	const record = await saveGrading(assignmentId, studentId, grading);

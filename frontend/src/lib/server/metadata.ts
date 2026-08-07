@@ -34,6 +34,12 @@ export interface GradingState {
 	feedback?: Record<string, CategoryFeedback>;
 	/** Free-form teacher notes (Generate button output). */
 	notes?: string;
+	/**
+	 * Teacher's per-cell decision on each verified auto-fix: cell index ->
+	 * "accepted" | "ignored". The only durable autofix data (view state —
+	 * which cells show the fixed version — is never persisted).
+	 */
+	autofixDispositions?: Record<string, "accepted" | "ignored">;
 	/** ISO timestamp of the last grading change. */
 	updatedAt: string;
 }
@@ -294,6 +300,10 @@ export async function saveGrading(
 			dimensions: { ...(existing.grading?.dimensions ?? {}), ...(grading.dimensions ?? {}) },
 			feedback: { ...(existing.grading?.feedback ?? {}), ...(grading.feedback ?? {}) },
 			notes: grading.notes ?? existing.grading?.notes,
+			autofixDispositions: {
+				...(existing.grading?.autofixDispositions ?? {}),
+				...(grading.autofixDispositions ?? {}),
+			},
 			updatedAt: now,
 		},
 		updatedAt: now,

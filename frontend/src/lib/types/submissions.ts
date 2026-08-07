@@ -92,8 +92,14 @@ export interface SubmissionMeta {
 
 /** Full submission data including cell execution output. */
 export interface SubmissionDetail extends SubmissionMeta {
-	/** Executed notebook cells. */
+	/** Executed notebook cells — the AUTHENTIC original execution. */
 	cells: CellInfo[];
+	/**
+	 * Verified fixed execution from the automatic autofix stage, aligned by
+	 * index. Present only when the pipeline produced a clean re-run; the
+	 * original `cells` are never modified (student work stays authentic).
+	 */
+	fixedCells?: CellInfo[];
 	/** Reference key cells for comparison (loaded from assignment materials). */
 	referenceCells?: CellInfo[];
 	/** Persisted grading state (rubric/dimensions/feedback/notes) — from the record. */
@@ -106,6 +112,12 @@ export interface SubmissionDetail extends SubmissionMeta {
 		feedback?: Record<string, CategoryFeedback>;
 		/** Free-form teacher notes (autofix notes append here). */
 		notes?: string;
+		/**
+		 * Teacher's per-cell decision on each verified fix: cell index ->
+		 * "accepted" | "ignored". The ONLY durable autofix data; view state
+		 * (which cells show the fixed version) is never persisted.
+		 */
+		autofixDispositions?: Record<string, "accepted" | "ignored">;
 		/** ISO timestamp of the last grading save. */
 		updatedAt?: string;
 	};
