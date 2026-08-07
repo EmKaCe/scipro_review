@@ -8,6 +8,10 @@ node_modules
 /.svelte-kit
 /build
 
+# Playwright
+/test-results
+/playwright-report
+
 # Copied data (single source of truth is ../data/)
 static/data/
 

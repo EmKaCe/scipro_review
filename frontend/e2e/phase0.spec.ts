@@ -226,8 +226,9 @@ test.describe("Phase 0: main branch audit", () => {
 			.isVisible({ timeout: 2000 })
 			.catch(() => false);
 		if (!saved) {
-			// Fallback: click the Save button in the header
-			await page.getByRole("button", { name: "Save" }).click();
+			// Fallback: click the Save button in the header (desktop variant —
+			// exact:true disambiguates from the mobile bottom-bar Save).
+			await page.getByRole("button", { name: "Save", exact: true }).click();
 			await expect(page.getByText("Review saved successfully")).toBeVisible({
 				timeout: 5000,
 			});
@@ -279,11 +280,12 @@ test.describe("Phase 0: main branch audit", () => {
 		await page.goto("/settings");
 		await page.waitForSelector("text=Appearance");
 
-		await expect(page.getByRole("heading", { name: "Mode" })).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "Data Management" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "About" })).toBeVisible();
 		await expect(page.getByRole("heading", { name: "Danger Zone" })).toBeVisible();
-		await expect(page.getByText("SciPro Review v2.3.2")).toBeVisible();
+		// The About card renders the version on its own muted line.
+		await expect(page.getByText(/^v\d+\.\d+\.\d+$/)).toBeVisible();
 
 		// Theme toggling
 		await page.getByText("Dark").click();
@@ -383,7 +385,7 @@ test.describe("Phase 0: main branch audit", () => {
 			.isVisible({ timeout: 2000 })
 			.catch(() => false);
 		if (!saved3) {
-			await page.getByRole("button", { name: "Save" }).click();
+			await page.getByRole("button", { name: "Save", exact: true }).click();
 			await expect(page.getByText("Review saved successfully")).toBeVisible({
 				timeout: 5000,
 			});
@@ -395,10 +397,12 @@ test.describe("Phase 0: main branch audit", () => {
 	// -----------------------------------------------------------------------
 	test("S12: Docs page renders with mode-gated content", async ({ page }) => {
 		await page.goto("/docs");
-		await page.waitForSelector("text=Getting Started");
 
-		// Just verify the docs page loaded correctly — content sections vary
-		await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible();
+		// The sidebar nav link and the section heading share the label — assert
+		// the heading role directly (also serves as the load wait).
+		await expect(page.getByRole("heading", { name: "Getting Started" })).toBeVisible({
+			timeout: 10000,
+		});
 	});
 
 	// -----------------------------------------------------------------------
@@ -431,7 +435,7 @@ test.describe("Phase 0: main branch audit", () => {
 			.isVisible({ timeout: 2000 })
 			.catch(() => false);
 		if (!saved2) {
-			await page.getByRole("button", { name: "Save" }).click();
+			await page.getByRole("button", { name: "Save", exact: true }).click();
 			await expect(page.getByText("Review saved successfully")).toBeVisible({
 				timeout: 5000,
 			});
