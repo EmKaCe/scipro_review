@@ -564,6 +564,10 @@ def test_execute_autofix_whole_notebook_fixes_dependent_cells(
     automatic stage must fix the first error and re-run the WHOLE notebook,
     so the downstream cell resolves with real kernel state — an isolated
     single-cell re-run would raise NameError (as happened to `_00`).
+
+    The response keeps the AUTHENTIC original execution in ``cells`` (the
+    syntax error is still there) and returns the verified fixed execution
+    separately in ``fixed_cells`` — student work is never edited.
     """
     sub_dir = app_module.DATA_DIR / "submissions" / "soil"
     sub_dir.mkdir(parents=True)
@@ -597,18 +601,25 @@ def test_execute_autofix_whole_notebook_fixes_dependent_cells(
 
     assert resp.status_code == 200
     body = resp.json()
-    # One fix applied; the whole-notebook re-run came back clean.
+    # Original execution is authentic: the syntax error is still there, so
+    # the summary honestly shows the pre-fix state (2 errors).
     assert body["autofix"]["attempts"] == 1
     assert body["autofix"]["succeeded"] == 1
-    assert body["error_cells"] == 0
+    assert body["error_cells"] == 2
+    assert body["cells"][1]["error"] is not None
+    assert body["cells"][1]["source"] == "y = (x + 1"
 
-    # The fixed cell carries a visible provenance comment — never silent.
-    fixed = body["cells"][1]
-    assert fixed["source"].startswith("# auto-fix: syntax_fix repaired")
-    assert "y = (x + 1)" in fixed["source"]
+    # The verified fixed execution is separate, clean, and carries no
+    # provenance comment (the comment approach is superseded).
+    assert body["fixed_cells"] is not None
+    assert len(body["fixed_cells"]) == 3
+    fixed1 = body["fixed_cells"][1]
+    assert fixed1["error"] is None
+    assert not fixed1["source"].startswith("# auto-fix:")
+    assert "y = (x + 1)" in fixed1["source"]
 
     # The dependent downstream cell executed with real kernel state and its
     # output is present (y == 6).
-    downstream = body["cells"][2]
-    assert downstream["execution_count"] is not None
-    assert "6" in str(downstream.get("output_text") or "")
+    fixed2 = body["fixed_cells"][2]
+    assert fixed2["execution_count"] is not None
+    assert "6" in str(fixed2.get("output_text") or "")

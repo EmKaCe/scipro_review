@@ -173,14 +173,16 @@ class AutofixInfo(BaseModel):
     """Counts from the automatic pipeline autofix stage (whole-notebook verify).
 
     ``attempts`` counts fixes applied (max one KI suggestion per cell);
-    ``succeeded`` is 1 iff the final notebook ran clean after the pass, 0 if
-    the pass gave up and reverted all applied fixes (original cells).
+    ``succeeded`` is 1 iff the fixed notebook ran clean after the pass —
+    in that case ``ExecuteResponse.fixed_cells`` carries the verified fixed
+    execution. When 0, no clean fixed version exists (the original cells
+    are the only output; the teacher never sees a half-fixed artifact).
     """
 
     attempts: int = 0
     """Fixes applied (each followed by a whole-notebook re-run)."""
     succeeded: int = 0
-    """1 iff the final notebook is clean after the pass, else 0 (reverted)."""
+    """1 iff a clean fixed version exists (fixed_cells != None), else 0."""
 
 
 class ExecuteResponse(BaseModel):
@@ -189,6 +191,10 @@ class ExecuteResponse(BaseModel):
     success: bool
     notebook_path: str
     cells: list[CellResult]
+    fixed_cells: list[CellResult] | None = None
+    """Verified fixed execution from the automatic autofix stage, aligned
+    by cell_index. None unless the pass produced a clean re-run — the
+    original ``cells`` are never modified (student work stays authentic)."""
     total_cells: int
     executed_cells: int
     error_cells: int
@@ -672,8 +678,13 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
         time_budget_seconds=max(60, req.timeout * 5),
     )
 
-    # The autofix pass may have fixed errored cells — recompute the counts
-    # so the summary (e.g. "2 cells, 1 error") matches the returned cells.
+    # The autofix pass is non-destructive — `cells` still describe the
+    # ORIGINAL execution, so the summary honestly shows the pre-fix state
+    # (a fixed submission reads e.g. "3 cells, 2 errors" + autofix 1/1).
+    # The verified fixed execution (if any) travels separately in
+    # fixed_cells; the pass's private working copy is discarded.
+    fixed_cells_raw = autofix_info.pop("fixed_cells", None)
+
     error_cells = sum(1 for c in exec_result.cells if c.error is not None)
     executed_cells = sum(
         1 for c in exec_result.cells if c.execution_count is not None
@@ -686,6 +697,11 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
             exec_result.cells,
             pre_result.original_cells,
             cell_types,
+        ),
+        fixed_cells=(
+            _cells_to_response(fixed_cells_raw, pre_result.original_cells, cell_types)
+            if fixed_cells_raw
+            else None
         ),
         total_cells=exec_result.total_cells,
         executed_cells=executed_cells,
