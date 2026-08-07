@@ -6,7 +6,9 @@
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import type { LucideIcon } from "@lucide/svelte";
+	import { SvelteMap, SvelteSet } from "svelte/reactivity";
 	import AutofixCard from "./autofix-card.svelte";
+	import { cellDelta } from "$lib/utils/cell-diff.js";
 	import { renderMarkdown, highlightCode } from "$lib/utils/markdown.js";
 	import "highlight.js/styles/github-dark.min.css";
 
@@ -20,9 +22,56 @@
 		existingNotes?: string;
 		/** Forwarded to AutofixCard: top-level notes changed after a save. */
 		onNotesSaved?: (notes: string) => void;
+		/**
+		 * Verified fixed execution from the automatic autofix stage, aligned
+		 * by index. The original `cells` are never modified — this is the
+		 * opt-in derived view (student work stays authentic).
+		 */
+		fixedCells?: readonly CellInfo[] | null;
+		/**
+		 * Ephemeral per-cell view set: indices currently showing the fixed
+		 * version. The PAGE owns this (sticky counter + reset); when absent
+		 * the component keeps its own local set. Never persisted.
+		 */
+		fixedView?: SvelteSet<number>;
 	}
 
-	let { cells, submissionId, assignmentId, existingNotes = "", onNotesSaved }: Props = $props();
+	let {
+		cells,
+		submissionId,
+		assignmentId,
+		existingNotes = "",
+		onNotesSaved,
+		fixedCells = null,
+		fixedView,
+	}: Props = $props();
+
+	/** Local view set when the page does not pass one down. */
+	let localFixedView = $state(new SvelteSet<number>());
+	/** Which cells show the fixed version (page-owned or local). */
+	const activeFixedView = $derived(fixedView ?? localFixedView);
+	/** Cell index -> verified fixed cell (aligned with `cells`). */
+	const fixedByIndex = $derived(new SvelteMap(fixedCells?.map((c) => [c.index, c]) ?? []));
+	/** Per-cell open/closed state of the delta block (view state, ephemeral). */
+	let openDeltas = $state(new SvelteSet<number>());
+
+	/** Toggle a cell between original and fixed view (mutates the view set). */
+	function toggleFixed(index: number): void {
+		if (activeFixedView.has(index)) {
+			activeFixedView.delete(index);
+		} else {
+			activeFixedView.add(index);
+		}
+	}
+
+	/** Toggle the delta block for a cell. */
+	function toggleDelta(index: number): void {
+		if (openDeltas.has(index)) {
+			openDeltas.delete(index);
+		} else {
+			openDeltas.add(index);
+		}
+	}
 
 	/** Line-number gutter for a code cell. */
 	function lineNumbers(source: string): number[] {
@@ -75,6 +124,9 @@
 	{#each cells as cell (cell.index)}
 		{@const marker = markerConfig[cell.marker] ?? markerConfig.different}
 		{@const showMarker = cell.marker === "error" || hasComparison}
+		{@const fixed = fixedByIndex.get(cell.index)}
+		{@const showFixed = fixed !== undefined && activeFixedView.has(cell.index)}
+		{@const delta = fixed !== undefined ? cellDelta(cell, fixed) : null}
 		<div
 			class="cell-card {cell.marker === 'error'
 				? 'cell-error'
@@ -82,7 +134,7 @@
 					? 'cell-questionable'
 					: cell.marker === 'same'
 						? 'cell-same'
-						: ''}"
+						: ''}{showFixed ? ' cell-autofixed' : ''}"
 		>
 			<div class="cell-header">
 				<span class="cell-num">Cell {cell.index + 1}</span>
@@ -96,23 +148,70 @@
 						{marker.label}
 					</span>
 				{/if}
+				{#if fixed}
+					<button
+						type="button"
+						class="cell-toggle"
+						onclick={() => toggleFixed(cell.index)}
+					>
+						{showFixed ? "Show original" : "Show auto-fixed"}
+					</button>
+				{/if}
+				{#if delta}
+					<button
+						type="button"
+						class="cell-toggle"
+						onclick={() => toggleDelta(cell.index)}
+					>
+						{openDeltas.has(cell.index) ? "Hide delta" : "Show delta"}
+					</button>
+				{/if}
 			</div>
 			{#if cell.type === "code"}
-				<div class="cell-code">
-					<div class="code-gutter" aria-hidden="true">
-						{#each lineNumbers(cell.source) as n (n)}<span>{n}</span>{/each}
+				{#if showFixed && fixed}
+					<!-- Loud, always-visible marker: the teacher must never
+					     mistake the derived view for student work. -->
+					<div class="autofix-strip">
+						<Sparkles size={12} />
+						<span>Auto-fixed — KI-verified fix</span>
+						<button
+							type="button"
+							class="strip-link"
+							onclick={() => activeFixedView.delete(cell.index)}
+						>
+							Show original
+						</button>
 					</div>
-					<pre class="hljs">{@html highlightCode(cell.source)}</pre>
-				</div>
-				{#if cell.error}
-					<div class="cell-error-block">{cell.error}</div>
+					<div class="cell-code">
+						<div class="code-gutter" aria-hidden="true">
+							{#each lineNumbers(fixed.source) as n (n)}<span>{n}</span>{/each}
+						</div>
+						<pre class="hljs">{@html highlightCode(fixed.source)}</pre>
+					</div>
+					{#if fixed.error}
+						<div class="cell-error-block">{fixed.error}</div>
+					{/if}
+					{#if fixed.output}
+						<div class="cell-output">{fixed.output}</div>
+					{/if}
+				{:else}
+					<div class="cell-code">
+						<div class="code-gutter" aria-hidden="true">
+							{#each lineNumbers(cell.source) as n (n)}<span>{n}</span>{/each}
+						</div>
+						<pre class="hljs">{@html highlightCode(cell.source)}</pre>
+					</div>
+					{#if cell.error}
+						<div class="cell-error-block">{cell.error}</div>
+					{/if}
+					{#if cell.output}
+						<div class="cell-output">{cell.output}</div>
+					{/if}
 				{/if}
-				{#if cell.output}
-					<div class="cell-output">{cell.output}</div>
-				{/if}
-				{#if cell.error}
+				{#if cell.error && fixed === undefined}
 					<!-- Autofix card (P3-3): suggestion on demand, teacher writes
-					     the final note. Only for failing code cells. -->
+					     the final note. Only for failing code cells WITHOUT a
+					     pipeline-verified fix (that cell has the toggle instead). -->
 					<AutofixCard
 						cellIndex={cell.index}
 						source={cell.source}
@@ -125,6 +224,27 @@
 				{/if}
 			{:else}
 				<div class="cell-markdown">{@html renderMarkdown(cell.source)}</div>
+			{/if}
+			{#if delta && openDeltas.has(cell.index)}
+				<div class="delta-block">
+					<div class="delta-title">What the auto-fix changed</div>
+					{#each delta.changedLines as change (change.oldLine + change.newLine)}
+						<div class="delta-line">
+							<span class="delta-old">- {change.oldLine}</span>
+							<span class="delta-new">+ {change.newLine}</span>
+						</div>
+					{/each}
+					<div class="delta-state">
+						Before: {delta.errorBefore || "no error"} · After: {delta.errorAfter ||
+							"no error"}
+					</div>
+					{#if delta.outputBefore || delta.outputAfter}
+						<div class="delta-state">
+							Output before: {delta.outputBefore || "(none)"} → after: {delta.outputAfter ||
+								"(none)"}
+						</div>
+					{/if}
+				</div>
 			{/if}
 		</div>
 	{/each}
@@ -163,6 +283,13 @@
 	.cell-card.cell-same {
 		border-left: 3px solid var(--info);
 	}
+	/* Loud frame for the derived (auto-fixed) view — the teacher must never
+	   mistake it for student work. */
+	.cell-card.cell-autofixed {
+		border: 2px solid var(--warning);
+		border-left: 3px solid var(--warning);
+		box-shadow: 0 0 0 1px color-mix(in oklch, var(--warning) 40%, transparent);
+	}
 	.cell-header {
 		display: flex;
 		align-items: center;
@@ -178,6 +305,47 @@
 	}
 	.cell-type {
 		color: var(--muted-foreground);
+	}
+	.cell-toggle {
+		margin-left: 8px;
+		padding: 1px 8px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: var(--card);
+		color: var(--foreground);
+		font-size: 11px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.cell-toggle:first-of-type {
+		margin-left: auto;
+	}
+	.cell-toggle:hover {
+		border-color: var(--accent);
+		color: var(--accent);
+	}
+	/* In-cell strip — scrolls with the cell, never visible without it. */
+	.autofix-strip {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 5px 12px;
+		background: color-mix(in oklch, var(--warning) 18%, transparent);
+		color: var(--warning);
+		font-size: 11px;
+		font-weight: 600;
+		border-bottom: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+	}
+	.strip-link {
+		margin-left: auto;
+		background: none;
+		border: none;
+		padding: 0;
+		color: inherit;
+		font-size: inherit;
+		font-weight: 600;
+		text-decoration: underline;
+		cursor: pointer;
 	}
 	.cell-marker {
 		margin-left: auto;
@@ -252,6 +420,35 @@
 		padding: 10px 12px;
 		font-size: 13px;
 		line-height: 1.5;
+		white-space: pre-wrap;
+	}
+	.delta-block {
+		padding: 8px 12px;
+		background: color-mix(in oklch, var(--info) 6%, var(--bg));
+		border-top: 1px solid var(--border);
+		font-size: 12px;
+	}
+	.delta-title {
+		font-weight: 600;
+		margin-bottom: 6px;
+	}
+	.delta-line {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 2px 0;
+		font-family: ui-monospace, "SFMono-Regular", monospace;
+		white-space: pre-wrap;
+	}
+	.delta-old {
+		color: var(--destructive);
+	}
+	.delta-new {
+		color: var(--success);
+	}
+	.delta-state {
+		margin-top: 6px;
+		color: var(--muted-foreground);
 		white-space: pre-wrap;
 	}
 </style>
