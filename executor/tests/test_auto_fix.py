@@ -1,13 +1,14 @@
 """Phase 3c tests: autofix orchestration + /auto-fix + whole-notebook verify.
 
-Covers (mocked ki_connect): valid fix applied with a visible provenance
-comment, dependent-cell cascade (first error fixed → downstream resolves),
-revert-on-failure (never leave a half-fixed notebook), skip cases, endpoint
-response shapes, and the single-cell re-run endpoint. The automatic pass
-re-runs the WHOLE notebook after each applied fix — a single-cell re-run
-loses kernel state built by earlier cells (`_00` regression). Re-run
-endpoint tests execute real kernels like the Phase 3b suite; autofix-LLM
-calls are always mocked.
+Covers (mocked ki_connect): the NON-DESTRUCTIVE automatic pass (input
+cells are never mutated; a verified clean fixed execution is returned
+separately as ``fixed_cells``, otherwise None — the teacher only ever sees
+the original + a proposal), dependent-cell cascade (first error fixed →
+downstream resolves), skip cases, endpoint response shapes, and the
+single-cell re-run endpoint. The automatic pass re-runs the WHOLE notebook
+after each applied fix — a single-cell re-run loses kernel state built by
+earlier cells (`_00` regression). Re-run endpoint tests execute real
+kernels like the Phase 3b suite; autofix-LLM calls are always mocked.
 """
 
 from __future__ import annotations
@@ -181,7 +182,7 @@ def test_is_valid_python_deterministic_sanity_check():
 
 
 # ---------------------------------------------------------------------------
-# apply_autofix_pass — automatic pipeline autofix stage
+# apply_autofix_pass — automatic pipeline autofix stage (NON-DESTRUCTIVE)
 # ---------------------------------------------------------------------------
 
 
@@ -199,8 +200,8 @@ def _error_cell(index: int, source: str = "x = 1/0") -> CellOutput:
 def _fake_rerun(clean: bool = True, errors_per_pass: list[int] | None = None):
     """Fake ``execute_notebook`` for the whole-notebook re-run.
 
-    Reads the temp notebook the pass wrote (so the provenance comment is
-    reflected in the re-run cells) and returns an ``ExecutionResult``.
+    Reads the temp notebook the pass wrote (so an applied fix is reflected
+    in the re-run cells) and returns an ``ExecutionResult``.
     ``errors_per_pass`` overrides ``clean`` with per-call error counts
     (capped at 1 error cell per run).
     """
@@ -237,77 +238,87 @@ def _fake_rerun(clean: bool = True, errors_per_pass: list[int] | None = None):
     return _fn
 
 
-def test_autofix_pass_fixes_cell_and_reruns_whole_notebook(monkeypatch):
-    fake = _fake_rerun(clean=True)
-    monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
-    cells = [_error_cell(0)]
-
-    info = apply_autofix_pass(
-        cells,
+def _fixed(original: list[CellOutput]) -> dict:
+    """Run the pass and return its info dict (attempts/succeeded/fixed_cells)."""
+    return apply_autofix_pass(
+        original,
         ki_client=_mock_ki_client(),
-        cell_types={0: "code"},
+        cell_types={i: "code" for i in range(len(original))},
     )
 
-    assert info == {"attempts": 1, "succeeded": 1}
-    assert cells[0].error is None
-    assert cells[0].output_text == "ok"
+
+def test_autofix_pass_returns_fixed_cells_without_mutating(monkeypatch):
+    monkeypatch.setattr(auto_fix_module, "execute_notebook", _fake_rerun(clean=True))
+    original = [_error_cell(0)]
+
+    info = _fixed(original)
+
+    assert info["attempts"] == 1 and info["succeeded"] == 1
+    assert info["fixed_cells"] is not None
+    fixed = {c.cell_index: c for c in info["fixed_cells"]}
+    assert fixed[0].error is None
+    assert fixed[0].output_text == "ok"
+    # ORIGINALS untouched — the incident's core guarantee.
+    assert original[0].error == "ZeroDivisionError: division by zero"
+    assert original[0].source == "x = 1/0"
 
 
-def test_autofix_pass_adds_visible_provenance_comment(monkeypatch):
-    fake = _fake_rerun(clean=True)
-    monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
-    cells = [_error_cell(0, source="y = (x + 1")]
+def test_autofix_pass_no_comment_in_fixed_cells(monkeypatch):
+    monkeypatch.setattr(auto_fix_module, "execute_notebook", _fake_rerun(clean=True))
+    original = [_error_cell(0, source="y = (x + 1")]
 
-    apply_autofix_pass(
-        cells,
+    info = apply_autofix_pass(
+        original,
         ki_client=_mock_ki_client({"suggestion": "y = (x + 1)", "fix_type": "syntax_fix"}),
         cell_types={0: "code"},
     )
 
-    # The fix is applied WITH a visible comment — never a silent mutation
-    # (the `_00` regression: "July" removed with no comment).
-    assert cells[0].source.startswith("# auto-fix: syntax_fix repaired")
-    assert "y = (x + 1)" in cells[0].source
+    src = info["fixed_cells"][0].source
+    assert not src.startswith("# auto-fix:")  # comments are gone
+    assert "y = (x + 1)" in src
+    # Original still authentic — the fix lives in fixed_cells, not in cells.
+    assert original[0].source == "y = (x + 1"
 
 
-def test_autofix_pass_reverts_when_rerun_still_failing(monkeypatch):
-    fake = _fake_rerun(clean=False)  # re-run still errors
-    monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
-    cells = [_error_cell(0)]
+def test_autofix_pass_no_fixed_cells_when_rerun_still_failing(monkeypatch):
+    monkeypatch.setattr(auto_fix_module, "execute_notebook", _fake_rerun(clean=False))
+    original = [_error_cell(0)]
 
-    info = apply_autofix_pass(cells, ki_client=_mock_ki_client(), cell_types={0: "code"})
+    info = _fixed(original)
 
-    assert info == {"attempts": 1, "succeeded": 0}
-    # Reverted: the teacher sees the authentic student state, not a
-    # half-fixed cell (the `_00` worst-of-both-worlds state).
-    assert cells[0].error == "ZeroDivisionError: division by zero"
-    assert not cells[0].source.startswith("# auto-fix:")
-
-
-def test_autofix_pass_reverts_when_rerun_makes_errors_worse(monkeypatch):
-    fake = _fake_rerun(clean=False, errors_per_pass=[2])
-    monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
-    cells = [_error_cell(0)]
-
-    info = apply_autofix_pass(cells, ki_client=_mock_ki_client(), cell_types={0: "code"})
-
-    assert info == {"attempts": 1, "succeeded": 0}
-    assert cells[0].error == "ZeroDivisionError: division by zero"
-    assert not cells[0].source.startswith("# auto-fix:")
+    assert info["attempts"] == 1 and info["succeeded"] == 0
+    # No clean fixed version — the teacher sees only the original.
+    assert info["fixed_cells"] is None
+    assert original[0].error == "ZeroDivisionError: division by zero"
+    assert original[0].source == "x = 1/0"
 
 
-def test_autofix_pass_reverts_when_no_clean_fix_within_passes(monkeypatch):
+def test_autofix_pass_no_fixed_cells_when_rerun_makes_errors_worse(monkeypatch):
+    monkeypatch.setattr(
+        auto_fix_module, "execute_notebook", _fake_rerun(clean=False, errors_per_pass=[2])
+    )
+    original = [_error_cell(0)]
+
+    info = _fixed(original)
+
+    assert info["attempts"] == 1 and info["succeeded"] == 0
+    assert info["fixed_cells"] is None
+    assert original[0].error == "ZeroDivisionError: division by zero"
+
+
+def test_autofix_pass_no_fixed_cells_when_no_clean_fix_within_passes(monkeypatch):
     # Every re-run leaves an error → the same cell is attempted again, then
-    # the loop stops and reverts everything.
-    fake = _fake_rerun(clean=False, errors_per_pass=[1, 1])
-    monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
-    cells = [_error_cell(0)]
+    # the loop stops. No clean fixed version exists.
+    monkeypatch.setattr(
+        auto_fix_module, "execute_notebook", _fake_rerun(clean=False, errors_per_pass=[1, 1])
+    )
+    original = [_error_cell(0)]
 
-    info = apply_autofix_pass(cells, ki_client=_mock_ki_client(), cell_types={0: "code"})
+    info = _fixed(original)
 
-    assert info == {"attempts": 1, "succeeded": 0}
-    assert cells[0].error == "ZeroDivisionError: division by zero"
-    assert not cells[0].source.startswith("# auto-fix:")
+    assert info["attempts"] == 1 and info["succeeded"] == 0
+    assert info["fixed_cells"] is None
+    assert original[0].error == "ZeroDivisionError: division by zero"
 
 
 def test_autofix_pass_fixes_first_error_only_cascade(monkeypatch):
@@ -320,62 +331,68 @@ def test_autofix_pass_fixes_first_error_only_cascade(monkeypatch):
     fake = _fake_rerun(clean=True)
     monkeypatch.setattr(auto_fix_module, "execute_notebook", fake)
     client = _mock_ki_client()
-    cells = [
+    original = [
         _error_cell(0, source="y = (x + 1"),
         _error_cell(1, source="print(y)"),
     ]
 
     info = apply_autofix_pass(
-        cells,
+        original,
         ki_client=client,
         cell_types={0: "code", 1: "code"},
     )
 
-    assert info == {"attempts": 1, "succeeded": 1}
+    assert info["attempts"] == 1 and info["succeeded"] == 1
+    assert info["fixed_cells"] is not None
     assert client.autofix.call_count == 1  # only the root cause was fixed
+    # Originals untouched.
+    assert original[0].source == "y = (x + 1"
+    assert original[0].error is not None
+    assert original[1].source == "print(y)"
+    assert original[1].error is not None
 
 
 def test_autofix_pass_skips_when_suggestion_not_usable(monkeypatch):
     rerun = Mock()
     monkeypatch.setattr(auto_fix_module, "execute_notebook", rerun)
-    cells = [_error_cell(0)]
+    original = [_error_cell(0)]
 
     info = apply_autofix_pass(
-        cells,
+        original,
         ki_client=_mock_ki_client(INVALID_FIX),  # syntax-invalid → no patch
         cell_types={0: "code"},
     )
 
-    assert info == {"attempts": 0, "succeeded": 0}
+    assert info == {"attempts": 0, "succeeded": 0, "fixed_cells": None}
     rerun.assert_not_called()
-    assert cells[0].error == "ZeroDivisionError: division by zero"
+    assert original[0].error == "ZeroDivisionError: division by zero"
 
 
 def test_autofix_pass_skips_without_ki_client(monkeypatch):
     rerun = Mock()
     monkeypatch.setattr(auto_fix_module, "execute_notebook", rerun)
-    cells = [_error_cell(0)]
+    original = [_error_cell(0)]
 
-    info = apply_autofix_pass(cells, ki_client=None, cell_types={0: "code"})
+    info = apply_autofix_pass(original, ki_client=None, cell_types={0: "code"})
 
-    assert info == {"attempts": 0, "succeeded": 0}
+    assert info == {"attempts": 0, "succeeded": 0, "fixed_cells": None}
     rerun.assert_not_called()
 
 
 def test_autofix_pass_skips_markdown_cells(monkeypatch):
     rerun = Mock()
     monkeypatch.setattr(auto_fix_module, "execute_notebook", rerun)
-    cells = [_error_cell(0)]
+    original = [_error_cell(0)]
 
     info = apply_autofix_pass(
-        cells,
+        original,
         ki_client=_mock_ki_client(),
         cell_types={0: "markdown"},
     )
 
-    assert info == {"attempts": 0, "succeeded": 0}
+    assert info == {"attempts": 0, "succeeded": 0, "fixed_cells": None}
     rerun.assert_not_called()
-    assert cells[0].error == "ZeroDivisionError: division by zero"
+    assert original[0].error == "ZeroDivisionError: division by zero"
 
 
 def test_autofix_pass_skips_healthy_cells(monkeypatch):
@@ -389,7 +406,7 @@ def test_autofix_pass_skips_healthy_cells(monkeypatch):
         cell_types={0: "code"},
     )
 
-    assert info == {"attempts": 0, "succeeded": 0}
+    assert info == {"attempts": 0, "succeeded": 0, "fixed_cells": None}
     rerun.assert_not_called()
 
 

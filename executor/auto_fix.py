@@ -11,10 +11,10 @@ This module orchestrates that call:
 - returns ``{"skipped": true}`` when KI Connect is unavailable or returns
   nothing usable
 
-The automatic stage (``apply_autofix_pass``) applies a fix with a visible
-``# auto-fix:`` provenance comment and re-runs the WHOLE notebook in a fresh
-sandbox, so kernel state built by earlier cells is preserved; if no clean
-state is reached it reverts to the original student cells. The teacher-driven
+The automatic stage (``apply_autofix_pass``) is NON-DESTRUCTIVE: it
+iterates on a private working copy and returns the verified fixed
+execution (``fixed_cells``) separately when the whole-notebook re-run
+comes back clean; the input cells are never modified. The teacher-driven
 single-cell re-run endpoint lives in ``app.py`` (``/execute/autofix-run``).
 
 Usage:
@@ -96,34 +96,6 @@ def _enrich_context(
     return enriched
 
 
-def _build_autofix_comment(
-    fix_type: str | None,
-    original_source: str,
-    patched_source: str,
-) -> str:
-    """Visible provenance comment prepended to a fixed cell.
-
-    A silent mutation is never acceptable — the teacher must see that the
-    pipeline changed the cell and what changed (regression: the `_00`
-    incident where a stray ``July`` token was removed with no comment).
-    """
-    orig_lines = [ln.strip() for ln in str(original_source).splitlines()]
-    patched_lines = [ln.strip() for ln in str(patched_source).splitlines()]
-    changed = ""
-    for a, b in zip(orig_lines, patched_lines):
-        if a != b:
-            changed = a or b
-            break
-    if not changed and len(orig_lines) != len(patched_lines):
-        changed = (patched_lines[0] if patched_lines else "") or (
-            orig_lines[0] if orig_lines else ""
-        )
-    label = fix_type or "error"
-    if changed:
-        return f"# auto-fix: {label} repaired — changed: {changed[:80]}"
-    return f"# auto-fix: {label} repaired by KI suggestion"
-
-
 def _rebuild_notebook(
     cells: list[CellOutput],
     cell_types: dict[int, str] | None,
@@ -194,38 +166,36 @@ def apply_autofix_pass(
     available_paths: set[str] | None = None,
     max_passes: int = PASS_LIMIT,
     time_budget_seconds: int | None = None,
-) -> dict[str, int]:
-    """Automatic pipeline autofix stage (pipeline step 4), whole-notebook verify.
+) -> dict[str, Any]:
+    """Automatic pipeline autofix stage (pipeline step 4) — NON-DESTRUCTIVE.
 
-    Runs after notebook execution. Loop (max ``max_passes``):
+    The input ``cells`` (the student's original execution) is NEVER
+    modified. The stage verifies fixes on a private working copy:
 
     1. Take the FIRST errored code cell — an early failure poisons every
-       downstream cell, so fixing it first resolves cascading errors without
-       wasting fixes on symptoms.
+       downstream cell, so fixing it first resolves cascading errors
+       without wasting fixes on symptoms.
     2. Ask KI Connect for a suggestion; skip when unavailable/invalid.
-    3. Apply it to the cell with a visible ``# auto-fix:`` provenance
-       comment (the student's original stays in ``original_source``).
+    3. Apply it to the working copy (no comment, no file writes).
     4. Re-run the WHOLE notebook end-to-end (fresh sandbox, all cells) so
        kernel state from earlier cells is present.
-    5. Clean re-run → succeeded. More errors than before → revert. Same or
-       fewer errors → next pass fixes the next root cause.
+    5. Clean re-run → ``fixed_cells`` = the verified fixed execution.
+       More errors than before → stop. Same/fewer errors → next pass.
 
-    If no clean state is reached (passes/budget/skip), ALL applied fixes are
-    reverted so the teacher sees the authentic student work — never a
-    half-fixed, silently-mutated notebook.
-
-    Returns ``{"attempts": n, "succeeded": 0|1}`` where ``attempts`` counts
-    fixes applied and ``succeeded`` is 1 iff the final notebook is clean.
+    Returns ``{"attempts": n, "succeeded": 0|1, "fixed_cells": [...] | None}``
+    where ``fixed_cells`` is the verified fixed execution when the notebook
+    ran clean, else None — the teacher only ever sees the original plus a
+    proposal, never a half-fixed artifact.
     """
     if ki_client is None or not ki_client.api_key:
         logger.info("autofix pass skipped — KI Connect unavailable")
-        return {"attempts": 0, "succeeded": 0}
+        return {"attempts": 0, "succeeded": 0, "fixed_cells": None}
 
     types = cell_types or {}
-    original_state = copy.deepcopy(cells)
+    working = copy.deepcopy(cells)  # iteration state; originals untouched
     attempts = 0
     succeeded = 0
-    reverted = False
+    fixed_cells: list[CellOutput] | None = None
     attempted_indices: set[int] = set()
     started = time.monotonic()
 
@@ -234,14 +204,13 @@ def apply_autofix_pass(
             time.monotonic() - started
         ) > time_budget_seconds:
             logger.warning(
-                "auto-fix: time budget (%ds) exceeded — reverting", time_budget_seconds
+                "auto-fix: time budget (%ds) exceeded", time_budget_seconds
             )
-            reverted = True
             break
 
         errors = [
             c
-            for c in cells
+            for c in working
             if c.error is not None and types.get(c.cell_index, "code") == "code"
         ]
         if not errors:
@@ -253,12 +222,11 @@ def apply_autofix_pass(
                 "auto-fix: cell %d still failing after its fix — stopping",
                 target.cell_index,
             )
-            reverted = True
             break
 
         context = [
             {"type": types.get(c.cell_index, "code"), "source": c.source}
-            for c in cells
+            for c in working
             if c is not target
         ]
         result = autofix_cell(
@@ -274,21 +242,17 @@ def apply_autofix_pass(
                 "auto-fix: cell %d skipped (no usable suggestion)",
                 target.cell_index,
             )
-            reverted = True
             break
 
         attempted_indices.add(target.cell_index)
-        patched = str(result["patched_source"])
-        comment = _build_autofix_comment(
-            result.get("fix_type"), target.source, patched
-        )
-        target.source = f"{comment}\n{patched}"
+        # Apply the fix to the working copy (index-aligned like the re-run).
+        target.source = str(result["patched_source"])
         attempts += 1
 
-        prev_error_count = sum(1 for c in cells if c.error is not None)
+        prev_error_count = sum(1 for c in working if c.error is not None)
         try:
             rerun = _rerun_whole_notebook(
-                cells,
+                working,
                 cell_types=types,
                 assignment_id=assignment_id,
                 data_dir=data_dir,
@@ -297,14 +261,14 @@ def apply_autofix_pass(
             )
         except Exception as e:  # pragma: no cover — kernel failures surface as cells
             logger.warning("auto-fix: whole-notebook re-run failed: %s", e)
-            reverted = True
             break
 
-        cells[:] = rerun.cells
-        new_error_count = sum(1 for c in cells if c.error is not None)
+        working = rerun.cells
+        new_error_count = sum(1 for c in working if c.error is not None)
 
         if new_error_count == 0:
             succeeded = 1
+            fixed_cells = working
             logger.info(
                 "auto-fix: pass %d — cell %d fixed; full re-run clean (%d errors → 0)",
                 pass_no,
@@ -314,12 +278,11 @@ def apply_autofix_pass(
             break
         if new_error_count > prev_error_count:
             logger.warning(
-                "auto-fix: pass %d made errors worse (%d → %d) — reverting",
+                "auto-fix: pass %d made errors worse (%d → %d) — no fixed version",
                 pass_no,
                 prev_error_count,
                 new_error_count,
             )
-            reverted = True
             break
         logger.info(
             "auto-fix: pass %d — cell %d fixed; %d error(s) remain",
@@ -328,17 +291,11 @@ def apply_autofix_pass(
             new_error_count,
         )
 
-    if succeeded == 0 and not reverted:
-        logger.warning(
-            "auto-fix: no clean fix within %d passes — reverting", max_passes
-        )
-        reverted = True
+    if succeeded == 0:
+        logger.info("auto-fix: no clean fixed version — original cells only")
+        fixed_cells = None
 
-    if reverted:
-        cells[:] = original_state
-        logger.info("auto-fix: reverted to original student cells")
-
-    return {"attempts": attempts, "succeeded": succeeded}
+    return {"attempts": attempts, "succeeded": succeeded, "fixed_cells": fixed_cells}
 
 
 def autofix_cell(
