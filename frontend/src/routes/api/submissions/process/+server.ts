@@ -25,6 +25,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { getExecutorClient } from "$lib/server/executor-client";
 import { listSubmissions, updateStatus, upsertSubmission } from "$lib/server/metadata";
+import { beginProcessRun, endProcessRun, updateProcessRun } from "$lib/server/process-progress";
 import {
 	deriveCellSummary,
 	setResult,
@@ -91,68 +92,88 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	const settings = await loadSettings();
 	const results: Array<{ studentId: string; success: boolean; error: string | null }> = [];
 	const startedAt = Date.now();
+	let autofixAttempts = 0;
+	let autofixSucceeded = 0;
 
-	for (const target of targets) {
-		// pending/error -> executing so the dashboard shows the run in progress.
-		await updateStatus(assignmentId, target.id, "executing");
+	beginProcessRun(assignmentId, targets.length);
+	try {
+		for (const target of targets) {
+			// pending/error -> executing so the dashboard shows the run in progress.
+			await updateStatus(assignmentId, target.id, "executing");
+			updateProcessRun({
+				currentStudentId: target.id,
+				currentStartedAt: Date.now(),
+			});
 
-		try {
-			const execution = await client.executeNotebook(
-				{
-					notebookPath: target.notebookPath,
-					// assignmentContext intentionally omitted — the per-submission
-					// route supplies it; a batch run stays deterministic.
-				},
-				undefined,
-				// A batch row gets the per-notebook budget (settings), not the
-				// tighter single-request default — slower machines need it.
-				{ requestTimeoutMs: settings.executor.notebookTimeoutMs },
-			);
-			const duration = execution.durationSeconds;
+			try {
+				const execution = await client.executeNotebook(
+					{
+						notebookPath: target.notebookPath,
+						// assignmentContext intentionally omitted — the per-submission
+						// route supplies it; a batch run stays deterministic.
+					},
+					undefined,
+					// A batch row gets the per-notebook budget (settings), not the
+					// tighter single-request default — slower machines need it.
+					{ requestTimeoutMs: settings.executor.notebookTimeoutMs },
+				);
+				const duration = execution.durationSeconds;
+				autofixAttempts += execution.autofix.attempts;
+				autofixSucceeded += execution.autofix.succeeded;
 
-			if (execution.success) {
-				await updateStatus(assignmentId, target.id, "executed");
-				const stored: StoredExecutionResult = {
-					success: true,
-					notebookPath: target.notebookPath,
-					cells: execution.cells,
-					totalCells: execution.totalCells,
-					executedCells: execution.executedCells,
-					errorCells: execution.errorCells,
-					durationSeconds: duration,
-					preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
-					modifiedFiles: execution.modifiedFiles ?? [],
-				};
-				await setResult(assignmentId, target.id, stored);
-				await upsertSubmission(assignmentId, target.id, {
-					cellSummary: deriveCellSummary(stored),
-					error: null,
-				});
-				results.push({ studentId: target.id, success: true, error: null });
-			} else {
-				const message = firstCellError(execution.cells) ?? "Execution failed";
+				if (execution.success) {
+					await updateStatus(assignmentId, target.id, "executed");
+					const stored: StoredExecutionResult = {
+						success: true,
+						notebookPath: target.notebookPath,
+						cells: execution.cells,
+						totalCells: execution.totalCells,
+						executedCells: execution.executedCells,
+						errorCells: execution.errorCells,
+						durationSeconds: duration,
+						preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+						modifiedFiles: execution.modifiedFiles ?? [],
+						autofix: execution.autofix,
+					};
+					await setResult(assignmentId, target.id, stored);
+					await upsertSubmission(assignmentId, target.id, {
+						cellSummary: deriveCellSummary(stored),
+						error: null,
+					});
+					results.push({ studentId: target.id, success: true, error: null });
+				} else {
+					const message = firstCellError(execution.cells) ?? "Execution failed";
+					await updateStatus(assignmentId, target.id, "error");
+					await upsertSubmission(assignmentId, target.id, { error: message });
+					await setResult(assignmentId, target.id, {
+						success: false,
+						notebookPath: target.notebookPath,
+						cells: execution.cells,
+						totalCells: execution.totalCells,
+						executedCells: execution.executedCells,
+						errorCells: execution.errorCells,
+						durationSeconds: duration,
+						preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+						modifiedFiles: execution.modifiedFiles ?? [],
+						error: message,
+						autofix: execution.autofix,
+					});
+					results.push({ studentId: target.id, success: false, error: message });
+				}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
 				await updateStatus(assignmentId, target.id, "error");
 				await upsertSubmission(assignmentId, target.id, { error: message });
-				await setResult(assignmentId, target.id, {
-					success: false,
-					notebookPath: target.notebookPath,
-					cells: execution.cells,
-					totalCells: execution.totalCells,
-					executedCells: execution.executedCells,
-					errorCells: execution.errorCells,
-					durationSeconds: duration,
-					preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
-					modifiedFiles: execution.modifiedFiles ?? [],
-					error: message,
-				});
 				results.push({ studentId: target.id, success: false, error: message });
 			}
-		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
-			await updateStatus(assignmentId, target.id, "error");
-			await upsertSubmission(assignmentId, target.id, { error: message });
-			results.push({ studentId: target.id, success: false, error: message });
+			updateProcessRun({
+				done: results.length,
+				autofixAttempts,
+				autofixSucceeded,
+			});
 		}
+	} finally {
+		endProcessRun();
 	}
 
 	const totalDurationSeconds = (Date.now() - startedAt) / 1000;
@@ -163,6 +184,8 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		succeeded: results.filter((r) => r.success).length,
 		failed: results.filter((r) => !r.success).length,
 		totalDurationSeconds,
+		autofixAttempts,
+		autofixSucceeded,
 		results,
 	});
 }

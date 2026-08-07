@@ -79,7 +79,47 @@ export interface BatchProcessResponse {
 	succeeded: number;
 	failed: number;
 	totalDurationSeconds: number;
+	/** Automatic autofix re-runs across the whole run. */
+	autofixAttempts: number;
+	/** Autofix re-runs that finished without an error. */
+	autofixSucceeded: number;
 	results: BatchItemResult[];
+}
+
+/** Live progress of the current batch run (GET /api/submissions/process/status). */
+export interface ProcessProgress {
+	/** True while a batch process run is in flight. */
+	running: boolean;
+	assignmentId: string | null;
+	/** Epoch ms when the run started. */
+	startedAt: number | null;
+	/** Student id of the notebook currently being executed. */
+	currentStudentId: string | null;
+	/** Epoch ms when the current notebook started executing. */
+	currentStartedAt: number | null;
+	/** Notebooks settled (executed or error). */
+	done: number;
+	/** Total notebooks targeted by the run. */
+	total: number;
+	/** Automatic autofix re-runs attempted across the whole run. */
+	autofixAttempts: number;
+	/** Autofix re-runs that finished without an error. */
+	autofixSucceeded: number;
+}
+
+/** One captured executor pipeline log line (GET /api/executor/logs). */
+export interface ExecutorLogEntry {
+	id: number;
+	ts: number;
+	level: string;
+	logger: string;
+	message: string;
+}
+
+/** GET /api/executor/logs response. */
+export interface ExecutorLogsResponse {
+	entries: ExecutorLogEntry[];
+	truncated: boolean;
 }
 
 /** Grading patch accepted by POST /api/submissions/[id]/save (all optional). */
@@ -386,6 +426,16 @@ export async function processSubmission(
 		withAssignment(`/api/submissions/${encodeURIComponent(id)}/process`, assignmentId),
 		{ method: "POST" },
 	);
+}
+
+/** GET /api/submissions/process/status — live progress of the current batch. */
+export async function fetchProcessStatus(): Promise<ProcessProgress> {
+	return requestJson<ProcessProgress>("/api/submissions/process/status");
+}
+
+/** GET /api/executor/logs — recent executor pipeline log lines. */
+export async function fetchExecutorLogs(limit = 200): Promise<ExecutorLogsResponse> {
+	return requestJson<ExecutorLogsResponse>(`/api/executor/logs?limit=${limit}`);
 }
 
 /** POST /api/submissions/[id]/save — persist grading state (rubric/dimensions/notes). */

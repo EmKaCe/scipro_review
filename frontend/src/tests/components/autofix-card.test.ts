@@ -56,9 +56,10 @@ describe("AutofixCard suggestion flow", () => {
 		autofixStore.reset();
 	});
 
-	it("shows unavailable state before a suggestion is requested", () => {
+	it("shows an idle state before a suggestion is requested", () => {
 		renderCard();
-		expect(screen.getByText("Auto-fix unavailable")).toBeTruthy();
+		expect(screen.getByText("Auto-fix")).toBeTruthy();
+		expect(screen.getByText(/No fix requested yet/)).toBeTruthy();
 		expect(screen.getByRole("button", { name: "Suggest fix" })).toBeTruthy();
 	});
 

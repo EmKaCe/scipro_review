@@ -57,6 +57,12 @@ export interface ExecutorPreprocessingInfo {
 	>;
 }
 
+/** Automatic pipeline autofix stage counts (executor wire shape). */
+export interface ExecutorAutofixInfo {
+	attempts: number;
+	succeeded: number;
+}
+
 export interface ExecutorExecuteResponse {
 	success: boolean;
 	notebook_path: string;
@@ -68,6 +74,8 @@ export interface ExecutorExecuteResponse {
 	preprocessing: ExecutorPreprocessingInfo;
 	/** Data files the sandbox detected as modified by the notebook. */
 	modified_files?: string[];
+	/** Automatic autofix stage: cells re-run + fixed (max 1 attempt/cell). */
+	autofix?: ExecutorAutofixInfo;
 }
 
 export interface ExecutorBatchItemResult {
@@ -78,6 +86,8 @@ export interface ExecutorBatchItemResult {
 	error_cells: number;
 	duration_seconds: number;
 	error: string | null;
+	/** Automatic autofix stage counts (absent on old executor versions). */
+	autofix?: ExecutorAutofixInfo;
 }
 
 export interface ExecutorBatchResponse {
@@ -167,6 +177,8 @@ export interface ExecutionResult {
 	durationSeconds: number;
 	preprocessing: PreprocessingSummary;
 	modifiedFiles: string[];
+	/** Automatic autofix stage: cells re-run + fixed during execution. */
+	autofix: { attempts: number; succeeded: number };
 }
 
 export interface BatchItemResult {
@@ -177,6 +189,8 @@ export interface BatchItemResult {
 	errorCells: number;
 	durationSeconds: number;
 	error: string | null;
+	/** Automatic autofix stage counts (absent on old executor versions). */
+	autofix?: { attempts: number; succeeded: number };
 }
 
 export interface BatchExecutionResult {
@@ -231,6 +245,24 @@ export function toWireAutofixRequest(request: AutofixRequest): Record<string, un
 		traceback: request.traceback ?? null,
 		assignment_id: request.assignmentId ?? null,
 	};
+}
+
+// ---------------------------------------------------------------------------
+// Executor pipeline logs (teacher "Pipeline log" panel)
+// ---------------------------------------------------------------------------
+
+/** One captured executor log line (mirrors executor's LogEntry). */
+export interface ExecutorLogEntry {
+	id: number;
+	ts: number;
+	level: "debug" | "info" | "warning" | "error" | "critical" | string;
+	logger: string;
+	message: string;
+}
+
+export interface ExecutorLogsResponse {
+	entries: ExecutorLogEntry[];
+	truncated: boolean;
 }
 
 /** Translate the executor's AutoFixResponse into the frontend shape. */
@@ -426,6 +458,10 @@ export class ExecutorClient {
 				cellEdits: data.preprocessing.cell_edits,
 			},
 			modifiedFiles: data.modified_files ?? [],
+			autofix: {
+				attempts: data.autofix?.attempts ?? 0,
+				succeeded: data.autofix?.succeeded ?? 0,
+			},
 		};
 	}
 
@@ -459,6 +495,9 @@ export class ExecutorClient {
 				errorCells: r.error_cells,
 				durationSeconds: r.duration_seconds,
 				error: r.error,
+				autofix: r.autofix
+					? { attempts: r.autofix.attempts, succeeded: r.autofix.succeeded }
+					: undefined,
 			})),
 			totalNotebooks: data.total_notebooks,
 			succeeded: data.succeeded,
@@ -470,6 +509,15 @@ export class ExecutorClient {
 	/** Executor health check. */
 	async health(): Promise<ExecutorHealth> {
 		return (await this.get("/health")) as ExecutorHealth;
+	}
+
+	/**
+	 * Fetch recent pipeline log entries from the executor's in-memory ring
+	 * buffer (oldest → newest). The dashboard polls this while a batch runs
+	 * so the teacher sees what the pipeline is doing.
+	 */
+	async fetchLogs(limit = 200): Promise<ExecutorLogsResponse> {
+		return (await this.get(`/logs?limit=${limit}`)) as ExecutorLogsResponse;
 	}
 
 	/**

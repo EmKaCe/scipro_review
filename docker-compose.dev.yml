@@ -33,17 +33,19 @@ services:
       - ./data:/app/data:delegated
       # Bind-mount Python source files for uvicorn --reload
       - ./executor/app.py:/app/app.py:delegated
+      - ./executor/auto_fix.py:/app/auto_fix.py:delegated
       - ./executor/ki_connect.py:/app/ki_connect.py:delegated
+      - ./executor/logs.py:/app/logs.py:delegated
       - ./executor/preprocessor.py:/app/preprocessor.py:delegated
       - ./executor/runner.py:/app/runner.py:delegated
-      - ./executor/requirements.txt:/app/requirements.txt:delegated
+      - ./executor/pyproject.toml:/app/pyproject.toml:delegated
     environment:
       - EXECUTOR_LOG_LEVEL=debug
       - EXECUTOR_RELOAD=true
-    # $$ escapes Compose interpolation — $PORT is resolved at container runtime
+    # $$ escapes Compose interpolation — $PORT is resolved at container runtime.
+    # No pip reinstall on startup: the image installs deps at build time and the
+    # bind-mounted sources above feed uvicorn --reload. A dependency change
+    # requires rebuilding the image (docker compose build executor).
     command: >
-      sh -c "
-        pip install --no-cache-dir -r requirements.txt -q &&
-        uvicorn app:app --host 0.0.0.0 --port $$PORT --reload --log-level debug
-      "
+      sh -c "uvicorn app:app --host 0.0.0.0 --port $$PORT --reload --log-level debug"
     restart: no

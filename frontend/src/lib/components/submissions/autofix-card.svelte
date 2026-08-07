@@ -124,7 +124,7 @@
 				? suggestion.skipped
 					? "Auto-fix unavailable"
 					: "Auto-fix attempted"
-				: "Auto-fix unavailable"}
+				: "Auto-fix"}
 		</span>
 		{#if suggestion && !suggestion.skipped}
 			<span
@@ -151,20 +151,22 @@
 	{/if}
 
 	{#if !suggestion}
-		<!-- No suggestion yet (or the request is in flight). -->
+		<!-- No request yet: the card is idle, not failed. -->
 		{#if requesting}
 			<div class="autofix-note">
 				<LoaderCircle size={12} class="spin" />
 				<span>Asking the fix service…</span>
 			</div>
 		{:else}
-			<div class="autofix-note">The fix service was not reachable for this cell.</div>
+			<div class="autofix-note">
+				No fix requested yet — click "Suggest fix" to ask the fix service.
+			</div>
 			<div class="autofix-footer">
 				<Button variant="outline" size="xs" onclick={handleSuggest}>Suggest fix</Button>
 			</div>
 		{/if}
 	{:else if suggestion.skipped}
-		<!-- Service reachable but returned nothing usable. -->
+		<!-- A request was made and the service returned nothing usable. -->
 		<div class="autofix-note">The fix service was not reachable for this cell.</div>
 		<div class="autofix-footer">
 			<Button variant="outline" size="xs" onclick={handleSuggest} disabled={requesting}>

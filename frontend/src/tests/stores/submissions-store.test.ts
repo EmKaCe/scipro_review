@@ -94,6 +94,7 @@ function executionResponse(record: SubmissionMeta) {
 			llmAnalysis: false,
 		},
 		modifiedFiles: [],
+		autofix: { attempts: 0, succeeded: 0 },
 		record,
 	};
 }

@@ -627,3 +627,71 @@ describe("base URL resolution", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// /execute — autofix info translation
+// ---------------------------------------------------------------------------
+
+describe("executeNotebook — autofix info", () => {
+	it("translates the automatic autofix stage counts", async () => {
+		const wire = wireExecuteResponse();
+		wire.autofix = { attempts: 2, succeeded: 1 };
+		fetchMock.mockResolvedValue(jsonResponse(wire));
+
+		const result = await client().executeNotebook({
+			notebookPath: "submissions/soil/2026SS_03.ipynb",
+		});
+
+		expect(result.autofix).toEqual({ attempts: 2, succeeded: 1 });
+	});
+
+	it("defaults to zero counts when the executor omits the field", async () => {
+		fetchMock.mockResolvedValue(jsonResponse(wireExecuteResponse()));
+
+		const result = await client().executeNotebook({
+			notebookPath: "submissions/soil/2026SS_03.ipynb",
+		});
+
+		expect(result.autofix).toEqual({ attempts: 0, succeeded: 0 });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// /logs — pipeline log fetch
+// ---------------------------------------------------------------------------
+
+describe("fetchLogs", () => {
+	it("GETs /logs with the limit and returns the entries", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				entries: [
+					{
+						id: 1,
+						ts: 1000,
+						level: "info",
+						logger: "runner",
+						message: "Executing: x.ipynb",
+					},
+					{
+						id: 2,
+						ts: 1001,
+						level: "warning",
+						logger: "auto_fix",
+						message: "still failing",
+					},
+				],
+				truncated: false,
+			}),
+		);
+
+		const logs = await client().fetchLogs(50);
+
+		expect(fetchMock).toHaveBeenCalledWith(
+			"http://executor.test/logs?limit=50",
+			expect.objectContaining({ method: "GET" }),
+		);
+		expect(logs.entries).toHaveLength(2);
+		expect(logs.entries[1].logger).toBe("auto_fix");
+		expect(logs.truncated).toBe(false);
+	});
+});

@@ -31,7 +31,8 @@ from pydantic import BaseModel
 import time as _time
 
 from ki_connect import KiConnectClient
-from auto_fix import autofix_cell, is_valid_python
+from auto_fix import apply_autofix_pass, autofix_cell, is_valid_python
+from logs import install as install_log_buffer, snapshot as logs_snapshot, total as logs_total
 from preprocessor import PreprocessingResult, preprocess_notebook
 from runner import (
     _DATA_EXTENSIONS,
@@ -47,6 +48,7 @@ logging.basicConfig(
     level=getattr(logging, log_level, logging.INFO),
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
+install_log_buffer()
 logger = logging.getLogger("executor")
 
 # ---------------------------------------------------------------------------
@@ -167,6 +169,20 @@ class PreprocessingInfo(BaseModel):
     """Maps cell_index → list of edits. Each edit: {edit_type, note, …}."""
 
 
+class AutofixInfo(BaseModel):
+    """Counts from the automatic pipeline autofix stage (whole-notebook verify).
+
+    ``attempts`` counts fixes applied (max one KI suggestion per cell);
+    ``succeeded`` is 1 iff the final notebook ran clean after the pass, 0 if
+    the pass gave up and reverted all applied fixes (original cells).
+    """
+
+    attempts: int = 0
+    """Fixes applied (each followed by a whole-notebook re-run)."""
+    succeeded: int = 0
+    """1 iff the final notebook is clean after the pass, else 0 (reverted)."""
+
+
 class ExecuteResponse(BaseModel):
     """Result of a notebook execution."""
 
@@ -180,6 +196,8 @@ class ExecuteResponse(BaseModel):
     preprocessing: PreprocessingInfo = PreprocessingInfo()
     modified_files: list[str] = []
     """Input-data files the notebook wrote to or overwrote during execution."""
+    autofix: AutofixInfo = AutofixInfo()
+    """Automatic pipeline autofix stage (max 1 attempt per errored cell)."""
 
 
 class BatchItemResult(BaseModel):
@@ -197,6 +215,9 @@ class BatchItemResult(BaseModel):
     modified_files: list[str] = []
     """Input-data files the notebook wrote to or overwrote during execution."""
 
+    autofix: AutofixInfo = AutofixInfo()
+    """Automatic pipeline autofix stage (max 1 attempt per errored cell)."""
+
 
 class BatchExecuteResponse(BaseModel):
     """Result of a batch execution."""
@@ -206,6 +227,24 @@ class BatchExecuteResponse(BaseModel):
     succeeded: int
     failed: int
     total_duration_seconds: float
+
+
+class LogEntry(BaseModel):
+    """One captured executor log line (see GET /logs)."""
+
+    id: int
+    ts: float
+    level: str
+    logger: str
+    message: str
+
+
+class LogsResponse(BaseModel):
+    """Recent executor pipeline log entries, oldest → newest."""
+
+    entries: list[LogEntry]
+    truncated: bool = False
+    """True when the buffer held more entries than the requested limit."""
 
 
 class HealthResponse(BaseModel):
@@ -542,6 +581,23 @@ async def health() -> HealthResponse:
     )
 
 
+@app.get("/logs", response_model=LogsResponse)
+async def logs(limit: int = 200) -> LogsResponse:
+    """Recent pipeline log entries (oldest → newest) for the teacher UI.
+
+    Backed by an in-memory ring buffer (``logs.py``) that captures the
+    executor/runner/preprocessor/auto-fix/ki-connect loggers. The panel
+    polls this while a batch runs so the teacher sees what the pipeline
+    is doing in real time.
+    """
+    clamped = max(1, min(limit, 1000))
+    entries = [LogEntry(**e) for e in logs_snapshot(clamped)]
+    return LogsResponse(
+        entries=entries,
+        truncated=logs_total() > clamped,
+    )
+
+
 @app.post("/execute", response_model=ExecuteResponse)
 async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
     """
@@ -591,24 +647,53 @@ async def execute_notebook(req: ExecuteRequest) -> ExecuteResponse:
         if exec_path.exists():
             exec_path.unlink()
 
+    # Pipeline step 4 — automatic autofix (max 1 attempt per errored code
+    # cell). Replaces fixed cells with the re-run outcome; counts reported.
+    cell_types = {
+        nc["index"]: nc["type"]
+        for nc in pre_result.normalized_cells
+        if nc.get("type") is not None
+    }
+    autofix_info = apply_autofix_pass(
+        exec_result.cells,
+        ki_client=_get_ki_client(),
+        cell_types=cell_types,
+        assignment_id=assignment_id or "",
+        data_dir=DATA_DIR,
+        timeout=req.timeout,
+        kernel_name=req.kernel_name,
+        available_paths=(
+            _discover_data_files(assignment_id, DATA_DIR) if assignment_id else set()
+        ),
+        # Rough wall-clock guard for the autofix re-runs: the per-cell
+        # timeout scaled up. The frontend's per-notebook HTTP budget
+        # (settings.executor.notebookTimeoutMs) must cover the original run
+        # plus up to PASS_LIMIT re-runs; raise it for heavy notebooks.
+        time_budget_seconds=max(60, req.timeout * 5),
+    )
+
+    # The autofix pass may have fixed errored cells — recompute the counts
+    # so the summary (e.g. "2 cells, 1 error") matches the returned cells.
+    error_cells = sum(1 for c in exec_result.cells if c.error is not None)
+    executed_cells = sum(
+        1 for c in exec_result.cells if c.execution_count is not None
+    )
+
     return ExecuteResponse(
         success=exec_result.success,
         notebook_path=req.notebook_path,
         cells=_cells_to_response(
             exec_result.cells,
             pre_result.original_cells,
-            {
-                nc["index"]: nc["type"]
-                for nc in pre_result.normalized_cells
-                if nc.get("type") is not None
-            },
+            cell_types,
         ),
         total_cells=exec_result.total_cells,
-        executed_cells=exec_result.executed_cells,
-        error_cells=exec_result.error_cells,
+        executed_cells=executed_cells,
+        error_cells=error_cells,
         duration_seconds=exec_result.duration_seconds,
         preprocessing=pre_info,
         modified_files=exec_result.modified_files,
+        autofix=AutofixInfo(**autofix_info),
     )
 
 
@@ -637,7 +722,7 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
 
         try:
             # Load and pre-process (derives assignment_id from the path)
-            assignment_id, _, _, exec_path = _load_and_preprocess(
+            assignment_id, _, pre_result, exec_path = _load_and_preprocess(
                 full_path,
                 skip_preprocessing=nb_req.skip_preprocessing,
                 assignment_context=nb_req.assignment_context,
@@ -652,6 +737,29 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
                 assignment_id=assignment_id or "",
             )
 
+            # Pipeline step 4 — automatic autofix (whole-notebook verify),
+            # same as the single-notebook /execute path.
+            cell_types = {
+                nc["index"]: nc["type"]
+                for nc in pre_result.normalized_cells
+                if nc.get("type") is not None
+            }
+            autofix_info = apply_autofix_pass(
+                exec_result.cells,
+                ki_client=_get_ki_client(),
+                cell_types=cell_types,
+                assignment_id=assignment_id or "",
+                data_dir=DATA_DIR,
+                timeout=nb_req.timeout,
+                kernel_name=nb_req.kernel_name,
+                available_paths=(
+                    _discover_data_files(assignment_id, DATA_DIR)
+                    if assignment_id
+                    else set()
+                ),
+                time_budget_seconds=max(60, nb_req.timeout * 5),
+            )
+
             duration = _time.monotonic() - nb_start
 
             results.append(
@@ -659,10 +767,13 @@ async def execute_batch(req: BatchExecuteRequest) -> BatchExecuteResponse:
                     notebook_path=nb_req.notebook_path,
                     success=exec_result.success,
                     total_cells=exec_result.total_cells,
-                    executed_cells=exec_result.executed_cells,
-                    error_cells=exec_result.error_cells,
+                    executed_cells=sum(
+                        1 for c in exec_result.cells if c.execution_count is not None
+                    ),
+                    error_cells=sum(1 for c in exec_result.cells if c.error is not None),
                     duration_seconds=duration,
                     modified_files=exec_result.modified_files,
+                    autofix=AutofixInfo(**autofix_info),
                 )
             )
 

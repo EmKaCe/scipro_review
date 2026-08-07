@@ -33,6 +33,13 @@ services:
       - ADAPTER=node
       - PORT=4174
       - NODE_ENV=production
+      # adapter-node derives the request base URL from ORIGIN. Without it the
+      # protocol defaults to https, so plain-http deployments reject form
+      # POSTs (uploads, materials) with a CSRF 403 in real browsers. Set it to
+      # the address teachers use to reach the app (http://localhost:4174
+      # locally; http://<lan-ip>:4174 or a domain on a teacher machine) — e.g.
+      # ORIGIN=http://192.168.1.10:4174 docker compose up -d
+      - ORIGIN=${ORIGIN:-http://localhost:4174}
       # Internal URL to reach the executor via Docker DNS
       - EXECUTOR_URL=http://executor:8766
     env_file:

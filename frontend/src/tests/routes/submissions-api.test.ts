@@ -110,6 +110,7 @@ function fullExecutionResult(studentId: string): ExecutionResult {
 			llmAnalysis: false,
 		},
 		modifiedFiles: [],
+		autofix: { attempts: 0, succeeded: 0 },
 	};
 }
 
@@ -268,6 +269,7 @@ describe("GET /api/submissions", () => {
 					llmAnalysis: false,
 				},
 				modifiedFiles: [],
+				autofix: { attempts: 0, succeeded: 0 },
 			},
 		} as ResultsFile);
 
@@ -466,6 +468,7 @@ describe("POST /api/submissions/upload", () => {
 					llmAnalysis: false,
 				},
 				modifiedFiles: [],
+				autofix: { attempts: 0, succeeded: 0 },
 			},
 		} as ResultsFile);
 

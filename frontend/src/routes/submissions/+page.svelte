@@ -36,10 +36,15 @@
 	import {
 		downloadBackup,
 		fetchAssignments,
+		fetchExecutorLogs,
 		fetchMaterials,
+		fetchProcessStatus,
 		restoreBackup,
+		type ExecutorLogEntry,
+		type ProcessProgress,
 	} from "$lib/services/submissions-api.js";
 	import type { MaterialsStatus, SubmissionUploadResult } from "$lib/services/submissions-api.js";
+	import PipelineLogPanel from "$lib/components/submissions/pipeline-log-panel.svelte";
 
 	// -----------------------------------------------------------------------
 	// Header config
@@ -98,6 +103,19 @@
 	let processTargetCount = $state(0);
 	/** Elapsed seconds while processing (ticks via interval while active). */
 	let processElapsed = $state(0);
+	/**
+	 * Live batch progress from GET /api/submissions/process/status (current
+	 * notebook, per-notebook elapsed, done/total, auto-fix counts). Null
+	 * until the first poll succeeds — the UI falls back to status-derived
+	 * counters.
+	 */
+	let processStatus = $state<ProcessProgress | null>(null);
+	/** Elapsed seconds of the current notebook (ticks with the stopwatch). */
+	let processCurrentElapsed = $state(0);
+	/** Captured executor pipeline log lines (polls while processing). */
+	let logEntries = $state<ExecutorLogEntry[]>([]);
+	let logsLoading = $state(false);
+	let logsError = $state<string | null>(null);
 	/** Bulk delete confirm dialog. */
 	let bulkDeleteOpen = $state(false);
 	/** Bulk reset confirm dialog. */
@@ -166,11 +184,78 @@
 	$effect(() => {
 		if (processStartedAt === null) return;
 		processElapsed = Math.floor((Date.now() - processStartedAt) / 1000);
-		const timer = setInterval(() => {
+		const tick = () => {
 			processElapsed = Math.floor((Date.now() - (processStartedAt ?? Date.now())) / 1000);
-		}, 1000);
+			processCurrentElapsed =
+				processStatus?.currentStartedAt != null
+					? Math.floor((Date.now() - processStatus.currentStartedAt) / 1000)
+					: 0;
+		};
+		tick();
+		const timer = setInterval(tick, 1000);
 		return () => clearInterval(timer);
 	});
+
+	// ── Live batch progress + executor logs (polls while a batch runs) ──
+	async function refreshProcessStatus() {
+		try {
+			processStatus = await fetchProcessStatus();
+		} catch {
+			// Keep the last good status; the status-derived counters cover us.
+		}
+	}
+
+	async function refreshLogs() {
+		logsLoading = true;
+		logsError = null;
+		try {
+			const res = await fetchExecutorLogs(200);
+			logEntries = res.entries;
+		} catch (e) {
+			logsError = e instanceof Error ? e.message : "Failed to load executor logs";
+		} finally {
+			logsLoading = false;
+		}
+	}
+
+	$effect(() => {
+		if (processStartedAt === null) return;
+		// Immediate fetch + poll every 2s while the batch runs.
+		void refreshProcessStatus();
+		void refreshLogs();
+		const timer = setInterval(() => {
+			void refreshProcessStatus();
+			void refreshLogs();
+		}, 2000);
+		return () => clearInterval(timer);
+	});
+
+	// Restore the last completed-run summary after a page reload (the
+	// executor's log buffer persists, and the status keeps its final tallies).
+	$effect(() => {
+		void refreshProcessStatus();
+	});
+
+	/** Done/total for the bulk bar — server status wins, statuses fall back. */
+	let progressDone = $derived(processStatus?.done ?? Math.min(processDone, processTargetCount));
+	let progressTotal = $derived(processStatus?.total ?? processTargetCount);
+	let progressCurrentId = $derived(processStatus?.currentStudentId ?? null);
+	/** Auto-fix line shown only when at least one attempt happened. */
+	let progressAutofix = $derived(
+		(processStatus?.autofixAttempts ?? 0) > 0
+			? `${processStatus?.autofixSucceeded ?? 0}/${processStatus?.autofixAttempts ?? 0}`
+			: null,
+	);
+	/** Completed-run summary chip for the log panel header. */
+	let logSummary = $derived(
+		processStatus && !processStatus.running && processStatus.total > 0
+			? `${processStatus.done}/${processStatus.total} notebooks${
+					(processStatus.autofixAttempts ?? 0) > 0
+						? ` · auto-fix ${processStatus.autofixSucceeded}/${processStatus.autofixAttempts}`
+						: ""
+				}`
+			: null,
+	);
 
 	/** Format elapsed seconds as m:ss (or h:mm:ss past an hour). */
 	function formatElapsed(total: number): string {
@@ -500,6 +585,7 @@
 		processTargetCount = ids.length;
 		processStartedAt = Date.now();
 		processElapsed = 0;
+		processStatus = null;
 		submissionsStore.startPolling(); // live row statuses while the batch runs
 		try {
 			const resp = await submissionsStore.process(ids);
@@ -516,6 +602,9 @@
 			processStartedAt = null;
 			processTargetCount = 0;
 			processTargetIds.clear();
+			// Fetch once more — the route already wrote its final tallies, so
+			// the panel can show the completed run summary (done/total, autofix).
+			void refreshProcessStatus();
 		}
 	}
 
@@ -769,8 +858,12 @@
 						<span class="progress-spinner" aria-hidden="true"></span>
 						{bulkAction}… {#if processStartedAt !== null && processTargetCount > 0}
 							<span class="progress-count">
-								{Math.min(processDone, processTargetCount)}/{processTargetCount} ·
-								{formatElapsed(processElapsed)}
+								{progressDone}/{progressTotal}
+								{#if progressCurrentId}
+									· {progressCurrentId} ({formatElapsed(processCurrentElapsed)})
+								{/if}
+								· total {formatElapsed(processElapsed)}
+								{#if progressAutofix}· auto-fix {progressAutofix}{/if}
 							</span>
 						{/if}
 					</span>
@@ -861,6 +954,16 @@
 			</div>
 		</div>
 	</div>
+
+	<!-- ── Pipeline log: executor + autofix activity (collapsible) ── -->
+	<PipelineLogPanel
+		entries={logEntries}
+		live={processStartedAt !== null}
+		loading={logsLoading}
+		error={logsError}
+		summary={logSummary}
+		onRefresh={refreshLogs}
+	/>
 {/if}
 
 <!-- Bulk delete confirmation (the batch is explicit in the message). -->
