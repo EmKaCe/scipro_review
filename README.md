@@ -82,6 +82,17 @@ pnpm build:teacher        # Node build → frontend/build/
 pnpm start:teacher        # Start server on port 4174
 ```
 
+> **Uploads return `403 Cross-site POST form submissions are forbidden`?**
+> That is adapter-node's CSRF guard, not an upload bug. It compares the
+> browser's `Origin` header against the server's configured origin (`ORIGIN`).
+> Docker Compose defaults it to `http://localhost:4174`, which is correct only
+> when you open the app **on the same machine via `localhost`**. If you use
+> `http://127.0.0.1:4174`, reach the app from another computer
+> (`http://<lan-ip>:4174`), or sit behind a proxy/HTTPS, set `ORIGIN` to the
+> address you actually use, e.g. `ORIGIN=http://192.168.1.10:4174 docker compose up -d`.
+> GETs and the health check keep working without it — only multipart uploads
+> fail — which is why the failure looks like a feature bug.
+
 ### Common Commands
 
 | Command              | Description                         |
@@ -94,6 +105,7 @@ pnpm start:teacher        # Start server on port 4174
 | `pnpm lint`          | Prettier check + ESLint             |
 | `pnpm format`        | Format all files with Prettier      |
 | `pnpm test`          | Run unit tests (Vitest)             |
+| `bash scripts/smoke-production-csrf.sh` | Production-build ORIGIN/CSRF gate: upload must 403 without `ORIGIN`, 200 with it |
 
 ---
 
