@@ -67,6 +67,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 import { appendAuditEntry, createAuditHooks, redactArgs } from "./audit";
 import { resolveApprovalPolicy, type ApprovalDecision } from "./permission";
+import { registerCopilotTools } from "./tools/index";
 import {
 	createRegistry,
 	type CopilotRegistry,
@@ -200,6 +201,9 @@ const pendingApprovals = new Map<string, PendingApproval>();
 export async function buildAgent(): Promise<void> {
 	if (agent) return;
 	const settings = await loadSettings();
+	// Register the full tool surface (context / reference / analysis) before
+	// the Agent is constructed — registry.list() feeds the Mastra tools.
+	registerCopilotTools(registry);
 	mastra = new Mastra({ storage: new InMemoryStore() });
 	const tools = Object.fromEntries(
 		registry.list().map((tool) => [tool.name, wrapCopilotTool(tool)]),
