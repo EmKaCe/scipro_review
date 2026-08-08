@@ -441,3 +441,113 @@ describe("suggestions and reset", () => {
 		expect(store.pendingApproval).toBeNull();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Suggestion apply / dismiss (4e)
+// ---------------------------------------------------------------------------
+
+describe("suggestion apply/dismiss", () => {
+	const GRADE_SUGGESTION = {
+		suggestionId: "s1",
+		kind: "grade",
+		title: "Grade suggestion ready",
+		body: "The notebook computes a soil quality index.",
+		actionLabel: "Apply suggested scores",
+		data: {
+			markers: [],
+			gradeSuggestion: { dimensions: { code_quality_design: 4 }, justification: "ok" },
+			feedbackDraft: "**Nice job**",
+			notebookSummary: "summary",
+		},
+	};
+
+	it("applySuggestion removes the pending suggestion and returns the full payload with data", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(
+			sseResponse(sseFrame("suggestion", GRADE_SUGGESTION), sseFrame("done", {})),
+		);
+		const store = copilot.createCopilotStore();
+		await store.sendMessage("Suggest a grade");
+
+		expect(store.pendingSuggestions).toHaveLength(1);
+		expect(store.pendingSuggestions[0]).toMatchObject({ id: "s1", type: "grade" });
+		expect(store.pendingSuggestions[0].data).toEqual(GRADE_SUGGESTION.data);
+
+		const applied = store.applySuggestion("s1");
+
+		expect(applied).not.toBeNull();
+		expect(applied).toMatchObject({
+			suggestionId: "s1",
+			kind: "grade",
+			title: "Grade suggestion ready",
+			actionLabel: "Apply suggested scores",
+		});
+		expect(applied?.data).toEqual(GRADE_SUGGESTION.data);
+		// Removed from pending, but the transcript message is kept.
+		expect(store.pendingSuggestions).toHaveLength(0);
+		expect(store.messages.some((m) => m.suggestion?.suggestionId === "s1")).toBe(true);
+		expect(store.messages[store.messages.length - 1]).toMatchObject({
+			kind: "suggestion",
+			suggestion: GRADE_SUGGESTION,
+		});
+	});
+
+	it("applySuggestion returns null for an unknown id and leaves pending untouched", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(
+			sseResponse(sseFrame("suggestion", GRADE_SUGGESTION), sseFrame("done", {})),
+		);
+		const store = copilot.createCopilotStore();
+		await store.sendMessage("Suggest a grade");
+
+		expect(store.applySuggestion("nope")).toBeNull();
+		expect(store.pendingSuggestions).toHaveLength(1);
+	});
+
+	it("applySuggestion is a no-op when nothing is pending", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
+		const store = copilot.createCopilotStore();
+		await store.sendMessage("hi");
+		expect(store.applySuggestion("s1")).toBeNull();
+	});
+
+	it("dismissSuggestion removes the pending suggestion without returning it", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(
+			sseResponse(sseFrame("suggestion", GRADE_SUGGESTION), sseFrame("done", {})),
+		);
+		const store = copilot.createCopilotStore();
+		await store.sendMessage("Suggest a grade");
+
+		const returned = store.dismissSuggestion("s1");
+
+		expect(returned).toBeUndefined();
+		expect(store.pendingSuggestions).toHaveLength(0);
+		// The transcript message is kept (dismiss is not delete).
+		expect(store.messages.some((m) => m.suggestion?.suggestionId === "s1")).toBe(true);
+	});
+
+	it("applies a suggestion attached to the final message event (message.suggestion)", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(
+			sseResponse(
+				sseFrame("message", {
+					role: "assistant",
+					content: "Here is the draft.",
+					suggestion: { ...GRADE_SUGGESTION, suggestionId: "s2", kind: "draft" },
+				}),
+				sseFrame("done", {}),
+			),
+		);
+		const store = copilot.createCopilotStore();
+		await store.sendMessage("Draft feedback");
+
+		expect(store.pendingSuggestions).toHaveLength(1);
+		const applied = store.applySuggestion("s2");
+		expect(applied).not.toBeNull();
+		expect(applied?.kind).toBe("draft");
+		expect(applied?.data).toEqual(GRADE_SUGGESTION.data);
+		expect(store.pendingSuggestions).toHaveLength(0);
+	});
+});

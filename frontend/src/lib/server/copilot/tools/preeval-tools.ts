@@ -1,10 +1,16 @@
 /**
- * @file Copilot pre-evaluation tools (Phase 4c).
+ * @file Copilot pre-evaluation tools (Phase 4c/4e).
  *
  *   pre-evaluate      — run the pre-evaluation service for one submission
  *                       (permission "auto"; writes the `preEval` block into
- *                       results.json) and return the envelope so the agent
- *                       can reason over markers / grade / feedback.
+ *                       results.json) and return the envelope wrapped as a
+ *                       "grade" suggestion so the teacher can apply the
+ *                       suggested scores in one click. The agent loop unwraps
+ *                       the marker, so the model still sees the full envelope.
+ *   draft-notes        — run the SAME service without persisting, returning
+ *                       the feedback draft as a "draft" suggestion
+ *                       (permission "approval" — an LLM call the teacher
+ *                       should be aware of).
  *   pre-evaluate-all  — loop every submission of an assignment, pre-evaluate
  *                       each row, persist each envelope, and return a
  *                       per-submission summary (permission "approval" AND
@@ -20,10 +26,11 @@
 
 import { z } from "zod";
 
+import { suggestionResult, type SuggestionResult } from "../agent";
 import { resolveAssignmentId } from "$lib/server/assignments";
 import { listSubmissions } from "$lib/server/metadata";
 import { setPreEvaluation } from "$lib/server/results-store";
-import { preEvaluateSubmission, type PreEvaluation } from "../pre-evaluation";
+import { preEvaluateSubmission } from "../pre-evaluation";
 import type { CopilotRegistry, CopilotTool, ToolContext } from "../registry";
 
 // ---------------------------------------------------------------------------
@@ -66,11 +73,11 @@ async function resolveAssignmentIdForTool(
 // pre-evaluate
 // ---------------------------------------------------------------------------
 
-const preEvaluateTool: CopilotTool<PreEvaluateArgs, PreEvaluation> = {
+const preEvaluateTool: CopilotTool<PreEvaluateArgs, SuggestionResult> = {
 	name: "pre-evaluate",
 	description:
 		"Pre-evaluate ONE submission: compare its executed cells against the reference key, suggest a grade per dimension, draft student feedback, and summarize the notebook. " +
-		"Persists the pre-evaluation into the stored results and returns the full envelope (markers, gradeSuggestion, feedbackDraft, notebookSummary). " +
+		"Persists the pre-evaluation into the stored results and returns it wrapped as a 'grade' suggestion the teacher can apply. " +
 		"markers is null when the assignment has no reference key notebook.",
 	permission: "auto",
 	inputSchema: preEvaluateArgsSchema,
@@ -92,7 +99,55 @@ const preEvaluateTool: CopilotTool<PreEvaluateArgs, PreEvaluation> = {
 			...envelope,
 			evaluatedAt: new Date().toISOString(),
 		});
-		return envelope;
+		// 4e: return the envelope as a suggestion card. The agent loop unwraps
+		// the marker for the model, so the LLM still sees the full envelope.
+		return suggestionResult({
+			kind: "grade",
+			title: "Grade suggestion ready",
+			body: envelope.notebookSummary || "Pre-evaluation complete.",
+			actionLabel: "Apply suggested scores",
+			data: envelope,
+		});
+	},
+};
+
+// ---------------------------------------------------------------------------
+// draft-notes
+// ---------------------------------------------------------------------------
+
+/**
+ * Draft student feedback notes: runs the same pre-evaluation service as
+ * pre-evaluate but does NOT persist — the teacher gets a "draft" suggestion
+ * carrying the feedback draft to review before anything is stored.
+ */
+const draftNotesTool: CopilotTool<PreEvaluateArgs, unknown> = {
+	name: "draft-notes",
+	description:
+		"Draft student feedback notes for ONE submission by running the pre-evaluation service (compare cells against the reference key, suggest a grade, draft feedback). " +
+		"Returns a 'draft' suggestion with the feedback text; nothing is persisted by this tool.",
+	permission: "approval",
+	inputSchema: preEvaluateArgsSchema,
+	run: async (args, ctx) => {
+		const submissionId = args.submissionId?.trim() || ctx.submissionId?.trim();
+		if (!submissionId) {
+			throw new Error(
+				"draft-notes requires a submissionId (tool argument or submission context)",
+			);
+		}
+		const assignmentId = await resolveAssignmentIdForTool(
+			args.assignmentId,
+			ctx,
+			"draft-notes",
+		);
+
+		const envelope = await preEvaluateSubmission({ submissionId, assignmentId });
+		return suggestionResult({
+			kind: "draft",
+			title: "Feedback draft ready",
+			body: envelope.feedbackDraft,
+			actionLabel: "Use feedback draft",
+			data: { notes: envelope.feedbackDraft },
+		});
 	},
 };
 
@@ -166,12 +221,12 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 // Registration
 // ---------------------------------------------------------------------------
 
-/** Register the pre-evaluation tools (pre-evaluate, pre-evaluate-all). */
+/** Register the pre-evaluation tools (pre-evaluate, draft-notes, pre-evaluate-all). */
 export function registerPreevalTools(registry: CopilotRegistry): void {
 	// Idempotent: skip tools already registered (buildAgent can re-run after
 	// __resetAgentForTests, and the registry rejects duplicate names).
 	const existing = new Set(registry.list().map((t) => t.name));
-	for (const tool of [preEvaluateTool, preEvaluateAllTool]) {
+	for (const tool of [preEvaluateTool, draftNotesTool, preEvaluateAllTool]) {
 		if (!existing.has(tool.name)) registry.register(tool);
 	}
 }

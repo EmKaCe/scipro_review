@@ -35,6 +35,8 @@ export interface CopilotSuggestion {
 	title: string;
 	body: string;
 	actionLabel: string;
+	/** Structured apply data emitted by the tool (forwarded to the page on apply). */
+	data?: unknown;
 }
 
 export interface CopilotMessage {
@@ -74,6 +76,8 @@ export interface PendingSuggestion {
 	title: string;
 	description: string;
 	type: "grade" | "draft" | "fix" | "export";
+	/** Structured apply data (see CopilotSuggestion.data). */
+	data?: unknown;
 }
 
 /** A tool call suspended for teacher approval. */
@@ -238,8 +242,40 @@ export function createCopilotStore(options?: { submissionId?: string; threadId?:
 				title: suggestion.title,
 				description: suggestion.body,
 				type: suggestion.kind,
+				data: suggestion.data,
 			},
 		];
+	}
+
+	/**
+	 * Apply a pending suggestion: removes it from `pendingSuggestions` and
+	 * returns the full suggestion payload (including `data`) so the caller
+	 * can forward it to the page. The suggestion message STAYS in the
+	 * transcript — applying does not delete history. Returns null for an
+	 * unknown/already-resolved suggestion id.
+	 */
+	function applySuggestion(suggestionId: string): CopilotSuggestion | null {
+		const pending = pendingSuggestions.find((s) => s.id === suggestionId);
+		if (!pending) return null;
+		pendingSuggestions = pendingSuggestions.filter((s) => s.id !== suggestionId);
+		// The full payload lives on the transcript message; fall back to the
+		// pending entry (actionLabel unknown there) only if it is missing.
+		const message = messages.find((m) => m.suggestion?.suggestionId === suggestionId);
+		return (
+			message?.suggestion ?? {
+				suggestionId: pending.id,
+				kind: pending.type,
+				title: pending.title,
+				body: pending.description,
+				actionLabel: "",
+				data: pending.data,
+			}
+		);
+	}
+
+	/** Dismiss a pending suggestion: removes it without applying. */
+	function dismissSuggestion(suggestionId: string): void {
+		pendingSuggestions = pendingSuggestions.filter((s) => s.id !== suggestionId);
 	}
 
 	/**
@@ -524,6 +560,8 @@ export function createCopilotStore(options?: { submissionId?: string; threadId?:
 		availableCommands,
 		sendMessage,
 		approve,
+		applySuggestion,
+		dismissSuggestion,
 		clearMessages,
 	};
 }

@@ -151,12 +151,15 @@ function registeredTools() {
 // ---------------------------------------------------------------------------
 
 describe("registerPreevalTools", () => {
-	it("registers pre-evaluate (auto) and pre-evaluate-all (approval + cost guard)", () => {
+	it("registers pre-evaluate (auto), draft-notes (approval), and pre-evaluate-all (approval + cost guard)", () => {
 		const registry = registeredTools();
 		const names = registry.list().map((t) => t.name);
-		expect(names).toEqual(expect.arrayContaining(["pre-evaluate", "pre-evaluate-all"]));
+		expect(names).toEqual(
+			expect.arrayContaining(["pre-evaluate", "draft-notes", "pre-evaluate-all"]),
+		);
 
 		expect(registry.get("pre-evaluate").permission).toBe("auto");
+		expect(registry.get("draft-notes").permission).toBe("approval");
 		expect(registry.get("pre-evaluate-all").permission).toBe("approval");
 		expect(ALWAYS_ASK_COST).toContain("pre-evaluate-all");
 	});
@@ -167,7 +170,26 @@ describe("registerPreevalTools", () => {
 // ---------------------------------------------------------------------------
 
 describe("pre-evaluate", () => {
-	it("runs the service, persists preEval into results.json, and returns the envelope", async () => {
+	/** Unwrap the __suggestion marker returned by the tool. */
+	function unwrapGrade(result: unknown): {
+		kind: string;
+		title: string;
+		body: string;
+		actionLabel: string;
+		data: unknown;
+	} {
+		const wrapped = result as { __suggestion?: Record<string, unknown> };
+		expect(wrapped.__suggestion).toBeDefined();
+		return wrapped.__suggestion as {
+			kind: string;
+			title: string;
+			body: string;
+			actionLabel: string;
+			data: unknown;
+		};
+	}
+
+	it("runs the service, persists preEval into results.json, and returns the envelope as a grade suggestion", async () => {
 		const registry = registeredTools();
 		const result = await registry.run(
 			"pre-evaluate",
@@ -175,7 +197,13 @@ describe("pre-evaluate", () => {
 			makeContext({ submissionId: STUDENT_A, assignmentId: ASSIGNMENT }),
 		);
 
-		expect(result).toEqual(ENVELOPE);
+		// 4e: the result is the envelope wrapped as a "grade" suggestion.
+		const suggestion = unwrapGrade(result);
+		expect(suggestion.kind).toBe("grade");
+		expect(suggestion.title).toBe("Grade suggestion ready");
+		expect(suggestion.actionLabel).toBe("Apply suggested scores");
+		expect(suggestion.body).toBe(ENVELOPE.notebookSummary);
+		expect(suggestion.data).toEqual(ENVELOPE);
 
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_A]!;
 		expect(stored.preEval).toBeDefined();
@@ -197,7 +225,9 @@ describe("pre-evaluate", () => {
 			makeContext(),
 		);
 
-		expect(result).toEqual(ENVELOPE);
+		const suggestion = unwrapGrade(result);
+		expect(suggestion.kind).toBe("grade");
+		expect(suggestion.data).toEqual(ENVELOPE);
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_B]!;
 		expect(stored.preEval).toBeDefined();
 	});
@@ -216,6 +246,49 @@ describe("pre-evaluate", () => {
 		await expect(
 			registry.run("pre-evaluate", { submissionId: STUDENT_A }, makeContext()),
 		).rejects.toThrow(/no assignmentId given and no assignment is configured/);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// draft-notes
+// ---------------------------------------------------------------------------
+
+describe("draft-notes", () => {
+	it("runs the pre-evaluation service and returns the feedback draft as a draft suggestion", async () => {
+		const registry = registeredTools();
+		const result = await registry.run(
+			"draft-notes",
+			{},
+			makeContext({ submissionId: STUDENT_A, assignmentId: ASSIGNMENT }),
+		);
+
+		const wrapped = result as { __suggestion?: Record<string, unknown> };
+		expect(wrapped.__suggestion).toBeDefined();
+		const suggestion = wrapped.__suggestion as {
+			kind: string;
+			title: string;
+			body: string;
+			actionLabel: string;
+			data: { notes?: string };
+		};
+		expect(suggestion.kind).toBe("draft");
+		expect(suggestion.title).toBe("Feedback draft ready");
+		expect(suggestion.actionLabel).toBe("Use feedback draft");
+		expect(suggestion.body).toBe(ENVELOPE.feedbackDraft);
+		expect(suggestion.data.notes).toBe(ENVELOPE.feedbackDraft);
+
+		// Exactly one KI Connect call — and NOTHING is persisted by draft-notes.
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(1);
+		const stored = (await readResults(ASSIGNMENT))[STUDENT_A]!;
+		expect(stored.preEval).toBeUndefined();
+	});
+
+	it("throws when no submissionId is available (args or context)", async () => {
+		const registry = registeredTools();
+		await expect(registry.run("draft-notes", {}, makeContext())).rejects.toThrow(
+			/draft-notes requires a submissionId/,
+		);
+		expect(kiConnectMock.chatCompletion).not.toHaveBeenCalled();
 	});
 });
 

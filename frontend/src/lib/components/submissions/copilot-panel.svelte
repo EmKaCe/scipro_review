@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { createCopilotStore, type CopilotMessage } from "./copilot-store.svelte.js";
+	import {
+		createCopilotStore,
+		type CopilotMessage,
+		type CopilotSuggestion,
+	} from "./copilot-store.svelte.js";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Send from "@lucide/svelte/icons/send";
 	import Wrench from "@lucide/svelte/icons/wrench";
@@ -17,9 +21,22 @@
 		 * page wires it in a later task; the panel compiles standalone.
 		 */
 		submissionId?: string;
+		/**
+		 * Fired when the teacher applies a pending suggestion (clicked the
+		 * actionLabel button). Receives the FULL suggestion payload, including
+		 * `data` — the structured apply payload emitted by the tool.
+		 *
+		 * Convention (4e): the repo communicates child→parent via callback
+		 * props (`onXxx`) — rubric-category, upload-panel, autofix-card,
+		 * right-panel-tabs (onTabChange/onSelectionsChange) — and has zero
+		 * `createEventDispatcher` call sites. The panel sits inside a wrapper
+		 * (right-panel-tabs) that the page wires, so the apply signal is a
+		 * callback prop the wrapper forwards, matching that convention.
+		 */
+		onapply?: (suggestion: CopilotSuggestion) => void;
 	}
 
-	let { submissionId = "" }: Props = $props();
+	let { submissionId = "", onapply }: Props = $props();
 
 	/**
 	 * One store per component instance — created once at mount. The previous
@@ -64,6 +81,27 @@
 		return (
 			pending !== null && pending.runId === msg.runId && pending.toolCallId === msg.toolCallId
 		);
+	}
+
+	/** True while the suggestion is still actionable (not applied/dismissed). */
+	function isPendingSuggestion(suggestion: CopilotSuggestion | undefined): boolean {
+		return (
+			suggestion !== undefined &&
+			copilot.pendingSuggestions.some((s) => s.id === suggestion.suggestionId)
+		);
+	}
+
+	/** Apply the suggestion: removes it from pending and forwards it to the page. */
+	function handleApply(suggestion: CopilotSuggestion | undefined): void {
+		if (!suggestion) return;
+		const applied = copilot.applySuggestion(suggestion.suggestionId);
+		if (applied) onapply?.(applied);
+	}
+
+	/** Dismiss the suggestion: removes it from pending without applying. */
+	function handleDismiss(suggestion: CopilotSuggestion | undefined): void {
+		if (!suggestion) return;
+		copilot.dismissSuggestion(suggestion.suggestionId);
 	}
 </script>
 
@@ -169,18 +207,42 @@
 							</div>
 						{/if}
 					</div>
-				{:else if msg.kind === "suggestion"}
+				{:else if msg.suggestion}
 					<div class="copilot-card suggestion-card">
 						<div class="card-header">
 							<Lightbulb size={12} />
 							<span class="card-label">Suggestion</span>
 						</div>
-						<p class="suggestion-title">{msg.suggestion?.title ?? msg.content}</p>
-						{#if msg.suggestion?.body}
+						<p class="suggestion-title">{msg.suggestion.title}</p>
+						{#if msg.suggestion.body}
 							<p class="suggestion-body">{msg.suggestion.body}</p>
 						{/if}
-						{#if msg.suggestion?.actionLabel}
-							<span class="suggestion-action">{msg.suggestion.actionLabel}</span>
+						{#if isPendingSuggestion(msg.suggestion)}
+							<div class="suggestion-actions">
+								<button
+									type="button"
+									class="apply-btn"
+									onclick={() => handleApply(msg.suggestion)}
+									aria-label={`Apply suggestion: ${msg.suggestion?.title ?? ""}`}
+									title={msg.suggestion?.actionLabel || "Apply"}
+								>
+									{msg.suggestion.actionLabel || "Apply"}
+								</button>
+								<button
+									type="button"
+									class="dismiss-btn"
+									onclick={() => handleDismiss(msg.suggestion)}
+									aria-label="Dismiss suggestion"
+									title="Dismiss suggestion"
+								>
+									Dismiss
+								</button>
+							</div>
+						{:else}
+							<span class="suggestion-resolved">
+								<CircleCheck size={12} />
+								<span>Resolved</span>
+							</span>
 						{/if}
 					</div>
 				{:else if msg.kind === "error"}
@@ -505,7 +567,7 @@
 		color: var(--muted-foreground);
 	}
 
-	/* Read-only suggestion (apply wiring arrives later). */
+	/* Interactive suggestion card (apply/dismiss, 4e). */
 	.suggestion-title {
 		font-size: 12px;
 		font-weight: 600;
@@ -518,16 +580,47 @@
 		line-height: 1.5;
 		margin: 4px 0 0;
 	}
-	.suggestion-action {
-		display: inline-block;
-		margin-top: 8px;
-		padding: 2px 8px;
-		border-radius: 999px;
-		font-size: 11px;
+	.suggestion-actions {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.apply-btn {
+		background: var(--primary);
+		color: var(--primary-foreground);
+		border: none;
+		border-radius: var(--radius);
+		padding: 5px 14px;
+		font-size: 12px;
 		font-weight: 600;
+		cursor: pointer;
+	}
+	.apply-btn:hover {
+		opacity: 0.9;
+	}
+	.dismiss-btn {
+		background: none;
 		color: var(--muted-foreground);
-		background: var(--muted);
 		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 4px 14px;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.dismiss-btn:hover {
+		color: var(--foreground);
+		border-color: var(--muted-foreground);
+	}
+	.suggestion-resolved {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 8px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--muted-foreground);
 	}
 
 	.typing-indicator {

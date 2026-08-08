@@ -24,12 +24,15 @@ const { mockModel, mockControl } = vi.hoisted(() => {
 	const mockControl = {
 		/** Per-doStream-call parts; shift()ed in order. */
 		script: [] as V2Part[][],
+		/** Every doStream call's options, for asserting what the model received. */
+		receivedCalls: [] as unknown[],
 	};
 	const mockModel = {
 		specificationVersion: "v2",
 		provider: "mock",
 		modelId: "mock-model",
-		async doStream() {
+		async doStream(options?: unknown) {
+			mockControl.receivedCalls.push(options);
 			const parts = mockControl.script.shift() ?? [
 				{
 					type: "finish",
@@ -63,6 +66,7 @@ import {
 	approveRun,
 	registry,
 	streamChat,
+	suggestionResult,
 	type CopilotStreamEvent,
 } from "$lib/server/copilot/agent";
 
@@ -103,6 +107,7 @@ beforeEach(async () => {
 	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-agent-"));
 	process.env.DATA_DIR = dataDir;
 	mockControl.script = [];
+	mockControl.receivedCalls = [];
 	executed = [];
 	__resetAgentForTests();
 });
@@ -373,5 +378,92 @@ describe("copilot agent loop (agent.ts)", () => {
 		);
 
 		expect(events).toEqual([]);
+	});
+
+	it("emits a suggestion event after the tool result when a tool returns the suggestion marker", async () => {
+		const data = {
+			markers: [
+				{ cell_index: 0, marker: "different", reason: "Different but valid approach" },
+			],
+			gradeSuggestion: {
+				dimensions: { code_quality_design: 4 },
+				justification: "Solid work overall.",
+			},
+			feedbackDraft: "**Nice job** — keep it up.",
+			notebookSummary: "The notebook computes a soil quality index.",
+		};
+		registry.register({
+			name: "suggest_grade_1",
+			description: "emits a grade suggestion",
+			permission: "auto",
+			inputSchema: z.object({}),
+			run: async () =>
+				suggestionResult({
+					kind: "grade",
+					title: "Grade suggestion ready",
+					body: "The notebook computes a soil quality index.",
+					actionLabel: "Apply suggested scores",
+					data,
+				}),
+		});
+		mockControl.script = [toolCallTurn("suggest_grade_1", "{}"), textTurn("Done")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		// tool-result first, suggestion immediately after.
+		const toolResultIndex = events.findIndex((e) => e.type === "tool-result");
+		const suggestionIndex = events.findIndex((e) => e.type === "suggestion");
+		expect(toolResultIndex).toBeGreaterThanOrEqual(0);
+		expect(suggestionIndex).toBe(toolResultIndex + 1);
+
+		const suggestion = events[suggestionIndex];
+		expect(suggestion && suggestion.type === "suggestion" ? suggestion.kind : "").toBe("grade");
+		expect(suggestion && suggestion.type === "suggestion" ? suggestion.title : "").toBe(
+			"Grade suggestion ready",
+		);
+		expect(suggestion && suggestion.type === "suggestion" ? suggestion.actionLabel : "").toBe(
+			"Apply suggested scores",
+		);
+		expect(
+			suggestion && suggestion.type === "suggestion" ? suggestion.suggestionId : "",
+		).toBeTruthy();
+		// The suggestion event carries the structured apply data.
+		expect(
+			suggestion && suggestion.type === "suggestion" ? suggestion.data : undefined,
+		).toEqual(data);
+
+		// The tool-result summary reflects the UNWRAPPED raw value (no marker;
+		// summarized JSON is truncated at 200 chars, so assert on an early key).
+		const toolResult = events[toolResultIndex];
+		const summary =
+			toolResult && toolResult.type === "tool-result" ? (toolResult.summary ?? "") : "";
+		expect(summary).not.toContain("__suggestion");
+		expect(summary).toContain("gradeSuggestion");
+
+		// The model's next input carries the RAW result WITHOUT the marker.
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		const lastCall = mockControl.receivedCalls[mockControl.receivedCalls.length - 1];
+		const serialized = JSON.stringify(lastCall);
+		expect(serialized).not.toContain("__suggestion");
+		expect(serialized).toContain("feedbackDraft");
+		expect(serialized).toContain("gradeSuggestion");
+
+		expect(events[events.length - 1].type).toBe("done");
+	});
+
+	it("does not emit a suggestion event for a plain tool result", async () => {
+		registry.register({
+			name: "plain_result_1",
+			description: "returns a plain object",
+			permission: "auto",
+			inputSchema: z.object({}),
+			run: async () => ({ markers: [], gradeSuggestion: { dimensions: {} } }),
+		});
+		mockControl.script = [toolCallTurn("plain_result_1", "{}"), textTurn("Ok")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		expect(events.some((e) => e.type === "suggestion")).toBe(false);
+		expect(events[events.length - 1].type).toBe("done");
 	});
 });
