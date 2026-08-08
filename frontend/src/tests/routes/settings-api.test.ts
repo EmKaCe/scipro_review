@@ -28,6 +28,13 @@ const FULL: AppSettings = {
 		model: "test-model",
 		timeoutMs: 90_000,
 	},
+	copilot: {
+		mode: "ask",
+		allowedTools: ["analyze-code"],
+		denyTools: [],
+		approvalTtlSeconds: 60,
+		sessionCap: 20,
+	},
 };
 
 // ---------------------------------------------------------------------------

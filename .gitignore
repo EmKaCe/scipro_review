@@ -5,6 +5,9 @@ data/submissions/
 # Plagiarism results cache (per-assignment runtime state) — never committed
 data/plagiarism/
 
+# Copilot audit log (append-only JSONL runtime trail) — never committed
+data/copilot/
+
 # Assignment materials — keys, PDFs, input data — never committed
 data/materials/
 

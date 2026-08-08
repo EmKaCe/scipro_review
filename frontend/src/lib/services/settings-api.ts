@@ -24,9 +24,25 @@ export interface LlmSettings {
 	timeoutMs: number;
 }
 
+export type CopilotMode = "ask" | "read-only" | "auto-approve-all";
+
+export interface CopilotSettings {
+	/** Approval mode for copilot tools. */
+	mode: CopilotMode;
+	/** Tools auto-approvable in ask mode, up to sessionCap per session. */
+	allowedTools: string[];
+	/** Tools that are never callable, regardless of mode. */
+	denyTools: string[];
+	/** How long an approval card stays valid before it must be re-asked (s). */
+	approvalTtlSeconds: number;
+	/** Per-session auto-approval budget in ask mode. */
+	sessionCap: number;
+}
+
 export interface AppSettings {
 	executor: ExecutorSettings;
 	llm: LlmSettings;
+	copilot: CopilotSettings;
 }
 
 // ---------------------------------------------------------------------------

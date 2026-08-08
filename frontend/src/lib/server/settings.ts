@@ -15,6 +15,12 @@
  *     base_url: https://chat.kiconnect.nrw/api/v1
  *     model: qwen3-30b-a3b-instruct-2507
  *     timeout_ms: 60000
+ *   copilot:
+ *     mode: ask                     # ask | read-only | auto-approve-all
+ *     allowed_tools: []             # tools auto-approvable in ask mode (session-capped)
+ *     deny_tools: []                # tools that are never callable
+ *     approval_ttl_seconds: 60      # approval card lifetime
+ *     session_cap: 20               # auto-approvals per session in ask mode
  *
  * Secrets (KI_CONNECT_API_KEY) intentionally stay in the environment — the
  * settings file and its API never read or write API keys.
@@ -50,9 +56,25 @@ export interface LlmSettings {
 	timeoutMs: number;
 }
 
+export type CopilotMode = "ask" | "read-only" | "auto-approve-all";
+
+export interface CopilotSettings {
+	/** Approval mode for copilot tools. */
+	mode: CopilotMode;
+	/** Tools auto-approvable in ask mode, up to sessionCap per session. */
+	allowedTools: string[];
+	/** Tools that are never callable, regardless of mode. */
+	denyTools: string[];
+	/** How long an approval card stays valid before it must be re-asked (s). */
+	approvalTtlSeconds: number;
+	/** Per-session auto-approval budget in ask mode. */
+	sessionCap: number;
+}
+
 export interface AppSettings {
 	executor: ExecutorSettings;
 	llm: LlmSettings;
+	copilot: CopilotSettings;
 }
 
 // ---------------------------------------------------------------------------
@@ -65,6 +87,11 @@ const DEFAULT_CELL_TIMEOUT_S = 30;
 const DEFAULT_LLM_BASE_URL = "https://chat.kiconnect.nrw/api/v1";
 const DEFAULT_LLM_MODEL = "qwen3-30b-a3b-instruct-2507";
 const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+const DEFAULT_COPILOT_MODE: CopilotMode = "ask";
+const DEFAULT_COPILOT_ALLOWED_TOOLS: string[] = [];
+const DEFAULT_COPILOT_DENY_TOOLS: string[] = [];
+const DEFAULT_COPILOT_APPROVAL_TTL_SECONDS = 60;
+const DEFAULT_COPILOT_SESSION_CAP = 20;
 
 function envNumber(key: string, fallback: number): number {
 	const raw = process.env[key];
@@ -89,6 +116,7 @@ export function getSettingsPath(): string {
 function parseSettings(raw: unknown): {
 	executor?: Record<string, unknown>;
 	llm?: Record<string, unknown>;
+	copilot?: Record<string, unknown>;
 } | null {
 	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return null;
 	const obj = raw as Record<string, unknown>;
@@ -104,7 +132,17 @@ function parseSettings(raw: unknown): {
 	) {
 		return null;
 	}
-	return obj as { executor?: Record<string, unknown>; llm?: Record<string, unknown> };
+	if (
+		obj.copilot !== undefined &&
+		(typeof obj.copilot !== "object" || obj.copilot === null || Array.isArray(obj.copilot))
+	) {
+		return null;
+	}
+	return obj as {
+		executor?: Record<string, unknown>;
+		llm?: Record<string, unknown>;
+		copilot?: Record<string, unknown>;
+	};
 }
 
 /**
@@ -133,7 +171,9 @@ export async function loadSettings(): Promise<AppSettings> {
 	}
 	const file = parseSettings(parsed);
 	if (!file) {
-		throw new Error(`settings.yaml must be an object with optional executor/llm sections`);
+		throw new Error(
+			`settings.yaml must be an object with optional executor/llm/copilot sections`,
+		);
 	}
 	return defaults(file);
 }
@@ -142,9 +182,11 @@ export async function loadSettings(): Promise<AppSettings> {
 function defaults(file?: {
 	executor?: Record<string, unknown>;
 	llm?: Record<string, unknown>;
+	copilot?: Record<string, unknown>;
 }): AppSettings {
 	const executor = file?.executor ?? {};
 	const llm = file?.llm ?? {};
+	const copilot = file?.copilot ?? {};
 
 	return {
 		executor: {
@@ -172,6 +214,16 @@ function defaults(file?: {
 				envNumber("KI_CONNECT_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS),
 			),
 		},
+		copilot: {
+			mode: copilotModeValue(copilot.mode, DEFAULT_COPILOT_MODE),
+			allowedTools: stringList(copilot.allowed_tools, DEFAULT_COPILOT_ALLOWED_TOOLS),
+			denyTools: stringList(copilot.deny_tools, DEFAULT_COPILOT_DENY_TOOLS),
+			approvalTtlSeconds: positiveNumber(
+				copilot.approval_ttl_seconds,
+				DEFAULT_COPILOT_APPROVAL_TTL_SECONDS,
+			),
+			sessionCap: positiveNumber(copilot.session_cap, DEFAULT_COPILOT_SESSION_CAP),
+		},
 	};
 }
 
@@ -186,6 +238,19 @@ function positiveNumber(value: unknown, fallback: number): number {
 
 function stringValue(value: unknown, fallback: string): string {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+function copilotModeValue(value: unknown, fallback: CopilotMode): CopilotMode {
+	return value === "ask" || value === "read-only" || value === "auto-approve-all"
+		? value
+		: fallback;
+}
+
+function stringList(value: unknown, fallback: string[]): string[] {
+	if (!Array.isArray(value)) return fallback;
+	return value
+		.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+		.map((item) => item.trim());
 }
 
 // ---------------------------------------------------------------------------
@@ -205,6 +270,13 @@ export function toSettingsYaml(settings: AppSettings): string {
 				base_url: settings.llm.baseUrl,
 				model: settings.llm.model,
 				timeout_ms: settings.llm.timeoutMs,
+			},
+			copilot: {
+				mode: settings.copilot.mode,
+				allowed_tools: settings.copilot.allowedTools,
+				deny_tools: settings.copilot.denyTools,
+				approval_ttl_seconds: settings.copilot.approvalTtlSeconds,
+				session_cap: settings.copilot.sessionCap,
 			},
 		},
 		{ noRefs: true },

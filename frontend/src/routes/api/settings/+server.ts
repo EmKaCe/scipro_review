@@ -14,24 +14,39 @@
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
-import { loadSettings, writeSettings, type AppSettings } from "$lib/server/settings";
+import {
+	loadSettings,
+	writeSettings,
+	type AppSettings,
+	type CopilotMode,
+} from "$lib/server/settings";
 
 function isAppSettings(value: unknown): value is AppSettings {
 	if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
 	const v = value as Record<string, unknown>;
 	const ex = v.executor as Record<string, unknown> | undefined;
 	const llm = v.llm as Record<string, unknown> | undefined;
-	if (!ex || !llm) return false;
+	const copilot = v.copilot as Record<string, unknown> | undefined;
+	if (!ex || !llm || !copilot) return false;
 	const posInt = (x: unknown): x is number =>
 		typeof x === "number" && Number.isFinite(x) && x > 0;
 	const nonEmpty = (x: unknown): x is string => typeof x === "string" && x.trim().length > 0;
+	const stringArray = (x: unknown): x is string[] =>
+		Array.isArray(x) && x.every((item) => typeof item === "string");
+	const isMode = (x: unknown): x is CopilotMode =>
+		x === "ask" || x === "read-only" || x === "auto-approve-all";
 	return (
 		posInt(ex.requestTimeoutMs) &&
 		posInt(ex.notebookTimeoutMs) &&
 		posInt(ex.cellTimeoutS) &&
 		nonEmpty(llm.baseUrl) &&
 		nonEmpty(llm.model) &&
-		posInt(llm.timeoutMs)
+		posInt(llm.timeoutMs) &&
+		isMode(copilot.mode) &&
+		stringArray(copilot.allowedTools) &&
+		stringArray(copilot.denyTools) &&
+		posInt(copilot.approvalTtlSeconds) &&
+		posInt(copilot.sessionCap)
 	);
 }
 
