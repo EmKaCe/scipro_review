@@ -55,9 +55,7 @@ test.describe("visual regression (Linux baselines)", () => {
 		await expect
 			.poll(
 				async () => {
-					const res = await request.get(
-						`/api/submissions?assignment=${ASSIGNMENT}`,
-					);
+					const res = await request.get(`/api/submissions?assignment=${ASSIGNMENT}`);
 					const body = (await res.json()) as {
 						submissions: { studentId: string; status: string }[];
 					};
@@ -78,9 +76,7 @@ test.describe("visual regression (Linux baselines)", () => {
 		const rows = page.locator(".submissions-table tbody tr");
 		await expect(rows).toHaveCount(2, { timeout: 15_000 });
 		await expect(rows.filter({ hasText: "2026SS_910" })).toContainText("Executed");
-		await expect(rows.filter({ hasText: "2026SS_911" })).toContainText(
-			"3 cells, 1 error",
-		);
+		await expect(rows.filter({ hasText: "2026SS_911" })).toContainText("3 cells, 1 error");
 		await expect(page).toHaveScreenshot("dashboard-light.png", {
 			maxDiffPixelRatio: 0.01,
 		});
@@ -92,9 +88,7 @@ test.describe("visual regression (Linux baselines)", () => {
 		const rows = page.locator(".submissions-table tbody tr");
 		await expect(rows).toHaveCount(2, { timeout: 15_000 });
 		await expect(rows.filter({ hasText: "2026SS_910" })).toContainText("Executed");
-		await expect(rows.filter({ hasText: "2026SS_911" })).toContainText(
-			"3 cells, 1 error",
-		);
+		await expect(rows.filter({ hasText: "2026SS_911" })).toContainText("3 cells, 1 error");
 		await expect(page.locator("html")).toHaveClass(/dark/);
 		await expect(page).toHaveScreenshot("dashboard-dark.png", {
 			maxDiffPixelRatio: 0.01,

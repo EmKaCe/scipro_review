@@ -22,9 +22,7 @@ const ALL_IDS = ["2026SS_910", "2026SS_911", "2026SS_912"];
 /** Remove any rows left over from an earlier run (404s are fine). */
 async function resetRows(request: APIRequestContext) {
 	for (const id of ALL_IDS) {
-		await request
-			.delete(`/api/submissions/${id}?assignment=${ASSIGNMENT}`)
-			.catch(() => {});
+		await request.delete(`/api/submissions/${id}?assignment=${ASSIGNMENT}`).catch(() => {});
 	}
 }
 
@@ -74,10 +72,7 @@ test.describe("teacher flow", () => {
 		await resetRows(request);
 	});
 
-	test("happy path: upload → process → review → grade → export", async ({
-		page,
-		request,
-	}) => {
+	test("happy path: upload → process → review → grade → export", async ({ page, request }) => {
 		await page.goto("/submissions");
 
 		// ── Upload ────────────────────────────────────────────────────────
@@ -109,9 +104,7 @@ test.describe("teacher flow", () => {
 		await expect
 			.poll(
 				async () => {
-					const res = await request.get(
-						`/api/submissions?assignment=${ASSIGNMENT}`,
-					);
+					const res = await request.get(`/api/submissions?assignment=${ASSIGNMENT}`);
 					const body = (await res.json()) as {
 						submissions: { studentId: string; status: string }[];
 					};
@@ -138,9 +131,7 @@ test.describe("teacher flow", () => {
 
 		// Cells render source + output.
 		await expect(page.locator(".cell-card")).toHaveCount(2, { timeout: 15_000 });
-		await expect(
-			page.locator(".cell-card").first().locator("pre.hljs"),
-		).toContainText("x = 5");
+		await expect(page.locator(".cell-card").first().locator("pre.hljs")).toContainText("x = 5");
 		await expect(page.locator(".cell-output").last()).toContainText("5");
 
 		// ── Grade: tick a rubric item + move a dimension slider ───────────
@@ -182,9 +173,7 @@ test.describe("teacher flow", () => {
 		await expandAllRubricCategories(page);
 		await expect(rubricItem).toBeChecked();
 		await page.getByRole("button", { name: "Grading" }).click();
-		await expect(
-			page.getByRole("slider", { name: "Code Quality & Design" }),
-		).toHaveValue("5");
+		await expect(page.getByRole("slider", { name: "Code Quality & Design" })).toHaveValue("5");
 
 		// ── Export: student copy has feedback, never plagiarism ───────────
 		const exportRes = await request.get(
@@ -212,9 +201,7 @@ test.describe("teacher flow", () => {
 		await expect
 			.poll(
 				async () => {
-					const res = await request.get(
-						`/api/submissions?assignment=${ASSIGNMENT}`,
-					);
+					const res = await request.get(`/api/submissions?assignment=${ASSIGNMENT}`);
 					const body = (await res.json()) as {
 						submissions: {
 							studentId: string;
@@ -222,9 +209,7 @@ test.describe("teacher flow", () => {
 							cellSummary?: string;
 						}[];
 					};
-					return body.submissions.find(
-						(s) => s.studentId === "2026SS_911",
-					)?.cellSummary;
+					return body.submissions.find((s) => s.studentId === "2026SS_911")?.cellSummary;
 				},
 				{ timeout: 120_000 },
 			)
