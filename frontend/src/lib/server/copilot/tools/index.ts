@@ -13,6 +13,9 @@
 
 import { registerAnalysisTools } from "./analysis-tools";
 import { registerContextTools } from "./context-tools";
+import { registerGradingTools } from "./grading-tools";
+import { registerManagementTools } from "./management-tools";
+import { registerOpsTools } from "./ops-tools";
 import { registerPreevalTools } from "./preeval-tools";
 import { registerReferenceTools } from "./reference-tools";
 
@@ -20,13 +23,16 @@ import type { CopilotRegistry } from "../registry";
 
 /**
  * Register the full copilot tool surface (context, reference/ops-read,
- * analysis, and pre-evaluation tools). Idempotent per call — registration
- * rejects duplicate names, so calling it more than once with the same set
- * throws.
+ * analysis, pre-evaluation, grading-write, ops, and management tools).
+ * Idempotent per call — registration rejects duplicate names, so calling it
+ * more than once with the same set throws.
  */
 export function registerCopilotTools(registry: CopilotRegistry): void {
 	registerContextTools(registry);
 	registerReferenceTools(registry);
 	registerAnalysisTools(registry);
 	registerPreevalTools(registry);
+	registerGradingTools(registry);
+	registerOpsTools(registry);
+	registerManagementTools(registry);
 }
