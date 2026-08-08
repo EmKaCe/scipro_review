@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
+	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import { statusConfig } from "$lib/components/submissions/status-config.js";
 	import { Checkbox } from "$lib/components/ui/checkbox/index.js";
@@ -11,6 +13,8 @@
 	import Upload from "@lucide/svelte/icons/upload";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
+	import CircleCheck from "@lucide/svelte/icons/circle-check";
+	import Loader from "@lucide/svelte/icons/loader";
 	import type { Snippet } from "svelte";
 	import SortArrow from "$lib/components/submissions/sort-arrow.svelte";
 	import PlagiarismModal from "$lib/components/submissions/plagiarism-modal.svelte";
@@ -183,6 +187,122 @@
 		if (meta.preEvalGrade != null) return `(${meta.preEvalGrade.toFixed(1)})`;
 		return "—";
 	}
+
+	// ── Pre-evaluate All (Phase 4c) ──
+	// Wire shape of GET /api/submissions/pre-evaluate/status.
+	interface PreEvalRunStatus {
+		running: boolean;
+		assignmentId: string | null;
+		startedAt: number | null;
+		currentStudentId: string | null;
+		currentStartedAt: number | null;
+		done: number;
+		total: number;
+	}
+
+	/** Live run record from the status endpoint (null until first fetch). */
+	let preEvalStatus = $state<PreEvalRunStatus | null>(null);
+	/** True between the POST and the first status poll (run may be over already). */
+	let preEvalStarting = $state(false);
+	/** Whether the previous poll observed a running run (drives row refresh). */
+	let preEvalWasRunning = $state(false);
+
+	/** At least one executed/error row — the batch pre-evaluation target set. */
+	let canPreEvaluateAll = $derived(
+		submissions.some((s) => s.status === "executed" || s.status === "error"),
+	);
+
+	/** True while a pre-evaluation run is starting or in flight. */
+	let preEvalRunning = $derived(preEvalStarting || (preEvalStatus?.running ?? false));
+
+	let preEvalDone = $derived(preEvalStatus?.done ?? 0);
+	let preEvalTotal = $derived(preEvalStatus?.total ?? 0);
+
+	/**
+	 * Monotonic id of the newest status request. Responses from superseded
+	 * requests (e.g. the mount fetch still in flight when a run starts) are
+	 * dropped so a stale observation can't reset run-tracking state.
+	 */
+	let statusRequestSeq = 0;
+
+	async function refreshPreEvalStatus() {
+		const seq = ++statusRequestSeq;
+		try {
+			const res = await fetch(`${base}/api/submissions/pre-evaluate/status`);
+			if (!res.ok) {
+				throw new Error(`Pre-evaluation status request failed (${res.status})`);
+			}
+			const status = (await res.json()) as PreEvalRunStatus;
+			if (seq !== statusRequestSeq) return; // superseded — ignore
+			const wasRunning = preEvalWasRunning;
+			const wasStarting = preEvalStarting;
+			preEvalStatus = status;
+			preEvalWasRunning = status.running;
+			preEvalStarting = false;
+			// A run that was observed in flight (or just started) finished:
+			// the route flipped rows to "pre-evaluated" — refresh the list.
+			if (!status.running && status.total > 0 && (wasRunning || wasStarting)) {
+				void submissionsStore.refresh();
+			}
+		} catch {
+			// Keep the last good status; the next poll tick retries.
+		}
+	}
+
+	// Poll every 2s while a run is active (same cadence as the batch
+	// process loop). Stops automatically once running flips to false.
+	$effect(() => {
+		if (!preEvalRunning) return;
+		void refreshPreEvalStatus();
+		const timer = setInterval(() => {
+			void refreshPreEvalStatus();
+		}, 2000);
+		return () => clearInterval(timer);
+	});
+
+	// Restore the running state after a page reload mid-run: one status
+	// fetch on mount re-arms the polling loop when a run is still in flight.
+	$effect(() => {
+		void refreshPreEvalStatus();
+	});
+
+	async function handlePreEvaluateAll() {
+		if (preEvalRunning) return;
+		preEvalStarting = true;
+		preEvalStatus = null;
+		try {
+			const res = await fetch(
+				`${base}/api/submissions/pre-evaluate?assignment=${encodeURIComponent(assignmentId)}`,
+				{ method: "POST" },
+			);
+			if (res.status === 409) {
+				preEvalStarting = false;
+				addToast("error", "A pre-evaluation run is already in progress", 4000);
+				return;
+			}
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(body?.message ?? `Pre-evaluation failed (${res.status})`);
+			}
+			const summary = (await res.json()) as {
+				submitted: number;
+				succeeded: number;
+				failed: number;
+			};
+			addToast(
+				"success",
+				`Pre-evaluated ${summary.succeeded} of ${summary.submitted} submission(s)${
+					summary.failed > 0 ? `, ${summary.failed} failed` : ""
+				}`,
+				5000,
+			);
+			// The polling loop (armed by preEvalStarting) refreshes the rows
+			// once the run finishes.
+		} catch (e) {
+			preEvalStarting = false;
+			addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+		}
+	}
 </script>
 
 <div class="dashboard-table-container">
@@ -222,6 +342,19 @@
 				Plagiarism
 				{#if unreviewed > 0}
 					<span class="plagiarism-count-badge">{unreviewed}</span>
+				{/if}
+			</button>
+			<button
+				class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+				title="Pre-evaluate all executed/error submissions (one KI call per submission)"
+				onclick={handlePreEvaluateAll}
+				disabled={!canPreEvaluateAll || preEvalRunning}
+			>
+				<Sparkles size={14} />
+				{#if preEvalRunning}
+					Pre-evaluating… {preEvalDone}/{preEvalTotal}
+				{:else}
+					Pre-evaluate All
 				{/if}
 			</button>
 			{#if toolbarActions}
@@ -358,9 +491,23 @@
 								</span>
 							{/if}
 						</td>
-						<td class="col-preeval cell-muted"
-							>{sub.preEvalGrade != null ? sub.preEvalGrade.toFixed(1) : "—"}</td
-						>
+						<td class="col-preeval cell-muted">
+							{#if preEvalRunning && (sub.status === "executed" || sub.status === "error")}
+								<span
+									class="preeval-chip preeval-running"
+									title="Pre-evaluation in progress"
+								>
+									<Loader size={11} class="spin" />
+								</span>
+							{:else if sub.status === "pre-evaluated"}
+								<span class="preeval-chip preeval-done" title="Pre-evaluated">
+									<CircleCheck size={11} />
+									{#if sub.preEvalGrade != null}{sub.preEvalGrade.toFixed(1)}{/if}
+								</span>
+							{:else}
+								<span class="preeval-chip preeval-empty">—</span>
+							{/if}
+						</td>
 						<td class="col-grade cell-bold">{gradeDisplay(sub)}</td>
 						<td class="col-actions">
 							<a
@@ -635,6 +782,35 @@
 		background: var(--accent);
 		color: var(--accent-on);
 		border-color: var(--accent);
+	}
+
+	/* ── Pre-Eval column chip (Phase 4c) ── */
+	.preeval-chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.4;
+		white-space: nowrap;
+	}
+	.preeval-done {
+		color: var(--success);
+	}
+	.preeval-running {
+		color: var(--info);
+	}
+	.preeval-empty {
+		color: var(--muted-foreground);
+	}
+	/* Lucide icons render <svg> via components — :global for the analyzer. */
+	:global(.spin) {
+		animation: spin 0.9s linear infinite;
+	}
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	/* ── Student link ── */
