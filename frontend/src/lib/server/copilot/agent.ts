@@ -68,7 +68,10 @@
 
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core";
-import { InMemoryStore } from "@mastra/core/storage";
+import { InMemoryStore, MastraCompositeStore } from "@mastra/core/storage";
+import { Memory } from "@mastra/memory";
+
+import { FileMemoryStore } from "./file-memory";
 import { Tool, type ToolHooks } from "@mastra/core/tools";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
@@ -254,7 +257,8 @@ export async function buildAgent(): Promise<void> {
 	// Register the full tool surface (context / reference / analysis) before
 	// the Agent is constructed — registry.list() feeds the Mastra tools.
 	registerCopilotTools(registry);
-	mastra = new Mastra({ storage: new InMemoryStore() });
+	const storage = copilotStorage();
+	mastra = new Mastra({ storage });
 	const tools = Object.fromEntries(
 		registry.list().map((tool) => [tool.name, wrapCopilotTool(tool)]),
 	);
@@ -266,6 +270,22 @@ export async function buildAgent(): Promise<void> {
 		model: createModel(settings),
 		tools,
 		hooks: auditHooks,
+		// Phase 4f: file-backed thread persistence (DATA_DIR/copilot/memory).
+		// The composite storage keeps the in-memory defaults for every other
+		// domain while routing the memory domain to the file adapter.
+		memory: new Memory({ storage }),
+	});
+}
+
+/**
+ * Composite storage for the copilot: in-memory defaults for every non-memory
+ * domain (matching the pre-4f behavior) plus the file-backed memory domain.
+ */
+function copilotStorage(): MastraCompositeStore {
+	return new MastraCompositeStore({
+		id: "copilot",
+		default: new InMemoryStore(),
+		domains: { memory: new FileMemoryStore() },
 	});
 }
 
@@ -388,6 +408,9 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 		const opts: Record<string, unknown> = {
 			requestContext,
 			maxSteps: MAX_STEPS,
+			// Required when memory is wired: Mastra throws
+			// AGENT_MEMORY_MISSING_RESOURCE_ID without a resourceId.
+			resourceId: input.submissionId,
 		};
 		if (input.threadId) opts.threadId = input.threadId;
 		if (input.signal) opts.abortSignal = input.signal;
