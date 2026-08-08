@@ -57,6 +57,48 @@ export interface CellInfo {
 }
 
 // ---------------------------------------------------------------------------
+// Pre-evaluation (Phase 4c)
+// ---------------------------------------------------------------------------
+
+/** Pre-evaluation verdict kind for one compared cell. */
+export type PreEvalMarker = "same" | "different" | "questionable";
+
+/** One per-cell comparison verdict from pre-evaluation (wire, camelCase). */
+export interface PreEvalCellVerdict {
+	/** 0-based cell index within the executed notebook. */
+	cellIndex: number;
+	marker: PreEvalMarker;
+	/** Human-readable explanation of the verdict. */
+	reason: string;
+}
+
+/** Suggested grading values produced by pre-evaluation (read-only for the teacher). */
+export interface PreEvalGradeSuggestion {
+	/** Dimension id -> suggested value. */
+	dimensions: Record<string, number>;
+	/** Free-form justification for the suggested grade. */
+	justification: string;
+}
+
+/**
+ * Pre-evaluation comparison + suggestion data attached to the submission
+ * detail (Phase 4c). `markers: null` means pre-evaluation produced no
+ * comparison data — the review UI must keep its pending/neutral state and
+ * NEVER default non-error cells to "different".
+ */
+export interface PreEvalData {
+	/** Per-cell verdicts; null = no comparison data yet. */
+	markers: PreEvalCellVerdict[] | null;
+	gradeSuggestion: PreEvalGradeSuggestion;
+	/** Draft feedback text produced by pre-evaluation. */
+	feedbackDraft: string;
+	/** Prose summary of the notebook for the teacher. */
+	notebookSummary: string;
+	/** ISO timestamp of the pre-evaluation run. */
+	evaluatedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Submission metadata
 // ---------------------------------------------------------------------------
 
@@ -107,6 +149,12 @@ export interface SubmissionDetail extends SubmissionMeta {
 	 * original `cells` are never modified (student work stays authentic).
 	 */
 	fixedCells?: CellInfo[];
+	/**
+	 * Pre-evaluation comparison + suggestion data (Phase 4c). Absent, or
+	 * `preEval.markers === null`, means pre-evaluation has not produced
+	 * comparison data yet — the review UI keeps its pending/neutral state.
+	 */
+	preEval?: PreEvalData;
 	/** Reference key cells for comparison (loaded from assignment materials). */
 	referenceCells?: CellInfo[];
 	/** Persisted grading state (rubric/dimensions/feedback/notes) — from the record. */

@@ -149,6 +149,24 @@ export interface ExecutorWireCell {
 	traceback: string[] | null;
 }
 
+/**
+ * Pre-evaluation data attached to the submission detail wire shape (Phase 4c,
+ * camelCase): `preEval: { markers, gradeSuggestion, feedbackDraft,
+ * notebookSummary, evaluatedAt }`. Types are declared next to the other cell
+ * marker types in `$lib/types/submissions` and re-exported here so the API
+ * contract is documented alongside the other wire types; the server-side
+ * producer is `$lib/server/copilot/pre-evaluation.ts`.
+ *
+ * `markers: null` means no comparison data — clients keep their
+ * pending/neutral state and never default non-error cells to "different".
+ */
+export type {
+	PreEvalCellVerdict,
+	PreEvalData,
+	PreEvalGradeSuggestion,
+	PreEvalMarker,
+} from "$lib/types/submissions.js";
+
 /** Preprocessing summary attached to execution results. */
 export interface PreprocessingSummary {
 	cellsModified: number;

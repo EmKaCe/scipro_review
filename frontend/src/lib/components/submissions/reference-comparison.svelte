@@ -1,113 +1,171 @@
 <script lang="ts">
-	import type { CellInfo } from "$lib/types/submissions.js";
+	import type { CellInfo, PreEvalData, PreEvalMarker } from "$lib/types/submissions.js";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import CircleAlert from "@lucide/svelte/icons/circle-alert";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import GitCompareArrows from "@lucide/svelte/icons/git-compare-arrows";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
+	import FileText from "@lucide/svelte/icons/file-text";
+	import Gauge from "@lucide/svelte/icons/gauge";
+	import { hasRealMarkers, markerTone } from "$lib/utils/marker-rendering.js";
 
 	interface Props {
 		/** The student's executed cells. */
 		submissionCells: readonly CellInfo[];
+		/**
+		 * Pre-evaluation comparison data (Phase 4c). Absent, or
+		 * `preEval.markers === null`, means no comparison data yet — the
+		 * pending/neutral notice is shown (cells are never defaulted to
+		 * "different"). This is an EXPLAINER, not an auditor: "different"
+		 * renders as a neutral "approach differs from reference", never as
+		 * a flag.
+		 */
+		preEval?: PreEvalData | null;
 	}
 
-	let { submissionCells }: Props = $props();
+	/** One row of the overview list: a comparison verdict or an execution error. */
+	type OverviewRow =
+		| { kind: "verdict"; index: number; marker: PreEvalMarker; reason: string }
+		| { kind: "error"; index: number; cell: CellInfo };
 
-	/** Cells with a real Phase 4 comparison verdict. */
-	let comparedCount = $derived(
-		submissionCells.filter(
-			(c) => c.marker === "same" || c.marker === "different" || c.marker === "questionable",
-		).length,
-	);
-	let diffCount = $derived(submissionCells.filter((c) => c.marker === "questionable").length);
-	let errorCount = $derived(submissionCells.filter((c) => c.marker === "error").length);
+	let { submissionCells, preEval = null }: Props = $props();
+
+	/** Real comparison verdicts (null = no comparison data yet). */
+	const markers = $derived(preEval?.markers ?? null);
+	const hasMarkers = $derived(hasRealMarkers(markers));
+	/** Verdicts sorted by cell index for a stable list. */
+	const verdicts = $derived([...(markers ?? [])].sort((a, b) => a.cellIndex - b.cellIndex));
+	const errorCells = $derived(submissionCells.filter((c) => c.marker === "error"));
+	const questionableCount = $derived(verdicts.filter((v) => v.marker === "questionable").length);
+
+	const notebookSummary = $derived(preEval?.notebookSummary ?? "");
+	const gradeSuggestion = $derived(preEval?.gradeSuggestion ?? null);
+
+	/**
+	 * Verdict rows plus execution-error rows the verdicts do not cover,
+	 * ordered by cell index. An error cell that also has a verdict is shown
+	 * once (the verdict row — its reason explains the comparison).
+	 */
+	const rows = $derived.by(() => {
+		const result: OverviewRow[] = [];
+		for (const v of verdicts) {
+			result.push({
+				kind: "verdict",
+				index: v.cellIndex,
+				marker: v.marker,
+				reason: v.reason,
+			});
+		}
+		for (const cell of errorCells) {
+			if (!verdicts.some((v) => v.cellIndex === cell.index)) {
+				result.push({ kind: "error", index: cell.index, cell });
+			}
+		}
+		result.sort((a, b) => a.index - b.index);
+		return result;
+	});
 </script>
 
 <details class="ref-compare">
 	<summary>
 		<ChevronRight size={14} class="chevron" />
 		<span class="summary-title">Reference Comparison</span>
-		{#if comparedCount === 0}
-			<span class="phase-chip">Phase 4</span>
-		{:else}
+		{#if hasMarkers}
 			<span class="summary-stats">
-				<span class="stat">{comparedCount} cells compared</span>
-				{#if diffCount > 0}
-					<span class="stat stat-diff"
-						>{diffCount} divergence{diffCount !== 1 ? "s" : ""}</span
-					>
+				<span class="stat">{verdicts.length} cells compared</span>
+				{#if questionableCount > 0}
+					<span class="stat stat-diff">{questionableCount} questionable</span>
 				{/if}
-				{#if errorCount > 0}
+				{#if errorCells.length > 0}
 					<span class="stat stat-error"
-						>{errorCount} error{errorCount !== 1 ? "s" : ""}</span
+						>{errorCells.length} error{errorCells.length !== 1 ? "s" : ""}</span
 					>
 				{/if}
 			</span>
 		{/if}
 	</summary>
 
-	{#if comparedCount === 0}
+	{#if !hasMarkers}
 		<div class="ref-pending">
 			<Sparkles size={14} />
 			<span>
-				Per-cell comparison with the reference key arrives with pre-evaluation — Phase 4.
+				Per-cell comparison with the reference key appears once pre-evaluation has run.
 				Execution errors (if any) are shown below.
 			</span>
 		</div>
-		{#if errorCount > 0}
+		{#if errorCells.length > 0}
 			<div class="ref-list">
-				{#each submissionCells as cell (cell.index)}
-					{#if cell.marker === "error"}
-						<div class="ref-row row-error">
-							<span class="ref-idx">Cell {cell.index + 1}</span>
-							<CircleAlert size={12} class="icon-error" />
-							<span class="ref-desc">
-								{cell.type === "code" ? "Code cell" : "Markdown"} — execution failed
-							</span>
-						</div>
-					{/if}
+				{#each errorCells as cell (cell.index)}
+					<div class="ref-row row-error">
+						<span class="ref-idx">Cell {cell.index + 1}</span>
+						<CircleAlert size={12} class="icon-error" />
+						<span class="ref-desc">
+							{cell.type === "code" ? "Code cell" : "Markdown"} — execution failed
+						</span>
+					</div>
 				{/each}
 			</div>
 		{/if}
 	{:else}
+		{#if notebookSummary}
+			<div class="ref-summary">
+				<FileText size={13} class="icon-neutral" />
+				<span>{notebookSummary}</span>
+			</div>
+		{/if}
 		<div class="ref-list">
-			{#each submissionCells as cell (cell.index)}
-				{@const isDiff = cell.marker === "questionable"}
-				{@const isError = cell.marker === "error"}
-				{@const isSame = cell.marker === "same"}
-				{#if cell.marker !== "pending"}
-					<div class="ref-row {isDiff ? 'row-diff' : isError ? 'row-error' : ''}">
-						<span class="ref-idx">Cell {cell.index + 1}</span>
-						{#if isError}
-							<CircleAlert size={12} class="icon-error" />
-						{:else if isDiff}
-							<TriangleAlert size={12} class="icon-diff" />
-						{:else if isSame}
+			{#each rows as row (row.index)}
+				{#if row.kind === "verdict"}
+					{@const tone = markerTone(row.marker)}
+					<div class="ref-row {tone === 'warning' ? 'row-diff' : ''}">
+						<span class="ref-idx">Cell {row.index + 1}</span>
+						{#if row.marker === "same"}
 							<CircleCheck size={12} class="icon-ok" />
+						{:else if row.marker === "questionable"}
+							<TriangleAlert size={12} class="icon-diff" />
 						{:else}
 							<GitCompareArrows size={12} class="icon-neutral" />
 						{/if}
 						<span class="ref-desc">
-							{cell.type === "code" ? "Code cell" : "Markdown"}
-							{isError
-								? "— execution failed"
-								: isDiff
-									? "— approach is questionable"
-									: isSame
-										? "— approach matches reference"
-										: "— approach differs from reference"}
+							{row.marker === "same"
+								? "Approach matches reference"
+								: row.marker === "questionable"
+									? "Approach is questionable"
+									: "Approach differs from reference"}
 						</span>
-						{#if isDiff}
-							<span class="diff-badge">
-								<GitCompareArrows size={10} />
-								diverges
-							</span>
+						{#if row.reason}
+							<span class="ref-reason">{row.reason}</span>
 						{/if}
+					</div>
+				{:else}
+					<div class="ref-row row-error">
+						<span class="ref-idx">Cell {row.index + 1}</span>
+						<CircleAlert size={12} class="icon-error" />
+						<span class="ref-desc">
+							{row.cell.type === "code" ? "Code cell" : "Markdown"} — execution failed
+						</span>
 					</div>
 				{/if}
 			{/each}
 		</div>
+		{#if gradeSuggestion}
+			<div class="ref-suggestion">
+				<div class="ref-suggestion-title">
+					<Gauge size={13} class="icon-neutral" />
+					<span>Suggested grade</span>
+				</div>
+				<div class="ref-suggestion-grid">
+					{#each Object.entries(gradeSuggestion.dimensions) as [dimension, value] (dimension)}
+						<span class="ref-dim">{dimension}</span>
+						<span class="ref-dim-value">{value}</span>
+					{/each}
+				</div>
+				{#if gradeSuggestion.justification}
+					<div class="ref-suggestion-just">{gradeSuggestion.justification}</div>
+				{/if}
+			</div>
+		{/if}
 	{/if}
 </details>
 
@@ -134,19 +192,6 @@
 	.summary-title {
 		font-weight: 600;
 	}
-	.phase-chip {
-		margin-left: auto;
-		display: inline-flex;
-		align-items: center;
-		padding: 1px 8px;
-		border-radius: 999px;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.04em;
-		text-transform: uppercase;
-		background: color-mix(in oklch, var(--accent) 14%, transparent);
-		color: var(--accent);
-	}
 	.summary-stats {
 		margin-left: auto;
 		display: flex;
@@ -169,6 +214,20 @@
 		font-size: 12px;
 		color: var(--muted-foreground);
 		background: color-mix(in oklch, var(--accent) 5%, transparent);
+	}
+	.ref-summary {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 10px 16px;
+		font-size: 12px;
+		color: var(--muted-foreground);
+		border-top: 1px solid var(--border);
+		background: color-mix(in oklch, var(--info) 6%, transparent);
+	}
+	.ref-summary :global(svg) {
+		margin-top: 1px;
+		flex-shrink: 0;
 	}
 	.ref-list {
 		padding: 8px 16px 12px;
@@ -203,6 +262,12 @@
 	.ref-desc {
 		color: var(--muted-foreground);
 	}
+	.ref-reason {
+		color: var(--muted-foreground);
+		margin-left: auto;
+		text-align: right;
+		font-size: 11px;
+	}
 	:global(.icon-ok) {
 		color: var(--info);
 		flex-shrink: 0;
@@ -219,17 +284,33 @@
 		color: var(--muted-foreground);
 		flex-shrink: 0;
 	}
-	.diff-badge {
-		margin-left: auto;
-		display: inline-flex;
+	.ref-suggestion {
+		padding: 8px 16px 10px;
+		border-top: 1px solid var(--border);
+		font-size: 12px;
+	}
+	.ref-suggestion-title {
+		display: flex;
 		align-items: center;
-		gap: 3px;
-		padding: 1px 5px;
-		border-radius: 999px;
-		font-size: 9px;
+		gap: 6px;
 		font-weight: 600;
-		background: color-mix(in oklch, var(--warning) 15%, transparent);
-		color: var(--warning);
-		flex-shrink: 0;
+		margin-bottom: 6px;
+	}
+	.ref-suggestion-grid {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		gap: 2px 16px;
+		max-width: 320px;
+	}
+	.ref-dim {
+		color: var(--muted-foreground);
+	}
+	.ref-dim-value {
+		font-weight: 600;
+		font-variant-numeric: tabular-nums;
+	}
+	.ref-suggestion-just {
+		margin-top: 6px;
+		color: var(--muted-foreground);
 	}
 </style>

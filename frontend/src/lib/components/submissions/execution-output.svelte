@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { CellInfo } from "$lib/types/submissions.js";
+	import type { CellInfo, PreEvalData } from "$lib/types/submissions.js";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import GitFork from "@lucide/svelte/icons/git-fork";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -10,6 +10,7 @@
 	import AutofixCard from "./autofix-card.svelte";
 	import { cellDelta } from "$lib/utils/cell-diff.js";
 	import { renderMarkdown, highlightCode } from "$lib/utils/markdown.js";
+	import { hasRealMarkers, verdictForCell } from "$lib/utils/marker-rendering.js";
 	import "highlight.js/styles/github-dark.min.css";
 
 	interface Props {
@@ -39,6 +40,14 @@
 		 * Fired from the Accept/Ignore buttons on the fixed-view strip.
 		 */
 		onDisposition?: (cellIndex: number, disposition: "accepted" | "ignored") => void;
+		/**
+		 * Pre-evaluation comparison data (Phase 4c). Absent, or
+		 * `preEval.markers === null`, means no comparison data yet — cells
+		 * render WITHOUT approach badges (only execution errors) and a
+		 * pending notice shows. Verdicts are looked up per cell by index;
+		 * a cell without an entry never gets a fabricated marker.
+		 */
+		preEval?: PreEvalData | null;
 	}
 
 	let {
@@ -50,6 +59,7 @@
 		fixedCells = null,
 		fixedView,
 		onDisposition,
+		preEval = null,
 	}: Props = $props();
 
 	/** Local view set when the page does not pass one down. */
@@ -85,12 +95,10 @@
 		return Array.from({ length: Math.max(1, count) }, (_, i) => i + 1);
 	}
 
-	/** True when at least one cell carries a real Phase 4 comparison marker. */
-	let hasComparison = $derived(
-		cells.some(
-			(c) => c.marker === "same" || c.marker === "different" || c.marker === "questionable",
-		),
-	);
+	/** Pre-evaluation verdicts (null = no comparison data yet). */
+	const markers = $derived(preEval?.markers ?? null);
+	/** True when the submission carries at least one real comparison marker. */
+	const hasComparison = $derived(hasRealMarkers(markers));
 
 	const markerConfig: Record<string, { label: string; icon: LucideIcon; class: string }> = {
 		same: {
@@ -121,36 +129,35 @@
 		<div class="phase-notice">
 			<Sparkles size={13} />
 			<span>
-				Approach markers (same / different / questionable) arrive with pre-evaluation —
-				Phase 4.
+				Approach markers (same / different / questionable) appear once pre-evaluation has
+				run.
 			</span>
 		</div>
 	{/if}
 
 	{#each cells as cell (cell.index)}
-		{@const marker = markerConfig[cell.marker] ?? markerConfig.different}
-		{@const showMarker = cell.marker === "error" || hasComparison}
+		{@const verdict = verdictForCell(markers, cell.index)}
+		{@const effMarker = cell.marker === "error" ? "error" : verdict?.marker}
+		{@const marker = effMarker !== undefined ? markerConfig[effMarker] : null}
 		{@const fixed = fixedByIndex.get(cell.index)}
 		{@const showFixed = fixed !== undefined && activeFixedView.has(cell.index)}
 		{@const delta = fixed !== undefined ? cellDelta(cell, fixed) : null}
 		<div
 			class="cell-card {cell.marker === 'error'
 				? 'cell-error'
-				: cell.marker === 'questionable'
+				: effMarker === 'questionable'
 					? 'cell-questionable'
-					: cell.marker === 'same'
+					: effMarker === 'same'
 						? 'cell-same'
 						: ''}{showFixed ? ' cell-autofixed' : ''}"
 		>
 			<div class="cell-header">
 				<span class="cell-num">Cell {cell.index + 1}</span>
 				<span class="cell-type">· {cell.type}</span>
-				{#if showMarker}
+				{#if marker}
+					{@const MarkerIcon = marker.icon}
 					<span class="cell-marker {marker.class}">
-						{#if marker.icon}
-							{@const MarkerIcon = marker.icon}
-							<MarkerIcon size={12} />
-						{/if}
+						<MarkerIcon size={12} />
 						{marker.label}
 					</span>
 				{/if}

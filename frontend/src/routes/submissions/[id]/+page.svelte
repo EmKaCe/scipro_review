@@ -827,7 +827,7 @@
 				</div>
 
 				<!-- Reference comparison -->
-				<ReferenceComparison submissionCells={cells} />
+				<ReferenceComparison submissionCells={cells} preEval={submission.preEval} />
 
 				<!-- Sticky page-level counter for the derived view: only visible
 				     while at least one cell shows its auto-fixed version. -->
@@ -853,6 +853,7 @@
 					assignmentId={submission.assignmentId}
 					existingNotes={notesDraft}
 					onNotesSaved={handleNotesSaved}
+					preEval={submission.preEval}
 				/>
 
 				<!-- Top-level teacher notes (3f.5): edited inline, persisted

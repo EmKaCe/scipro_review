@@ -19,13 +19,27 @@ import path from "node:path";
 
 import type { ExecutionResult } from "./executor-client";
 import { assertSafeSegment, getDataDir } from "./metadata";
+import type { PreEvaluation } from "./copilot/pre-evaluation";
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-/** Stored execution result; `error` is set when execution failed. */
-export type StoredExecutionResult = ExecutionResult & { error?: string | null };
+/**
+ * Pre-evaluation envelope as persisted on a stored execution result: the
+ * {@link PreEvaluation} wire contract plus when it was produced.
+ */
+export type StoredPreEvaluation = PreEvaluation & { evaluatedAt: string };
+
+/**
+ * Stored execution result; `error` is set when execution failed. `preEval`
+ * is present once the copilot's pre-evaluation has been persisted for the
+ * submission (Phase 4c) — older stored results without it stay valid.
+ */
+export type StoredExecutionResult = ExecutionResult & {
+	error?: string | null;
+	preEval?: StoredPreEvaluation;
+};
 
 /** results.json contents — a map keyed by studentId. */
 export type ResultsFile = Record<string, StoredExecutionResult>;
@@ -97,6 +111,31 @@ export async function clearResult(assignmentId: string, studentId: string): Prom
 		return;
 	}
 	delete results[studentId];
+	await writeResults(assignmentId, results);
+}
+
+/**
+ * Persist (or replace) the pre-evaluation envelope for one submission.
+ *
+ * Requires an existing stored execution result — pre-evaluation is built
+ * from executed cells, so there is nothing to attach the envelope to when
+ * the submission was never executed (or only batch-executed without cell
+ * data). Throws a helpful Error in that case instead of fabricating a row.
+ */
+export async function setPreEvaluation(
+	assignmentId: string,
+	studentId: string,
+	preEval: StoredPreEvaluation,
+): Promise<void> {
+	assertSafeSegment(studentId, "studentId");
+	const results = await readResults(assignmentId);
+	const existing = results[studentId];
+	if (!existing) {
+		throw new Error(
+			`Cannot store pre-evaluation for "${studentId}": no stored execution result in assignment "${assignmentId}"`,
+		);
+	}
+	results[studentId] = { ...existing, preEval };
 	await writeResults(assignmentId, results);
 }
 
