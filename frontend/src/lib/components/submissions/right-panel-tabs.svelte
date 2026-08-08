@@ -6,6 +6,7 @@
 	import RubricCategory from "$lib/components/rubric-category.svelte";
 	import CopilotPanel from "./copilot-panel.svelte";
 	import PlagiarismTab from "./plagiarism-tab.svelte";
+	import type { CopilotSuggestion } from "./copilot-store.svelte.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import ListChecks from "@lucide/svelte/icons/list-checks";
@@ -57,6 +58,18 @@
 		disabled?: boolean;
 		/** Hide the component's own tab bar (the parent renders it — mobile). */
 		hideTabBar?: boolean;
+		/**
+		 * Fired when the teacher applies a pending copilot suggestion
+		 * (forwarded to CopilotPanel). The PAGE applies it to grading
+		 * inputs / notes draft via applySuggestionToState.
+		 */
+		onapply?: (suggestion: CopilotSuggestion) => void;
+		/**
+		 * Teacher-mode gate for the inline "Ask copilot" chips in rubric
+		 * categories (Phase 4e) — the page sets it from the copilot apiMode
+		 * holder; forwarded to RubricCategory.
+		 */
+		showAskCopilot?: boolean;
 	}
 
 	let {
@@ -75,6 +88,8 @@
 		assignmentId,
 		disabled = false,
 		hideTabBar = false,
+		onapply,
+		showAskCopilot = false,
 	}: Props = $props();
 
 	let gradePct = $derived(gradeResult?.percentage ?? 0);
@@ -248,6 +263,7 @@
 							onUpdateDeduction={handleUpdateDeduction}
 							onUpdateNotes={(v) => handleUpdateNotes(entry.key, v)}
 							{disabled}
+							{showAskCopilot}
 						/>
 					{/each}
 				{:else}
@@ -268,7 +284,7 @@
 		{:else if activeTab === "plagiarism"}
 			<PlagiarismTab {studentId} {assignmentId} />
 		{:else if activeTab === "copilot"}
-			<CopilotPanel />
+			<CopilotPanel submissionId={studentId} {onapply} />
 		{/if}
 	</div>
 </div>

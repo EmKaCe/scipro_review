@@ -48,6 +48,12 @@
 		 * a cell without an entry never gets a fabricated marker.
 		 */
 		preEval?: PreEvalData | null;
+		/**
+		 * Teacher-mode gate for the inline "Ask copilot" chips (Phase 4e).
+		 * The page sets it from the copilot apiMode holder; chips are never
+		 * rendered in the student/static build.
+		 */
+		copilotChips?: boolean;
 	}
 
 	let {
@@ -60,6 +66,7 @@
 		fixedView,
 		onDisposition,
 		preEval = null,
+		copilotChips = false,
 	}: Props = $props();
 
 	/** Local view set when the page does not pass one down. */
@@ -87,6 +94,15 @@
 		} else {
 			openDeltas.add(index);
 		}
+	}
+
+	/**
+	 * Inline "Ask copilot" chip (Phase 4e): fire a `copilot-request` DOM
+	 * event with a cell-scoped prompt. The submission page listens, switches
+	 * to the Copilot tab and forwards the prompt to the panel.
+	 */
+	function askCopilot(prompt: string): void {
+		window.dispatchEvent(new CustomEvent("copilot-request", { detail: prompt }));
 	}
 
 	/** Line-number gutter for a code cell. */
@@ -179,6 +195,21 @@
 						onclick={() => toggleDelta(cell.index)}
 					>
 						{openDeltas.has(cell.index) ? "Hide delta" : "Show delta"}
+					</button>
+				{/if}
+				{#if copilotChips && marker}
+					{@const askPrompt =
+						cell.marker === "error"
+							? `Explain cell ${cell.index + 1}`
+							: `Compare cell ${cell.index + 1} to the reference key`}
+					<button
+						type="button"
+						class="ask-copilot-chip"
+						title="Ask copilot"
+						aria-label="Ask copilot"
+						onclick={() => askCopilot(askPrompt)}
+					>
+						<Sparkles size={12} />
 					</button>
 				{/if}
 			</div>
@@ -354,6 +385,26 @@
 	.cell-toggle:hover {
 		border-color: var(--accent);
 		color: var(--accent);
+	}
+	/* Inline "Ask copilot" chip (Phase 4e) — subtle icon-only affordance. */
+	.ask-copilot-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: 22px;
+		height: 22px;
+		margin-left: 4px;
+		border: 1px solid transparent;
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted-foreground);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.ask-copilot-chip:hover {
+		color: var(--primary);
+		background: var(--muted);
+		border-color: var(--border);
 	}
 	/* In-cell strip — scrolls with the cell, never visible without it. */
 	.autofix-strip {

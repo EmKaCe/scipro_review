@@ -2,6 +2,7 @@
 	import type { CategoryEntry } from "$lib/types/criteria.js";
 	import type { CategorySelections } from "$lib/types/session.js";
 	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import RubricSection from "$lib/components/rubric-section.svelte";
 	import { Editor } from "@tiptap/core";
 	import StarterKit from "@tiptap/starter-kit";
@@ -18,6 +19,12 @@
 		expanded: boolean;
 		/** Whether the category is in read-only mode (disables all interactions). */
 		disabled?: boolean;
+		/**
+		 * Teacher-mode gate for the inline "Ask copilot" chip (Phase 4e).
+		 * The page sets it from the copilot apiMode holder; the chip is
+		 * never rendered in the student/static build.
+		 */
+		showAskCopilot?: boolean;
 		/** Callback to toggle the category's expanded/collapsed state. */
 		onToggle: () => void;
 		/** Callback when a checkbox is toggled. Key is the sub-point text. */
@@ -35,6 +42,7 @@
 		selections,
 		expanded,
 		disabled = false,
+		showAskCopilot = false,
 		onToggle,
 		onToggleCheckbox,
 		onUpdateComment,
@@ -45,6 +53,19 @@
 	let category = $derived(entry.category);
 	let isExpanded = $derived(expanded);
 	let hasCheckedItems = $derived(selections.checked_items.size > 0);
+
+	/**
+	 * Inline "Ask copilot" chip (Phase 4e): fire a `copilot-request` DOM
+	 * event with a prompt about this category. The submission page listens,
+	 * switches to the Copilot tab and forwards the prompt to the panel.
+	 */
+	function askCopilot(): void {
+		window.dispatchEvent(
+			new CustomEvent("copilot-request", {
+				detail: `Explain how the "${category.title}" criteria apply to this submission.`,
+			}),
+		);
+	}
 
 	let editor = $state<Editor | null>(null);
 	let editorElement = $state<HTMLDivElement | null>(null);
@@ -127,26 +148,39 @@
 	id="category-{entry.key}"
 	class="review-card rounded-[var(--radius)] border border-border bg-card"
 >
-	<button
-		type="button"
-		onclick={onToggle}
-		class="flex w-full items-center justify-between rounded-t-[var(--radius)] border-b border-border bg-card p-3 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
-		aria-expanded={isExpanded}
-		aria-controls="category-content-{entry.key}"
-	>
-		<div class="flex items-center gap-2">
-			<span class="text-sm font-semibold text-foreground">{category.title}</span>
-			{#if hasCheckedItems}
-				<span class="h-1.5 w-1.5 rounded-full bg-success"></span>
-			{/if}
-		</div>
-		<ChevronDown
-			size={16}
-			class="text-muted-foreground transition-transform duration-200 {isExpanded
-				? ''
-				: '-rotate-90'}"
-		/>
-	</button>
+	<div class="flex items-stretch rounded-t-[var(--radius)] border-b border-border bg-card">
+		<button
+			type="button"
+			onclick={onToggle}
+			class="flex flex-1 items-center justify-between p-3 text-left transition-colors hover:bg-black/[0.02] dark:hover:bg-white/[0.02]"
+			aria-expanded={isExpanded}
+			aria-controls="category-content-{entry.key}"
+		>
+			<div class="flex items-center gap-2">
+				<span class="text-sm font-semibold text-foreground">{category.title}</span>
+				{#if hasCheckedItems}
+					<span class="h-1.5 w-1.5 rounded-full bg-success"></span>
+				{/if}
+			</div>
+			<ChevronDown
+				size={16}
+				class="text-muted-foreground transition-transform duration-200 {isExpanded
+					? ''
+					: '-rotate-90'}"
+			/>
+		</button>
+		{#if showAskCopilot}
+			<button
+				type="button"
+				class="ask-copilot-chip"
+				title="Ask copilot"
+				aria-label="Ask copilot"
+				onclick={askCopilot}
+			>
+				<Sparkles size={13} />
+			</button>
+		{/if}
+	</div>
 
 	<div
 		id="category-content-{entry.key}"
@@ -220,6 +254,28 @@
 <style>
 	.review-card {
 		overflow: visible;
+	}
+
+	/* Inline "Ask copilot" chip (Phase 4e) — subtle icon-only affordance. */
+	.ask-copilot-chip {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		align-self: center;
+		width: 28px;
+		height: 28px;
+		margin-right: 8px;
+		border: 1px solid transparent;
+		border-radius: var(--radius);
+		background: transparent;
+		color: var(--muted-foreground);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.ask-copilot-chip:hover {
+		color: var(--primary);
+		background: var(--muted);
+		border-color: var(--border);
 	}
 
 	.accordion-grid {

@@ -21,6 +21,11 @@
 	} from "$lib/services/grading-persistence.js";
 	import { rubricSentimentCounts } from "$lib/types/criteria.js";
 	import { statusConfig } from "$lib/components/submissions/status-config.js";
+	import {
+		apiMode,
+		type CopilotSuggestion,
+	} from "$lib/components/submissions/copilot-store.svelte.js";
+	import { applySuggestionToState } from "$lib/utils/apply-suggestion.js";
 	import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
@@ -545,6 +550,83 @@
 		activeTab = "copilot";
 		mobileTab = "copilot";
 	}
+
+	// -----------------------------------------------------------------------
+	// Copilot apply + inline chip wiring (4e)
+	// -----------------------------------------------------------------------
+	/**
+	 * Prompts queued by the inline "Ask copilot" chips (rubric category
+	 * headers, cell headers). The tab switch mounts the CopilotPanel; a
+	 * $effect below drains the queue by driving the panel's own input.
+	 */
+	let copilotPromptQueue = $state<string[]>([]);
+
+	/**
+	 * Apply a pending copilot suggestion to page state (grading inputs +
+	 * notes draft) via the pure applySuggestionToState helper. Never
+	 * auto-saves — the teacher reviews and presses Save.
+	 */
+	function handleApplySuggestion(suggestion: CopilotSuggestion) {
+		const next = applySuggestionToState(suggestion, {
+			gradingInputs: { ...gradingInputs },
+			notesDraft,
+		});
+		gradingInputs = next.gradingInputs;
+		notesDraft = next.notesDraft;
+		if (suggestion.kind === "grade") {
+			addToast("success", "Suggested scores applied — review and press Save", 3500);
+		} else if (suggestion.kind === "draft") {
+			addToast("success", "Feedback draft applied — review and press Save", 3500);
+		}
+		// fix / export kinds have no page-state apply path — the helper
+		// returned the state unchanged and no toast is shown.
+	}
+
+	/**
+	 * Inline chips dispatch a 'copilot-request' CustomEvent (detail: prompt
+	 * string). Switch BOTH tab states to the copilot tab (desktop + mobile)
+	 * and queue the prompt for the panel — delivered once it is mounted.
+	 */
+	function handleCopilotRequest(e: Event) {
+		const prompt = (e as CustomEvent<string>).detail;
+		if (!prompt?.trim()) return;
+		rightPanelCollapsed = false;
+		activeTab = "copilot";
+		mobileTab = "copilot";
+		copilotPromptQueue = [...copilotPromptQueue, prompt.trim()];
+	}
+
+	/**
+	 * The panel owns its copilot store instance and exposes no external
+	 * send API, and copilot-panel.svelte must stay untouched (4e scope),
+	 * so the queued prompt is delivered by driving the panel's own input
+	 * the way a teacher would: fill the field, fire an `input` event
+	 * (handleInput writes copilot.inputValue), then an Enter keydown
+	 * (handleKeydown → handleSend). The effect runs AFTER the tab switch
+	 * mounts the panel, so the input exists on the first drain.
+	 */
+	$effect(() => {
+		if (activeTab !== "copilot" || rightPanelCollapsed || copilotPromptQueue.length === 0) {
+			return;
+		}
+		const prompt = copilotPromptQueue[0];
+		const input = document.querySelector<HTMLInputElement>(
+			".copilot-container input.input-field",
+		);
+		if (!input) return;
+		input.value = prompt;
+		input.dispatchEvent(new Event("input", { bubbles: true }));
+		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+		copilotPromptQueue = copilotPromptQueue.slice(1);
+	});
+
+	/** Listen for inline-chip 'copilot-request' events (client-side only). */
+	$effect(() => {
+		if (typeof window === "undefined") return;
+		const handler = (e: Event) => handleCopilotRequest(e);
+		window.addEventListener("copilot-request", handler);
+		return () => window.removeEventListener("copilot-request", handler);
+	});
 </script>
 
 <svelte:head>
@@ -854,6 +936,7 @@
 					existingNotes={notesDraft}
 					onNotesSaved={handleNotesSaved}
 					preEval={submission.preEval}
+					copilotChips={apiMode.value}
 				/>
 
 				<!-- Top-level teacher notes (3f.5): edited inline, persisted
@@ -931,6 +1014,8 @@
 						studentId={submission.studentId}
 						assignmentId={submission.assignmentId}
 						hideTabBar={isMobile}
+						onapply={handleApplySuggestion}
+						showAskCopilot={apiMode.value}
 					/>
 				{/if}
 			</aside>
