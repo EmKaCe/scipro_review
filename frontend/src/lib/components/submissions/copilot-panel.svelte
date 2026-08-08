@@ -1,9 +1,35 @@
 <script lang="ts">
-	import { createCopilotStore } from "./copilot-store.svelte.js";
+	import { createCopilotStore, type CopilotMessage } from "./copilot-store.svelte.js";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Send from "@lucide/svelte/icons/send";
+	import Wrench from "@lucide/svelte/icons/wrench";
+	import CircleCheck from "@lucide/svelte/icons/circle-check";
+	import CircleX from "@lucide/svelte/icons/circle-x";
+	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
+	import Lock from "@lucide/svelte/icons/lock";
+	import Lightbulb from "@lucide/svelte/icons/lightbulb";
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
+	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 
-	let copilot = $derived(createCopilotStore());
+	interface Props {
+		/**
+		 * Submission the copilot operates on. Optional — the per-submission
+		 * page wires it in a later task; the panel compiles standalone.
+		 */
+		submissionId?: string;
+	}
+
+	let { submissionId = "" }: Props = $props();
+
+	/**
+	 * One store per component instance — created once at mount. The previous
+	 * `$derived(createCopilotStore())` built a fresh store on every reactive
+	 * recomputation, discarding messages mid-stream. The submissionId capture
+	 * is intentionally one-time (the store binds to the submission for its
+	 * whole lifetime), so the state_referenced_locally hint is suppressed.
+	 */
+	// svelte-ignore state_referenced_locally
+	const copilot = createCopilotStore(submissionId ? { submissionId } : undefined);
 
 	function handleSend() {
 		const text = copilot.inputValue.trim();
@@ -31,6 +57,14 @@
 		copilot.inputValue = cmd + " ";
 		showCommands = false;
 	}
+
+	/** True when this approval message is the live pending request. */
+	function isPendingApproval(msg: CopilotMessage): boolean {
+		const pending = copilot.pendingApproval;
+		return (
+			pending !== null && pending.runId === msg.runId && pending.toolCallId === msg.toolCallId
+		);
+	}
 </script>
 
 <div class="copilot-container">
@@ -57,15 +91,122 @@
 			</div>
 		{:else}
 			{#each copilot.messages as msg (msg.id)}
-				<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
-					<div class="msg-content">{msg.content}</div>
-					<span class="msg-time">
-						{new Date(msg.timestamp).toLocaleTimeString([], {
-							hour: "2-digit",
-							minute: "2-digit",
-						})}
-					</span>
-				</div>
+				{#if msg.kind === "tool-call"}
+					<div class="copilot-card tool-call-card">
+						<div class="card-header">
+							<Wrench size={12} />
+							<span class="card-label">Tool call</span>
+							<code class="tool-name">{msg.tool}</code>
+						</div>
+						{#if msg.args}
+							<details class="args-toggle">
+								<summary class="args-summary">
+									<span class="chevron-wrap"><ChevronRight size={12} /></span>
+									<span>Arguments</span>
+								</summary>
+								<pre class="args-pre">{msg.args}</pre>
+							</details>
+						{/if}
+					</div>
+				{:else if msg.kind === "tool-result"}
+					<div
+						class="copilot-card tool-result-card"
+						class:tool-result-ok={msg.ok === true}
+						class:tool-result-err={msg.ok !== true}
+					>
+						{#if msg.ok === true}
+							<CircleCheck size={12} />
+						{:else}
+							<CircleX size={12} />
+						{/if}
+						{#if msg.tool}
+							<code class="tool-name">{msg.tool}</code>
+						{/if}
+						<span class="tool-result-summary">{msg.summary}</span>
+					</div>
+				{:else if msg.kind === "approval"}
+					<div class="copilot-card approval-card">
+						<div class="card-header">
+							<ShieldAlert size={14} />
+							<span class="card-label">Approval required</span>
+						</div>
+						<div class="approval-body">
+							<code class="tool-name">{msg.tool}</code>
+							{#if msg.args}
+								<pre class="args-pre">{msg.args}</pre>
+							{/if}
+						</div>
+						{#if msg.approvalDecision === "blocked"}
+							<div class="approval-blocked">
+								<Lock size={12} />
+								<span>Blocked by policy</span>
+							</div>
+						{:else if isPendingApproval(msg)}
+							<div class="approval-actions">
+								<button
+									type="button"
+									class="approve-btn"
+									onclick={() => copilot.approve("approve")}
+									aria-label={`Approve ${msg.tool ?? "tool"} call`}
+									title={`Approve ${msg.tool ?? "tool"} call`}
+								>
+									Approve
+								</button>
+								<button
+									type="button"
+									class="deny-btn"
+									onclick={() => copilot.approve("deny")}
+									aria-label={`Deny ${msg.tool ?? "tool"} call`}
+									title={`Deny ${msg.tool ?? "tool"} call`}
+								>
+									Deny
+								</button>
+							</div>
+						{:else}
+							<div class="approval-resolved">
+								<CircleCheck size={12} />
+								<span>Resolved</span>
+							</div>
+						{/if}
+					</div>
+				{:else if msg.kind === "suggestion"}
+					<div class="copilot-card suggestion-card">
+						<div class="card-header">
+							<Lightbulb size={12} />
+							<span class="card-label">Suggestion</span>
+						</div>
+						<p class="suggestion-title">{msg.suggestion?.title ?? msg.content}</p>
+						{#if msg.suggestion?.body}
+							<p class="suggestion-body">{msg.suggestion.body}</p>
+						{/if}
+						{#if msg.suggestion?.actionLabel}
+							<span class="suggestion-action">{msg.suggestion.actionLabel}</span>
+						{/if}
+					</div>
+				{:else if msg.kind === "error"}
+					<div class="msg msg-assistant msg-error">
+						<div class="msg-error-line">
+							<TriangleAlert size={12} />
+							<div class="msg-content">{msg.content}</div>
+						</div>
+						<span class="msg-time">
+							{new Date(msg.timestamp).toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</span>
+					</div>
+				{:else}
+					<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
+						<div class="msg-content">{msg.content}</div>
+						<span class="msg-time">
+							{new Date(msg.timestamp).toLocaleTimeString([], {
+								hour: "2-digit",
+								minute: "2-digit",
+							})}
+						</span>
+					</div>
+				{/if}
 			{/each}
 		{/if}
 
@@ -197,12 +338,198 @@
 		border: 1px solid var(--border);
 		color: var(--foreground);
 	}
+	.msg-error {
+		border-color: color-mix(in oklch, var(--destructive) 40%, var(--border));
+		background: color-mix(in oklch, var(--destructive) 8%, var(--card));
+	}
+	.msg-error-line {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		color: var(--destructive);
+	}
 	.msg-time {
 		font-size: 10px;
 		color: var(--muted-foreground);
 		display: block;
 		margin-top: 4px;
 	}
+
+	/* Agent stream cards (tool-call / tool-result / approval / suggestion). */
+	.copilot-card {
+		align-self: stretch;
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		padding: 8px 10px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--foreground);
+	}
+	.card-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+	}
+	.card-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted-foreground);
+	}
+	.tool-name {
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--primary);
+		margin-left: auto;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.args-toggle {
+		margin-top: 8px;
+	}
+	.args-summary {
+		list-style: none;
+		display: flex;
+		align-items: center;
+		gap: 4px;
+		cursor: pointer;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		user-select: none;
+	}
+	.args-summary::-webkit-details-marker {
+		display: none;
+	}
+	.chevron-wrap {
+		display: inline-flex;
+		transition: transform 0.15s;
+	}
+	details[open] .chevron-wrap {
+		transform: rotate(90deg);
+	}
+	.args-pre {
+		margin: 8px 0 0;
+		padding: 8px;
+		background: var(--muted);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+		font-size: 11px;
+		line-height: 1.45;
+		white-space: pre-wrap;
+		word-break: break-word;
+		overflow-x: auto;
+		color: var(--foreground);
+	}
+
+	.tool-result-card {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.tool-result-ok {
+		color: var(--success);
+	}
+	.tool-result-err {
+		color: var(--destructive);
+	}
+	.tool-result-card .tool-name {
+		color: inherit;
+	}
+	.tool-result-summary {
+		color: var(--foreground);
+		min-width: 0;
+	}
+
+	/* Approval request — prominent until decided. */
+	.approval-card {
+		border: 1px solid color-mix(in oklch, var(--warning) 45%, var(--border));
+		background: color-mix(in oklch, var(--warning) 7%, var(--card));
+	}
+	.approval-body {
+		display: flex;
+		flex-direction: column;
+		gap: 6px;
+		margin-top: 6px;
+	}
+	.approval-actions {
+		display: flex;
+		gap: 8px;
+		margin-top: 10px;
+	}
+	.approve-btn {
+		background: var(--primary);
+		color: var(--primary-foreground);
+		border: none;
+		border-radius: var(--radius);
+		padding: 5px 14px;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.approve-btn:hover {
+		opacity: 0.9;
+	}
+	.deny-btn {
+		background: none;
+		color: var(--destructive);
+		border: 1px solid color-mix(in oklch, var(--destructive) 40%, var(--border));
+		border-radius: var(--radius);
+		padding: 4px 14px;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.deny-btn:hover {
+		background: color-mix(in oklch, var(--destructive) 8%, transparent);
+	}
+	.approval-blocked {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 10px;
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--destructive);
+	}
+	.approval-resolved {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 10px;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+	}
+
+	/* Read-only suggestion (apply wiring arrives later). */
+	.suggestion-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--foreground);
+		margin: 6px 0 0;
+	}
+	.suggestion-body {
+		font-size: 12px;
+		color: var(--muted-foreground);
+		line-height: 1.5;
+		margin: 4px 0 0;
+	}
+	.suggestion-action {
+		display: inline-block;
+		margin-top: 8px;
+		padding: 2px 8px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--muted-foreground);
+		background: var(--muted);
+		border: 1px solid var(--border);
+	}
+
 	.typing-indicator {
 		display: flex;
 		align-items: center;
