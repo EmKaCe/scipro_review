@@ -20,9 +20,9 @@
  * 2. **Per-request state rides Mastra's requestContext.** The tool
  *    `requireApproval` functions and the audit ToolHooks are static
  *    (agent-level), but the policy needs the *current* settings + session and
- *    the hooks need the thread id. Each `streamChat` puts a `ReqState`
- *    object (settings snapshot, session, threadId, submissionId, per-call
- *    decision map) into the run's `requestContext` under `__copilot`;
+ *    hooks need the thread id. Each `streamChat` puts a `ReqState`
+ *    object (settings snapshot, session, threadId, submissionId,
+ *    assignmentId, per-call decision map) into the run's `requestContext`
  *    `requireApproval`/hooks/tool-execute all read it back. Concurrent runs
  *    are isolated because each run carries its own requestContext.
  *
@@ -177,8 +177,17 @@ export interface CopilotSession {
 }
 
 export interface StreamChatInput {
-	/** Submission the conversation is about (forwarded to tool contexts). */
-	submissionId: string;
+	/**
+	 * Submission the conversation is about (forwarded to tool contexts).
+	 * Optional — an assignment-scoped turn omits it; the agent's context
+	 * tools then fall back to the assignment scope.
+	 */
+	submissionId?: string;
+	/**
+	 * Assignment the conversation is about (assignment-scoped chat from the
+	 * submissions dashboard — no per-submission context).
+	 */
+	assignmentId?: string;
 	/** The teacher's message. */
 	message: string;
 	/** Conversation/thread id, for audit correlation. */
@@ -225,7 +234,8 @@ interface ReqState {
 	settings: CopilotSettings;
 	session?: CopilotSession;
 	threadId?: string;
-	submissionId: string;
+	submissionId?: string;
+	assignmentId?: string;
 	/** Policy decision per tool call, computed by requireApproval. */
 	decisions: Map<string, ApprovalDecision>;
 }
@@ -338,6 +348,7 @@ function wrapCopilotTool(tool: CopilotTool): Tool {
 			const reqState = readReqState(context.requestContext);
 			const toolContext: ToolContext = {
 				submissionId: reqState?.submissionId,
+				assignmentId: reqState?.assignmentId,
 				signal: context.abortSignal ?? new AbortController().signal,
 			};
 			// The registry re-validates args against the Zod inputSchema, so
@@ -398,6 +409,7 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 		session: input.session,
 		threadId: input.threadId,
 		submissionId: input.submissionId,
+		assignmentId: input.assignmentId,
 		decisions: new Map(),
 	};
 	const requestContext = new Map<string, unknown>();
@@ -409,8 +421,11 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 			requestContext,
 			maxSteps: MAX_STEPS,
 			// Required when memory is wired: Mastra throws
-			// AGENT_MEMORY_MISSING_RESOURCE_ID without a resourceId.
-			resourceId: input.submissionId,
+			// AGENT_MEMORY_MISSING_RESOURCE_ID without a resourceId. The
+			// submission scopes the resource; an assignment-scoped turn
+			// falls back to the assignment id (or a shared fallback when
+			// neither id is present, e.g. direct agent tests).
+			resourceId: input.submissionId ?? input.assignmentId ?? "copilot",
 		};
 		if (input.threadId) opts.threadId = input.threadId;
 		if (input.signal) opts.abortSignal = input.signal;

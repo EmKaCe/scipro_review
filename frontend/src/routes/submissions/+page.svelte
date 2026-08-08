@@ -25,6 +25,8 @@
 	import HardDriveDownload from "@lucide/svelte/icons/hard-drive-download";
 	import FolderCog from "@lucide/svelte/icons/folder-cog";
 	import Upload from "@lucide/svelte/icons/upload";
+	import ChevronDown from "@lucide/svelte/icons/chevron-down";
+	import ChevronUp from "@lucide/svelte/icons/chevron-up";
 
 	import AssignmentSelector from "$lib/components/submissions/assignment-selector.svelte";
 	import UploadPanel from "$lib/components/submissions/upload-panel.svelte";
@@ -33,6 +35,8 @@
 	import SubmissionsDashboard from "$lib/components/submissions/submissions-dashboard.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import ConfirmationDialog from "$lib/components/confirmation-dialog.svelte";
+	import CopilotPanel from "$lib/components/submissions/copilot-panel.svelte";
+	import { apiMode } from "$lib/components/submissions/copilot-store.svelte.js";
 	import {
 		downloadBackup,
 		fetchAssignments,
@@ -85,6 +89,8 @@
 	let uploadPanelOpen = $state(false);
 	/** Materials manager panel visibility (dashboard). */
 	let materialsOpen = $state(false);
+	/** Assignment copilot panel visibility (teacher build only, collapsible). */
+	let copilotOpen = $state(false);
 	/** Materials state for the selected assignment (B3 — real API). */
 	let materials = $state<MaterialsStatus | null>(null);
 
@@ -964,6 +970,32 @@
 		summary={logSummary}
 		onRefresh={refreshLogs}
 	/>
+
+	<!-- ── Assignment copilot (teacher build only, collapsible) ── -->
+	{#if apiMode.value}
+		<div class="copilot-panel" class:copilot-panel-open={copilotOpen}>
+			<button
+				class="copilot-toggle"
+				type="button"
+				aria-expanded={copilotOpen}
+				onclick={() => (copilotOpen = !copilotOpen)}
+			>
+				<Sparkles size={14} />
+				<span class="copilot-title">AI Copilot</span>
+				<span class="copilot-scope">Assignment: {selectedAssignment}</span>
+				{#if copilotOpen}
+					<ChevronUp size={14} />
+				{:else}
+					<ChevronDown size={14} />
+				{/if}
+			</button>
+			{#if copilotOpen}
+				<div class="copilot-body">
+					<CopilotPanel assignmentId={selectedAssignment} />
+				</div>
+			{/if}
+		</div>
+	{/if}
 {/if}
 
 <!-- Bulk delete confirmation (the batch is explicit in the message). -->
@@ -1122,5 +1154,40 @@
 			flex-direction: column;
 			align-items: flex-start;
 		}
+	}
+
+	/* ── Assignment copilot (collapsible panel, matches PipelineLogPanel) ── */
+	.copilot-panel {
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		background: var(--card);
+		overflow: hidden;
+	}
+	.copilot-toggle {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		width: 100%;
+		padding: 8px 14px;
+		background: transparent;
+		border: none;
+		cursor: pointer;
+		font: inherit;
+		color: var(--fg);
+	}
+	.copilot-title {
+		font-size: 13px;
+		font-weight: 600;
+	}
+	.copilot-scope {
+		margin-left: auto;
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		font-variant-numeric: tabular-nums;
+	}
+	.copilot-body {
+		border-top: 1px solid var(--border);
+		height: 420px;
 	}
 </style>

@@ -181,13 +181,22 @@ function safeStringify(value: unknown): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Creates the reactive copilot store, bound to one submission.
+ * Creates the reactive copilot store, bound to one scope.
  *
- * @param options - `submissionId` is sent with every chat request;
- *   `threadId`, when provided, is passed on chat requests to resume a thread.
+ * @param options - `submissionId` scopes the chat to one submission;
+ *   `assignmentId` scopes it to a whole assignment (dashboard chat — the
+ *   agent's context tools fall back to the assignment scope when no
+ *   submission is given). At least one scope id is sent with every chat
+ *   request; `threadId`, when provided, is passed on chat requests to
+ *   resume a thread.
  */
-export function createCopilotStore(options?: { submissionId?: string; threadId?: string }) {
+export function createCopilotStore(options?: {
+	submissionId?: string;
+	assignmentId?: string;
+	threadId?: string;
+}) {
 	const submissionId = options?.submissionId ?? "";
+	const assignmentId = options?.assignmentId ?? "";
 	const threadId = options?.threadId;
 
 	let messages = $state<CopilotMessage[]>([]);
@@ -493,7 +502,8 @@ export function createCopilotStore(options?: { submissionId?: string; threadId?:
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					submissionId,
+					...(submissionId ? { submissionId } : {}),
+					...(assignmentId ? { assignmentId } : {}),
 					message: content,
 					...(threadId ? { threadId } : {}),
 				}),

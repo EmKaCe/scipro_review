@@ -156,6 +156,39 @@ describe("sendMessage streaming", () => {
 		await store.sendMessage("/draft");
 		expect(store.messages[0]).toMatchObject({ role: "teacher", type: "command", kind: "text" });
 	});
+
+	it("sends assignmentId (and no submissionId) for an assignment-scoped store", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
+		const store = copilot.createCopilotStore({ assignmentId: "assign-1" });
+		await store.sendMessage("Summarize the pipeline status");
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/chat");
+		expect(bodyOf(call)).toEqual({
+			assignmentId: "assign-1",
+			message: "Summarize the pipeline status",
+		});
+	});
+
+	it("sends both scope ids when the store is created with submission and assignment", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
+		const store = copilot.createCopilotStore({
+			submissionId: "sub-42",
+			assignmentId: "assign-1",
+		});
+		await store.sendMessage("hello");
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
+		expect(bodyOf(call)).toEqual({
+			submissionId: "sub-42",
+			assignmentId: "assign-1",
+			message: "hello",
+		});
+	});
 });
 
 // ---------------------------------------------------------------------------

@@ -17,10 +17,18 @@
 
 	interface Props {
 		/**
-		 * Submission the copilot operates on. Optional — the per-submission
-		 * page wires it in a later task; the panel compiles standalone.
+		 * Submission the copilot operates on. Optional — when absent (and
+		 * `assignmentId` is set) the copilot runs in assignment scope: the
+		 * whole assignment is the context, and the empty state shows
+		 * assignment prompts instead of per-submission slash commands.
 		 */
 		submissionId?: string;
+		/**
+		 * Assignment the copilot operates on (dashboard entry point). When
+		 * provided without a submissionId, the store is created in
+		 * assignment scope.
+		 */
+		assignmentId?: string;
 		/**
 		 * Fired when the teacher applies a pending suggestion (clicked the
 		 * actionLabel button). Receives the FULL suggestion payload, including
@@ -36,17 +44,30 @@
 		onapply?: (suggestion: CopilotSuggestion) => void;
 	}
 
-	let { submissionId = "", onapply }: Props = $props();
+	let { submissionId = "", assignmentId = "", onapply }: Props = $props();
+
+	/** True in assignment scope: no per-submission context, assignment prompts. */
+	let assignmentScope = $derived(!!assignmentId && !submissionId);
+
+	/** Assignment-scope prompt hints (replaces the per-submission slash commands). */
+	const assignmentHints = [
+		"How is the class doing?",
+		"Summarize pipeline status",
+		"Which submissions need attention?",
+	];
 
 	/**
 	 * One store per component instance — created once at mount. The previous
 	 * `$derived(createCopilotStore())` built a fresh store on every reactive
-	 * recomputation, discarding messages mid-stream. The submissionId capture
-	 * is intentionally one-time (the store binds to the submission for its
-	 * whole lifetime), so the state_referenced_locally hint is suppressed.
+	 * recomputation, discarding messages mid-stream. The scope capture is
+	 * intentionally one-time (the store binds to the submission/assignment
+	 * for its whole lifetime), so the state_referenced_locally hint is
+	 * suppressed.
 	 */
 	// svelte-ignore state_referenced_locally
-	const copilot = createCopilotStore(submissionId ? { submissionId } : undefined);
+	const copilot = createCopilotStore(
+		assignmentScope ? { assignmentId } : submissionId ? { submissionId } : undefined,
+	);
 
 	function handleSend() {
 		const text = copilot.inputValue.trim();
@@ -72,6 +93,12 @@
 
 	function selectCommand(cmd: string) {
 		copilot.inputValue = cmd + " ";
+		showCommands = false;
+	}
+
+	/** Fill the input with an assignment-scope prompt hint (no send). */
+	function selectHint(hint: string) {
+		copilot.inputValue = hint;
 		showCommands = false;
 	}
 
@@ -117,14 +144,24 @@
 				<Sparkles size={24} class="empty-icon" />
 				<p class="empty-title">AI Copilot</p>
 				<p class="empty-desc">
-					Ask questions about this submission, or type / for commands.
+					{assignmentScope
+						? "Ask questions about this assignment, or type / for commands."
+						: "Ask questions about this submission, or type / for commands."}
 				</p>
 				<div class="command-hints">
-					{#each copilot.availableCommands as cmd (cmd.command)}
-						<button class="hint-chip" onclick={() => selectCommand(cmd.command)}>
-							{cmd.command}
-						</button>
-					{/each}
+					{#if assignmentScope}
+						{#each assignmentHints as hint (hint)}
+							<button class="hint-chip" onclick={() => selectHint(hint)}
+								>{hint}</button
+							>
+						{/each}
+					{:else}
+						{#each copilot.availableCommands as cmd (cmd.command)}
+							<button class="hint-chip" onclick={() => selectCommand(cmd.command)}>
+								{cmd.command}
+							</button>
+						{/each}
+					{/if}
 				</div>
 			</div>
 		{:else}
@@ -298,7 +335,9 @@
 			<input
 				type="text"
 				class="input-field"
-				placeholder="Ask the copilot or type / for commands..."
+				placeholder={assignmentScope
+					? "Ask about the assignment..."
+					: "Ask the copilot or type / for commands..."}
 				value={copilot.inputValue}
 				oninput={handleInput}
 				onkeydown={handleKeydown}

@@ -1,10 +1,15 @@
 /**
  * @file POST /api/copilot/chat — teacher → copilot chat turn, streamed as SSE.
  *
- * A dumb pipe: validate the body, hand (submissionId, message, threadId, the
- * request's abort signal) to the agent module's streamChat, and map every
- * CopilotStreamEvent 1:1 to a bare SSE frame (`<event>\n<json>\n\n`, or
- * `<event>\n\n` for payload-less events like thinking/done).
+ * A dumb pipe: validate the body, hand (submissionId?, assignmentId?, message,
+ * threadId, the request's abort signal) to the agent module's streamChat, and
+ * map every CopilotStreamEvent 1:1 to a bare SSE frame (`<event>\n<json>\n\n`,
+ * or `<event>\n\n` for payload-less events like thinking/done).
+ *
+ * Scope: at least one of submissionId (per-submission chat) or assignmentId
+ * (assignment-scoped chat from the dashboard) must be present; both may be
+ * provided together. The agent's tools fall back to the assignment scope when
+ * submissionId is absent.
  *
  * The stream does NOT close on an approval-request: the agent's generator
  * suspends on the human decision and this connection stays open until the
@@ -20,7 +25,8 @@ import { z } from "zod";
 import { streamChat, type CopilotStreamEvent } from "$lib/server/copilot/agent";
 
 const chatBodySchema = z.object({
-	submissionId: z.string().min(1),
+	submissionId: z.string().min(1).optional(),
+	assignmentId: z.string().min(1).optional(),
 	message: z.string().min(1),
 	threadId: z.string().optional(),
 });
@@ -52,12 +58,21 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	}
 	const parsed = chatBodySchema.safeParse(body);
 	if (!parsed.success) {
-		error(400, "submissionId and message must be non-empty strings (threadId optional)");
+		error(
+			400,
+			"message must be a non-empty string; submissionId or assignmentId must be a non-empty string (threadId optional)",
+		);
 	}
-	const { submissionId, message, threadId } = parsed.data;
+	const { submissionId, assignmentId, message, threadId } = parsed.data;
+	// At least one scope id is required: a chat turn is either about a
+	// submission or about the whole assignment — never about nothing.
+	if (!submissionId && !assignmentId) {
+		error(400, "submissionId or assignmentId must be provided (at least one)");
+	}
 
 	const events = await streamChat({
 		submissionId,
+		assignmentId,
 		message,
 		threadId,
 		signal: event.request.signal,

@@ -3,12 +3,13 @@
  * @file L5 API-contract tests for POST /api/copilot/chat (SSE chat pipe).
  *
  * Agent module mocked (vi.mock('$lib/server/copilot/agent')); real
- * Request/Response. Covers: 400 validation, exact bare-SSE frame bytes for a
- * 2-event conversation, streamChat input forwarding (submissionId/message/
- * threadId/abort signal), and the stream staying OPEN across an
- * approval-request until the run's continuation completes (a deferred the
- * test resolves later — the same shape as the teacher's separate approval
- * POST).
+ * Request/Response. Covers: 400 validation (missing message, missing scope
+ * id, non-JSON), the assignment-scope body (assignmentId only), both-ids
+ * forwarding, exact bare-SSE frame bytes for a 2-event conversation,
+ * streamChat input forwarding (submissionId/message/threadId/abort signal),
+ * and the stream staying OPEN across an approval-request until the run's
+ * continuation completes (a deferred the test resolves later — the same
+ * shape as the teacher's separate approval POST).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -62,8 +63,9 @@ describe("POST /api/copilot/chat", () => {
 		expect(mockedStreamChat).not.toHaveBeenCalled();
 	});
 
-	it("rejects a body without a submissionId (400)", async () => {
+	it("rejects a body with neither submissionId nor assignmentId (400)", async () => {
 		await expect(postChat({ message: "hello" })).rejects.toMatchObject({ status: 400 });
+		expect(mockedStreamChat).not.toHaveBeenCalled();
 	});
 
 	it("rejects non-JSON bodies (400)", async () => {
@@ -74,6 +76,49 @@ describe("POST /api/copilot/chat", () => {
 		});
 		await expect(POST({ request } as never)).rejects.toMatchObject({ status: 400 });
 		expect(mockedStreamChat).not.toHaveBeenCalled();
+	});
+
+	it("streams an assignmentId-only body and forwards the assignment scope", async () => {
+		mockedStreamChat.mockResolvedValueOnce(
+			(async function* () {
+				yield { type: "done" };
+			})(),
+		);
+
+		const response = await postChat({
+			assignmentId: "assign-1",
+			message: "How is the class doing?",
+		});
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toBe("text/event-stream");
+		expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+		const input = mockedStreamChat.mock.calls[0][0];
+		expect(input.assignmentId).toBe("assign-1");
+		expect(input.submissionId).toBeUndefined();
+		expect(input.message).toBe("How is the class doing?");
+		expect(await readAll(response)).toBe("done\n\n");
+	});
+
+	it("forwards both submissionId and assignmentId when both are present", async () => {
+		mockedStreamChat.mockResolvedValueOnce(
+			(async function* () {
+				yield { type: "done" };
+			})(),
+		);
+
+		const response = await postChat({
+			submissionId: "sub-1",
+			assignmentId: "assign-1",
+			message: "go",
+		});
+
+		expect(response.status).toBe(200);
+		expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+		const input = mockedStreamChat.mock.calls[0][0];
+		expect(input.submissionId).toBe("sub-1");
+		expect(input.assignmentId).toBe("assign-1");
+		expect(await readAll(response)).toBe("done\n\n");
 	});
 
 	it("pipes a 2-event conversation as exact bare SSE frames", async () => {
