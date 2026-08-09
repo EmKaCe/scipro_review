@@ -9,7 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
@@ -137,6 +137,28 @@ async function collectWithApproval(
 		}
 	}
 	return out;
+}
+
+/**
+ * Extract the user message text from what the mock model received. Mastra
+ * hands the AI SDK a `prompt` array of messages; the user content is an
+ * array of parts (the v2 wire shape), so flatten text parts.
+ */
+function receivedUserMessage(call: unknown): string {
+	const prompt = (call as { prompt?: Array<{ role?: string; content?: unknown }> }).prompt ?? [];
+	const user = prompt.find((m) => m.role === "user");
+	const content = user?.content;
+	if (typeof content === "string") return content;
+	if (Array.isArray(content)) {
+		return content
+			.map((part) =>
+				part && typeof part === "object" && "text" in part
+					? String((part as { text: unknown }).text)
+					: "",
+			)
+			.join("");
+	}
+	return "";
 }
 
 // ---------------------------------------------------------------------------
@@ -465,5 +487,66 @@ describe("copilot agent loop (agent.ts)", () => {
 
 		expect(events.some((e) => e.type === "suggestion")).toBe(false);
 		expect(events[events.length - 1].type).toBe("done");
+	});
+});
+
+describe("scope context prefix (Task C)", () => {
+	it("prefixes submission-scoped turns with the resolved review scope", async () => {
+		// Fixture: the submission must exist so the server can resolve its
+		// assignment (per-submission chats don't send assignmentId).
+		const subDir = path.join(dataDir, "submissions", "soil_contamination");
+		await mkdir(subDir, { recursive: true });
+		await writeFile(
+			path.join(subDir, "metadata.json"),
+			JSON.stringify({
+				"2026SS_00": {
+					id: "2026SS_00",
+					studentId: "2026SS_00",
+					assignmentId: "soil_contamination",
+					createdAt: "2026-08-07T13:02:52.411Z",
+					fileName: "2026SS_00.ipynb",
+					notebookPath: "submissions/soil_contamination/2026SS_00.ipynb",
+					status: "executed",
+				},
+			}),
+		);
+		await writeFile(
+			path.join(dataDir, "assignments.yaml"),
+			"assignments:\n  - id: soil_contamination\n    title: Soil Contamination\n    enabled: true\n    criteria_files: []\n    dimensions:\n      - code_quality_design\n",
+		);
+		mockControl.script = [textTurn("Ok")];
+
+		await collect(await streamChat({ submissionId: "2026SS_00", message: "hi" }));
+
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		const text = receivedUserMessage(mockControl.receivedCalls[0]);
+		expect(text).toContain("[Context:");
+		expect(text).toContain("submission 2026SS_00");
+		expect(text).toContain("in assignment soil_contamination");
+		// The raw user message still follows the prefix.
+		expect(text.endsWith("\n\nhi")).toBe(true);
+	});
+
+	it("prefixes assignment-scoped turns with the assignment id", async () => {
+		mockControl.script = [textTurn("Ok")];
+
+		await collect(await streamChat({ assignmentId: "soil_contamination", message: "hi" }));
+
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		const text = receivedUserMessage(mockControl.receivedCalls[0]);
+		expect(text).toContain("[Context:");
+		expect(text).toContain("assignment soil_contamination");
+		// The raw user message still follows the prefix.
+		expect(text.endsWith("\n\nhi")).toBe(true);
+	});
+
+	it("passes unscoped turns through unchanged (no prefix)", async () => {
+		mockControl.script = [textTurn("Ok")];
+
+		await collect(await streamChat({ message: "hi" }));
+
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		const text = receivedUserMessage(mockControl.receivedCalls[0]);
+		expect(text).toBe("hi");
 	});
 });

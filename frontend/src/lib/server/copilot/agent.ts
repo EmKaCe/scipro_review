@@ -469,6 +469,20 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	// required for prepare-memory-step to take the memory path.
 	requestContext.set("mastra__threadId", effectiveThreadId);
 
+	// Ground the model's prose: tell it once per turn which review it is
+	// working on, so it stops asking for ids the app already has. The tools
+	// are pre-scoped to the same review (args grounding), so the prefix says
+	// so instead of restating ids.
+	const scopeLabel = input.submissionId
+		? `submission ${input.submissionId}${resolvedAssignmentId ? ` in assignment ${resolvedAssignmentId}` : ""}`
+		: resolvedAssignmentId
+			? `assignment ${resolvedAssignmentId}`
+			: "";
+
+	const scopedMessage = scopeLabel
+		? `[Context: you are reviewing ${scopeLabel}. The tools are pre-scoped to this review — do not ask for or invent submission/assignment ids; gather any data you need with the tools.]\n\n${input.message}`
+		: input.message;
+
 	let current: Awaited<ReturnType<Agent["stream"]>>;
 	try {
 		const opts: Record<string, unknown> = {
@@ -489,7 +503,7 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 				messages: string,
 				options: Record<string, unknown>,
 			) => Promise<Awaited<ReturnType<Agent["stream"]>>>
-		)(input.message, opts);
+		)(scopedMessage, opts);
 	} catch (err) {
 		if (!input.signal?.aborted) {
 			yield { type: "error", message: errorMessage(err) };
