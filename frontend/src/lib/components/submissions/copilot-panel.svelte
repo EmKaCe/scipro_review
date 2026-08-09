@@ -37,6 +37,15 @@
 		 */
 		assignmentId?: string;
 		/**
+		 * Prompt delivered from an inline "Ask copilot" chip (Task W3).
+		 * $bindable: the panel consumes it (fills the input, focuses it)
+		 * and resets it to "" — the round-trip propagates back to the
+		 * page's queuedPrompt state, so re-clicking the same chip
+		 * re-delivers. A plain prop could never be reset by the panel
+		 * (Svelte 5 props are read-only).
+		 */
+		incomingPrompt?: string;
+		/**
 		 * Fired when the teacher applies a pending suggestion (clicked the
 		 * actionLabel button). Receives the FULL suggestion payload, including
 		 * `data` — the structured apply payload emitted by the tool.
@@ -51,7 +60,12 @@
 		onapply?: (suggestion: CopilotSuggestion) => void;
 	}
 
-	let { submissionId = "", assignmentId = "", onapply }: Props = $props();
+	let {
+		submissionId = "",
+		assignmentId = "",
+		incomingPrompt = $bindable(""),
+		onapply,
+	}: Props = $props();
 
 	/** True in assignment scope: no per-submission context, assignment prompts. */
 	let assignmentScope = $derived(!!assignmentId && !submissionId);
@@ -111,6 +125,29 @@
 		copilot.inputValue = hint;
 		showCommands = false;
 	}
+
+	// -----------------------------------------------------------------------
+	// Inline-chip prompt delivery (Task W3)
+	// -----------------------------------------------------------------------
+
+	/** The chat input — focused when an inline chip delivers a prompt. */
+	let inputEl = $state<HTMLInputElement | undefined>();
+
+	/**
+	 * The page sets `incomingPrompt` when the teacher clicks an inline
+	 * "Ask copilot" chip — and switches to this tab first, so the panel is
+	 * mounted (or already mounted) by the time this effect runs; the value
+	 * survives the conditional mount. Fill the input and focus it; the
+	 * teacher reviews the prompt and presses Send. Resetting to "" is the
+	 * $bindable round-trip: it propagates back to the page's queuedPrompt,
+	 * so the same chip re-delivers on a later click.
+	 */
+	$effect(() => {
+		if (!incomingPrompt) return;
+		copilot.inputValue = incomingPrompt;
+		incomingPrompt = "";
+		inputEl?.focus();
+	});
 
 	// -----------------------------------------------------------------------
 	// Thread switcher (Task T)
@@ -593,6 +630,7 @@
 				oninput={handleInput}
 				onkeydown={handleKeydown}
 				disabled={copilot.isStreaming}
+				bind:this={inputEl}
 			/>
 			<button
 				class="send-btn"

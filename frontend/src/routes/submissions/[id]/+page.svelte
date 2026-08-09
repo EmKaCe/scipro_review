@@ -555,11 +555,14 @@
 	// Copilot apply + inline chip wiring (4e)
 	// -----------------------------------------------------------------------
 	/**
-	 * Prompts queued by the inline "Ask copilot" chips (rubric category
-	 * headers, cell headers). The tab switch mounts the CopilotPanel; a
-	 * $effect below drains the queue by driving the panel's own input.
+	 * Prompt delivered from the inline "Ask copilot" chips (rubric category
+	 * headers, cell headers). The tab switch mounts the CopilotPanel; the
+	 * prompt flows through right-panel-tabs as the $bindable
+	 * `incomingPrompt` prop — the panel fills its input, then resets the
+	 * prop to "" (the round-trip lands back here, so re-clicking the same
+	 * chip re-delivers).
 	 */
-	let copilotPromptQueue = $state<string[]>([]);
+	let queuedPrompt = $state("");
 
 	/**
 	 * Apply a pending copilot suggestion to page state (grading inputs +
@@ -585,7 +588,8 @@
 	/**
 	 * Inline chips dispatch a 'copilot-request' CustomEvent (detail: prompt
 	 * string). Switch BOTH tab states to the copilot tab (desktop + mobile)
-	 * and queue the prompt for the panel — delivered once it is mounted.
+	 * and hand the prompt to the panel via the `incomingPrompt` prop (the
+	 * panel consumes it and resets it back to "" — no DOM event driving).
 	 */
 	function handleCopilotRequest(e: Event) {
 		const prompt = (e as CustomEvent<string>).detail;
@@ -593,32 +597,8 @@
 		rightPanelCollapsed = false;
 		activeTab = "copilot";
 		mobileTab = "copilot";
-		copilotPromptQueue = [...copilotPromptQueue, prompt.trim()];
+		queuedPrompt = prompt.trim();
 	}
-
-	/**
-	 * The panel owns its copilot store instance and exposes no external
-	 * send API, and copilot-panel.svelte must stay untouched (4e scope),
-	 * so the queued prompt is delivered by driving the panel's own input
-	 * the way a teacher would: fill the field, fire an `input` event
-	 * (handleInput writes copilot.inputValue), then an Enter keydown
-	 * (handleKeydown → handleSend). The effect runs AFTER the tab switch
-	 * mounts the panel, so the input exists on the first drain.
-	 */
-	$effect(() => {
-		if (activeTab !== "copilot" || rightPanelCollapsed || copilotPromptQueue.length === 0) {
-			return;
-		}
-		const prompt = copilotPromptQueue[0];
-		const input = document.querySelector<HTMLInputElement>(
-			".copilot-container input.input-field",
-		);
-		if (!input) return;
-		input.value = prompt;
-		input.dispatchEvent(new Event("input", { bubbles: true }));
-		input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-		copilotPromptQueue = copilotPromptQueue.slice(1);
-	});
 
 	/** Listen for inline-chip 'copilot-request' events (client-side only). */
 	$effect(() => {
@@ -1016,6 +996,7 @@
 						hideTabBar={isMobile}
 						onapply={handleApplySuggestion}
 						showAskCopilot={apiMode.value}
+						bind:incomingPrompt={queuedPrompt}
 					/>
 				{/if}
 			</aside>

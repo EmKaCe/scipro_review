@@ -70,6 +70,13 @@
 		 * holder; forwarded to RubricCategory.
 		 */
 		showAskCopilot?: boolean;
+		/**
+		 * Prompt delivered from the page's inline "Ask copilot" chips
+		 * (Task W3) — forwarded to CopilotPanel. $bindable so the panel's
+		 * consume-and-reset round-trip propagates back through this wrapper
+		 * to the page's queuedPrompt state.
+		 */
+		incomingPrompt?: string;
 	}
 
 	let {
@@ -90,6 +97,7 @@
 		hideTabBar = false,
 		onapply,
 		showAskCopilot = false,
+		incomingPrompt = $bindable(""),
 	}: Props = $props();
 
 	let gradePct = $derived(gradeResult?.percentage ?? 0);
@@ -284,7 +292,7 @@
 		{:else if activeTab === "plagiarism"}
 			<PlagiarismTab {studentId} {assignmentId} />
 		{:else if activeTab === "copilot"}
-			<CopilotPanel submissionId={studentId} {onapply} />
+			<CopilotPanel submissionId={studentId} {onapply} bind:incomingPrompt />
 		{/if}
 	</div>
 </div>
