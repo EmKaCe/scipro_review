@@ -763,3 +763,226 @@ describe("suggestion apply/dismiss", () => {
 		expect(store.pendingSuggestions).toHaveLength(0);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Thread management (T.3) — server-backed list/open/new/delete/rename
+// ---------------------------------------------------------------------------
+
+function jsonResponse(body: unknown, status = 200): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
+}
+
+const THREAD_META_1 = {
+	id: "t-1",
+	title: "Review submission 1",
+	createdAt: "2026-08-01T10:00:00.000Z",
+	updatedAt: "2026-08-01T12:00:00.000Z",
+	messageCount: 3,
+	lastPreview: "Done.",
+};
+
+const THREAD_DETAIL_1 = {
+	...THREAD_META_1,
+	messageCount: 4,
+	messages: [
+		{ id: "m1", role: "user", createdAt: "2026-08-01T11:00:00.000Z", text: "Compare cell 3" },
+		{ id: "m2", role: "system", createdAt: "2026-08-01T11:00:00.000Z" },
+		{
+			id: "m3",
+			role: "tool",
+			createdAt: "2026-08-01T11:01:00.000Z",
+			toolName: "read-notebook",
+			ok: true,
+		},
+		{ id: "m4", role: "assistant", createdAt: "2026-08-01T11:02:00.000Z", text: "Done." },
+	],
+};
+
+describe("thread management (T.3)", () => {
+	it("loadThreads fetches the scoped list and renders it", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(
+			jsonResponse({
+				threads: [
+					THREAD_META_1,
+					{
+						id: "t-2",
+						title: "Second thread",
+						createdAt: "2026-08-01T09:00:00.000Z",
+						updatedAt: "2026-08-01T11:00:00.000Z",
+						messageCount: 1,
+					},
+				],
+			}),
+		);
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.loadThreads();
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/threads?submissionId=sub-42");
+		expect(store.threads.map((t) => t.id)).toEqual(["t-1", "t-2"]);
+		expect(store.threads[0].title).toBe("Review submission 1");
+	});
+
+	it("uses the assignment scope for an assignment-scoped store", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(jsonResponse({ threads: [] }));
+
+		const store = copilot.createCopilotStore({ assignmentId: "assign-1" });
+		await store.loadThreads();
+
+		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/threads?assignmentId=assign-1");
+	});
+
+	it("openThread loads history, sets activeThread and persists the threadId", async () => {
+		copilot.apiMode.value = true;
+		fetchMock.mockResolvedValue(jsonResponse({ thread: THREAD_DETAIL_1 }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.openThread("t-1");
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/threads/t-1?submissionId=sub-42");
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBe("t-1");
+		expect(store.activeThread).toMatchObject({ id: "t-1", title: "Review submission 1", messageCount: 4 });
+		expect(store.loadingHistory).toBe(false);
+		// system skipped; user -> teacher; tool-only -> tool-result card;
+		// assistant -> assistant bubble.
+		expect(store.messages.map((m) => m.role)).toEqual(["teacher", "assistant", "assistant"]);
+		expect(store.messages[0]).toMatchObject({ role: "teacher", content: "Compare cell 3" });
+		expect(store.messages[1]).toMatchObject({
+			kind: "tool-result",
+			tool: "read-notebook",
+			ok: true,
+		});
+		expect(store.messages[2]).toMatchObject({ role: "assistant", content: "Done." });
+	});
+
+	it("openThread clears the stored id when the thread 404s", async () => {
+		copilot.apiMode.value = true;
+		localStorage.setItem("copilot:activeThread:sub-42", "t-gone");
+		fetchMock.mockResolvedValue(new Response("not found", { status: 404 }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.openThread("t-gone");
+
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
+		expect(store.activeThread).toBeNull();
+		expect(store.loadingHistory).toBe(false);
+	});
+
+	it("newConversation clears messages + storage and refreshes the list", async () => {
+		copilot.apiMode.value = true;
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ thread: THREAD_DETAIL_1 }))
+			.mockResolvedValueOnce(jsonResponse({ threads: [THREAD_META_1] }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.openThread("t-1");
+		expect(store.messages.length).toBeGreaterThan(0);
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBe("t-1");
+
+		store.newConversation();
+		// The refresh is fire-and-forget — wait for the STATE, not the call.
+		await vi.waitFor(() => expect(store.threads.map((t) => t.id)).toEqual(["t-1"]));
+
+		expect(store.messages).toEqual([]);
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
+		expect(store.activeThread).toBeNull();
+		// The list refresh landed.
+		expect(store.threads.map((t) => t.id)).toEqual(["t-1"]);
+	});
+
+	it("deleteThread removes the thread from the list", async () => {
+		copilot.apiMode.value = true;
+		fetchMock
+			.mockResolvedValueOnce(
+				jsonResponse({
+					threads: [
+						THREAD_META_1,
+						{ ...THREAD_META_1, id: "t-2", title: "Second thread", updatedAt: "2026-08-01T11:00:00.000Z" },
+					],
+				}),
+			)
+			.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.loadThreads();
+		expect(store.threads).toHaveLength(2);
+
+		await store.deleteThread("t-1");
+
+		const call = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/threads/t-1?submissionId=sub-42");
+		expect(call[1]?.method).toBe("DELETE");
+		expect(store.threads.map((t) => t.id)).toEqual(["t-2"]);
+	});
+
+	it("deleteThread resets to a new conversation when the ACTIVE thread is deleted", async () => {
+		copilot.apiMode.value = true;
+		localStorage.setItem("copilot:activeThread:sub-42", "t-1");
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ thread: THREAD_DETAIL_1 })) // openThread history
+			.mockResolvedValueOnce(new Response(null, { status: 204 })) // DELETE
+			.mockResolvedValueOnce(jsonResponse({ threads: [] })); // newConversation refresh
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.openThread("t-1");
+		expect(store.messages.length).toBeGreaterThan(0);
+
+		await store.deleteThread("t-1");
+		// newConversation's refresh is fire-and-forget — wait for the state.
+		await vi.waitFor(() => expect(store.threads).toEqual([]));
+
+		expect(store.messages).toEqual([]);
+		expect(store.activeThread).toBeNull();
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
+		expect(store.threads).toEqual([]);
+	});
+
+	it("renameThread PATCHes the title and refreshes the list", async () => {
+		copilot.apiMode.value = true;
+		fetchMock
+			.mockResolvedValueOnce(jsonResponse({ threads: [THREAD_META_1] }))
+			.mockResolvedValueOnce(jsonResponse({ thread: { ...THREAD_META_1, title: "Renamed" } }))
+			.mockResolvedValueOnce(jsonResponse({ threads: [{ ...THREAD_META_1, title: "Renamed" }] }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.loadThreads();
+		await store.renameThread("t-1", "Renamed");
+
+		const call = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+		expect(String(call[0])).toContain("/api/copilot/threads/t-1?submissionId=sub-42");
+		expect(call[1]?.method).toBe("PATCH");
+		expect(JSON.parse((call[1]?.body as string) ?? "{}")).toEqual({ title: "Renamed" });
+		expect(store.threads[0].title).toBe("Renamed");
+	});
+
+	it("restoreActiveThread auto-opens the stored thread and clears storage on 404", async () => {
+		copilot.apiMode.value = true;
+		localStorage.setItem("copilot:activeThread:sub-42", "t-1");
+		fetchMock.mockResolvedValueOnce(jsonResponse({ thread: THREAD_DETAIL_1 }));
+
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store.restoreActiveThread();
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		expect(store.activeThread?.id).toBe("t-1");
+		expect(store.messages.length).toBeGreaterThan(0);
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBe("t-1");
+
+		// The stored thread vanished — restore clears the id and starts fresh.
+		fetchMock.mockResolvedValueOnce(new Response("not found", { status: 404 }));
+		const store2 = copilot.createCopilotStore({ submissionId: "sub-42" });
+		await store2.restoreActiveThread();
+		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
+		expect(store2.activeThread).toBeNull();
+	});
+});

@@ -194,6 +194,12 @@ export interface StreamChatInput {
 	message: string;
 	/** Conversation/thread id, for audit correlation. */
 	threadId?: string;
+	/**
+	 * Thread title, sent on the FIRST turn of a new thread. Mastra stores it
+	 * at thread creation (prepare-memory-step); existing threads keep their
+	 * stored title.
+	 */
+	title?: string;
 	/** Abort signal — aborts the run and ends the stream cleanly. */
 	signal?: AbortSignal;
 	/** Per-thread session object; see design decision 5. */
@@ -496,6 +502,14 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 			// Without savePerStep Mastra never calls the memory storage —
 			// thread/message persistence is gated on this flag (verified live).
 			savePerStep: true,
+			// Title is used by Mastra only at thread creation (prepare-memory-step);
+			// existing threads keep their stored title.
+			memory: {
+				resource: resourceId,
+				thread: input.title?.trim()
+					? { id: effectiveThreadId, title: input.title.trim().slice(0, 80) }
+					: effectiveThreadId,
+			},
 		};
 		if (input.signal) opts.abortSignal = input.signal;
 		current = await (

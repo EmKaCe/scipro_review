@@ -33,6 +33,9 @@ const chatBodySchema = z.object({
 	assignmentId: z.string().min(1).optional(),
 	message: z.string().min(1),
 	threadId: z.string().optional(),
+	// Sent on the FIRST turn of a new thread; Mastra stores it when the
+	// thread is created (existing threads keep their stored title).
+	title: z.string().max(80).optional(),
 });
 
 /**
@@ -99,7 +102,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 			"message must be a non-empty string; submissionId or assignmentId must be a non-empty string (threadId optional)",
 		);
 	}
-	const { submissionId, assignmentId, message, threadId } = parsed.data;
+	const { submissionId, assignmentId, message, threadId, title } = parsed.data;
 	// At least one scope id is required: a chat turn is either about a
 	// submission or about the whole assignment — never about nothing.
 	if (!submissionId && !assignmentId) {
@@ -111,6 +114,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		assignmentId,
 		message,
 		threadId,
+		title,
 		signal: event.request.signal,
 		session: sessionFor(submissionId ?? assignmentId ?? "copilot", threadId),
 	});

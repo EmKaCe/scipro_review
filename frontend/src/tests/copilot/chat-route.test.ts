@@ -123,6 +123,25 @@ describe("POST /api/copilot/chat", () => {
 		expect(await readAll(response)).toBe("done\n\n");
 	});
 
+	it("forwards a title when the body has one (new-thread naming)", async () => {
+		mockedStreamChat.mockResolvedValueOnce(
+			(async function* () {
+				yield { type: "done" };
+			})(),
+		);
+
+		await postChat({
+			submissionId: "sub-1",
+			message: "Review the code",
+			threadId: "thread-new",
+			title: "Review the code",
+		});
+
+		expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+		const input = mockedStreamChat.mock.calls[0][0];
+		expect(input.title).toBe("Review the code");
+	});
+
 	it("passes a per-thread session object (autoApprovedCount: 0) to streamChat", async () => {
 		mockedStreamChat.mockResolvedValueOnce(
 			(async function* () {

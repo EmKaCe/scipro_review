@@ -100,6 +100,35 @@ export interface PendingApproval {
 	decision: "ask" | "blocked";
 }
 
+/**
+ * Thread metadata as served by GET /api/copilot/threads (Task T). Local
+ * mirror of the server's CopilotThreadMeta — the store never imports from
+ * `$lib/server`.
+ */
+export interface CopilotThreadMeta {
+	id: string;
+	title: string;
+	createdAt: string; // ISO
+	updatedAt: string; // ISO
+	messageCount: number;
+	lastPreview?: string;
+}
+
+/** One message of a thread detail, as served by the thread GET route. */
+export interface CopilotThreadMessage {
+	id: string;
+	role: "user" | "assistant" | "tool" | "system"; // "tool" is derived server-side
+	createdAt: string;
+	text?: string;
+	toolName?: string;
+	ok?: boolean;
+}
+
+/** Thread detail payload of GET /api/copilot/threads/[threadId]. */
+export interface CopilotThreadDetail extends CopilotThreadMeta {
+	messages: CopilotThreadMessage[];
+}
+
 // ---------------------------------------------------------------------------
 // Teacher-mode switch
 // ---------------------------------------------------------------------------
@@ -244,6 +273,11 @@ export function createCopilotStore(options?: {
 	let pendingSuggestions = $state<PendingSuggestion[]>([]);
 	let pendingApproval = $state<PendingApproval | null>(null);
 	let inputValue = $state("");
+	// Thread surface (Task T): the server is the source of truth for the
+	// thread list; localStorage holds only the ACTIVE thread id.
+	let threads = $state<CopilotThreadMeta[]>([]);
+	let activeThread = $state<CopilotThreadMeta | null>(null);
+	let loadingHistory = $state(false);
 
 	/** Id of the assistant text message currently accumulated from deltas. */
 	let currentTextMessageId: string | null = null;
@@ -641,6 +675,144 @@ export function createCopilotStore(options?: {
 		}
 	}
 
+	// -----------------------------------------------------------------------
+	// Thread management (Task T) — server-backed list/open/new/delete/rename
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Scope query params shared by list/detail/delete (server enforces isolation).
+	 * Returns a query STRING: `new URLSearchParams(...)` is forbidden in this
+	 * file — eslint `svelte/prefer-svelte-reactivity` flags mutable built-ins
+	 * that have reactive alternatives (URLSearchParams → SvelteURLSearchParams),
+	 * and it is error-level. String-building avoids the rule entirely.
+	 */
+	function scopeParams(): string {
+		return submissionId
+			? `submissionId=${encodeURIComponent(submissionId)}`
+			: `assignmentId=${encodeURIComponent(assignmentId)}`;
+	}
+
+	async function loadThreads(): Promise<void> {
+		if (!apiMode.value) return;
+		const res = await fetch(`${base}/api/copilot/threads?${scopeParams()}`);
+		if (!res.ok) return;
+		const body = (await res.json()) as { threads: CopilotThreadMeta[] };
+		threads = body.threads;
+	}
+
+	async function openThread(threadId: string): Promise<void> {
+		if (!apiMode.value) return;
+		loadingHistory = true;
+		try {
+			const res = await fetch(
+				`${base}/api/copilot/threads/${encodeURIComponent(threadId)}?${scopeParams()}`,
+			);
+			if (!res.ok) {
+				// Thread vanished (deleted elsewhere) — drop the stored id, start fresh.
+				activeThreadId = "";
+				clearStoredThreadId();
+				activeThread = null;
+				return;
+			}
+			const body = (await res.json()) as { thread: CopilotThreadDetail };
+			activeThreadId = threadId;
+			storeThreadId(threadId);
+			activeThread = {
+				id: body.thread.id,
+				title: body.thread.title,
+				createdAt: body.thread.createdAt,
+				updatedAt: body.thread.updatedAt,
+				messageCount: body.thread.messages.length,
+			};
+			messages = toDisplayMessages(body.thread.messages);
+			currentTextMessageId = null;
+			pendingApproval = null;
+		} finally {
+			loadingHistory = false;
+		}
+	}
+
+	function newConversation(): void {
+		activeThread = null;
+		activeThreadId = "";
+		clearStoredThreadId();
+		clearMessages();
+		void loadThreads();
+	}
+
+	async function deleteThread(threadId: string): Promise<void> {
+		if (!apiMode.value) return;
+		const res = await fetch(
+			`${base}/api/copilot/threads/${encodeURIComponent(threadId)}?${scopeParams()}`,
+			{ method: "DELETE" },
+		);
+		if (!res.ok) return;
+		threads = threads.filter((t) => t.id !== threadId);
+		if (activeThreadId === threadId) newConversation();
+	}
+
+	async function renameThread(threadId: string, title: string): Promise<void> {
+		const trimmed = title.trim().slice(0, 80);
+		if (!apiMode.value || !trimmed) return;
+		const res = await fetch(
+			`${base}/api/copilot/threads/${encodeURIComponent(threadId)}?${scopeParams()}`,
+			{
+				method: "PATCH",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ title: trimmed }),
+			},
+		);
+		if (!res.ok) return;
+		await loadThreads(); // refresh titles + ordering (updatedAt bumps)
+		if (activeThreadId === threadId && activeThread) {
+			activeThread = { ...activeThread, title: trimmed };
+		}
+	}
+
+	async function restoreActiveThread(): Promise<void> {
+		if (!apiMode.value || !activeThreadId) return;
+		await openThread(activeThreadId);
+	}
+
+	/**
+	 * Map thread wire messages to the transcript shape. System messages are
+	 * skipped; user -> teacher bubble; assistant -> assistant bubble (reuses
+	 * assistantMessage); tool -> tool-result card (the "tool" role is derived
+	 * server-side for messages whose parts are only tool-invocations — mixed
+	 * text+tool messages arrive as assistant).
+	 */
+	function toDisplayMessages(messages: CopilotThreadMessage[]): CopilotMessage[] {
+		const out: CopilotMessage[] = [];
+		for (const wire of messages) {
+			if (wire.role === "system") continue;
+			if (wire.role === "tool") {
+				const ok = wire.ok === true;
+				out.push(
+					assistantMessage(ok ? "Tool completed" : "Tool failed", "tool-result", {
+						tool: wire.toolName,
+						ok,
+					}),
+				);
+				continue;
+			}
+			if (wire.role === "user") {
+				// Inline teacher bubble — assistantMessage hardcodes role
+				// "assistant"; mirror sendMessage's construction exactly.
+				out.push({
+					id: crypto.randomUUID(),
+					role: "teacher",
+					content: wire.text ?? "",
+					timestamp: Date.now(),
+					type: "text",
+					kind: "text",
+				});
+				continue;
+			}
+			out.push(assistantMessage(wire.text ?? "", "text"));
+		}
+		return out;
+	}
+
 	/**
 	 * Clear the in-memory transcript (UI-only reset). This does NOT rotate the
 	 * active thread id — a later "new conversation" action (Task T) generates
@@ -672,11 +844,29 @@ export function createCopilotStore(options?: {
 		set inputValue(v: string) {
 			inputValue = v;
 		},
+		// Thread surface (Task T): getters are REQUIRED — without them the
+		// panel's copilot.threads / copilot.activeThread / copilot.loadingHistory
+		// would be undefined.
+		get threads() {
+			return threads;
+		},
+		get activeThread() {
+			return activeThread;
+		},
+		get loadingHistory() {
+			return loadingHistory;
+		},
 		availableCommands,
 		sendMessage,
 		approve,
 		applySuggestion,
 		dismissSuggestion,
 		clearMessages,
+		loadThreads,
+		openThread,
+		newConversation,
+		deleteThread,
+		renameThread,
+		restoreActiveThread,
 	};
 }
