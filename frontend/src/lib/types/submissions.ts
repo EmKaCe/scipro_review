@@ -90,6 +90,8 @@ export interface PreEvalData {
 	/** Per-cell verdicts; null = no comparison data yet. */
 	markers: PreEvalCellVerdict[] | null;
 	gradeSuggestion: PreEvalGradeSuggestion;
+	/** Rubric sub-points selected by the LLM per category (categoryKey + optionKey). */
+	rubricSelections?: { categoryKey: string; optionKey: string }[];
 	/** Draft feedback text produced by pre-evaluation. */
 	feedbackDraft: string;
 	/** Prose summary of the notebook for the teacher. */

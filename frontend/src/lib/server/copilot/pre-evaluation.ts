@@ -69,6 +69,8 @@ export interface PreEvaluation {
 		dimensions: Record<string, number>;
 		justification: string;
 	};
+	/** Rubric sub-points the LLM selected per category (categoryKey + optionKey). */
+	rubricSelections?: { categoryKey: string; optionKey: string }[];
 	feedbackDraft: string;
 	notebookSummary: string;
 }
@@ -94,6 +96,14 @@ const PRE_EVALUATION_SCHEMA = z.object({
 		dimensions: z.record(z.string(), z.number()),
 		justification: z.string(),
 	}),
+	rubricSelections: z
+		.array(
+			z.object({
+				categoryKey: z.string(),
+				optionKey: z.string(),
+			}),
+		)
+		.optional(),
 	feedbackDraft: z.string(),
 	notebookSummary: z.string(),
 });
@@ -113,7 +123,7 @@ const KEY_PREVIEW_CELLS = 25;
 const SOURCE_TRUNCATION_MARKER = `\n… [source truncated after ${SOURCE_PREVIEW_LINES} lines]`;
 const OUTPUT_TRUNCATION_MARKER = "… [output truncated]";
 
-const PRE_EVALUATION_SYSTEM_PROMPT = `You are an expert teaching assistant for a Scientific Programming course. You produce a pre-evaluation of ONE student's Jupyter notebook submission for the teacher: per-cell comparison markers against the reference key, a suggested grade, a feedback draft, and a notebook summary.
+const PRE_EVALUATION_SYSTEM_PROMPT = `You are an expert teaching assistant for a Scientific Programming course. You produce a pre-evaluation of ONE student's Jupyter notebook submission for the teacher: per-cell comparison markers against the reference key, a suggested grade, rubric criteria selections, a feedback draft, and a notebook summary.
 
 Return ONLY a JSON object with EXACTLY this shape:
 {
@@ -124,6 +134,9 @@ Return ONLY a JSON object with EXACTLY this shape:
     "dimensions": { "<dimension id>": <score 0..max_points> },
     "justification": "..."
   },
+  "rubricSelections": [
+    { "categoryKey": "<rubric category key>", "optionKey": "<exact sub-point text>" }
+  ],
   "feedbackDraft": "...",
   "notebookSummary": "..."
 }
@@ -135,6 +148,8 @@ Marker semantics, per executed cell compared to the reference key summary:
 Only judge cells you can actually compare against the key summary. When no reference key summary is provided, "markers" MUST be null.
 
 gradeSuggestion.dimensions: one score per dimension id listed under "Grading dimensions", within 0..max_points. Never invent dimension ids. justification: 2-4 sentences tying the scores to what the notebook actually does.
+
+rubricSelections: for each rubric category, pick the sub-points (positive, neutral, or negative) that best describe the student's work. Use the EXACT categoryKey and optionKey text as shown under "Rubric categories" — copy-paste the sub-point text verbatim. Include at least one selection per category. Do not invent categoryKeys or sub-point texts.
 
 feedbackDraft: concise, encouraging markdown feedback for the student (a few sentences; bullet points allowed).
 
