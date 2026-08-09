@@ -36,6 +36,7 @@ const FULL: AppSettings = {
 		approvalTtlSeconds: 60,
 		sessionCap: 20,
 		lastMessages: 16,
+		autoCompact: true,
 	},
 };
 
@@ -133,6 +134,25 @@ describe("settings module", () => {
 		const s = await loadSettings();
 		expect(s.copilot.lastMessages).toBe(7);
 	});
+
+	it("defaults copilot.autoCompact to true when the yaml omits it (V.1)", async () => {
+		// No settings.yaml at all → defaults.
+		expect((await loadSettings()).copilot.autoCompact).toBe(true);
+		// A yaml without auto_compact also falls back to true.
+		await writeFile(path.join(dataDir, "settings.yaml"), "copilot:\n  last_messages: 2\n");
+		expect((await loadSettings()).copilot.autoCompact).toBe(true);
+	});
+
+	it("keeps an explicit auto_compact: false from the yaml (V.1)", async () => {
+		await writeFile(
+			path.join(dataDir, "settings.yaml"),
+			"copilot:\n  last_messages: 2\n  auto_compact: false\n",
+		);
+
+		const s = await loadSettings();
+		expect(s.copilot.autoCompact).toBe(false);
+		expect(s.copilot.lastMessages).toBe(2);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -161,12 +181,24 @@ describe("/api/settings", () => {
 		const withWindow: AppSettings = { ...FULL, copilot: { ...FULL.copilot, lastMessages: 7 } };
 		const resp = await PUT({ request: putRequest(withWindow) } as never);
 		expect(resp.status).toBe(200);
-		expect((await resp.json() as AppSettings).copilot.lastMessages).toBe(7);
+		expect(((await resp.json()) as AppSettings).copilot.lastMessages).toBe(7);
 		// Reload from disk — the persisted value survives.
 		expect((await loadSettings()).copilot.lastMessages).toBe(7);
 
 		const getResp = await GET();
-		expect((await getResp.json() as AppSettings).copilot.lastMessages).toBe(7);
+		expect(((await getResp.json()) as AppSettings).copilot.lastMessages).toBe(7);
+	});
+
+	it("PUT accepts autoCompact: false and round-trips it (V.1)", async () => {
+		const withCompactOff: AppSettings = {
+			...FULL,
+			copilot: { ...FULL.copilot, autoCompact: false },
+		};
+		const resp = await PUT({ request: putRequest(withCompactOff) } as never);
+		expect(resp.status).toBe(200);
+		expect(((await resp.json()) as AppSettings).copilot.autoCompact).toBe(false);
+		// Reload from disk — the persisted value survives.
+		expect((await loadSettings()).copilot.autoCompact).toBe(false);
 	});
 
 	it("rejects invalid bodies with 400", async () => {

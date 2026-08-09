@@ -113,6 +113,8 @@ const updateSettingsArgs = z
 					.refine((n) => Number.isFinite(n), {
 						message: "must be a finite integer between 1 and 50",
 					}),
+				// Automatic compaction toggle (Task V).
+				autoCompact: z.boolean(),
 			})
 			.strict(),
 	})

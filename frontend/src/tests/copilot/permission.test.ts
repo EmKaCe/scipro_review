@@ -32,6 +32,7 @@ function settings(overrides: Partial<CopilotSettings> = {}): CopilotSettings {
 		approvalTtlSeconds: 60,
 		sessionCap: 20,
 		lastMessages: 16,
+		autoCompact: true,
 		...overrides,
 	};
 }

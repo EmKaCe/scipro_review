@@ -22,6 +22,7 @@
  *     approval_ttl_seconds: 60      # approval card lifetime
  *     session_cap: 20               # auto-approvals per session in ask mode
  *     last_messages: 16             # recall window (1-50); omit to follow the model
+ *     auto_compact: true            # summarize out-of-window messages (Task V)
  *
  * Secrets (KI_CONNECT_API_KEY) intentionally stay in the environment — the
  * settings file and its API never read or write API keys.
@@ -77,6 +78,14 @@ export interface CopilotSettings {
 	 * default resolves from the configured LLM's context size.
 	 */
 	lastMessages: number;
+	/**
+	 * Automatic compaction (Task V): when the thread outgrows the recall
+	 * window (messageCount >= 2 * lastMessages), the server summarizes the
+	 * out-of-window messages with the LLM and injects the summary as a
+	 * system message on subsequent turns. Default true; false disables the
+	 * extra LLM summarization calls entirely (cost guard).
+	 */
+	autoCompact: boolean;
 }
 
 export interface AppSettings {
@@ -100,6 +109,7 @@ const DEFAULT_COPILOT_ALLOWED_TOOLS: string[] = [];
 const DEFAULT_COPILOT_DENY_TOOLS: string[] = [];
 const DEFAULT_COPILOT_APPROVAL_TTL_SECONDS = 60;
 const DEFAULT_COPILOT_SESSION_CAP = 20;
+const DEFAULT_COPILOT_AUTO_COMPACT = true;
 
 function envNumber(key: string, fallback: number): number {
 	const raw = process.env[key];
@@ -239,6 +249,7 @@ function defaults(file?: {
 				copilot.last_messages,
 				resolveLastMessagesDefault(llmModel),
 			),
+			autoCompact: booleanValue(copilot.auto_compact, DEFAULT_COPILOT_AUTO_COMPACT),
 		},
 	};
 }
@@ -254,6 +265,11 @@ function positiveNumber(value: unknown, fallback: number): number {
 
 function stringValue(value: unknown, fallback: string): string {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+/** Boolean yaml value; anything that is not a real boolean falls back. */
+function booleanValue(value: unknown, fallback: boolean): boolean {
+	return typeof value === "boolean" ? value : fallback;
 }
 
 function copilotModeValue(value: unknown, fallback: CopilotMode): CopilotMode {
@@ -302,6 +318,7 @@ export function toSettingsYaml(settings: AppSettings): string {
 				approval_ttl_seconds: settings.copilot.approvalTtlSeconds,
 				session_cap: settings.copilot.sessionCap,
 				last_messages: settings.copilot.lastMessages,
+				auto_compact: settings.copilot.autoCompact,
 			},
 		},
 		{ noRefs: true },

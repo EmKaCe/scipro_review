@@ -19,12 +19,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MastraDBMessage, StorageThreadType } from "@mastra/core/memory";
 
 import { FileMemoryStore } from "$lib/server/copilot/file-memory";
-import {
-	deleteThread,
-	getThread,
-	listThreads,
-	renameThread,
-} from "$lib/server/copilot/threads";
+import { deleteThread, getThread, listThreads, renameThread } from "$lib/server/copilot/threads";
 
 let dataDir: string;
 
@@ -102,7 +97,9 @@ describe("threads.ts", () => {
 	it("listThreads returns metas with derived titles, counts, previews, newest-first", async () => {
 		const store = new FileMemoryStore();
 		// Older thread first (updated 11:00) — must sort AFTER the newer one.
-		await store.saveThread({ thread: thread("t-old", "sub-1", new Date("2026-08-01T11:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-old", "sub-1", new Date("2026-08-01T11:00:00Z")),
+		});
 		await store.saveMessages({
 			messages: [
 				textMessage(
@@ -116,11 +113,20 @@ describe("threads.ts", () => {
 				toolMessage("m2", "t-old", "sub-1", "read-notebook", {
 					createdAt: new Date("2026-08-01T10:32:00Z"),
 				}),
-				textMessage("m3", "t-old", "sub-1", "assistant", "Done.", new Date("2026-08-01T11:00:00Z")),
+				textMessage(
+					"m3",
+					"t-old",
+					"sub-1",
+					"assistant",
+					"Done.",
+					new Date("2026-08-01T11:00:00Z"),
+				),
 			],
 		});
 		// Newer thread (updated 12:00) — derived title from its first user message.
-		await store.saveThread({ thread: thread("t-new", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-new", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		await store.saveMessages({
 			messages: [
 				textMessage(
@@ -134,7 +140,9 @@ describe("threads.ts", () => {
 			],
 		});
 		// Another scope's thread — must never appear in this scope's list.
-		await store.saveThread({ thread: thread("t-other", "assign-9", new Date("2026-08-01T13:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-other", "assign-9", new Date("2026-08-01T13:00:00Z")),
+		});
 
 		const threads = await listThreads({ submissionId: "sub-1" });
 
@@ -152,6 +160,9 @@ describe("threads.ts", () => {
 			droppedCount: 0,
 			// 30 chars / 4 = 7.5 → rounds to 0 (below the 100 granularity).
 			estimatedTokens: 0,
+			// Never compacted, no stored summary.
+			compactionCount: 0,
+			hasSummary: false,
 		});
 		expect(threads[1]).toMatchObject({
 			title: "Compare cell 3 to the key please",
@@ -170,10 +181,19 @@ describe("threads.ts", () => {
 		});
 		await store.saveMessages({
 			messages: [
-				textMessage("m1", "t-titled", "sub-1", "user", "hi", new Date("2026-08-01T11:00:00Z")),
+				textMessage(
+					"m1",
+					"t-titled",
+					"sub-1",
+					"user",
+					"hi",
+					new Date("2026-08-01T11:00:00Z"),
+				),
 			],
 		});
-		await store.saveThread({ thread: thread("t-empty", "sub-1", new Date("2026-08-01T13:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-empty", "sub-1", new Date("2026-08-01T13:00:00Z")),
+		});
 
 		const threads = await listThreads({ submissionId: "sub-1" });
 		const titled = threads.find((t) => t.id === "t-titled");
@@ -185,7 +205,9 @@ describe("threads.ts", () => {
 
 	it("truncates derived titles to one line and TITLE_MAX characters", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-long", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-long", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		await store.saveMessages({
 			messages: [
 				textMessage(
@@ -205,11 +227,27 @@ describe("threads.ts", () => {
 
 	it("getThread maps messages to the wire shape (text, tool, system)", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		await store.saveMessages({
 			messages: [
-				textMessage("m1", "t-1", "sub-1", "system", "System note", new Date("2026-08-01T10:00:00Z")),
-				textMessage("m2", "t-1", "sub-1", "user", "Hello", new Date("2026-08-01T10:01:00Z")),
+				textMessage(
+					"m1",
+					"t-1",
+					"sub-1",
+					"system",
+					"System note",
+					new Date("2026-08-01T10:00:00Z"),
+				),
+				textMessage(
+					"m2",
+					"t-1",
+					"sub-1",
+					"user",
+					"Hello",
+					new Date("2026-08-01T10:01:00Z"),
+				),
 				toolMessage("m3", "t-1", "sub-1", "read-notebook", {
 					state: "completed",
 					createdAt: new Date("2026-08-01T10:02:00Z"),
@@ -219,7 +257,14 @@ describe("threads.ts", () => {
 					errorText: "Timed out",
 					createdAt: new Date("2026-08-01T10:03:00Z"),
 				}),
-				textMessage("m5", "t-1", "sub-1", "assistant", "Done.", new Date("2026-08-01T10:04:00Z")),
+				textMessage(
+					"m5",
+					"t-1",
+					"sub-1",
+					"assistant",
+					"Done.",
+					new Date("2026-08-01T10:04:00Z"),
+				),
 			],
 		});
 
@@ -254,7 +299,9 @@ describe("threads.ts", () => {
 
 	it("maps a mixed text+tool message as an assistant bubble (text wins)", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-mixed", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-mixed", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		const mixed: MastraDBMessage = {
 			id: "m-mixed",
 			threadId: "t-mixed",
@@ -266,7 +313,12 @@ describe("threads.ts", () => {
 					{ type: "text", text: "Let me check." },
 					{
 						type: "tool-invocation",
-						toolInvocation: { state: "completed", toolCallId: "call-x", toolName: "x", args: {} },
+						toolInvocation: {
+							state: "completed",
+							toolCallId: "call-x",
+							toolName: "x",
+							args: {},
+						},
 					},
 				],
 			},
@@ -287,9 +339,13 @@ describe("threads.ts", () => {
 
 	it("getThread returns null when the thread belongs to another scope", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		await store.saveMessages({
-			messages: [textMessage("m1", "t-1", "sub-1", "user", "hi", new Date("2026-08-01T11:00:00Z"))],
+			messages: [
+				textMessage("m1", "t-1", "sub-1", "user", "hi", new Date("2026-08-01T11:00:00Z")),
+			],
 		});
 
 		expect(await getThread("t-1", { assignmentId: "assign-1" })).toBeNull();
@@ -298,9 +354,13 @@ describe("threads.ts", () => {
 
 	it("deleteThread removes the thread files and returns false on a second call", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		await store.saveMessages({
-			messages: [textMessage("m1", "t-1", "sub-1", "user", "hi", new Date("2026-08-01T11:00:00Z"))],
+			messages: [
+				textMessage("m1", "t-1", "sub-1", "user", "hi", new Date("2026-08-01T11:00:00Z")),
+			],
 		});
 
 		expect(await deleteThread("t-1", { submissionId: "sub-1" })).toBe(true);
@@ -309,16 +369,22 @@ describe("threads.ts", () => {
 		// Second delete: thread is gone → false.
 		expect(await deleteThread("t-1", { submissionId: "sub-1" })).toBe(false);
 		// Wrong scope → false, thread untouched.
-		await store.saveThread({ thread: thread("t-2", "sub-2", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-2", "sub-2", new Date("2026-08-01T12:00:00Z")),
+		});
 		expect(await deleteThread("t-2", { submissionId: "sub-1" })).toBe(false);
 		expect(await store.getThreadById({ threadId: "t-2" })).not.toBeNull();
 	});
 
 	it("renameThread updates the stored title (truncated) and is scope-checked", async () => {
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-1", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 
-		expect(await renameThread("t-1", "A much better title", { submissionId: "sub-1" })).toBe(true);
+		expect(await renameThread("t-1", "A much better title", { submissionId: "sub-1" })).toBe(
+			true,
+		);
 		expect((await store.getThreadById({ threadId: "t-1" }))?.title).toBe("A much better title");
 		// updatedAt bumps on rename → the thread moves to the top of the list.
 		const threads = await listThreads({ submissionId: "sub-1" });
@@ -335,7 +401,9 @@ describe("threads.ts", () => {
 		// A window of 10 makes 2 of the 12 stored messages invisible to the model.
 		await writeFile(path.join(dataDir, "settings.yaml"), "copilot:\n  last_messages: 10\n");
 		const store = new FileMemoryStore();
-		await store.saveThread({ thread: thread("t-12", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		await store.saveThread({
+			thread: thread("t-12", "sub-1", new Date("2026-08-01T12:00:00Z")),
+		});
 		const messages: MastraDBMessage[] = [];
 		for (let i = 1; i <= 12; i++) {
 			messages.push(
@@ -345,7 +413,9 @@ describe("threads.ts", () => {
 					"sub-1",
 					i % 2 === 1 ? "user" : "assistant",
 					`Message ${i} about the notebook analysis`,
-					new Date(`2026-08-01T${String(10 + Math.floor(i / 2)).padStart(2, "0")}:00:00Z`),
+					new Date(
+						`2026-08-01T${String(10 + Math.floor(i / 2)).padStart(2, "0")}:00:00Z`,
+					),
 				),
 			);
 		}
@@ -368,8 +438,12 @@ describe("threads.ts", () => {
 		expect(detail!.droppedCount).toBe(2);
 
 		// A fresh thread (no messages) drops nothing.
-		await store.saveThread({ thread: thread("t-fresh", "sub-1", new Date("2026-08-01T13:00:00Z")) });
-		const fresh = (await listThreads({ submissionId: "sub-1" })).find((t) => t.id === "t-fresh")!;
+		await store.saveThread({
+			thread: thread("t-fresh", "sub-1", new Date("2026-08-01T13:00:00Z")),
+		});
+		const fresh = (await listThreads({ submissionId: "sub-1" })).find(
+			(t) => t.id === "t-fresh",
+		)!;
 		expect(fresh.messageCount).toBe(0);
 		expect(fresh.recallCovered).toBe(0);
 		expect(fresh.droppedCount).toBe(0);

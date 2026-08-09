@@ -72,6 +72,7 @@ import { InMemoryStore, MastraCompositeStore } from "@mastra/core/storage";
 import { Memory } from "@mastra/memory";
 
 import { FileMemoryStore } from "./file-memory";
+import { maybeCompactThread } from "./compaction";
 import { Tool, type ToolHooks } from "@mastra/core/tools";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
@@ -475,6 +476,24 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	// required for prepare-memory-step to take the memory path.
 	requestContext.set("mastra__threadId", effectiveThreadId);
 
+	// Automatic compaction (Task V): when the thread outgrows the recall
+	// window, summarize the out-of-window messages with the LLM and inject
+	// the summary as a system message below. Best-effort — a compaction
+	// failure must never break the chat.
+	let compactionSummary: string | undefined;
+	try {
+		const comp = await maybeCompactThread({
+			threadId: effectiveThreadId,
+			resourceId,
+			settings: reqState.settings,
+			model: createModel(appSettings),
+			modelId: appSettings.llm.model,
+		});
+		compactionSummary = comp.compacted ? comp.summary : undefined;
+	} catch {
+		// compaction failure is invisible to the teacher
+	}
+
 	// Ground the model's prose: tell it once per turn which review it is
 	// working on, so it stops asking for ids the app already has. The tools
 	// are pre-scoped to the same review (args grounding), so the prefix says
@@ -517,6 +536,12 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 				options: { lastMessages: reqState.settings.lastMessages },
 			},
 		};
+		if (compactionSummary) {
+			// System messages are never persisted by Memory.saveMessages, so
+			// the summary is seen by the model every turn without bloating
+			// storage or polluting the next compaction's input.
+			opts.system = `Summary of the earlier conversation (older messages may be outside the recall window):\n${compactionSummary}`;
+		}
 		if (input.signal) opts.abortSignal = input.signal;
 		current = await (
 			agent!.stream as unknown as (

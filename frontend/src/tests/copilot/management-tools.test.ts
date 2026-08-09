@@ -52,6 +52,7 @@ const VALID_SETTINGS: AppSettings = {
 		approvalTtlSeconds: 60,
 		sessionCap: 20,
 		lastMessages: 16,
+		autoCompact: true,
 	},
 };
 

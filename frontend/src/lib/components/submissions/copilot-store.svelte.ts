@@ -120,6 +120,10 @@ export interface CopilotThreadMeta {
 	droppedCount: number;
 	/** Rough estimate of the recall window's token size (chars / 4, rounded to 100). */
 	estimatedTokens: number;
+	/** How many times the thread has been auto-compacted (V). */
+	compactionCount: number;
+	/** Whether a compaction summary is stored in the thread metadata (V). */
+	hasSummary: boolean;
 }
 
 /** One message of a thread detail, as served by the thread GET route. */
@@ -732,11 +736,14 @@ export function createCopilotStore(options?: {
 				updatedAt: body.thread.updatedAt,
 				messageCount: body.thread.messages.length,
 				// Context stats (Task U.3) ride the server meta — pass them
-				// through for the panel's context line + warning.
+				// through for the panel's context line + warning. Compaction
+				// stats (Task V) ride the same meta.
 				recallLimit: body.thread.recallLimit,
 				recallCovered: body.thread.recallCovered,
 				droppedCount: body.thread.droppedCount,
 				estimatedTokens: body.thread.estimatedTokens,
+				compactionCount: body.thread.compactionCount,
+				hasSummary: body.thread.hasSummary,
 			};
 			messages = toDisplayMessages(body.thread.messages);
 			currentTextMessageId = null;

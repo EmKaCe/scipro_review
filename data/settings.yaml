@@ -12,3 +12,9 @@ copilot:
   # context size (qwen3-30b-a3b-instruct-2507 -> 16) — model switches apply
   # automatically, so most setups never need to set this explicitly.
   last_messages: 16
+  # Automatic compaction: when a thread outgrows the recall window, the
+  # server summarizes the out-of-window messages with the LLM and injects
+  # the summary as a system message on later turns (threads keep full
+  # context beyond the window at the cost of an extra LLM call per crossing).
+  # Set false to disable the summarization calls entirely.
+  auto_compact: true

@@ -78,6 +78,27 @@ const BIG_DETAIL = {
 	})),
 };
 
+/** A long thread that has been auto-compacted twice (Task V). */
+const COMPACTED_THREAD = {
+	...BIG_THREAD,
+	id: "t-compact",
+	messageCount: 40,
+	recallCovered: 10,
+	droppedCount: 30,
+	compactionCount: 2,
+	hasSummary: true,
+};
+
+const COMPACTED_DETAIL = {
+	...COMPACTED_THREAD,
+	messages: Array.from({ length: 40 }, (_, i) => ({
+		id: `cm${i}`,
+		role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+		createdAt: "2026-08-01T08:00:00.000Z",
+		text: `Message ${i}`,
+	})),
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
 	return new Response(JSON.stringify(body), {
 		status,
@@ -116,6 +137,9 @@ function mockThreadRoutes(threads: Array<(typeof THREADS)[number]> = THREADS): v
 			const target = serverThreads.find((t) => u.includes(`/threads/${t.id}`));
 			if (target?.id === "t-big") {
 				return Promise.resolve(jsonResponse({ thread: { ...BIG_DETAIL } }));
+			}
+			if (target?.id === "t-compact") {
+				return Promise.resolve(jsonResponse({ thread: { ...COMPACTED_DETAIL } }));
 			}
 			return Promise.resolve(jsonResponse({ thread: { ...THREAD_DETAIL, ...target } }));
 		}
@@ -239,9 +263,7 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 
 		// The PATCH call carries the trimmed title.
 		await waitFor(() => {
-			expect(
-				fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH"),
-			).toBe(true);
+			expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(true);
 		});
 		const patchCall = fetchMock.mock.calls.find((call) => call[1]?.method === "PATCH");
 		expect(patchCall).toBeDefined();
@@ -261,7 +283,9 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 
 		// The inline rename input is gone (the chat input below is still there).
 		await waitFor(() =>
-			expect(screen.queryByRole("textbox", { name: "Rename Review submission 1" })).toBeNull(),
+			expect(
+				screen.queryByRole("textbox", { name: "Rename Review submission 1" }),
+			).toBeNull(),
 		);
 		expect(fetchMock.mock.calls.some((call) => call[1]?.method === "PATCH")).toBe(false);
 	});
@@ -281,7 +305,9 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 		await waitFor(() => {
 			expect(
 				fetchMock.mock.calls.some(
-					(call) => call[1]?.method === "DELETE" && String(call[0]).includes("/api/copilot/threads/t-1"),
+					(call) =>
+						call[1]?.method === "DELETE" &&
+						String(call[0]).includes("/api/copilot/threads/t-1"),
 				),
 			).toBe(true);
 		});
@@ -333,5 +359,32 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 		// Context line renders; the warning does not (droppedCount is 0).
 		expect(screen.getByText("Context: last 2 of 2 messages - est. ~200 tokens")).toBeTruthy();
 		expect(screen.queryByText(/Oldest .* message/)).toBeNull();
+	});
+
+	it("shows the compaction count in the context line (V.4)", async () => {
+		await renderPanel([{ ...COMPACTED_THREAD }]);
+		fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+		await screen.findByText("Long conversation");
+
+		fireEvent.click(screen.getByText("Long conversation"));
+		await waitFor(() =>
+			expect(document.querySelector(".context-line")?.textContent).toContain("compacted 2×"),
+		);
+	});
+
+	it("renders the summarized-into-context warning when hasSummary is true (V.4)", async () => {
+		await renderPanel([{ ...COMPACTED_THREAD }]);
+		fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+		await screen.findByText("Long conversation");
+
+		fireEvent.click(screen.getByText("Long conversation"));
+
+		expect(
+			await screen.findByText(
+				"Oldest 30 message(s) are summarized into context — start a new conversation for full fidelity.",
+			),
+		).toBeTruthy();
+		// The plain out-of-context wording is NOT shown for a compacted thread.
+		expect(screen.queryByText(/are outside the model's context/)).toBeNull();
 	});
 });

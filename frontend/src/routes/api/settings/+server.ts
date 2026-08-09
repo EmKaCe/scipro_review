@@ -55,7 +55,8 @@ function isAppSettings(value: unknown): value is AppSettings {
 		stringArray(copilot.denyTools) &&
 		posInt(copilot.approvalTtlSeconds) &&
 		posInt(copilot.sessionCap) &&
-		lastMessagesOk
+		lastMessagesOk &&
+		typeof copilot.autoCompact === "boolean"
 	);
 }
 

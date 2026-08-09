@@ -285,14 +285,25 @@
 	</div>
 
 	{#if copilot.activeThread}
-		<div class="context-line" title={`Recall window: last ${copilot.activeThread.recallLimit} messages`}>
-			Context: last {copilot.activeThread.recallCovered} of {copilot.activeThread.messageCount} messages - est. ~{copilot.activeThread.estimatedTokens} tokens
+		<div
+			class="context-line"
+			title={`Recall window: last ${copilot.activeThread.recallLimit} messages`}
+		>
+			Context: last {copilot.activeThread.recallCovered} of {copilot.activeThread
+				.messageCount} messages - est. ~{copilot.activeThread.estimatedTokens} tokens{#if copilot.activeThread.compactionCount > 0}
+				- compacted {copilot.activeThread.compactionCount}×{/if}
 		</div>
 		{#if copilot.activeThread.droppedCount > 0}
 			<div class="context-warning">
 				<TriangleAlert size={11} />
 				<span>
-					Oldest {copilot.activeThread.droppedCount} message(s) are outside the model's context — start a new conversation for full context.
+					{#if copilot.activeThread.hasSummary}
+						Oldest {copilot.activeThread.droppedCount} message(s) are summarized into context
+						— start a new conversation for full fidelity.
+					{:else}
+						Oldest {copilot.activeThread.droppedCount} message(s) are outside the model's
+						context — start a new conversation for full context.
+					{/if}
 				</span>
 			</div>
 		{/if}
@@ -374,186 +385,189 @@
 			{/if}
 		</div>
 	{:else}
-	<div class="copilot-messages">
-		{#if copilot.messages.length === 0}
-			<div class="empty-state">
-				<Sparkles size={24} class="empty-icon" />
-				<p class="empty-title">AI Copilot</p>
-				<p class="empty-desc">
-					{assignmentScope
-						? "Ask questions about this assignment, or type / for commands."
-						: "Ask questions about this submission, or type / for commands."}
-				</p>
-				<div class="command-hints">
-					{#if assignmentScope}
-						{#each assignmentHints as hint (hint)}
-							<button class="hint-chip" onclick={() => selectHint(hint)}
-								>{hint}</button
-							>
-						{/each}
-					{:else}
-						{#each copilot.availableCommands as cmd (cmd.command)}
-							<button class="hint-chip" onclick={() => selectCommand(cmd.command)}>
-								{cmd.command}
-							</button>
-						{/each}
-					{/if}
-				</div>
-			</div>
-		{:else}
-			{#each copilot.messages as msg (msg.id)}
-				{#if msg.kind === "tool-call"}
-					<div class="copilot-card tool-call-card">
-						<div class="card-header">
-							<Wrench size={12} />
-							<span class="card-label">Tool call</span>
-							<code class="tool-name">{msg.tool}</code>
-						</div>
-						{#if msg.args}
-							<details class="args-toggle">
-								<summary class="args-summary">
-									<span class="chevron-wrap"><ChevronRight size={12} /></span>
-									<span>Arguments</span>
-								</summary>
-								<pre class="args-pre">{msg.args}</pre>
-							</details>
-						{/if}
-					</div>
-				{:else if msg.kind === "tool-result"}
-					<div
-						class="copilot-card tool-result-card"
-						class:tool-result-ok={msg.ok === true}
-						class:tool-result-err={msg.ok !== true}
-					>
-						{#if msg.ok === true}
-							<CircleCheck size={12} />
+		<div class="copilot-messages">
+			{#if copilot.messages.length === 0}
+				<div class="empty-state">
+					<Sparkles size={24} class="empty-icon" />
+					<p class="empty-title">AI Copilot</p>
+					<p class="empty-desc">
+						{assignmentScope
+							? "Ask questions about this assignment, or type / for commands."
+							: "Ask questions about this submission, or type / for commands."}
+					</p>
+					<div class="command-hints">
+						{#if assignmentScope}
+							{#each assignmentHints as hint (hint)}
+								<button class="hint-chip" onclick={() => selectHint(hint)}
+									>{hint}</button
+								>
+							{/each}
 						{:else}
-							<CircleX size={12} />
+							{#each copilot.availableCommands as cmd (cmd.command)}
+								<button
+									class="hint-chip"
+									onclick={() => selectCommand(cmd.command)}
+								>
+									{cmd.command}
+								</button>
+							{/each}
 						{/if}
-						{#if msg.tool}
-							<code class="tool-name">{msg.tool}</code>
-						{/if}
-						<span class="tool-result-summary">{msg.summary}</span>
 					</div>
-				{:else if msg.kind === "approval"}
-					<div class="copilot-card approval-card">
-						<div class="card-header">
-							<ShieldAlert size={14} />
-							<span class="card-label">Approval required</span>
-						</div>
-						<div class="approval-body">
-							<code class="tool-name">{msg.tool}</code>
+				</div>
+			{:else}
+				{#each copilot.messages as msg (msg.id)}
+					{#if msg.kind === "tool-call"}
+						<div class="copilot-card tool-call-card">
+							<div class="card-header">
+								<Wrench size={12} />
+								<span class="card-label">Tool call</span>
+								<code class="tool-name">{msg.tool}</code>
+							</div>
 							{#if msg.args}
-								<pre class="args-pre">{msg.args}</pre>
+								<details class="args-toggle">
+									<summary class="args-summary">
+										<span class="chevron-wrap"><ChevronRight size={12} /></span>
+										<span>Arguments</span>
+									</summary>
+									<pre class="args-pre">{msg.args}</pre>
+								</details>
 							{/if}
 						</div>
-						{#if msg.approvalDecision === "blocked"}
-							<div class="approval-blocked">
-								<Lock size={12} />
-								<span>Blocked by policy</span>
-							</div>
-						{:else if isPendingApproval(msg)}
-							<div class="approval-actions">
-								<button
-									type="button"
-									class="approve-btn"
-									onclick={() => copilot.approve("approve")}
-									aria-label={`Approve ${msg.tool ?? "tool"} call`}
-									title={`Approve ${msg.tool ?? "tool"} call`}
-								>
-									Approve
-								</button>
-								<button
-									type="button"
-									class="deny-btn"
-									onclick={() => copilot.approve("deny")}
-									aria-label={`Deny ${msg.tool ?? "tool"} call`}
-									title={`Deny ${msg.tool ?? "tool"} call`}
-								>
-									Deny
-								</button>
-							</div>
-						{:else}
-							<div class="approval-resolved">
+					{:else if msg.kind === "tool-result"}
+						<div
+							class="copilot-card tool-result-card"
+							class:tool-result-ok={msg.ok === true}
+							class:tool-result-err={msg.ok !== true}
+						>
+							{#if msg.ok === true}
 								<CircleCheck size={12} />
-								<span>Resolved</span>
-							</div>
-						{/if}
-					</div>
-				{:else if msg.suggestion}
-					<div class="copilot-card suggestion-card">
-						<div class="card-header">
-							<Lightbulb size={12} />
-							<span class="card-label">Suggestion</span>
+							{:else}
+								<CircleX size={12} />
+							{/if}
+							{#if msg.tool}
+								<code class="tool-name">{msg.tool}</code>
+							{/if}
+							<span class="tool-result-summary">{msg.summary}</span>
 						</div>
-						<p class="suggestion-title">{msg.suggestion.title}</p>
-						{#if msg.suggestion.body}
-							<p class="suggestion-body">{msg.suggestion.body}</p>
-						{/if}
-						{#if isPendingSuggestion(msg.suggestion)}
-							<div class="suggestion-actions">
-								<button
-									type="button"
-									class="apply-btn"
-									onclick={() => handleApply(msg.suggestion)}
-									aria-label={`Apply suggestion: ${msg.suggestion?.title ?? ""}`}
-									title={msg.suggestion?.actionLabel || "Apply"}
-								>
-									{msg.suggestion.actionLabel || "Apply"}
-								</button>
-								<button
-									type="button"
-									class="dismiss-btn"
-									onclick={() => handleDismiss(msg.suggestion)}
-									aria-label="Dismiss suggestion"
-									title="Dismiss suggestion"
-								>
-									Dismiss
-								</button>
+					{:else if msg.kind === "approval"}
+						<div class="copilot-card approval-card">
+							<div class="card-header">
+								<ShieldAlert size={14} />
+								<span class="card-label">Approval required</span>
 							</div>
-						{:else}
-							<span class="suggestion-resolved">
-								<CircleCheck size={12} />
-								<span>Resolved</span>
+							<div class="approval-body">
+								<code class="tool-name">{msg.tool}</code>
+								{#if msg.args}
+									<pre class="args-pre">{msg.args}</pre>
+								{/if}
+							</div>
+							{#if msg.approvalDecision === "blocked"}
+								<div class="approval-blocked">
+									<Lock size={12} />
+									<span>Blocked by policy</span>
+								</div>
+							{:else if isPendingApproval(msg)}
+								<div class="approval-actions">
+									<button
+										type="button"
+										class="approve-btn"
+										onclick={() => copilot.approve("approve")}
+										aria-label={`Approve ${msg.tool ?? "tool"} call`}
+										title={`Approve ${msg.tool ?? "tool"} call`}
+									>
+										Approve
+									</button>
+									<button
+										type="button"
+										class="deny-btn"
+										onclick={() => copilot.approve("deny")}
+										aria-label={`Deny ${msg.tool ?? "tool"} call`}
+										title={`Deny ${msg.tool ?? "tool"} call`}
+									>
+										Deny
+									</button>
+								</div>
+							{:else}
+								<div class="approval-resolved">
+									<CircleCheck size={12} />
+									<span>Resolved</span>
+								</div>
+							{/if}
+						</div>
+					{:else if msg.suggestion}
+						<div class="copilot-card suggestion-card">
+							<div class="card-header">
+								<Lightbulb size={12} />
+								<span class="card-label">Suggestion</span>
+							</div>
+							<p class="suggestion-title">{msg.suggestion.title}</p>
+							{#if msg.suggestion.body}
+								<p class="suggestion-body">{msg.suggestion.body}</p>
+							{/if}
+							{#if isPendingSuggestion(msg.suggestion)}
+								<div class="suggestion-actions">
+									<button
+										type="button"
+										class="apply-btn"
+										onclick={() => handleApply(msg.suggestion)}
+										aria-label={`Apply suggestion: ${msg.suggestion?.title ?? ""}`}
+										title={msg.suggestion?.actionLabel || "Apply"}
+									>
+										{msg.suggestion.actionLabel || "Apply"}
+									</button>
+									<button
+										type="button"
+										class="dismiss-btn"
+										onclick={() => handleDismiss(msg.suggestion)}
+										aria-label="Dismiss suggestion"
+										title="Dismiss suggestion"
+									>
+										Dismiss
+									</button>
+								</div>
+							{:else}
+								<span class="suggestion-resolved">
+									<CircleCheck size={12} />
+									<span>Resolved</span>
+								</span>
+							{/if}
+						</div>
+					{:else if msg.kind === "error"}
+						<div class="msg msg-assistant msg-error">
+							<div class="msg-error-line">
+								<TriangleAlert size={12} />
+								<div class="msg-content">{msg.content}</div>
+							</div>
+							<span class="msg-time">
+								{new Date(msg.timestamp).toLocaleTimeString([], {
+									hour: "2-digit",
+									minute: "2-digit",
+								})}
 							</span>
-						{/if}
-					</div>
-				{:else if msg.kind === "error"}
-					<div class="msg msg-assistant msg-error">
-						<div class="msg-error-line">
-							<TriangleAlert size={12} />
-							<div class="msg-content">{msg.content}</div>
 						</div>
-						<span class="msg-time">
-							{new Date(msg.timestamp).toLocaleTimeString([], {
-								hour: "2-digit",
-								minute: "2-digit",
-							})}
-						</span>
-					</div>
-				{:else}
-					<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
-						<div class="msg-content">{msg.content}</div>
-						<span class="msg-time">
-							{new Date(msg.timestamp).toLocaleTimeString([], {
-								hour: "2-digit",
-								minute: "2-digit",
-							})}
-						</span>
-					</div>
-				{/if}
-			{/each}
-		{/if}
+					{:else}
+						<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
+							<div class="msg-content">{msg.content}</div>
+							<span class="msg-time">
+								{new Date(msg.timestamp).toLocaleTimeString([], {
+									hour: "2-digit",
+									minute: "2-digit",
+								})}
+							</span>
+						</div>
+					{/if}
+				{/each}
+			{/if}
 
-		{#if copilot.isStreaming}
-			<div class="typing-indicator">
-				<span class="dot"></span>
-				<span class="dot"></span>
-				<span class="dot"></span>
-				<span class="typing-label">AI is thinking...</span>
-			</div>
-		{/if}
-	</div>
+			{#if copilot.isStreaming}
+				<div class="typing-indicator">
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="dot"></span>
+					<span class="typing-label">AI is thinking...</span>
+				</div>
+			{/if}
+		</div>
 	{/if}
 
 	<div class="copilot-input-area">

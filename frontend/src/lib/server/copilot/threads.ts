@@ -40,6 +40,10 @@ export interface CopilotThreadMeta {
 	droppedCount: number;
 	/** Rough estimate of the recall window's token size (sum of text chars / 4, rounded to 100). */
 	estimatedTokens: number;
+	/** How many times the thread has been auto-compacted (metadata.summaryCount). */
+	compactionCount: number;
+	/** Whether a compaction summary is stored in the thread metadata (V). */
+	hasSummary: boolean;
 }
 export interface CopilotThreadMessage {
 	id: string;
@@ -120,13 +124,22 @@ function estimateTokens(messages: MastraDBMessage[], covered: number): number {
 	return Math.round(chars / 4 / 100) * 100;
 }
 
-/** Build the wire meta for one thread, including the context stats (U.3). */
+/** Build the wire meta for one thread, including the context stats (U.3) and
+ * compaction stats (V). */
 function metaOf(
-	thread: { id: string; title?: string | null; createdAt: Date; updatedAt: Date },
+	thread: {
+		id: string;
+		title?: string | null;
+		createdAt: Date;
+		updatedAt: Date;
+		metadata?: Record<string, unknown>;
+	},
 	messages: MastraDBMessage[],
 	recallLimit: number,
 ): CopilotThreadMeta {
 	const recallCovered = Math.min(messages.length, recallLimit);
+	const metadata = thread.metadata ?? {};
+	const summaryCount = typeof metadata.summaryCount === "number" ? metadata.summaryCount : 0;
 	return {
 		id: thread.id,
 		title: thread.title || titleFromMessages(messages) || "Untitled conversation",
@@ -138,6 +151,8 @@ function metaOf(
 		recallCovered,
 		droppedCount: Math.max(0, messages.length - recallLimit),
 		estimatedTokens: estimateTokens(messages, recallCovered),
+		compactionCount: summaryCount,
+		hasSummary: typeof metadata.summary === "string" && metadata.summary.length > 0,
 	};
 }
 

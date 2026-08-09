@@ -43,6 +43,11 @@ export interface CopilotSettings {
 	 * model-aware default when the yaml omits it.
 	 */
 	lastMessages: number;
+	/**
+	 * Automatic compaction (Task V): summarize out-of-window messages with
+	 * the LLM and inject the summary as a system message on later turns.
+	 */
+	autoCompact: boolean;
 }
 
 export interface AppSettings {
