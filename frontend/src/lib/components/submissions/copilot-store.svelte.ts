@@ -2,20 +2,31 @@
  * @file Copilot store — SSE client for the agentic copilot.
  *
  * Talks to the teacher-mode API routes:
- *   - POST /api/copilot/chat     → text/event-stream of agent events
- *   - POST /api/copilot/approval → text/event-stream continuation after a
- *     suspended tool call is approved or denied
+ *   - POST /api/copilot/chat     → text/event-stream of agent events. When a
+ *     tool call is suspended for approval the reader STAYS OPEN: the run's
+ *     continuation resumes on this SAME stream after the decision.
+ *   - POST /api/copilot/approval → empty response; only the decision is
+ *     POSTed, the response body is never read.
  *
  * Frames are `event` name + newline + `data` (JSON) + blank line; both the
  * bare wire format and the standard `event:`/`data:` prefix form are parsed.
- * Events from the chat stream and from the approval continuation stream are
- * handled by ONE parser (`processSseStream` + `handleSseEvent`).
+ * Events from the chat stream are handled by ONE parser (`processSseStream`
+ * + `handleSseEvent`).
  *
  * In the static (student) build there is no copilot server: sendMessage
  * appends a local "unavailable" message instead of fetching (see apiMode).
  */
 
 import { base } from "$app/paths";
+
+// ---------------------------------------------------------------------------
+// Stream lifecycle
+// ---------------------------------------------------------------------------
+
+/** Abort a chat stream that sends no data for this long (reset on activity). */
+export const STREAM_IDLE_TIMEOUT_MS = 180_000;
+/** Absolute upper bound for one chat stream — approvals included. */
+export const STREAM_HARD_CAP_MS = 10 * 60_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -237,6 +248,30 @@ export function createCopilotStore(options?: {
 	/** Id of the assistant text message currently accumulated from deltas. */
 	let currentTextMessageId: string | null = null;
 
+	// Per-send stream lifecycle: one AbortController per sendMessage, an idle
+	// timer that resets on stream activity, and a hard cap that bounds the
+	// whole request (approvals included — a suspended run may idle for a long
+	// time while the teacher decides).
+	let activeController: AbortController | null = null;
+	let idleTimer: ReturnType<typeof setTimeout> | undefined;
+	let hardCap: ReturnType<typeof setTimeout> | undefined;
+
+	/**
+	 * (Re)arm the idle timeout. While an approval is pending the teacher may
+	 * take arbitrarily long — the paused hook holds the timer (it reschedules
+	 * instead of aborting); the hard cap still bounds the stream.
+	 */
+	function resetIdle(): void {
+		if (idleTimer) clearTimeout(idleTimer);
+		idleTimer = setTimeout(() => {
+			if (pendingApproval) {
+				resetIdle();
+				return;
+			}
+			activeController?.abort();
+		}, STREAM_IDLE_TIMEOUT_MS);
+	}
+
 	const availableCommands = [
 		{ command: "/draft", description: "Generate feedback notes" },
 		{ command: "/suggest", description: "Suggest grade dimensions" },
@@ -443,6 +478,7 @@ export function createCopilotStore(options?: {
 				break;
 			}
 			case "done":
+				pendingApproval = null;
 				currentTextMessageId = null;
 				isStreaming = false;
 				break;
@@ -457,39 +493,41 @@ export function createCopilotStore(options?: {
 			buffer = buffer.slice(separator + 2);
 			const parsed = parseSseFrame(frame);
 			if (parsed) handleSseEvent(parsed.event, parsed.data);
-			// A suspended approval or a terminal event ends consumption —
-			// anything still buffered belongs to a continuation stream.
-			if (pendingApproval || !isStreaming) return "";
+			// A terminal event (done/error) ends consumption — anything still
+			// buffered after it is discarded. A suspended approval does NOT
+			// stop consumption: the reader stays open and the continuation
+			// arrives on this same stream.
+			if (!isStreaming) return "";
 		}
 		return buffer;
 	}
 
 	/**
 	 * Read and parse one SSE stream through the single event handler.
-	 * Returns when the stream ends, on `done`/`error`, or when a tool call
-	 * is suspended for approval — in that case the reader is LEFT OPEN (the
-	 * server keeps the connection; the continuation is parsed by approve()
-	 * via this same function).
+	 * Returns when the stream ends, or on `done`/`error`. The reader STAYS
+	 * OPEN across a suspended approval: the server resumes the SAME stream
+	 * after POST /api/copilot/approval and this loop keeps reading the
+	 * continuation (see approve()).
 	 */
 	async function processSseStream(
 		reader: ReadableStreamDefaultReader<Uint8Array>,
+		hooks: { onActivity?: () => void; paused?: () => boolean } = {},
 	): Promise<void> {
 		const decoder = new TextDecoder();
 		let buffer = "";
-		try {
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-				buffer += decoder.decode(value, { stream: true });
-				buffer = consumeFrames(buffer);
-				if (pendingApproval) return;
-				if (!isStreaming) return;
-			}
-			// Stream ended without a terminal frame — flush any leftover tail.
-			consumeFrames(buffer);
-		} catch (error) {
-			handleStreamError(error);
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			// Stream activity resets the idle timeout — unless the run is
+			// suspended on an approval (the teacher decides on their own
+			// clock; only the hard cap applies then).
+			if (!hooks.paused?.()) hooks.onActivity?.();
+			buffer += decoder.decode(value, { stream: true });
+			buffer = consumeFrames(buffer);
+			if (!isStreaming) return;
 		}
+		// Stream ended without a terminal frame — flush any leftover tail.
+		consumeFrames(buffer);
 	}
 
 	/** Surface a stream/network failure as an error message; never retries. */
@@ -526,6 +564,10 @@ export function createCopilotStore(options?: {
 		}
 
 		isStreaming = true;
+		const controller = new AbortController();
+		activeController = controller;
+		resetIdle();
+		hardCap = setTimeout(() => controller.abort(), STREAM_HARD_CAP_MS);
 		try {
 			// Ensure a thread id exists before the first turn and remember it
 			// so the conversation survives reloads. The first turn also sends
@@ -539,6 +581,7 @@ export function createCopilotStore(options?: {
 			const response = await fetch(`${base}/api/copilot/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
+				signal: controller.signal,
 				body: JSON.stringify({
 					...(submissionId ? { submissionId } : {}),
 					...(assignmentId ? { assignmentId } : {}),
@@ -550,13 +593,32 @@ export function createCopilotStore(options?: {
 			if (!response.ok || !response.body) {
 				throw new Error(`Copilot request failed (${response.status})`);
 			}
-			await processSseStream(response.body.getReader());
+			await processSseStream(response.body.getReader(), {
+				onActivity: resetIdle,
+				paused: () => pendingApproval !== null,
+			});
 		} catch (error) {
-			handleStreamError(error);
+			if (controller.signal.aborted) {
+				handleStreamError(new Error("Copilot request timed out or was cancelled"));
+			} else {
+				handleStreamError(error);
+			}
+		} finally {
+			clearTimeout(hardCap);
+			clearTimeout(idleTimer);
+			hardCap = undefined;
+			idleTimer = undefined;
+			activeController = null;
 		}
 	}
 
-	/** Resume a suspended run: POSTs the decision, then parses the continuation. */
+	/**
+	 * Resume a suspended run: POSTs the teacher's decision to the approval
+	 * route. The approval response is EMPTY (verified server contract) — the
+	 * run's continuation arrives on the ORIGINAL chat stream that sendMessage
+	 * is still reading, so the body is never read (it would be parsed
+	 * harmlessly if it ever contained anything).
+	 */
 	async function approve(decision: "approve" | "deny"): Promise<void> {
 		const approval = pendingApproval;
 		if (!approval) return;
@@ -571,10 +633,9 @@ export function createCopilotStore(options?: {
 					decision,
 				}),
 			});
-			if (!response.ok || !response.body) {
+			if (!response.ok) {
 				throw new Error(`Copilot approval failed (${response.status})`);
 			}
-			await processSseStream(response.body.getReader());
 		} catch (error) {
 			handleStreamError(error);
 		}

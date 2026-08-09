@@ -3,9 +3,9 @@
  *
  * Mocks fetch with controllable ReadableStream responses and exercises the
  * store: streaming event parsing, the suspended-approval flow (approve()
- * POSTs the decision and parses the continuation stream through the same
- * handler), error surfacing, static-build degradation (apiMode holder), and
- * clearMessages reset.
+ * POSTs the decision and the continuation arrives on the ORIGINAL chat
+ * stream), per-send abort timeouts, error surfacing, static-build
+ * degradation (apiMode holder), and clearMessages reset.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -59,6 +59,8 @@ function openSseResponse(...frames: string[]) {
 		}),
 		push: (frame: string) => controller.enqueue(encoder.encode(frame)),
 		close: () => controller.close(),
+		/** Error the stream (rejects any pending read) — mirrors fetch abort. */
+		fail: (error: unknown) => controller.error(error),
 	};
 }
 
@@ -78,6 +80,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+	vi.useRealTimers();
 	vi.unstubAllGlobals();
 	// apiMode is a mutable holder (criteria-loader pattern) — always restore
 	// the static default so tests never leak teacher mode into each other.
@@ -177,9 +180,9 @@ describe("sendMessage streaming", () => {
 			assignmentId: "assign-1",
 			message: "Summarize the pipeline status",
 		});
-});
+	});
 
-it("sends both scope ids when the store is created with submission and assignment", async () => {
+	it("sends both scope ids when the store is created with submission and assignment", async () => {
 		copilot.apiMode.value = true;
 		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
 		const store = copilot.createCopilotStore({
@@ -245,7 +248,7 @@ describe("thread continuity (A.2)", () => {
 // ---------------------------------------------------------------------------
 
 describe("approval flow", () => {
-	it("sets pendingApproval, keeps the stream open, and parses the continuation on approve()", async () => {
+	it("keeps reading the chat stream across an approval and parses the continuation after approve()", async () => {
 		copilot.apiMode.value = true;
 		const chat = openSseResponse(
 			sseFrame("approval-request", {
@@ -256,19 +259,15 @@ describe("approval flow", () => {
 				decision: "ask",
 			}),
 		);
-		const continuation = openSseResponse(
-			sseFrame("tool-result", {
-				tool: "archive-submission",
-				ok: true,
-				summary: "Archived",
-			}),
-			sseFrame("message", { role: "assistant", content: "Done." }),
-			sseFrame("done", {}),
-		);
-		fetchMock.mockResolvedValueOnce(chat.response).mockResolvedValueOnce(continuation.response);
+		// The approval POST returns an EMPTY stream — the continuation arrives
+		// on the ORIGINAL chat stream (verified server contract).
+		fetchMock.mockResolvedValueOnce(chat.response).mockResolvedValueOnce(sseResponse());
 
 		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
-		await store.sendMessage("Archive it");
+		// sendMessage only settles when the chat stream ends — the approval
+		// suspends it, so hold the promise and await it after the continuation.
+		const sendPromise = store.sendMessage("Archive it");
+		await vi.waitFor(() => expect(store.pendingApproval).not.toBeNull());
 
 		expect(store.pendingApproval).toEqual({
 			runId: "run-1",
@@ -298,6 +297,20 @@ describe("approval flow", () => {
 			toolCallId: "call-1",
 			decision: "approve",
 		});
+
+		// The continuation arrives on the SAME chat response sendMessage is
+		// still reading.
+		chat.push(
+			sseFrame("tool-result", {
+				tool: "archive-submission",
+				ok: true,
+				summary: "Archived",
+			}),
+		);
+		chat.push(sseFrame("message", { role: "assistant", content: "Done." }));
+		chat.push(sseFrame("done", {}));
+		await sendPromise;
+
 		expect(store.pendingApproval).toBeNull();
 		expect(store.isStreaming).toBe(false);
 		expect(store.messages.map((m) => m.kind)).toEqual([
@@ -308,7 +321,7 @@ describe("approval flow", () => {
 		]);
 	});
 
-	it("POSTs a deny decision and clears pendingApproval", async () => {
+	it("POSTs a deny decision and clears pendingApproval when the continuation arrives", async () => {
 		copilot.apiMode.value = true;
 		const chat = openSseResponse(
 			sseFrame("approval-request", {
@@ -319,12 +332,11 @@ describe("approval flow", () => {
 				decision: "blocked",
 			}),
 		);
-		const continuation = openSseResponse(sseFrame("done", {}));
-		fetchMock.mockResolvedValueOnce(chat.response).mockResolvedValueOnce(continuation.response);
+		fetchMock.mockResolvedValueOnce(chat.response).mockResolvedValueOnce(sseResponse());
 
 		const store = copilot.createCopilotStore();
-		await store.sendMessage("Delete it");
-		expect(store.pendingApproval?.decision).toBe("blocked");
+		const sendPromise = store.sendMessage("Delete it");
+		await vi.waitFor(() => expect(store.pendingApproval?.decision).toBe("blocked"));
 		expect(store.pendingApproval?.argsRedacted).toBe("{}");
 
 		await store.approve("deny");
@@ -335,6 +347,11 @@ describe("approval flow", () => {
 			toolCallId: "call-2",
 			decision: "deny",
 		});
+
+		// The deny continuation (done) arrives on the SAME chat stream.
+		chat.push(sseFrame("done", {}));
+		await sendPromise;
+
 		expect(store.pendingApproval).toBeNull();
 		expect(store.isStreaming).toBe(false);
 	});
@@ -346,6 +363,113 @@ describe("approval flow", () => {
 		await store.sendMessage("hi");
 		await store.approve("approve");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+	});
+
+	it("TTL auto-deny unblocks the stream without any client action", async () => {
+		copilot.apiMode.value = true;
+		const chat = openSseResponse(
+			sseFrame("approval-request", {
+				runId: "run-3",
+				toolCallId: "call-3",
+				tool: "archive-submission",
+				argsRedacted: "{}",
+				decision: "ask",
+			}),
+		);
+		fetchMock.mockResolvedValue(chat.response);
+
+		const store = copilot.createCopilotStore();
+		const sendPromise = store.sendMessage("Do it");
+		await vi.waitFor(() => expect(store.pendingApproval).not.toBeNull());
+
+		// The teacher never clicks — the server TTL denies and the
+		// continuation (tool-result ok:false + done) arrives on the chat
+		// stream that sendMessage is still reading.
+		chat.push(
+			sseFrame("tool-result", {
+				tool: "archive-submission",
+				ok: false,
+				summary: "Denied by timeout",
+			}) + sseFrame("done", {}),
+		);
+		await sendPromise;
+
+		expect(store.isStreaming).toBe(false);
+		expect(store.pendingApproval).toBeNull();
+		expect(store.messages.map((m) => m.kind)).toEqual(["text", "approval", "tool-result"]);
+		expect(store.messages[store.messages.length - 1]).toMatchObject({
+			kind: "tool-result",
+			ok: false,
+			summary: "Denied by timeout",
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Stream timeouts (abort on idle / hard cap)
+// ---------------------------------------------------------------------------
+
+describe("stream timeouts", () => {
+	it("aborts and surfaces an error when the stream hangs", async () => {
+		vi.useFakeTimers();
+		copilot.apiMode.value = true;
+		// An open stream that never sends a byte.
+		let chat!: ReturnType<typeof openSseResponse>;
+		fetchMock.mockImplementation((_url, init) => {
+			chat = openSseResponse();
+			// Mirror real fetch: aborting the request rejects pending reads.
+			init?.signal?.addEventListener("abort", () => {
+				chat.fail(new DOMException("Aborted", "AbortError"));
+			});
+			return Promise.resolve(chat.response);
+		});
+
+		const store = copilot.createCopilotStore();
+		// Don't await — sendMessage only settles once the abort lands.
+		const sendPromise = store.sendMessage("hi");
+
+		await vi.advanceTimersByTimeAsync(copilot.STREAM_IDLE_TIMEOUT_MS + 1);
+
+		expect(store.isStreaming).toBe(false);
+		const last = store.messages[store.messages.length - 1];
+		expect(last.kind).toBe("error");
+		expect(last.content).toContain("timed out");
+		await sendPromise;
+	});
+
+	it("does not abort while an approval is pending", async () => {
+		vi.useFakeTimers();
+		copilot.apiMode.value = true;
+		const chat = openSseResponse(
+			sseFrame("approval-request", {
+				runId: "run-4",
+				toolCallId: "call-4",
+				tool: "archive-submission",
+				argsRedacted: "{}",
+				decision: "ask",
+			}),
+		);
+		fetchMock.mockResolvedValue(chat.response);
+
+		const store = copilot.createCopilotStore();
+		const sendPromise = store.sendMessage("Do it");
+		// Flush the microtasks that deliver the buffered approval-request frame.
+		await vi.advanceTimersByTimeAsync(0);
+		expect(store.pendingApproval).not.toBeNull();
+
+		// Well past the idle timeout with no stream activity — the paused
+		// hook held the timer, so no abort and no error message.
+		await vi.advanceTimersByTimeAsync(copilot.STREAM_IDLE_TIMEOUT_MS + 1);
+
+		expect(store.pendingApproval).not.toBeNull();
+		expect(store.isStreaming).toBe(true);
+		expect(store.messages.some((m) => m.kind === "error")).toBe(false);
+
+		// End the stream so the pending sendMessage settles.
+		chat.push(sseFrame("done", {}));
+		await sendPromise;
+		expect(store.isStreaming).toBe(false);
+		expect(store.pendingApproval).toBeNull();
 	});
 });
 
@@ -512,8 +636,10 @@ describe("suggestions and reset", () => {
 			}),
 		);
 		fetchMock.mockResolvedValueOnce(chat.response);
-		await store.sendMessage("Do it");
-		expect(store.pendingApproval).not.toBeNull();
+		// sendMessage only settles when the stream ends — hold the promise and
+		// end the stream after the reset assertions.
+		const sendPromise = store.sendMessage("Do it");
+		await vi.waitFor(() => expect(store.pendingApproval).not.toBeNull());
 		expect(store.messages.length).toBeGreaterThan(0);
 
 		store.clearMessages();
@@ -521,6 +647,10 @@ describe("suggestions and reset", () => {
 		expect(store.messages).toEqual([]);
 		expect(store.pendingSuggestions).toEqual([]);
 		expect(store.pendingApproval).toBeNull();
+
+		// Settle the still-reading chat stream.
+		chat.push(sseFrame("done", {}));
+		await sendPromise;
 	});
 });
 
