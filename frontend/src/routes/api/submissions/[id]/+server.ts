@@ -56,8 +56,23 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	// The verified fixed execution (when present) is normalized the same way
 	// as `cells` — same indices, separate array, so the UI can toggle per cell.
 	const fixedCells = normalizeStoredCells(stored?.fixedCells);
+	// The pre-evaluation envelope is stored with snake_case `cell_index`
+	// (server contract) and served in the camelCase wire shape the client's
+	// PreEvalData expects — markers: null keeps the UI's pending state.
+	const preEval = stored?.preEval
+		? {
+				...stored.preEval,
+				markers: stored.preEval.markers
+					? stored.preEval.markers.map((m) => ({
+							cellIndex: m.cell_index,
+							marker: m.marker,
+							reason: m.reason,
+						}))
+					: null,
+			}
+		: undefined;
 
-	return json({ ...record, cells, fixedCells });
+	return json({ ...record, cells, fixedCells, preEval });
 }
 
 export async function DELETE(event: RequestEvent): Promise<Response> {

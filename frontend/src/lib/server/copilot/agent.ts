@@ -78,6 +78,8 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { appendAuditEntry, createAuditHooks, redactArgs } from "./audit";
 import { resolveApprovalPolicy, type ApprovalDecision } from "./permission";
 import { registerCopilotTools } from "./tools/index";
+import { getEnabledAssignments } from "$lib/server/assignments";
+import { readMetadata } from "$lib/server/metadata";
 import {
 	createRegistry,
 	type CopilotRegistry,
@@ -268,7 +270,12 @@ export async function buildAgent(): Promise<void> {
 	// the Agent is constructed — registry.list() feeds the Mastra tools.
 	registerCopilotTools(registry);
 	const storage = copilotStorage();
-	mastra = new Mastra({ storage });
+	// The Memory must be REGISTERED on the Mastra instance (docs pattern:
+	// `new Mastra({ storage, memory: { key } })`) for the agent's
+	// getMemory() to resolve it — an Agent-only instance is ignored at
+	// runtime and threads never persist.
+	const memory = new Memory({ storage });
+	mastra = new Mastra({ storage, memory: { copilot: memory } });
 	const tools = Object.fromEntries(
 		registry.list().map((tool) => [tool.name, wrapCopilotTool(tool)]),
 	);
@@ -280,10 +287,7 @@ export async function buildAgent(): Promise<void> {
 		model: createModel(settings),
 		tools,
 		hooks: auditHooks,
-		// Phase 4f: file-backed thread persistence (DATA_DIR/copilot/memory).
-		// The composite storage keeps the in-memory defaults for every other
-		// domain while routing the memory domain to the file adapter.
-		memory: new Memory({ storage }),
+		memory,
 	});
 }
 
@@ -303,6 +307,24 @@ async function getAgent(): Promise<Agent> {
 	await buildAgent();
 	if (!agent) throw new Error("buildAgent() did not initialize the copilot agent");
 	return agent;
+}
+
+/**
+ * Find which enabled assignment owns a submission id (used to ground
+ * per-submission chats that don't send an assignmentId). Returns undefined
+ * when the submission is unknown or no assignment is enabled.
+ */
+async function resolveAssignmentForSubmission(submissionId: string): Promise<string | undefined> {
+	try {
+		for (const assignment of await getEnabledAssignments()) {
+			const records = await readMetadata(assignment.id);
+			if (records[submissionId]) return assignment.id;
+		}
+	} catch {
+		// Metadata read failures (missing assignment dir) fall through —
+		// tools without grounding will surface their own errors.
+	}
+	return undefined;
 }
 
 /**
@@ -351,9 +373,17 @@ function wrapCopilotTool(tool: CopilotTool): Tool {
 				assignmentId: reqState?.assignmentId,
 				signal: context.abortSignal ?? new AbortController().signal,
 			};
+			// Grounding: the review context WINS over whatever ids the model
+			// hallucinated in the args. The LLM is told to omit these fields,
+			// but it invents bogus values (observed: "test_submission_001")
+			// — without this the copilot could write to the wrong submission
+			// or fail on every write. The teacher approves the REAL target.
+			const groundedArgs: Record<string, unknown> = { ...(input as Record<string, unknown>) };
+			if (reqState?.submissionId) groundedArgs.submissionId = reqState.submissionId;
+			if (reqState?.assignmentId) groundedArgs.assignmentId = reqState.assignmentId;
 			// The registry re-validates args against the Zod inputSchema, so
 			// invalid args surface as tool errors (CopilotToolArgumentError).
-			return registry.run(tool.name, input, toolContext);
+			return registry.run(tool.name, groundedArgs, toolContext);
 		},
 	});
 }
@@ -404,12 +434,17 @@ export async function streamChat(
 async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEvent> {
 	// Policy settings are re-read per request so saved changes apply immediately.
 	const appSettings = await loadSettings();
+	// Per-submission chats don't send assignmentId — derive it so tools are
+	// grounded (the model invents bogus assignment ids otherwise).
+	const resolvedAssignmentId =
+		input.assignmentId ??
+		(input.submissionId ? await resolveAssignmentForSubmission(input.submissionId) : undefined);
 	const reqState: ReqState = {
 		settings: appSettings.copilot,
 		session: input.session,
 		threadId: input.threadId,
 		submissionId: input.submissionId,
-		assignmentId: input.assignmentId,
+		assignmentId: resolvedAssignmentId,
 		decisions: new Map(),
 	};
 	const requestContext = new Map<string, unknown>();
@@ -426,6 +461,9 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 			// falls back to the assignment id (or a shared fallback when
 			// neither id is present, e.g. direct agent tests).
 			resourceId: input.submissionId ?? input.assignmentId ?? "copilot",
+			// Without savePerStep Mastra never calls the memory storage —
+			// thread/message persistence is gated on this flag (verified live).
+			savePerStep: true,
 		};
 		if (input.threadId) opts.threadId = input.threadId;
 		if (input.signal) opts.abortSignal = input.signal;
