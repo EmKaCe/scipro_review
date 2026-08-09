@@ -22,7 +22,11 @@ import { error } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 import { z } from "zod";
 
-import { streamChat, type CopilotStreamEvent } from "$lib/server/copilot/agent";
+import {
+	streamChat,
+	type CopilotSession,
+	type CopilotStreamEvent,
+} from "$lib/server/copilot/agent";
 
 const chatBodySchema = z.object({
 	submissionId: z.string().min(1).optional(),
@@ -35,10 +39,42 @@ const chatBodySchema = z.object({
  * @internal Run ids this route has advertised via approval-request frames, so
  * the approval route can tell an unknown run (404) from an already-resolved
  * one (409). The underscore prefix keeps SvelteKit's +server.ts export
- * validation happy. Entries are retained for the server's lifetime — bounded
- * by usage; a production store would evict on TTL.
+ * validation happy. Bounded: each entry carries the expiry timestamp at which
+ * it is pruned (APPROVAL_RUN_GRACE_MS after advertisement), so the map never
+ * grows without bound over the server's lifetime.
  */
-export const _knownApprovalRunIds = new Set<string>();
+export const _knownApprovalRunIds = new Map<string, number>();
+
+/** How long an advertised approval run stays resolvable (5 minutes). */
+const APPROVAL_RUN_GRACE_MS = 5 * 60 * 1000;
+
+/** Drop entries whose grace period has elapsed (safe to call on every insert). */
+function pruneKnownApprovalRunIds(now = Date.now()): void {
+	for (const [runId, expiry] of _knownApprovalRunIds) {
+		if (expiry <= now) _knownApprovalRunIds.delete(runId);
+	}
+}
+
+/**
+ * @internal Per-thread session counter (design decision 5: ONE session per
+ * THREAD — keying by scope alone would share the sessionCap budget across all
+ * threads of that scope). Keyed by `${scope}:${threadId}`, so each thread
+ * carries its own autoApprovedCount into streamChat. The underscore prefix
+ * keeps SvelteKit's +server.ts export validation happy; tests clear it
+ * between cases.
+ */
+export const _threadSessions = new Map<string, CopilotSession>();
+
+/** Get (or create) the session for a scope/thread pair. */
+function sessionFor(scopeKey: string, threadId: string | undefined): CopilotSession {
+	const sessionKey = `${scopeKey}:${threadId ?? "new"}`;
+	let session = _threadSessions.get(sessionKey);
+	if (!session) {
+		session = { autoApprovedCount: 0 };
+		_threadSessions.set(sessionKey, session);
+	}
+	return session;
+}
 
 /** One bare SSE frame from one event (see file header for the format). */
 function encodeFrame(event: CopilotStreamEvent): Uint8Array {
@@ -76,6 +112,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		message,
 		threadId,
 		signal: event.request.signal,
+		session: sessionFor(submissionId ?? assignmentId ?? "copilot", threadId),
 	});
 
 	const readable = new ReadableStream<Uint8Array>({
@@ -84,7 +121,8 @@ export async function POST(event: RequestEvent): Promise<Response> {
 				for await (const evt of events) {
 					if (event.request.signal.aborted) return;
 					if (evt.type === "approval-request") {
-						_knownApprovalRunIds.add(evt.runId);
+						_knownApprovalRunIds.set(evt.runId, Date.now() + APPROVAL_RUN_GRACE_MS);
+						pruneKnownApprovalRunIds();
 					}
 					controller.enqueue(encodeFrame(evt));
 				}

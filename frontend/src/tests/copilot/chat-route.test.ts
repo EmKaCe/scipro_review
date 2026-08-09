@@ -13,7 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { POST, _knownApprovalRunIds } from "../../routes/api/copilot/chat/+server";
+import { POST, _knownApprovalRunIds, _threadSessions } from "../../routes/api/copilot/chat/+server";
 import { streamChat } from "$lib/server/copilot/agent";
 
 vi.mock("$lib/server/copilot/agent", () => ({
@@ -51,10 +51,12 @@ async function readAll(response: Response): Promise<string> {
 beforeEach(() => {
 	vi.clearAllMocks();
 	_knownApprovalRunIds.clear();
+	_threadSessions.clear();
 });
 
 afterEach(() => {
 	_knownApprovalRunIds.clear();
+	_threadSessions.clear();
 });
 
 describe("POST /api/copilot/chat", () => {
@@ -119,6 +121,44 @@ describe("POST /api/copilot/chat", () => {
 		expect(input.submissionId).toBe("sub-1");
 		expect(input.assignmentId).toBe("assign-1");
 		expect(await readAll(response)).toBe("done\n\n");
+	});
+
+	it("passes a per-thread session object (autoApprovedCount: 0) to streamChat", async () => {
+		mockedStreamChat.mockResolvedValueOnce(
+			(async function* () {
+				yield { type: "done" };
+			})(),
+		);
+
+		await postChat({ submissionId: "sub-1", message: "go", threadId: "thread-9" });
+
+		expect(mockedStreamChat).toHaveBeenCalledTimes(1);
+		expect(mockedStreamChat.mock.calls[0][0].session).toEqual(
+			expect.objectContaining({ autoApprovedCount: 0 }),
+		);
+	});
+
+	it("reuses the SAME session for the same thread and a DIFFERENT one per thread", async () => {
+		mockedStreamChat.mockImplementation(async () => {
+			return (async function* () {
+				yield { type: "done" };
+			})();
+		});
+
+		await postChat({ submissionId: "sub-1", message: "first", threadId: "thread-9" });
+		await postChat({ submissionId: "sub-1", message: "second", threadId: "thread-9" });
+		await postChat({ submissionId: "sub-1", message: "other thread", threadId: "thread-10" });
+
+		expect(mockedStreamChat).toHaveBeenCalledTimes(3);
+		const sameThreadA = mockedStreamChat.mock.calls[0][0].session;
+		const sameThreadB = mockedStreamChat.mock.calls[1][0].session;
+		const otherThread = mockedStreamChat.mock.calls[2][0].session;
+
+		// Same submissionId + same threadId → reference-identical session.
+		expect(sameThreadA).toBe(sameThreadB);
+		// Same submissionId but a different threadId → a distinct session.
+		expect(sameThreadA).not.toBe(otherThread);
+		expect(otherThread).toEqual(expect.objectContaining({ autoApprovedCount: 0 }));
 	});
 
 	it("pipes a 2-event conversation as exact bare SSE frames", async () => {

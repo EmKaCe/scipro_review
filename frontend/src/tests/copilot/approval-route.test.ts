@@ -52,7 +52,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	_knownApprovalRunIds.clear();
 	// Seed a run the chat route advertised via an approval-request frame.
-	_knownApprovalRunIds.add("run-1");
+	_knownApprovalRunIds.set("run-1", Date.now() + 300_000);
 });
 
 afterEach(() => {
