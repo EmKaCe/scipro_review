@@ -111,6 +111,26 @@ describe("FileMemoryStore", () => {
 		expect(messages[0].createdAt).toBeInstanceOf(Date);
 	});
 
+	it("honors orderBy createdAt DESC so the recall window paginates the NEWEST messages (U.2)", async () => {
+		const store = new FileMemoryStore();
+		await store.saveMessages({
+			messages: [
+				msg("m1", "t1", "user", "first", new Date("2026-08-01T10:00:00Z")),
+				msg("m2", "t1", "assistant", "second", new Date("2026-08-01T11:00:00Z")),
+				msg("m3", "t1", "user", "third", new Date("2026-08-01T12:00:00Z")),
+				msg("m4", "t1", "assistant", "fourth", new Date("2026-08-01T13:00:00Z")),
+			],
+		});
+		// Mastra's recall asks for the NEWEST N (DESC + perPage) and reverses
+		// the result — the store must paginate from the newest end.
+		const { messages } = await store.listMessages({
+			threadId: "t1",
+			perPage: 2,
+			orderBy: { field: "createdAt", direction: "DESC" },
+		});
+		expect(messages.map((m) => m.id)).toEqual(["m4", "m3"]);
+	});
+
 	it("listMessages paginates with perPage/page/hasMore", async () => {
 		const store = new FileMemoryStore();
 		const messages = Array.from({ length: 5 }, (_, i) =>

@@ -20,6 +20,7 @@
 	import SquarePen from "@lucide/svelte/icons/square-pen";
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import MessageSquare from "@lucide/svelte/icons/message-square";
 
 	interface Props {
 		/**
@@ -283,6 +284,20 @@
 		</button>
 	</div>
 
+	{#if copilot.activeThread}
+		<div class="context-line" title={`Recall window: last ${copilot.activeThread.recallLimit} messages`}>
+			Context: last {copilot.activeThread.recallCovered} of {copilot.activeThread.messageCount} messages - est. ~{copilot.activeThread.estimatedTokens} tokens
+		</div>
+		{#if copilot.activeThread.droppedCount > 0}
+			<div class="context-warning">
+				<TriangleAlert size={11} />
+				<span>
+					Oldest {copilot.activeThread.droppedCount} message(s) are outside the model's context — start a new conversation for full context.
+				</span>
+			</div>
+		{/if}
+	{/if}
+
 	{#if showThreads}
 		<div class="thread-list" bind:this={threadListEl}>
 			<button type="button" class="new-conv-row" onclick={() => copilot.newConversation()}>
@@ -316,6 +331,10 @@
 							<div class="thread-row-main">
 								<span class="thread-title" title={t.title}>{t.title}</span>
 								<span class="thread-time">{threadTime(t.updatedAt)}</span>
+							</div>
+							<div class="thread-count" title={`${t.messageCount} messages`}>
+								<MessageSquare size={10} />
+								<span>{t.messageCount}</span>
 							</div>
 						{/if}
 						<div class="thread-actions">
@@ -634,6 +653,26 @@
 		background: var(--card);
 	}
 
+	/* Context window visibility (Task U.4). */
+	.context-line {
+		font-size: 11px;
+		color: var(--muted-foreground);
+		padding: 6px 12px;
+		border-bottom: 1px solid var(--border);
+		background: var(--card);
+	}
+	.context-warning {
+		display: flex;
+		align-items: flex-start;
+		gap: 6px;
+		font-size: 11px;
+		line-height: 1.4;
+		color: var(--destructive);
+		padding: 6px 12px;
+		border-bottom: 1px solid color-mix(in oklch, var(--destructive) 30%, var(--border));
+		background: color-mix(in oklch, var(--destructive) 6%, var(--card));
+	}
+
 	/* Thread switcher (Task T). */
 	.thread-list {
 		flex: 1;
@@ -708,6 +747,14 @@
 	.thread-time {
 		font-size: 10px;
 		color: var(--muted-foreground);
+	}
+	.thread-count {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		font-size: 10px;
+		color: var(--muted-foreground);
+		flex-shrink: 0;
 	}
 	.thread-actions {
 		display: inline-flex;

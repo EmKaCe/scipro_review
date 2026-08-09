@@ -12,6 +12,7 @@ import path from "node:path";
 
 import { GET, PUT } from "../../routes/api/settings/+server";
 import { loadSettings, writeSettings, type AppSettings } from "$lib/server/settings";
+import { resolveLastMessagesDefault } from "$lib/server/copilot/model-context";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -34,6 +35,7 @@ const FULL: AppSettings = {
 		denyTools: [],
 		approvalTtlSeconds: 60,
 		sessionCap: 20,
+		lastMessages: 16,
 	},
 };
 
@@ -115,6 +117,22 @@ describe("settings module", () => {
 
 		await expect(loadSettings()).rejects.toThrow(/settings.yaml/);
 	});
+
+	it("resolves copilot.lastMessages from the model when the yaml omits it", async () => {
+		await writeFile(path.join(dataDir, "settings.yaml"), "llm:\n  model: test-model\n");
+
+		const s = await loadSettings();
+		expect(s.copilot.lastMessages).toBe(resolveLastMessagesDefault("test-model"));
+		// The default-model path is the same: unknown 32K context -> 16.
+		expect(resolveLastMessagesDefault("test-model")).toBe(16);
+	});
+
+	it("keeps an explicit last_messages from the yaml", async () => {
+		await writeFile(path.join(dataDir, "settings.yaml"), "copilot:\n  last_messages: 7\n");
+
+		const s = await loadSettings();
+		expect(s.copilot.lastMessages).toBe(7);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -139,7 +157,30 @@ describe("/api/settings", () => {
 		expect(await loadSettings()).toEqual(FULL);
 	});
 
+	it("PUT accepts a valid lastMessages and round-trips it through GET", async () => {
+		const withWindow: AppSettings = { ...FULL, copilot: { ...FULL.copilot, lastMessages: 7 } };
+		const resp = await PUT({ request: putRequest(withWindow) } as never);
+		expect(resp.status).toBe(200);
+		expect((await resp.json() as AppSettings).copilot.lastMessages).toBe(7);
+		// Reload from disk — the persisted value survives.
+		expect((await loadSettings()).copilot.lastMessages).toBe(7);
+
+		const getResp = await GET();
+		expect((await getResp.json() as AppSettings).copilot.lastMessages).toBe(7);
+	});
+
 	it("rejects invalid bodies with 400", async () => {
+		const validBase = {
+			executor: { requestTimeoutMs: 1, notebookTimeoutMs: 1, cellTimeoutS: 1 },
+			llm: { baseUrl: "x", model: "m", timeoutMs: 1 },
+			copilot: {
+				mode: "ask",
+				allowedTools: [],
+				denyTools: [],
+				approvalTtlSeconds: 60,
+				sessionCap: 20,
+			},
+		};
 		for (const bad of [
 			null,
 			{},
@@ -152,6 +193,10 @@ describe("/api/settings", () => {
 				executor: { requestTimeoutMs: 1, notebookTimeoutMs: 1, cellTimeoutS: 1 },
 				llm: { baseUrl: "", model: "m", timeoutMs: 1 },
 			},
+			// lastMessages out of range: below 1, above 50, non-integer.
+			{ ...validBase, copilot: { ...validBase.copilot, lastMessages: 0 } },
+			{ ...validBase, copilot: { ...validBase.copilot, lastMessages: 100 } },
+			{ ...validBase, copilot: { ...validBase.copilot, lastMessages: 1.5 } },
 		]) {
 			let status: number | null = null;
 			try {

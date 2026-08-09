@@ -104,6 +104,15 @@ const updateSettingsArgs = z
 				denyTools: z.array(z.string()),
 				approvalTtlSeconds: positiveFinite,
 				sessionCap: positiveFinite,
+				// Recall window: finite integer in 1-50 (matches the route guard).
+				lastMessages: z
+					.number()
+					.int()
+					.min(1)
+					.max(50)
+					.refine((n) => Number.isFinite(n), {
+						message: "must be a finite integer between 1 and 50",
+					}),
 			})
 			.strict(),
 	})

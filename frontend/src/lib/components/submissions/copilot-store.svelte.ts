@@ -112,6 +112,14 @@ export interface CopilotThreadMeta {
 	updatedAt: string; // ISO
 	messageCount: number;
 	lastPreview?: string;
+	/** Effective recall window (settings.copilot.lastMessages). */
+	recallLimit: number;
+	/** min(messageCount, recallLimit) — how many of the stored messages the model sees. */
+	recallCovered: number;
+	/** max(0, messageCount - recallLimit) — messages outside the model's context. */
+	droppedCount: number;
+	/** Rough estimate of the recall window's token size (chars / 4, rounded to 100). */
+	estimatedTokens: number;
 }
 
 /** One message of a thread detail, as served by the thread GET route. */
@@ -723,6 +731,12 @@ export function createCopilotStore(options?: {
 				createdAt: body.thread.createdAt,
 				updatedAt: body.thread.updatedAt,
 				messageCount: body.thread.messages.length,
+				// Context stats (Task U.3) ride the server meta — pass them
+				// through for the panel's context line + warning.
+				recallLimit: body.thread.recallLimit,
+				recallCovered: body.thread.recallCovered,
+				droppedCount: body.thread.droppedCount,
+				estimatedTokens: body.thread.estimatedTokens,
 			};
 			messages = toDisplayMessages(body.thread.messages);
 			currentTextMessageId = null;

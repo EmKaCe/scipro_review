@@ -191,7 +191,14 @@ export class FileMemoryStore extends MemoryStorage {
 			return true;
 		});
 
-		filtered.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+		// Honor the requested direction (Task U.2): Mastra's recall asks for
+		// the NEWEST N messages (createdAt DESC + perPage) to build the
+		// lastMessages window. Sorting always ascending made the store
+		// paginate the OLDEST N instead — the rolling window silently showed
+		// the first messages of a thread, not the last. Same pattern as
+		// listThreads above; callers without orderBy keep chronological order.
+		const direction = args.orderBy?.direction === "DESC" ? -1 : 1;
+		filtered.sort((a, b) => direction * (a.createdAt.getTime() - b.createdAt.getTime()));
 		const perPage = args.perPage === false ? Number.MAX_SAFE_INTEGER : (args.perPage ?? 40);
 		const page = args.page ?? 0;
 		const start = page * perPage;

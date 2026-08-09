@@ -31,6 +31,7 @@ function settings(overrides: Partial<CopilotSettings> = {}): CopilotSettings {
 		denyTools: [],
 		approvalTtlSeconds: 60,
 		sessionCap: 20,
+		lastMessages: 16,
 		...overrides,
 	};
 }

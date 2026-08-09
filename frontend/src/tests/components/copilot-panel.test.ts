@@ -27,6 +27,10 @@ const THREADS = [
 		updatedAt: "2026-08-01T12:00:00.000Z",
 		messageCount: 2,
 		lastPreview: "Done.",
+		recallLimit: 10,
+		recallCovered: 2,
+		droppedCount: 0,
+		estimatedTokens: 200,
 	},
 	{
 		id: "t-2",
@@ -35,6 +39,10 @@ const THREADS = [
 		updatedAt: "2026-08-01T11:00:00.000Z",
 		messageCount: 1,
 		lastPreview: "Hi",
+		recallLimit: 10,
+		recallCovered: 1,
+		droppedCount: 0,
+		estimatedTokens: 100,
 	},
 ];
 
@@ -44,6 +52,30 @@ const THREAD_DETAIL = {
 		{ id: "m1", role: "user", createdAt: "2026-08-01T11:00:00.000Z", text: "Compare cell 3" },
 		{ id: "m2", role: "assistant", createdAt: "2026-08-01T11:02:00.000Z", text: "Done." },
 	],
+};
+
+/** A thread that has outgrown the recall window (25 stored, only 10 seen). */
+const BIG_THREAD = {
+	id: "t-big",
+	title: "Long conversation",
+	createdAt: "2026-08-01T08:00:00.000Z",
+	updatedAt: "2026-08-01T13:00:00.000Z",
+	messageCount: 25,
+	lastPreview: "Still going",
+	recallLimit: 10,
+	recallCovered: 10,
+	droppedCount: 15,
+	estimatedTokens: 1200,
+};
+
+const BIG_DETAIL = {
+	...BIG_THREAD,
+	messages: Array.from({ length: 25 }, (_, i) => ({
+		id: `m${i}`,
+		role: (i % 2 === 0 ? "user" : "assistant") as "user" | "assistant",
+		createdAt: "2026-08-01T08:00:00.000Z",
+		text: `Message ${i}`,
+	})),
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -66,8 +98,8 @@ let fetchMock: ReturnType<typeof vi.fn>;
 /** Mutable server-side state so rename/delete reflect into later list fetches. */
 let serverThreads: Array<(typeof THREADS)[number]>;
 
-function mockThreadRoutes(): void {
-	serverThreads = THREADS.map((t) => ({ ...t }));
+function mockThreadRoutes(threads: Array<(typeof THREADS)[number]> = THREADS): void {
+	serverThreads = threads.map((t) => ({ ...t }));
 	fetchMock.mockImplementation((url: RequestInfo | URL, init?: RequestInit) => {
 		const u = String(url);
 		if (u.includes("/api/copilot/threads/")) {
@@ -82,6 +114,9 @@ function mockThreadRoutes(): void {
 				return Promise.resolve(jsonResponse({ thread: { ...target! } }));
 			}
 			const target = serverThreads.find((t) => u.includes(`/threads/${t.id}`));
+			if (target?.id === "t-big") {
+				return Promise.resolve(jsonResponse({ thread: { ...BIG_DETAIL } }));
+			}
 			return Promise.resolve(jsonResponse({ thread: { ...THREAD_DETAIL, ...target } }));
 		}
 		if (u.includes("/api/copilot/threads")) {
@@ -106,8 +141,8 @@ afterEach(() => {
 });
 
 /** Render the panel and wait for the onMount thread-list fetch. */
-async function renderPanel() {
-	mockThreadRoutes();
+async function renderPanel(threads?: Array<(typeof THREADS)[number]>) {
+	mockThreadRoutes(threads);
 	const result = render(CopilotPanel, { submissionId: "sub-1" });
 	await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 	return result;
@@ -267,5 +302,36 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 		await waitFor(() => expect(screen.queryByText("Delete?")).toBeNull());
 		// The arm expired — a later click only arms again, never deletes.
 		expect(fetchMock.mock.calls.some((call) => call[1]?.method === "DELETE")).toBe(false);
+	});
+
+	it("shows the context line + dropped-from-context warning when messages are outside the window (U.4)", async () => {
+		await renderPanel([{ ...BIG_THREAD }]);
+		fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
+		await screen.findByText("Long conversation");
+
+		fireEvent.click(screen.getByText("Long conversation"));
+
+		// Context line: window size, coverage, estimated tokens.
+		await screen.findByText("Context: last 10 of 25 messages - est. ~1200 tokens");
+		// Warning: 15 of the 25 stored messages are invisible to the model.
+		expect(
+			screen.getByText(
+				"Oldest 15 message(s) are outside the model's context — start a new conversation for full context.",
+			),
+		).toBeTruthy();
+	});
+
+	it("hides the warning when nothing is dropped, and rows show the message count (U.4)", async () => {
+		await openThreadList();
+
+		// The thread rows carry a message-count badge before opening.
+		expect(screen.getByText("2", { selector: ".thread-count span" })).toBeTruthy();
+
+		fireEvent.click(screen.getByText("Review submission 1"));
+		await screen.findByText("Compare cell 3");
+
+		// Context line renders; the warning does not (droppedCount is 0).
+		expect(screen.getByText("Context: last 2 of 2 messages - est. ~200 tokens")).toBeTruthy();
+		expect(screen.queryByText(/Oldest .* message/)).toBeNull();
 	});
 });

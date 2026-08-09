@@ -39,18 +39,11 @@ const renameBodySchema = z.object({
 
 /** The meta fields of a detail (PATCH returns the meta, not the messages). */
 function metaOf(threadId: string, scope: { submissionId?: string; assignmentId?: string }): Promise<CopilotThreadMeta | null> {
-	return getThread(threadId, scope).then((detail) =>
-		detail
-			? {
-					id: detail.id,
-					title: detail.title,
-					createdAt: detail.createdAt,
-					updatedAt: detail.updatedAt,
-					messageCount: detail.messageCount,
-					lastPreview: detail.lastPreview,
-				}
-			: null,
-	);
+	return getThread(threadId, scope).then((detail) => {
+		if (!detail) return null;
+		const { messages: _messages, ...meta } = detail;
+		return meta;
+	});
 }
 
 function parseScope(event: RequestEvent): { submissionId?: string; assignmentId?: string } {

@@ -10,7 +10,7 @@
  * file-memory.test.ts (which cast content arrays that Mastra never writes).
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -24,7 +24,6 @@ import {
 	getThread,
 	listThreads,
 	renameThread,
-	type CopilotThreadDetail,
 } from "$lib/server/copilot/threads";
 
 let dataDir: string;
@@ -147,6 +146,12 @@ describe("threads.ts", () => {
 			updatedAt: "2026-08-01T12:00:00.000Z",
 			messageCount: 1,
 			lastPreview: "How is the class doing overall?",
+			// No settings.yaml → model-aware default (16 for the default 32K model).
+			recallLimit: 16,
+			recallCovered: 1,
+			droppedCount: 0,
+			// 30 chars / 4 = 7.5 → rounds to 0 (below the 100 granularity).
+			estimatedTokens: 0,
 		});
 		expect(threads[1]).toMatchObject({
 			title: "Compare cell 3 to the key please",
@@ -324,5 +329,50 @@ describe("threads.ts", () => {
 		expect((await store.getThreadById({ threadId: "t-1" }))?.title).toBe("A much better title");
 		// Missing thread → false.
 		expect(await renameThread("t-missing", "Nope", { submissionId: "sub-1" })).toBe(false);
+	});
+
+	it("reports context stats: recallCovered, droppedCount, estimatedTokens (U.3)", async () => {
+		// A window of 10 makes 2 of the 12 stored messages invisible to the model.
+		await writeFile(path.join(dataDir, "settings.yaml"), "copilot:\n  last_messages: 10\n");
+		const store = new FileMemoryStore();
+		await store.saveThread({ thread: thread("t-12", "sub-1", new Date("2026-08-01T12:00:00Z")) });
+		const messages: MastraDBMessage[] = [];
+		for (let i = 1; i <= 12; i++) {
+			messages.push(
+				textMessage(
+					`m${i}`,
+					"t-12",
+					"sub-1",
+					i % 2 === 1 ? "user" : "assistant",
+					`Message ${i} about the notebook analysis`,
+					new Date(`2026-08-01T${String(10 + Math.floor(i / 2)).padStart(2, "0")}:00:00Z`),
+				),
+			);
+		}
+		await store.saveMessages({ messages });
+
+		const list = await listThreads({ submissionId: "sub-1" });
+		expect(list[0]).toMatchObject({
+			id: "t-12",
+			messageCount: 12,
+			recallLimit: 10,
+			recallCovered: 10,
+			droppedCount: 2,
+		});
+		expect(list[0].estimatedTokens).toBeGreaterThan(0);
+
+		// The detail builder carries the same stats.
+		const detail = await getThread("t-12", { submissionId: "sub-1" });
+		expect(detail).not.toBeNull();
+		expect(detail!.recallCovered).toBe(10);
+		expect(detail!.droppedCount).toBe(2);
+
+		// A fresh thread (no messages) drops nothing.
+		await store.saveThread({ thread: thread("t-fresh", "sub-1", new Date("2026-08-01T13:00:00Z")) });
+		const fresh = (await listThreads({ submissionId: "sub-1" })).find((t) => t.id === "t-fresh")!;
+		expect(fresh.messageCount).toBe(0);
+		expect(fresh.recallCovered).toBe(0);
+		expect(fresh.droppedCount).toBe(0);
+		expect(fresh.estimatedTokens).toBe(0);
 	});
 });

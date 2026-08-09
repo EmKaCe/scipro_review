@@ -23,6 +23,7 @@
 
 import { FileMemoryStore } from "./file-memory";
 import type { MastraDBMessage } from "@mastra/core/memory";
+import { loadSettings } from "../settings";
 
 export interface CopilotThreadMeta {
 	id: string;
@@ -31,6 +32,14 @@ export interface CopilotThreadMeta {
 	updatedAt: string; // ISO
 	messageCount: number;
 	lastPreview?: string;
+	/** Effective recall window (settings.copilot.lastMessages). */
+	recallLimit: number;
+	/** min(messageCount, recallLimit) — how many of the stored messages the model sees. */
+	recallCovered: number;
+	/** max(0, messageCount - recallLimit) — messages outside the model's context. */
+	droppedCount: number;
+	/** Rough estimate of the recall window's token size (sum of text chars / 4, rounded to 100). */
+	estimatedTokens: number;
 }
 export interface CopilotThreadMessage {
 	id: string;
@@ -100,6 +109,39 @@ function previewOf(message: MastraDBMessage | undefined): string | undefined {
 }
 
 /**
+ * Rough token estimate of the recall window (Task U.3): chars of the last
+ * `covered` messages / 4, rounded to 100. Mastra itself uses estimated-token
+ * counting internally (chars / 4 is its own heuristic), so the label "est."
+ * in the UI is honest.
+ */
+function estimateTokens(messages: MastraDBMessage[], covered: number): number {
+	const windowed = messages.slice(-covered);
+	const chars = windowed.reduce((sum, m) => sum + textOf(m).length, 0);
+	return Math.round(chars / 4 / 100) * 100;
+}
+
+/** Build the wire meta for one thread, including the context stats (U.3). */
+function metaOf(
+	thread: { id: string; title?: string | null; createdAt: Date; updatedAt: Date },
+	messages: MastraDBMessage[],
+	recallLimit: number,
+): CopilotThreadMeta {
+	const recallCovered = Math.min(messages.length, recallLimit);
+	return {
+		id: thread.id,
+		title: thread.title || titleFromMessages(messages) || "Untitled conversation",
+		createdAt: thread.createdAt.toISOString(),
+		updatedAt: thread.updatedAt.toISOString(),
+		messageCount: messages.length,
+		lastPreview: previewOf(messages.at(-1)),
+		recallLimit,
+		recallCovered,
+		droppedCount: Math.max(0, messages.length - recallLimit),
+		estimatedTokens: estimateTokens(messages, recallCovered),
+	};
+}
+
+/**
  * Map a stored message to the wire shape:
  *   - system                    → { role: "system" }
  *   - user/assistant            → text from the V2 text parts
@@ -139,17 +181,11 @@ export async function listThreads(scope: {
 		orderBy: { field: "updatedAt", direction: "DESC" },
 		perPage: false,
 	});
+	const { copilot } = await loadSettings();
 	return Promise.all(
 		threads.map(async (t) => {
 			const { messages } = await store.listMessages({ threadId: t.id, perPage: false });
-			return {
-				id: t.id,
-				title: t.title || titleFromMessages(messages) || "Untitled conversation",
-				createdAt: t.createdAt.toISOString(),
-				updatedAt: t.updatedAt.toISOString(),
-				messageCount: messages.length,
-				lastPreview: previewOf(messages.at(-1)),
-			};
+			return metaOf(t, messages, copilot.lastMessages);
 		}),
 	);
 }
@@ -163,13 +199,9 @@ export async function getThread(
 	// Scope isolation: a thread is only visible from the scope that owns it.
 	if (!thread || thread.resourceId !== scopeResourceId(scope)) return null;
 	const { messages } = await store.listMessages({ threadId, perPage: false });
+	const { copilot } = await loadSettings();
 	return {
-		id: thread.id,
-		title: thread.title || titleFromMessages(messages) || "Untitled conversation",
-		createdAt: thread.createdAt.toISOString(),
-		updatedAt: thread.updatedAt.toISOString(),
-		messageCount: messages.length,
-		lastPreview: previewOf(messages.at(-1)),
+		...metaOf(thread, messages, copilot.lastMessages),
 		messages: messages.map(toWireMessage),
 	};
 }

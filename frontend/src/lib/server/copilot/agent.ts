@@ -509,6 +509,12 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 				thread: input.title?.trim()
 					? { id: effectiveThreadId, title: input.title.trim().slice(0, 80) }
 					: effectiveThreadId,
+				// Mastra reads memoryConfig from options.memory?.options —
+				// lastMessages controls the recall window (how many recent
+				// thread messages the model sees per turn). Settings are
+				// re-read per request (loadSettings above), so a saved
+				// window applies immediately.
+				options: { lastMessages: reqState.settings.lastMessages },
 			},
 		};
 		if (input.signal) opts.abortSignal = input.signal;

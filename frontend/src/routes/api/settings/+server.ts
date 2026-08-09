@@ -35,6 +35,14 @@ function isAppSettings(value: unknown): value is AppSettings {
 		Array.isArray(x) && x.every((item) => typeof item === "string");
 	const isMode = (x: unknown): x is CopilotMode =>
 		x === "ask" || x === "read-only" || x === "auto-approve-all";
+	// Recall window: finite integer in 1-50. posInt has no upper bound, so
+	// the range check is explicit — out-of-range values are rejected (400).
+	const lastMessagesOk =
+		typeof copilot.lastMessages === "number" &&
+		Number.isFinite(copilot.lastMessages) &&
+		Number.isInteger(copilot.lastMessages) &&
+		copilot.lastMessages >= 1 &&
+		copilot.lastMessages <= 50;
 	return (
 		posInt(ex.requestTimeoutMs) &&
 		posInt(ex.notebookTimeoutMs) &&
@@ -46,7 +54,8 @@ function isAppSettings(value: unknown): value is AppSettings {
 		stringArray(copilot.allowedTools) &&
 		stringArray(copilot.denyTools) &&
 		posInt(copilot.approvalTtlSeconds) &&
-		posInt(copilot.sessionCap)
+		posInt(copilot.sessionCap) &&
+		lastMessagesOk
 	);
 }
 

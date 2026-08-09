@@ -183,4 +183,34 @@ describe("copilot persistence e2e (Issue A)", () => {
 		const lastCall = mockControl.receivedCalls.at(-1) as { prompt?: unknown };
 		expect(JSON.stringify(lastCall.prompt)).toContain("hello one");
 	});
+
+	it("lastMessages window: with copilot.last_messages: 2 the third turn sees the 2nd user message but NOT the 1st", async () => {
+		// A tiny window makes the rolling recall observable: after two
+		// turns there are 4 stored messages; the third turn's model input
+		// must contain only the last 2 (2nd user message + 1st reply).
+		await writeFile(
+			path.join(dataDir, "settings.yaml"),
+			"copilot:\n  last_messages: 2\n",
+		);
+		mockControl.script = [textTurn("reply one"), textTurn("reply two"), textTurn("reply three")];
+		for (const message of ["first", "second", "third"]) {
+			const s = await streamChat({
+				submissionId: "2026SS_00",
+				message,
+				threadId: "t-window",
+			});
+			for await (const _ of s) {
+				// consume
+			}
+		}
+
+		const thirdCall = mockControl.receivedCalls.at(-1) as { prompt?: unknown };
+		const prompt = JSON.stringify(thirdCall.prompt);
+		// The window dropped the oldest stored messages — the 1st user
+		// message is out of the model's input; the 2nd is still in it.
+		expect(prompt).toContain("second");
+		expect(prompt).not.toContain("first");
+		// Sanity: the current turn is always present.
+		expect(prompt).toContain("third");
+	});
 });

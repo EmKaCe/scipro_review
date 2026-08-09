@@ -37,6 +37,12 @@ export interface CopilotSettings {
 	approvalTtlSeconds: number;
 	/** Per-session auto-approval budget in ask mode. */
 	sessionCap: number;
+	/**
+	 * Recall window: how many recent thread messages the model sees per turn
+	 * (Mastra BaseMemoryConfig.lastMessages). The server resolves a
+	 * model-aware default when the yaml omits it.
+	 */
+	lastMessages: number;
 }
 
 export interface AppSettings {

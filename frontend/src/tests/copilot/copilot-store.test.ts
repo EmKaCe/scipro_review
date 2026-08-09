@@ -782,6 +782,10 @@ const THREAD_META_1 = {
 	updatedAt: "2026-08-01T12:00:00.000Z",
 	messageCount: 3,
 	lastPreview: "Done.",
+	recallLimit: 10,
+	recallCovered: 3,
+	droppedCount: 0,
+	estimatedTokens: 200,
 };
 
 const THREAD_DETAIL_1 = {

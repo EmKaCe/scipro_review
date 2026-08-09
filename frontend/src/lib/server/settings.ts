@@ -21,6 +21,7 @@
  *     deny_tools: []                # tools that are never callable
  *     approval_ttl_seconds: 60      # approval card lifetime
  *     session_cap: 20               # auto-approvals per session in ask mode
+ *     last_messages: 16             # recall window (1-50); omit to follow the model
  *
  * Secrets (KI_CONNECT_API_KEY) intentionally stay in the environment — the
  * settings file and its API never read or write API keys.
@@ -36,6 +37,7 @@ import path from "node:path";
 import * as yaml from "js-yaml";
 
 import { getDataDir } from "./metadata";
+import { resolveLastMessagesDefault } from "./copilot/model-context";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -69,6 +71,12 @@ export interface CopilotSettings {
 	approvalTtlSeconds: number;
 	/** Per-session auto-approval budget in ask mode. */
 	sessionCap: number;
+	/**
+	 * Recall window: how many recent thread messages the model sees per turn
+	 * (Mastra BaseMemoryConfig.lastMessages). When the yaml omits it, the
+	 * default resolves from the configured LLM's context size.
+	 */
+	lastMessages: number;
 }
 
 export interface AppSettings {
@@ -187,6 +195,10 @@ function defaults(file?: {
 	const executor = file?.executor ?? {};
 	const llm = file?.llm ?? {};
 	const copilot = file?.copilot ?? {};
+	// The recall-window default is model-aware (Task U.1): when the yaml
+	// omits copilot.last_messages, the effective window follows the
+	// configured LLM's context size, so model switches apply automatically.
+	const llmModel = stringValue(llm.model, envString("KI_CONNECT_MODEL", DEFAULT_LLM_MODEL));
 
 	return {
 		executor: {
@@ -208,7 +220,7 @@ function defaults(file?: {
 				llm.base_url,
 				envString("KI_CONNECT_BASE_URL", DEFAULT_LLM_BASE_URL),
 			),
-			model: stringValue(llm.model, envString("KI_CONNECT_MODEL", DEFAULT_LLM_MODEL)),
+			model: llmModel,
 			timeoutMs: positiveNumber(
 				llm.timeout_ms,
 				envNumber("KI_CONNECT_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS),
@@ -223,6 +235,10 @@ function defaults(file?: {
 				DEFAULT_COPILOT_APPROVAL_TTL_SECONDS,
 			),
 			sessionCap: positiveNumber(copilot.session_cap, DEFAULT_COPILOT_SESSION_CAP),
+			lastMessages: lastMessagesValue(
+				copilot.last_messages,
+				resolveLastMessagesDefault(llmModel),
+			),
 		},
 	};
 }
@@ -253,6 +269,14 @@ function stringList(value: unknown, fallback: string[]): string[] {
 		.map((item) => item.trim());
 }
 
+/** Recall window: finite integer in 1-50; anything else falls back to the
+ * model-aware default (matches the PUT route's isAppSettings guard). */
+function lastMessagesValue(value: unknown, fallback: number): number {
+	return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= 50
+		? value
+		: fallback;
+}
+
 // ---------------------------------------------------------------------------
 // Writing
 // ---------------------------------------------------------------------------
@@ -277,6 +301,7 @@ export function toSettingsYaml(settings: AppSettings): string {
 				deny_tools: settings.copilot.denyTools,
 				approval_ttl_seconds: settings.copilot.approvalTtlSeconds,
 				session_cap: settings.copilot.sessionCap,
+				last_messages: settings.copilot.lastMessages,
 			},
 		},
 		{ noRefs: true },
