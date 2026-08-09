@@ -627,8 +627,50 @@
 		bulkResetOpen = false;
 	}
 
-	function handleBulkPreEvaluate() {
-		addToast("info", "Pre-evaluation coming in Phase 4", 4000);
+	/**
+	 * Pre-evaluate the executed/error rows of the current assignment. The
+	 * route targets executed/error submissions regardless of the selection
+	 * (the API is assignment-scoped, one global run at a time) and refuses
+	 * to start while another run is in flight (409). The dashboard's
+	 * "Pre-evaluate All" toolbar button uses the same endpoint.
+	 */
+	async function handleBulkPreEvaluate() {
+		if (bulkBusy || !bulkCanPreEval) return;
+		bulkBusy = true;
+		bulkAction = "Pre-evaluating";
+		try {
+			const resp = await fetch(
+				`${base}/api/submissions/pre-evaluate?assignment=${encodeURIComponent(selectedAssignment)}`,
+				{ method: "POST" },
+			);
+			if (resp.status === 409) {
+				addToast("error", "A pre-evaluation run is already in progress", 4000);
+				return;
+			}
+			if (!resp.ok) {
+				const body = (await resp.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(body?.message ?? `Pre-evaluation failed (${resp.status})`);
+			}
+			const summary = (await resp.json()) as {
+				submitted: number;
+				succeeded: number;
+				failed: number;
+			};
+			addToast(
+				"success",
+				`Pre-evaluated ${summary.succeeded} of ${summary.submitted} submission(s)${
+					summary.failed > 0 ? `, ${summary.failed} failed` : ""
+				}`,
+				5000,
+			);
+			// The run flipped rows to "pre-evaluated" — refresh the list.
+			await submissionsStore.refresh();
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+		} finally {
+			bulkBusy = false;
+			bulkAction = null;
+		}
 	}
 </script>
 
@@ -950,7 +992,7 @@
 				<Button
 					variant="outline"
 					size="sm"
-					title="Pre-evaluate the submissions (Phase 4)"
+					title="Pre-evaluate the executed/error submissions (one KI call per submission)"
 					onclick={handleBulkPreEvaluate}
 					disabled={bulkBusy || !bulkCanPreEval}
 				>
@@ -959,43 +1001,43 @@
 				</Button>
 			</div>
 		</div>
-	</div>
 
-	<!-- ── Pipeline log: executor + autofix activity (collapsible) ── -->
-	<PipelineLogPanel
-		entries={logEntries}
-		live={processStartedAt !== null}
-		loading={logsLoading}
-		error={logsError}
-		summary={logSummary}
-		onRefresh={refreshLogs}
-	/>
+		<!-- ── Pipeline log: executor + autofix activity (collapsible) ── -->
+		<PipelineLogPanel
+			entries={logEntries}
+			live={processStartedAt !== null}
+			loading={logsLoading}
+			error={logsError}
+			summary={logSummary}
+			onRefresh={refreshLogs}
+		/>
 
-	<!-- ── Assignment copilot (teacher build only, collapsible) ── -->
-	{#if apiMode.value}
-		<div class="copilot-panel" class:copilot-panel-open={copilotOpen}>
-			<button
-				class="copilot-toggle"
-				type="button"
-				aria-expanded={copilotOpen}
-				onclick={() => (copilotOpen = !copilotOpen)}
-			>
-				<Sparkles size={14} />
-				<span class="copilot-title">AI Copilot</span>
-				<span class="copilot-scope">Assignment: {selectedAssignment}</span>
+		<!-- ── Assignment copilot (teacher build only, collapsible) ── -->
+		{#if apiMode.value}
+			<div class="copilot-panel" class:copilot-panel-open={copilotOpen}>
+				<button
+					class="copilot-toggle"
+					type="button"
+					aria-expanded={copilotOpen}
+					onclick={() => (copilotOpen = !copilotOpen)}
+				>
+					<Sparkles size={14} />
+					<span class="copilot-title">AI Copilot</span>
+					<span class="copilot-scope">Assignment: {selectedAssignment}</span>
+					{#if copilotOpen}
+						<ChevronUp size={14} />
+					{:else}
+						<ChevronDown size={14} />
+					{/if}
+				</button>
 				{#if copilotOpen}
-					<ChevronUp size={14} />
-				{:else}
-					<ChevronDown size={14} />
+					<div class="copilot-body">
+						<CopilotPanel assignmentId={selectedAssignment} />
+					</div>
 				{/if}
-			</button>
-			{#if copilotOpen}
-				<div class="copilot-body">
-					<CopilotPanel assignmentId={selectedAssignment} />
-				</div>
-			{/if}
-		</div>
-	{/if}
+			</div>
+		{/if}
+	</div>
 {/if}
 
 <!-- Bulk delete confirmation (the batch is explicit in the message). -->

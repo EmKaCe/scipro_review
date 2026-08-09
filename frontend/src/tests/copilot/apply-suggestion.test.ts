@@ -10,6 +10,7 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { SvelteSet } from "svelte/reactivity";
 import { applySuggestionToState, type ApplySuggestionState } from "$lib/utils/apply-suggestion.js";
 import type { CopilotSuggestion } from "$lib/components/submissions/copilot-store.svelte.js";
 
@@ -180,5 +181,95 @@ describe("applySuggestionToState — unknown kinds", () => {
 		expect(applySuggestionToState(fixSuggestion, state)).toBe(state);
 		expect(state.gradingInputs).toEqual({ creativity: 4 });
 		expect(state.notesDraft).toBe("notes");
+	});
+});
+
+describe("applySuggestionToState — rubric selections", () => {
+	it("merges rubricSelections into existing and new category selections without mutating the input", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {
+				code_quality: {
+					checked_items: new SvelteSet(["already_checked"]),
+					notes: "",
+					comments: {},
+					deductions: {},
+				},
+			},
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				rubricSelections: [
+					{ categoryKey: "code_quality", optionKey: "already_checked" },
+					{ categoryKey: "code_quality", optionKey: "new_item" },
+					{ categoryKey: "missing_category", optionKey: "created_item" },
+				],
+			}),
+			state,
+		);
+
+		expect(next.categorySelections).toBeDefined();
+		// Existing category keeps its items and gains the new one (no dupes).
+		expect(next.categorySelections!.code_quality.checked_items.has("already_checked")).toBe(
+			true,
+		);
+		expect(next.categorySelections!.code_quality.checked_items.has("new_item")).toBe(true);
+		// A category the suggestion named that did not exist yet is created.
+		expect(next.categorySelections!.missing_category.checked_items.has("created_item")).toBe(
+			true,
+		);
+		expect(next.categorySelections!.missing_category.notes).toBe("");
+		// The input record was not mutated.
+		expect(state.categorySelections!.code_quality.checked_items.has("new_item")).toBe(false);
+		expect(state.categorySelections!.missing_category).toBeUndefined();
+		// Dimensions still merge alongside the rubric selections.
+		expect(next.gradingInputs.code_quality_design).toBe(4);
+	});
+
+	it("keeps the selections record reference when the suggestion carries no rubric data", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {
+				code_quality: {
+					checked_items: new SvelteSet(["x"]),
+					notes: "",
+					comments: {},
+					deductions: {},
+				},
+			},
+		};
+
+		const next = applySuggestionToState(gradeSuggestion(preEvalData), state);
+
+		expect(next.categorySelections).toBe(state.categorySelections);
+	});
+
+	it("skips malformed rubric items instead of writing junk into state", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {},
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				rubricSelections: [
+					null,
+					{ categoryKey: "only_key" },
+					{ categoryKey: "", optionKey: "" },
+					{ categoryKey: "cat", optionKey: "ok" },
+				],
+			}),
+			state,
+		);
+
+		expect(next.categorySelections).toBeDefined();
+		expect(next.categorySelections!.cat.checked_items.has("ok")).toBe(true);
+		expect(Object.keys(next.categorySelections!)).toEqual(["cat"]);
 	});
 });

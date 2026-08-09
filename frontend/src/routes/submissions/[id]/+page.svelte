@@ -6,7 +6,7 @@
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { page } from "$app/state";
 	import { base } from "$app/paths";
-	import type { SubmissionDetail } from "$lib/types/submissions.js";
+	import type { SubmissionDetail, PreEvalData } from "$lib/types/submissions.js";
 	import type { GradingConfig, GradingInputs, GradeResult } from "$lib/types/grading.js";
 	import type { MergedRubric, CategoryKey } from "$lib/types/criteria.js";
 	import type { CategorySelections, ReviewSession } from "$lib/types/session.js";
@@ -541,22 +541,40 @@
 		}
 	}
 
+	/**
+	 * Header "Suggest" button: switch to the copilot tab (expanding a
+	 * collapsed right panel) and queue the `/suggest` command. The prompt
+	 * flows through right-panel-tabs as the $bindable `incomingPrompt`
+	 * prop — the panel fills its input; the teacher reviews and presses
+	 * Send.
+	 */
 	function handleSuggestGrade() {
+		rightPanelCollapsed = false;
 		activeTab = "copilot";
 		mobileTab = "copilot";
+		queuedPrompt = "/suggest";
 	}
 
+	/**
+	 * Header "Draft Notes" button: switch to the copilot tab (expanding a
+	 * collapsed right panel) and queue the `/draft` command — same
+	 * incomingPrompt delivery as the inline chips.
+	 */
 	function handleDraftNotes() {
+		rightPanelCollapsed = false;
 		activeTab = "copilot";
 		mobileTab = "copilot";
+		queuedPrompt = "/draft";
 	}
 
 	// -----------------------------------------------------------------------
 	// Copilot apply + inline chip wiring (4e)
 	// -----------------------------------------------------------------------
 	/**
-	 * Prompt delivered from the inline "Ask copilot" chips (rubric category
-	 * headers, cell headers). The tab switch mounts the CopilotPanel; the
+	 * Prompt delivered to the copilot panel: from the inline "Ask copilot"
+	 * chips (rubric category headers, cell headers) or from the header
+	 * Suggest / Draft Notes buttons (which queue the `/suggest` and
+	 * `/draft` commands). The tab switch mounts the CopilotPanel; the
 	 * prompt flows through right-panel-tabs as the $bindable
 	 * `incomingPrompt` prop — the panel fills its input, then resets the
 	 * prop to "" (the round-trip lands back here, so re-clicking the same
@@ -566,16 +584,20 @@
 
 	/**
 	 * Apply a pending copilot suggestion to page state (grading inputs +
-	 * notes draft) via the pure applySuggestionToState helper. Never
-	 * auto-saves — the teacher reviews and presses Save.
+	 * notes draft + rubric selections) via the pure applySuggestionToState
+	 * helper. Never auto-saves — the teacher reviews and presses Save.
 	 */
 	function handleApplySuggestion(suggestion: CopilotSuggestion) {
 		const next = applySuggestionToState(suggestion, {
 			gradingInputs: { ...gradingInputs },
 			notesDraft,
+			categorySelections,
 		});
 		gradingInputs = next.gradingInputs;
 		notesDraft = next.notesDraft;
+		if (next.categorySelections) {
+			categorySelections = next.categorySelections;
+		}
 		if (suggestion.kind === "grade") {
 			addToast("success", "Suggested scores applied — review and press Save", 3500);
 		} else if (suggestion.kind === "draft") {
@@ -583,6 +605,23 @@
 		}
 		// fix / export kinds have no page-state apply path — the helper
 		// returned the state unchanged and no toast is shown.
+	}
+
+	/**
+	 * Reference-comparison "Apply suggested scores": the component emits the
+	 * pre-evaluation envelope; wrap it as a `grade` CopilotSuggestion so the
+	 * SAME apply path (dimensions + feedback draft + rubric selections) runs
+	 * as for copilot suggestion cards.
+	 */
+	function handleApplyPreEval(preEval: PreEvalData) {
+		handleApplySuggestion({
+			suggestionId: "ref-compare-apply",
+			kind: "grade",
+			title: "Suggested grade",
+			body: preEval.notebookSummary || "Apply the pre-evaluation's suggested scores.",
+			actionLabel: "Apply suggested scores",
+			data: preEval,
+		});
 	}
 
 	/**
@@ -889,7 +928,11 @@
 				</div>
 
 				<!-- Reference comparison -->
-				<ReferenceComparison submissionCells={cells} preEval={submission.preEval} />
+				<ReferenceComparison
+					submissionCells={cells}
+					preEval={submission.preEval}
+					onApplyGradeSuggestion={handleApplyPreEval}
+				/>
 
 				<!-- Sticky page-level counter for the derived view: only visible
 				     while at least one cell shows its auto-fixed version. -->

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import "./layout.css";
 	import AppHeader from "$lib/components/app-header.svelte";
-	import AppFooter from "$lib/components/app-footer.svelte";
 	import ToastContainer from "$lib/components/toast-container.svelte";
 	import favicon from "$lib/assets/favicon.svg";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
@@ -61,7 +60,6 @@
 		<main class="flex min-h-0 flex-1 flex-col">
 			{@render children()}
 		</main>
-		<AppFooter class="print:hidden" />
 	</div>
 
 	<ToastContainer class="print:hidden" />

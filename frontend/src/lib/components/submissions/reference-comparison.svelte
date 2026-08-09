@@ -22,6 +22,13 @@
 		 * a flag.
 		 */
 		preEval?: PreEvalData | null;
+		/**
+		 * Fired when the teacher clicks "Apply suggested scores". Emits the
+		 * full pre-evaluation envelope; the PAGE wraps it into a `grade`
+		 * CopilotSuggestion and runs the normal apply path (dimensions +
+		 * feedback draft + rubric selections).
+		 */
+		onApplyGradeSuggestion?: (preEval: PreEvalData) => void;
 	}
 
 	/** One row of the overview list: a comparison verdict or an execution error. */
@@ -29,7 +36,7 @@
 		| { kind: "verdict"; index: number; marker: PreEvalMarker; reason: string }
 		| { kind: "error"; index: number; cell: CellInfo };
 
-	let { submissionCells, preEval = null }: Props = $props();
+	let { submissionCells, preEval = null, onApplyGradeSuggestion }: Props = $props();
 
 	/** Real comparison verdicts (null = no comparison data yet). */
 	const markers = $derived(preEval?.markers ?? null);
@@ -163,6 +170,16 @@
 				</div>
 				{#if gradeSuggestion.justification}
 					<div class="ref-suggestion-just">{gradeSuggestion.justification}</div>
+				{/if}
+				{#if Object.keys(gradeSuggestion.dimensions).length > 0}
+					<button
+						type="button"
+						class="ref-apply-btn"
+						onclick={() => preEval && onApplyGradeSuggestion?.(preEval)}
+					>
+						<Sparkles size={13} />
+						Apply suggested scores
+					</button>
 				{/if}
 			</div>
 		{/if}
@@ -312,5 +329,22 @@
 	.ref-suggestion-just {
 		margin-top: 6px;
 		color: var(--muted-foreground);
+	}
+	.ref-apply-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-top: 10px;
+		background: var(--primary);
+		color: var(--primary-foreground);
+		border: none;
+		border-radius: var(--radius);
+		padding: 5px 14px;
+		font-size: 12px;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.ref-apply-btn:hover {
+		opacity: 0.9;
 	}
 </style>

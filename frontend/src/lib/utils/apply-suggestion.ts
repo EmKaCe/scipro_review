@@ -7,19 +7,24 @@
  *
  *   - `grade`  → `data` is the full PreEvaluation envelope (see
  *     `PreEvalData` in `$lib/types/submissions.ts`): suggested dimension
- *     scores are merged into `gradingInputs` (clamped to sane bounds), and
+ *     scores are merged into `gradingInputs` (clamped to sane bounds),
  *     `feedbackDraft` fills `notesDraft` ONLY when the teacher has not
- *     written anything yet (never clobber teacher-written notes).
+ *     written anything yet (never clobber teacher-written notes), and
+ *     `rubricSelections` (when the envelope carries them) are merged into
+ *     `categorySelections` as checked sub-points.
  *   - `draft`  → `data.notes` fills `notesDraft`, again only when empty.
  *
  * Any other kind (`fix`, `export`, …) leaves the state untouched — the page
  * must not toast "applied" for a suggestion that changed nothing.
  *
- * Type-only imports only — this module is fully pure and importable from
- * tests without any Svelte environment.
+ * Imports stay minimal (SvelteSet only, for fresh reactive category
+ * selections) — the module remains importable from tests without any Svelte
+ * component environment.
  */
 
 import type { CopilotSuggestion } from "$lib/components/submissions/copilot-store.svelte.js";
+import type { CategorySelections } from "$lib/types/session.js";
+import { SvelteSet } from "svelte/reactivity";
 
 /** Page state slice the helper mutates (mirrors the submission page). */
 export interface ApplySuggestionState<T extends Record<string, number> = Record<string, number>> {
@@ -27,6 +32,12 @@ export interface ApplySuggestionState<T extends Record<string, number> = Record<
 	gradingInputs: T;
 	/** Top-level teacher notes draft. */
 	notesDraft: string;
+	/**
+	 * Rubric category selections keyed by category key (page-owned).
+	 * Merged when the suggestion carries `rubricSelections`; optional so
+	 * callers that do not track rubric state keep working unchanged.
+	 */
+	categorySelections?: Record<string, CategorySelections>;
 }
 
 /** Sane bounds for suggested dimension scores (raw points, pre-weighting). */
@@ -38,6 +49,61 @@ function clampScore(value: number): number {
 	return Math.min(MAX_SCORE, Math.max(MIN_SCORE, value));
 }
 
+/** One rubric item a suggestion wants checked: category key + sub-point text. */
+interface RubricSelectionItem {
+	categoryKey: string;
+	optionKey: string;
+}
+
+/** Fresh empty per-category selection state (same shape as the page's reset). */
+function emptyCategorySelections(): CategorySelections {
+	return {
+		checked_items: new SvelteSet<string>(),
+		notes: "",
+		comments: {},
+		deductions: {},
+	};
+}
+
+/**
+ * Merge `rubricSelections` into a NEW selections record. Categories named by
+ * the suggestion that do not exist yet are created; `optionKey` values (the
+ * sub-point texts the rubric checkbox model keys on) are added to
+ * `checked_items`. Immutable: the input record and its sets are never
+ * mutated. Returns the ORIGINAL reference when nothing changed, and
+ * `undefined` when there is nothing to merge and the caller had no record.
+ */
+function mergeRubricSelections(
+	selections: Record<string, CategorySelections> | undefined,
+	items: RubricSelectionItem[] | undefined,
+): Record<string, CategorySelections> | undefined {
+	if (!items || items.length === 0) return selections;
+
+	let changed = false;
+	const next: Record<string, CategorySelections> = {};
+	for (const [key, sel] of Object.entries(selections ?? {})) {
+		next[key] = { ...sel, checked_items: new SvelteSet(sel.checked_items) };
+	}
+	for (const item of items) {
+		if (
+			!item ||
+			typeof item.categoryKey !== "string" ||
+			typeof item.optionKey !== "string" ||
+			item.categoryKey.length === 0 ||
+			item.optionKey.length === 0
+		) {
+			continue;
+		}
+		const existing = next[item.categoryKey] ?? emptyCategorySelections();
+		if (!existing.checked_items.has(item.optionKey)) {
+			existing.checked_items.add(item.optionKey);
+			changed = true;
+		}
+		next[item.categoryKey] = existing;
+	}
+	return changed ? next : selections;
+}
+
 /** `data` payload of a `grade` suggestion — subset of `PreEvalData`. */
 interface GradeSuggestionData {
 	gradeSuggestion?: {
@@ -45,6 +111,8 @@ interface GradeSuggestionData {
 		justification?: string;
 	};
 	feedbackDraft?: string;
+	/** Optional rubric items to check alongside the score suggestions. */
+	rubricSelections?: RubricSelectionItem[];
 }
 
 /** `data` payload of a `draft` suggestion. */
@@ -82,7 +150,19 @@ export function applySuggestionToState<T extends Record<string, number>>(
 				? data.feedbackDraft
 				: state.notesDraft;
 
-		return { gradingInputs: gradingInputs as T, notesDraft };
+		// Merge rubric selections (sub-points to check) into the selections
+		// record, if the suggestion carries any. Callers without a record
+		// and suggestions without rubric data leave the state untouched.
+		const categorySelections = mergeRubricSelections(
+			state.categorySelections,
+			data.rubricSelections,
+		);
+
+		return {
+			gradingInputs: gradingInputs as T,
+			notesDraft,
+			...(categorySelections !== undefined ? { categorySelections } : {}),
+		};
 	}
 
 	if (suggestion.kind === "draft") {

@@ -9,7 +9,7 @@
  */
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen } from "@testing-library/svelte";
 
 import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
 import type { CellInfo, PreEvalData } from "$lib/types/submissions.js";
@@ -106,5 +106,47 @@ describe("ReferenceComparison with pre-evaluation data", () => {
 		// so no separate error row is rendered for it.
 		expect(container.querySelectorAll(".row-diff").length).toBe(1);
 		expect(container.querySelectorAll(".row-error").length).toBe(0);
+	});
+});
+
+describe("ReferenceComparison — Apply suggested scores (Task B)", () => {
+	it("shows the apply button when gradeSuggestion.dimensions has entries", () => {
+		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval: PRE_EVAL } });
+		expect(screen.getByRole("button", { name: /apply suggested scores/i })).toBeTruthy();
+	});
+
+	it("hides the apply button when there are no suggested dimensions", () => {
+		const preEval: PreEvalData = {
+			...PRE_EVAL,
+			gradeSuggestion: { dimensions: {}, justification: "" },
+		};
+		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval } });
+		expect(screen.queryByRole("button", { name: /apply suggested scores/i })).toBeNull();
+	});
+
+	it("emits the full pre-evaluation envelope when the apply button is clicked", async () => {
+		let emitted: PreEvalData | undefined;
+		render(ReferenceComparison, {
+			props: {
+				submissionCells: CELLS,
+				preEval: PRE_EVAL,
+				onApplyGradeSuggestion: (data: PreEvalData) => (emitted = data),
+			},
+		});
+		await fireEvent.click(screen.getByRole("button", { name: /apply suggested scores/i }));
+		expect(emitted).toBe(PRE_EVAL);
+	});
+
+	it("does not fire the callback without a pre-evaluation payload", async () => {
+		let fired = false;
+		render(ReferenceComparison, {
+			props: {
+				submissionCells: CELLS,
+				onApplyGradeSuggestion: () => (fired = true),
+			},
+		});
+		// No grade suggestion → no apply button at all.
+		expect(screen.queryByRole("button", { name: /apply suggested scores/i })).toBeNull();
+		expect(fired).toBe(false);
 	});
 });
