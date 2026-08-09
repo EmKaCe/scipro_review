@@ -147,7 +147,18 @@ Marker semantics, per executed cell compared to the reference key summary:
 - "questionable": the approach is incorrect, suboptimal, or likely to lose points; the reason must say why.
 Only judge cells you can actually compare against the key summary. When no reference key summary is provided, "markers" MUST be null.
 
-gradeSuggestion.dimensions: one score per dimension id listed under "Grading dimensions", within 0..max_points. Never invent dimension ids. justification: 2-4 sentences tying the scores to what the notebook actually does.
+gradeSuggestion.dimensions: one score per dimension id listed under "Grading dimensions", within 0..max_points. Never invent dimension ids.
+
+Use the FULL range — not every submission should score near max. Calibrate like this:
+- 0: the requirement is entirely unmet or absent.
+- 20-40% of max_points: major gaps — the student attempted the task but substantial parts are missing, incorrect, or non-functional.
+- 50-70%: the task is mostly complete but has notable issues (partial errors, poor structure, missing validation, weak analysis).
+- 80-90%: solid work that meets expectations — correct results, reasonable code structure, acceptable analysis. Small errors may be present.
+- max_points: exceptional — flawless implementation, elegant code, insightful analysis, proactive validation, and clear communication. Reserve this for genuinely outstanding work.
+
+A typical submission that works correctly but without exceptional polish should land around 70-85% of max_points. Do NOT default to max_points just because the code runs.
+
+justification: 2-4 sentences tying the scores to what the notebook actually does, including specific strengths and weaknesses that support the scores.
 
 rubricSelections: for each rubric category, pick the sub-points (positive, neutral, or negative) that best describe the student's work. Use the EXACT categoryKey from the category header and the EXACT sub-point text (the lines starting with "•") as optionKey — copy-paste the sub-point text verbatim, not the main-point heading. Include at least one selection per category. Do not invent categoryKeys or sub-point texts.
 
