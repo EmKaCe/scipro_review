@@ -119,6 +119,13 @@ export function getDataDir(): string {
 	if (typeof process !== "undefined" && process.env && process.env.DATA_DIR) {
 		return process.env.DATA_DIR;
 	}
+	// Vitest sets VITEST=true; tests must always use an explicit temp DATA_DIR
+	// so audit/memory writes can never land in the real ./data tree.
+	if (typeof process !== "undefined" && process.env?.VITEST) {
+		throw new MetadataError(
+			"DATA_DIR must be set explicitly when running under vitest (tests write only to temp dirs)",
+		);
+	}
 	return path.resolve("./data");
 }
 
