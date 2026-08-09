@@ -452,7 +452,10 @@ export function createCopilotStore(options?: {
 				appendMessage(
 					assistantMessage(`Approval needed for tool: ${approval.tool}`, "approval", {
 						tool: approval.tool,
-						args: approval.argsRedacted,
+						// argsRedacted can arrive as an object from some servers —
+						// formatArgs guarantees the CopilotMessage.args string
+						// contract (Issue 9: "[Object object]" in approval cards).
+						args: formatArgs(payload.argsRedacted),
 						runId: approval.runId,
 						toolCallId: approval.toolCallId,
 						approvalDecision: decision,
@@ -827,6 +830,17 @@ export function createCopilotStore(options?: {
 					type: "text",
 					kind: "text",
 				});
+				continue;
+			}
+			if (wire.role === "assistant" && wire.toolName) {
+				// A tool-invocation assistant turn (tool name present, usually
+				// no text) is a TOOL-CALL card — never an empty text bubble
+				// (Issue 10: tool calls vanished from restored history).
+				out.push(
+					assistantMessage(wire.text || `Tool call: ${wire.toolName}`, "tool-call", {
+						tool: wire.toolName,
+					}),
+				);
 				continue;
 			}
 			out.push(assistantMessage(wire.text ?? "", "text"));

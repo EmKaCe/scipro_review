@@ -2,16 +2,20 @@
 	import { onMount } from "svelte";
 	import {
 		createCopilotStore,
+		apiMode,
 		type CopilotMessage,
 		type CopilotSuggestion,
 		type CopilotThreadMeta,
 	} from "./copilot-store.svelte.js";
+	import { fetchSettings, saveSettings, type CopilotMode } from "$lib/services/settings-api.js";
+	import Markdown from "./Markdown.svelte";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Send from "@lucide/svelte/icons/send";
 	import Wrench from "@lucide/svelte/icons/wrench";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import CircleX from "@lucide/svelte/icons/circle-x";
 	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import Lock from "@lucide/svelte/icons/lock";
 	import Lightbulb from "@lucide/svelte/icons/lightbulb";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
@@ -104,6 +108,12 @@
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
 			handleSend();
+		} else if (e.key === "Tab" && showCommands && copilot.availableCommands.length > 0) {
+			// Tab completes the first slash command and closes the dropdown
+			// (Issue 7 — the dropdown only opens while the input is exactly
+			// "/", so the first command is the only sensible completion).
+			e.preventDefault();
+			selectCommand(copilot.availableCommands[0].command);
 		}
 	}
 
@@ -118,6 +128,64 @@
 	function selectCommand(cmd: string) {
 		copilot.inputValue = cmd + " ";
 		showCommands = false;
+	}
+
+	// -----------------------------------------------------------------------
+	// Auto-approve mode toggle (Issue 8)
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Copilot approval mode as configured on the server (data/settings.yaml,
+	 * GET/PUT /api/settings). Local mirror — loaded once on mount, flipped
+	 * by the header toggle. Only rendered in teacher mode (apiMode).
+	 */
+	let copilotMode = $state<CopilotMode>("ask");
+
+	async function loadCopilotMode(): Promise<void> {
+		try {
+			const settings = await fetchSettings();
+			const mode = settings.copilot?.mode;
+			if (mode === "auto-approve-all" || mode === "ask") copilotMode = mode;
+		} catch {
+			// Settings endpoint unavailable (static build / tests) — keep "ask".
+		}
+	}
+
+	/** Flip between ask and auto-approve-all, persisting via PUT /api/settings. */
+	async function toggleAutoApprove(): Promise<void> {
+		const nextMode: CopilotMode =
+			copilotMode === "auto-approve-all" ? "ask" : "auto-approve-all";
+		try {
+			const settings = await fetchSettings();
+			await saveSettings({ ...settings, copilot: { ...settings.copilot, mode: nextMode } });
+			copilotMode = nextMode;
+		} catch {
+			// Save failed — keep showing the current mode.
+		}
+	}
+
+	// -----------------------------------------------------------------------
+	// Auto-scrolling chat (Issue 5)
+	// -----------------------------------------------------------------------
+
+	/** The chat scroll container — snapped to the bottom on new content. */
+	let messagesEl = $state<HTMLDivElement | undefined>();
+
+	/**
+	 * Watch the transcript length and streaming flag; while there is any
+	 * content, keep the newest message in view (stream deltas replace the
+	 * array on every chunk, so this also tracks mid-stream growth).
+	 */
+	$effect(() => {
+		if (!messagesEl) return;
+		const hasContent = copilot.messages.length > 0 || copilot.isStreaming;
+		if (hasContent) messagesEl.scrollTop = messagesEl.scrollHeight;
+	});
+
+	/** Render tool args safely — the store guarantees strings, but older
+	 * SSE/history payloads carried objects ("[object object]"). */
+	function displayArgs(args: unknown): string {
+		return typeof args === "string" ? args : JSON.stringify(args);
 	}
 
 	/** Fill the input with an assignment-scope prompt hint (no send). */
@@ -167,6 +235,17 @@
 		// in (localStorage holds the active thread id per scope).
 		void copilot.loadThreads();
 		void copilot.restoreActiveThread();
+		// Issue 8 — load the server-side copilot approval mode (teacher mode
+		// only; the toggle button is hidden otherwise). Sequenced AFTER the
+		// thread-list load settles: two parallel body reads of one response
+		// (a test artifact, but also a real-server possibility) would leave
+		// whichever read loses with "Body has already been read".
+		if (apiMode.value) {
+			void copilot
+				.loadThreads()
+				.catch(() => {})
+				.then(() => loadCopilotMode());
+		}
 	});
 
 	/** Arm (first click) or commit (second click) a two-step delete. */
@@ -299,6 +378,26 @@
 			</span>
 		{/if}
 		<div class="header-spacer"></div>
+		{#if apiMode.value}
+			<button
+				type="button"
+				class="header-btn"
+				class:header-btn-active={copilotMode === "auto-approve-all"}
+				aria-label={copilotMode === "auto-approve-all"
+					? "Auto-approve all tool calls"
+					: "Ask before running tools"}
+				title={copilotMode === "auto-approve-all"
+					? "Auto-approve all tool calls"
+					: "Ask before running tools"}
+				onclick={toggleAutoApprove}
+			>
+				{#if copilotMode === "auto-approve-all"}
+					<ShieldCheck size={13} />
+				{:else}
+					<ShieldAlert size={13} />
+				{/if}
+			</button>
+		{/if}
 		<button
 			type="button"
 			class="header-btn"
@@ -322,24 +421,41 @@
 	</div>
 
 	{#if copilot.activeThread}
-		<div
-			class="context-line"
-			title={`Recall window: last ${copilot.activeThread.recallLimit} messages`}
-		>
-			Context: last {copilot.activeThread.recallCovered} of {copilot.activeThread
-				.messageCount} messages - est. ~{copilot.activeThread.estimatedTokens} tokens{#if copilot.activeThread.compactionCount > 0}
-				- compacted {copilot.activeThread.compactionCount}×{/if}
+		{@const thread = copilot.activeThread}
+		{@const fillPct =
+			thread.messageCount > 0
+				? Math.min(100, Math.round((thread.recallCovered / thread.messageCount) * 100))
+				: 0}
+		{@const barColor =
+			fillPct < 60
+				? "var(--success)"
+				: fillPct <= 90
+					? "var(--warning)"
+					: "var(--destructive)"}
+		<div class="context-meter" title={`Recall window: last ${thread.recallLimit} messages`}>
+			<div class="context-meter-track">
+				<div
+					class="context-meter-fill"
+					style:width={`${fillPct}%`}
+					style:background={barColor}
+				></div>
+			</div>
+			<div class="context-line">
+				Context: last {thread.recallCovered} of {thread.messageCount} messages - est. ~{thread.estimatedTokens}
+				tokens{#if thread.compactionCount > 0}
+					- compacted {thread.compactionCount}×{/if}
+			</div>
 		</div>
-		{#if copilot.activeThread.droppedCount > 0}
+		{#if thread.droppedCount > 0}
 			<div class="context-warning">
 				<TriangleAlert size={11} />
 				<span>
-					{#if copilot.activeThread.hasSummary}
-						Oldest {copilot.activeThread.droppedCount} message(s) are summarized into context
-						— start a new conversation for full fidelity.
+					{#if thread.hasSummary}
+						Oldest {thread.droppedCount} message(s) are summarized into context — start a
+						new conversation for full fidelity.
 					{:else}
-						Oldest {copilot.activeThread.droppedCount} message(s) are outside the model's
-						context — start a new conversation for full context.
+						Oldest {thread.droppedCount} message(s) are outside the model's context — start
+						a new conversation for full context.
 					{/if}
 				</span>
 			</div>
@@ -422,7 +538,7 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="copilot-messages">
+		<div class="copilot-messages" bind:this={messagesEl}>
 			{#if copilot.messages.length === 0}
 				<div class="empty-state">
 					<Sparkles size={24} class="empty-icon" />
@@ -466,7 +582,7 @@
 										<span class="chevron-wrap"><ChevronRight size={12} /></span>
 										<span>Arguments</span>
 									</summary>
-									<pre class="args-pre">{msg.args}</pre>
+									<pre class="args-pre">{displayArgs(msg.args)}</pre>
 								</details>
 							{/if}
 						</div>
@@ -495,7 +611,7 @@
 							<div class="approval-body">
 								<code class="tool-name">{msg.tool}</code>
 								{#if msg.args}
-									<pre class="args-pre">{msg.args}</pre>
+									<pre class="args-pre">{displayArgs(msg.args)}</pre>
 								{/if}
 							</div>
 							{#if msg.approvalDecision === "blocked"}
@@ -584,7 +700,15 @@
 						</div>
 					{:else}
 						<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
-							<div class="msg-content">{msg.content}</div>
+							<div class="msg-content">
+								{#if msg.role === "assistant"}
+									<!-- Assistant content is markdown (Issue 6); teacher
+									     and error bubbles stay plain text. -->
+									<Markdown text={msg.content} />
+								{:else}
+									{msg.content}
+								{/if}
+							</div>
 							<span class="msg-time">
 								{new Date(msg.timestamp).toLocaleTimeString([], {
 									hour: "2-digit",
@@ -705,13 +829,27 @@
 		background: var(--card);
 	}
 
-	/* Context window visibility (Task U.4). */
-	.context-line {
-		font-size: 11px;
-		color: var(--muted-foreground);
+	/* Context window visibility (Task U.4 + Issue 11 meter bar). */
+	.context-meter {
 		padding: 6px 12px;
 		border-bottom: 1px solid var(--border);
 		background: var(--card);
+	}
+	.context-meter-track {
+		height: 4px;
+		border-radius: 999px;
+		background: var(--muted);
+		overflow: hidden;
+	}
+	.context-meter-fill {
+		height: 100%;
+		border-radius: 999px;
+		transition: width 0.2s;
+	}
+	.context-line {
+		font-size: 11px;
+		color: var(--muted-foreground);
+		padding-top: 4px;
 	}
 	.context-warning {
 		display: flex;
