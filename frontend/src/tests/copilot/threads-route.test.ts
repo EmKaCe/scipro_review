@@ -21,7 +21,11 @@ import path from "node:path";
 import type { MastraDBMessage, StorageThreadType } from "@mastra/core/memory";
 
 import { FileMemoryStore } from "$lib/server/copilot/file-memory";
-import { DELETE, GET as GET_THREAD, PATCH } from "../../routes/api/copilot/threads/[threadId]/+server";
+import {
+	DELETE,
+	GET as GET_THREAD,
+	PATCH,
+} from "../../routes/api/copilot/threads/[threadId]/+server";
 import { GET as GET_LIST } from "../../routes/api/copilot/threads/+server";
 
 let dataDir: string;
@@ -73,7 +77,11 @@ async function seedThread(
 	},
 ): Promise<void> {
 	await store.saveThread({
-		thread: thread(opts.id, opts.resourceId, opts.updatedAt ?? new Date("2026-08-01T12:00:00Z")),
+		thread: thread(
+			opts.id,
+			opts.resourceId,
+			opts.updatedAt ?? new Date("2026-08-01T12:00:00Z"),
+		),
 	});
 	await store.saveMessages({
 		messages: [
@@ -129,7 +137,11 @@ async function patchThread(threadId: string, query: string, body: unknown): Prom
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body),
 	});
-	return PATCH({ request, url: new URL(threadUrl(threadId, query)), params: { threadId } } as never);
+	return PATCH({
+		request,
+		url: new URL(threadUrl(threadId, query)),
+		params: { threadId },
+	} as never);
 }
 
 describe("GET /api/copilot/threads", () => {
@@ -153,11 +165,17 @@ describe("GET /api/copilot/threads", () => {
 			updatedAt: new Date("2026-08-01T13:00:00Z"),
 		});
 		// Another scope's thread — invisible from this scope.
-		await seedThread(store, { id: "t-other", resourceId: "assign-9", userText: "Dashboard chat" });
+		await seedThread(store, {
+			id: "t-other",
+			resourceId: "assign-9",
+			userText: "Dashboard chat",
+		});
 
 		const response = await listThreads("?submissionId=sub-1");
 		expect(response.status).toBe(200);
-		const body = (await response.json()) as { threads: Array<{ id: string; title: string; messageCount: number }> };
+		const body = (await response.json()) as {
+			threads: Array<{ id: string; title: string; messageCount: number }>;
+		};
 		expect(body.threads.map((t) => t.id)).toEqual(["t-2", "t-1"]);
 		expect(body.threads[0]).toMatchObject({
 			title: "Second thread",
@@ -200,16 +218,25 @@ describe("/api/copilot/threads/[threadId]", () => {
 		expect(body.thread.title).toBe("Compare cell 3");
 		expect(body.thread.messageCount).toBe(2);
 		expect(body.thread.messages.map((m) => m.role)).toEqual(["user", "assistant"]);
-		expect(body.thread.messages[1]).toMatchObject({ role: "assistant", text: "Here is the analysis." });
+		expect(body.thread.messages[1]).toMatchObject({
+			role: "assistant",
+			text: "Here is the analysis.",
+		});
 	});
 
 	it("404s on a missing thread and on a thread owned by another scope (GET/DELETE/PATCH)", async () => {
 		const store = new FileMemoryStore();
 		await seedThread(store, { id: "t-1", resourceId: "sub-1", userText: "hi" });
 
-		await expect(getThread("t-missing", "?submissionId=sub-1")).rejects.toMatchObject({ status: 404 });
-		await expect(getThread("t-1", "?assignmentId=assign-1")).rejects.toMatchObject({ status: 404 });
-		await expect(deleteThread("t-1", "?assignmentId=assign-1")).rejects.toMatchObject({ status: 404 });
+		await expect(getThread("t-missing", "?submissionId=sub-1")).rejects.toMatchObject({
+			status: 404,
+		});
+		await expect(getThread("t-1", "?assignmentId=assign-1")).rejects.toMatchObject({
+			status: 404,
+		});
+		await expect(deleteThread("t-1", "?assignmentId=assign-1")).rejects.toMatchObject({
+			status: 404,
+		});
 		await expect(
 			patchThread("t-1", "?assignmentId=assign-1", { title: "Hijack" }),
 		).rejects.toMatchObject({ status: 404 });
@@ -224,17 +251,25 @@ describe("/api/copilot/threads/[threadId]", () => {
 		const response = await deleteThread("t-1", "?submissionId=sub-1");
 		expect(response.status).toBe(204);
 		expect(await store.getThreadById({ threadId: "t-1" })).toBeNull();
-		await expect(getThread("t-1", "?submissionId=sub-1")).rejects.toMatchObject({ status: 404 });
-		await expect(deleteThread("t-1", "?submissionId=sub-1")).rejects.toMatchObject({ status: 404 });
+		await expect(getThread("t-1", "?submissionId=sub-1")).rejects.toMatchObject({
+			status: 404,
+		});
+		await expect(deleteThread("t-1", "?submissionId=sub-1")).rejects.toMatchObject({
+			status: 404,
+		});
 	});
 
 	it("PATCH renames the thread and returns its meta", async () => {
 		const store = new FileMemoryStore();
 		await seedThread(store, { id: "t-1", resourceId: "sub-1", userText: "hi" });
 
-		const response = await patchThread("t-1", "?submissionId=sub-1", { title: "Renamed thread" });
+		const response = await patchThread("t-1", "?submissionId=sub-1", {
+			title: "Renamed thread",
+		});
 		expect(response.status).toBe(200);
-		const body = (await response.json()) as { thread: { id: string; title: string; messageCount: number } };
+		const body = (await response.json()) as {
+			thread: { id: string; title: string; messageCount: number };
+		};
 		expect(body.thread).toMatchObject({ id: "t-1", title: "Renamed thread", messageCount: 2 });
 		expect((await store.getThreadById({ threadId: "t-1" }))?.title).toBe("Renamed thread");
 	});
@@ -243,7 +278,9 @@ describe("/api/copilot/threads/[threadId]", () => {
 		const store = new FileMemoryStore();
 		await seedThread(store, { id: "t-1", resourceId: "sub-1", userText: "hi" });
 
-		await expect(patchThread("t-1", "?submissionId=sub-1", { title: "" })).rejects.toMatchObject({
+		await expect(
+			patchThread("t-1", "?submissionId=sub-1", { title: "" }),
+		).rejects.toMatchObject({
 			status: 400,
 		});
 		await expect(

@@ -25,7 +25,10 @@ const AVG_MSG_TOKENS = 800;
 
 export function resolveLastMessagesDefault(modelId: string): number {
 	const context = MODEL_CONTEXT_TOKENS[modelId] ?? UNKNOWN_MODEL_CONTEXT_TOKENS;
-	return Math.min(50, Math.max(5, Math.floor((context * HISTORY_BUDGET_FRACTION) / AVG_MSG_TOKENS)));
+	return Math.min(
+		50,
+		Math.max(5, Math.floor((context * HISTORY_BUDGET_FRACTION) / AVG_MSG_TOKENS)),
+	);
 }
 
 /** Compaction input cap: never load more history than ~80% of the model's context. */

@@ -855,7 +855,11 @@ describe("thread management (T.3)", () => {
 		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
 		expect(String(call[0])).toContain("/api/copilot/threads/t-1?submissionId=sub-42");
 		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBe("t-1");
-		expect(store.activeThread).toMatchObject({ id: "t-1", title: "Review submission 1", messageCount: 4 });
+		expect(store.activeThread).toMatchObject({
+			id: "t-1",
+			title: "Review submission 1",
+			messageCount: 4,
+		});
 		expect(store.loadingHistory).toBe(false);
 		// system skipped; user -> teacher; tool-only -> tool-result card;
 		// assistant -> assistant bubble.
@@ -911,7 +915,12 @@ describe("thread management (T.3)", () => {
 				jsonResponse({
 					threads: [
 						THREAD_META_1,
-						{ ...THREAD_META_1, id: "t-2", title: "Second thread", updatedAt: "2026-08-01T11:00:00.000Z" },
+						{
+							...THREAD_META_1,
+							id: "t-2",
+							title: "Second thread",
+							updatedAt: "2026-08-01T11:00:00.000Z",
+						},
 					],
 				}),
 			)
@@ -956,7 +965,9 @@ describe("thread management (T.3)", () => {
 		fetchMock
 			.mockResolvedValueOnce(jsonResponse({ threads: [THREAD_META_1] }))
 			.mockResolvedValueOnce(jsonResponse({ thread: { ...THREAD_META_1, title: "Renamed" } }))
-			.mockResolvedValueOnce(jsonResponse({ threads: [{ ...THREAD_META_1, title: "Renamed" }] }));
+			.mockResolvedValueOnce(
+				jsonResponse({ threads: [{ ...THREAD_META_1, title: "Renamed" }] }),
+			);
 
 		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
 		await store.loadThreads();
