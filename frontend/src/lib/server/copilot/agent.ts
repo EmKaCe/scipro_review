@@ -447,25 +447,42 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 		assignmentId: resolvedAssignmentId,
 		decisions: new Map(),
 	};
+	// The submission scopes the memory resource; an assignment-scoped turn
+	// falls back to the assignment id (or a shared fallback when neither id
+	// is present, e.g. direct agent tests).
+	const resourceId = input.submissionId ?? input.assignmentId ?? "copilot";
+	// The client owns a threadId when it has one (copilot-store A.2);
+	// otherwise the server generates one so persistence always has a thread.
+	const effectiveThreadId = input.threadId ?? crypto.randomUUID();
 	const requestContext = new Map<string, unknown>();
 	requestContext.set(COPILOT_CTX_KEY, reqState);
+	// Mastra 1.54 resolves the memory resource from the requestContext key
+	// `mastra__resourceId` (or options.memory.resource) — a top-level
+	// `resourceId` stream option is NOT consulted (#getAgentExecutionResourceId
+	// in agent-DIReeHqN.js). Without this, prepare-memory-step silently
+	// degrades to plain mode and nothing persists.
+	requestContext.set("mastra__resourceId", resourceId);
+	// Same asymmetry for the thread: the stream path resolves the thread from
+	// options.memory.thread OR the `mastra__threadId` requestContext key
+	// (passed as resolveThreadIdFromArgs' `overrideId`, which wins) — a
+	// top-level `threadId` option is NOT consulted there. Both keys are
+	// required for prepare-memory-step to take the memory path.
+	requestContext.set("mastra__threadId", effectiveThreadId);
 
 	let current: Awaited<ReturnType<Agent["stream"]>>;
 	try {
 		const opts: Record<string, unknown> = {
 			requestContext,
 			maxSteps: MAX_STEPS,
-			// Required when memory is wired: Mastra throws
-			// AGENT_MEMORY_MISSING_RESOURCE_ID without a resourceId. The
-			// submission scopes the resource; an assignment-scoped turn
-			// falls back to the assignment id (or a shared fallback when
-			// neither id is present, e.g. direct agent tests).
-			resourceId: input.submissionId ?? input.assignmentId ?? "copilot",
+			// Memory path requires BOTH threadId and resourceId
+			// (AGENT_MEMORY_MISSING_RESOURCE_ID when only one is present;
+			// silent plain mode when neither).
+			resourceId,
+			threadId: effectiveThreadId,
 			// Without savePerStep Mastra never calls the memory storage —
 			// thread/message persistence is gated on this flag (verified live).
 			savePerStep: true,
 		};
-		if (input.threadId) opts.threadId = input.threadId;
 		if (input.signal) opts.abortSignal = input.signal;
 		current = await (
 			agent!.stream as unknown as (

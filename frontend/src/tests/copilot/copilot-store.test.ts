@@ -82,6 +82,9 @@ afterEach(() => {
 	// apiMode is a mutable holder (criteria-loader pattern) — always restore
 	// the static default so tests never leak teacher mode into each other.
 	copilot.apiMode.value = false;
+	// Thread continuity state is scope-keyed in localStorage (A.2) — clear it
+	// so stores in later tests start with no stored thread.
+	localStorage.clear();
 });
 
 // ---------------------------------------------------------------------------
@@ -118,7 +121,11 @@ describe("sendMessage streaming", () => {
 		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
 		expect(String(call[0])).toContain("/api/copilot/chat");
 		expect(call[1]?.method).toBe("POST");
-		expect(bodyOf(call)).toEqual({ submissionId: "sub-42", message: "Review the code" });
+		const body = bodyOf(call);
+		expect(body).toMatchObject({ submissionId: "sub-42", message: "Review the code" });
+		// A.2: the store generates and sends a threadId on the first turn.
+		expect(body.threadId).toBeTypeOf("string");
+		expect((body.threadId as string).length).toBeGreaterThan(0);
 
 		// thinking is a no-op; deltas accumulate into ONE final message that
 		// the `message` event replaces with its full content.
@@ -166,13 +173,13 @@ describe("sendMessage streaming", () => {
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
 		expect(String(call[0])).toContain("/api/copilot/chat");
-		expect(bodyOf(call)).toEqual({
+		expect(bodyOf(call)).toMatchObject({
 			assignmentId: "assign-1",
 			message: "Summarize the pipeline status",
 		});
-	});
+});
 
-	it("sends both scope ids when the store is created with submission and assignment", async () => {
+it("sends both scope ids when the store is created with submission and assignment", async () => {
 		copilot.apiMode.value = true;
 		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
 		const store = copilot.createCopilotStore({
@@ -183,11 +190,53 @@ describe("sendMessage streaming", () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const call = fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?];
-		expect(bodyOf(call)).toEqual({
+		expect(bodyOf(call)).toMatchObject({
 			submissionId: "sub-42",
 			assignmentId: "assign-1",
 			message: "hello",
 		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Thread continuity (A.2)
+// ---------------------------------------------------------------------------
+
+describe("thread continuity (A.2)", () => {
+	it("sends a generated threadId + title on the first turn and reuses the threadId on the second", async () => {
+		copilot.apiMode.value = true;
+		// One fresh response per send (a consumed SSE body cannot be re-read).
+		fetchMock
+			.mockResolvedValueOnce(sseResponse(sseFrame("done", {})))
+			.mockResolvedValueOnce(sseResponse(sseFrame("done", {})));
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+
+		await store.sendMessage("Review the code");
+		await store.sendMessage("And the tests");
+
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		const first = bodyOf(fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?]);
+		const second = bodyOf(fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?]);
+		expect(first.threadId).toBeTypeOf("string");
+		expect((first.threadId as string).length).toBeGreaterThan(0);
+		expect(first.title).toBe("Review the code");
+		expect(second.threadId).toBe(first.threadId);
+		expect(second.title).toBeUndefined();
+	});
+
+	it("restores the threadId from localStorage for the same scope", async () => {
+		copilot.apiMode.value = true;
+		localStorage.setItem("copilot:activeThread:sub-42", "t-restored");
+		fetchMock.mockResolvedValue(sseResponse(sseFrame("done", {})));
+		const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+
+		await store.sendMessage("hello");
+
+		expect(fetchMock).toHaveBeenCalledTimes(1);
+		const body = bodyOf(fetchMock.mock.calls[0] as [RequestInfo | URL, RequestInit?]);
+		expect(body.threadId).toBe("t-restored");
+		// A restored thread is not new — no title is sent on its next turn.
+		expect(body.title).toBeUndefined();
 	});
 });
 

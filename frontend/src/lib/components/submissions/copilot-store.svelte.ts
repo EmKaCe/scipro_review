@@ -187,8 +187,9 @@ function safeStringify(value: unknown): string {
  *   `assignmentId` scopes it to a whole assignment (dashboard chat — the
  *   agent's context tools fall back to the assignment scope when no
  *   submission is given). At least one scope id is sent with every chat
- *   request; `threadId`, when provided, is passed on chat requests to
- *   resume a thread.
+ *   request; `threadId`, when provided, seeds the active thread (otherwise
+ *   the store restores it from localStorage or generates one on the first
+ *   send — see A.2).
  */
 export function createCopilotStore(options?: {
 	submissionId?: string;
@@ -197,7 +198,35 @@ export function createCopilotStore(options?: {
 }) {
 	const submissionId = options?.submissionId ?? "";
 	const assignmentId = options?.assignmentId ?? "";
-	const threadId = options?.threadId;
+	// The store owns the ACTIVE thread id per scope: generated on the first
+	// send, persisted in localStorage so reloads / browser restarts resume
+	// the same conversation, and reused on every turn. Message content stays
+	// server-side — only the thread id (a UUID) lives in localStorage.
+	const scopeKey = submissionId || assignmentId || "copilot";
+	const threadStorageKey = `copilot:activeThread:${scopeKey}`;
+
+	function loadStoredThreadId(): string {
+		try {
+			return localStorage.getItem(threadStorageKey) ?? "";
+		} catch {
+			return "";
+		}
+	}
+	function storeThreadId(id: string): void {
+		try {
+			localStorage.setItem(threadStorageKey, id);
+		} catch {
+			// Storage unavailable (private mode / tests) — continuity is best-effort.
+		}
+	}
+	function clearStoredThreadId(): void {
+		try {
+			localStorage.removeItem(threadStorageKey);
+		} catch {
+			// ignore
+		}
+	}
+	let activeThreadId = options?.threadId ?? loadStoredThreadId();
 
 	let messages = $state<CopilotMessage[]>([]);
 	let isStreaming = $state(false);
@@ -498,6 +527,15 @@ export function createCopilotStore(options?: {
 
 		isStreaming = true;
 		try {
+			// Ensure a thread id exists before the first turn and remember it
+			// so the conversation survives reloads. The first turn also sends
+			// a title derived from the first message (the server stores it
+			// when creating the thread — see Task T).
+			const isNewThread = !activeThreadId;
+			if (isNewThread) {
+				activeThreadId = crypto.randomUUID();
+				storeThreadId(activeThreadId);
+			}
 			const response = await fetch(`${base}/api/copilot/chat`, {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
@@ -505,7 +543,8 @@ export function createCopilotStore(options?: {
 					...(submissionId ? { submissionId } : {}),
 					...(assignmentId ? { assignmentId } : {}),
 					message: content,
-					...(threadId ? { threadId } : {}),
+					...(activeThreadId ? { threadId: activeThreadId } : {}),
+					...(isNewThread ? { title: content.split("\n")[0].slice(0, 60) } : {}),
 				}),
 			});
 			if (!response.ok || !response.body) {
@@ -541,6 +580,11 @@ export function createCopilotStore(options?: {
 		}
 	}
 
+	/**
+	 * Clear the in-memory transcript (UI-only reset). This does NOT rotate the
+	 * active thread id — a later "new conversation" action (Task T) generates
+	 * a fresh thread id, calls clearStoredThreadId(), and resets the UI.
+	 */
 	function clearMessages(): void {
 		messages = [];
 		pendingSuggestions = [];
