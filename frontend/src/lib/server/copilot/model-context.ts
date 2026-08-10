@@ -5,40 +5,49 @@
  * derive from the configured LLM's context size. The default recall window
  * (`lastMessages`) adapts to the model so teachers never have to tune it;
  * an explicit value in data/settings.yaml always wins.
+ *
+ * Model list source: chat.kiconnect.nrw deployments page (2026-08-10).
+ * Only models actually deployed on KI Connect are listed.
  */
 
-/** Verified context-token sizes for known models (provider docs). Add new
- * models here; unknown models fall back to a conservative 32_768. */
+/** Verified context-token sizes for KI Connect models.
+ * Unknown models fall back to a conservative 32_768. */
 export const MODEL_CONTEXT_TOKENS: Record<string, number> = {
-	// Qwen3-30B-A3B family: 32_768 native, 131_072 with YaRN; the 2507 build
-	// advertises 256K long-context but that needs server-side extension —
-	// use the native number, conservatively.
+	// ── Open-weight models (no strict quotas) ──
+
+	// Qwen3-30B-A3B: 32_768 native. Operator: Academiccloud, Germany only.
 	"qwen3-30b-a3b-instruct-2507": 32_768,
 
-	// GPT-OSS family (OpenAI, open-weight): 128K native context.
+	// GPT-OSS 120B: ~128K native context. Operator: Inferenz NRW, Germany only.
 	"gpt-oss-120b": 131_072,
 
-	// Mistral family (open-weight)
-	"mistral-7b-instruct-v0.3": 32_768,
-	"mistral-nemo-instruct-2407": 128_000,
-	"mistral-large-instruct-2407": 128_000,
-	"mistral-small-instruct-2409": 32_768,
+	// Llama 3.1 8B Instruct: 128K native context. Operator: Academiccloud, Germany only.
+	"llama-3.1-8b": 131_072,
 
-	// Llama 3.1 family (open-weight, Meta): 128K native context
-	"llama-3.1-8b-instruct": 131_072,
-	"llama-3.1-70b-instruct": 131_072,
-	"llama-3.1-405b-instruct": 131_072,
+	// Mistral Small 4 119B (2603 build): ~128K context. Operator: Inferenz NRW, Germany only.
+	"mistral-small-4-119b-2603": 131_072,
 
-	// Llama 3 family (open-weight): 8K native context
-	"llama-3-8b-instruct": 8_192,
-	"llama-3-70b-instruct": 8_192,
+	// ── Closed-weight models (strict quotas — AVOID for batch workloads) ──
+
+	// GPT-5.2: large context (reasoning). Operator: Academiccloud, worldwide.
+	"gpt-5.2": 131_072,
+
+	// GPT-5: large context (reasoning). Operator: Academiccloud, worldwide.
+	"gpt-5": 131_072,
+
+	// GPT-4.1: 128K context. Operator: Academiccloud, worldwide.
+	"gpt-4.1": 131_072,
+
+	// GPT-4.1-Mini: 128K context. Operator: Academiccloud, worldwide.
+	"gpt-4.1-mini": 131_072,
 };
+
 export const UNKNOWN_MODEL_CONTEXT_TOKENS = 32_768;
 
 /**
- * True for open-weight model families (qwen, gpt-oss, mistral, llama /
- * meta-llama). Closed-weight models (gpt-4o, claude, …) come with strict
- * quotas, so callers can warn the teacher before using one.
+ * True for models with open weights (no strict quotas).
+ * Closed-weight models (gpt-5.2, gpt-5, gpt-4.1, gpt-4.1-mini) have
+ * strict quotas — callers should warn the teacher before using one.
  */
 export function isOpenWeightModel(modelId: string): boolean {
 	const lower = modelId.toLowerCase();
@@ -49,6 +58,14 @@ export function isOpenWeightModel(modelId: string): boolean {
 		lower.includes("llama")
 	);
 }
+
+/**
+ * Recommended default model for batch pre-evaluation.
+ * gpt-oss-120b is preferred for its large context (128K) and open-weight licensing.
+ * Falls back to qwen3-30b if the API key lacks Inferenz NRW access.
+ */
+export const RECOMMENDED_MODEL = "gpt-oss-120b";
+export const FALLBACK_MODEL = "qwen3-30b-a3b-instruct-2507";
 
 /** ~40% of context budgeted for message history; the rest goes to
  * instructions + 27 tool definitions + summary + current turn + output. */

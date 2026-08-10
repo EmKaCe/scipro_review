@@ -39,22 +39,18 @@ describe("model-context.ts", () => {
 			expect(MODEL_CONTEXT_TOKENS["gpt-oss-120b"]).toBe(131_072);
 		});
 
-		it("mistral family contexts", () => {
-			expect(MODEL_CONTEXT_TOKENS["mistral-7b-instruct-v0.3"]).toBe(32_768);
-			expect(MODEL_CONTEXT_TOKENS["mistral-nemo-instruct-2407"]).toBe(128_000);
-			expect(MODEL_CONTEXT_TOKENS["mistral-large-instruct-2407"]).toBe(128_000);
-			expect(MODEL_CONTEXT_TOKENS["mistral-small-instruct-2409"]).toBe(32_768);
+		it("llama-3.1-8b -> 131_072 (128K)", () => {
+			expect(MODEL_CONTEXT_TOKENS["llama-3.1-8b"]).toBe(131_072);
 		});
 
-		it("llama 3.1 family -> 131_072 (128K)", () => {
-			expect(MODEL_CONTEXT_TOKENS["llama-3.1-8b-instruct"]).toBe(131_072);
-			expect(MODEL_CONTEXT_TOKENS["llama-3.1-70b-instruct"]).toBe(131_072);
-			expect(MODEL_CONTEXT_TOKENS["llama-3.1-405b-instruct"]).toBe(131_072);
+		it("mistral-small-4-119b-2603 -> 131_072 (~128K)", () => {
+			expect(MODEL_CONTEXT_TOKENS["mistral-small-4-119b-2603"]).toBe(131_072);
 		});
 
-		it("llama 3 family -> 8_192", () => {
-			expect(MODEL_CONTEXT_TOKENS["llama-3-8b-instruct"]).toBe(8_192);
-			expect(MODEL_CONTEXT_TOKENS["llama-3-70b-instruct"]).toBe(8_192);
+		it("closed-weight models (avoid for batch)", () => {
+			expect(MODEL_CONTEXT_TOKENS["gpt-5.2"]).toBe(131_072);
+			expect(MODEL_CONTEXT_TOKENS["gpt-4.1"]).toBe(131_072);
+			expect(MODEL_CONTEXT_TOKENS["gpt-4.1-mini"]).toBe(131_072);
 		});
 
 		it("unknown model is not in the registry (32K fallback applies)", () => {
@@ -71,23 +67,15 @@ describe("model-context.ts", () => {
 			expect(resolveLastMessagesDefault("gpt-oss-120b")).toBe(50);
 		});
 
-		it("mistral-nemo-instruct-2407 (128K) -> 50 (cap)", () => {
-			expect(resolveLastMessagesDefault("mistral-nemo-instruct-2407")).toBe(50);
-		});
-
-		it("llama-3.1-8b-instruct (128K) -> 50 (cap)", () => {
-			expect(resolveLastMessagesDefault("llama-3.1-8b-instruct")).toBe(50);
-		});
-
-		it("llama-3-8b-instruct (8K) -> 5 (floor)", () => {
-			expect(resolveLastMessagesDefault("llama-3-8b-instruct")).toBe(5);
+		it("llama-3.1-8b (128K) -> 50 (cap)", () => {
+			expect(resolveLastMessagesDefault("llama-3.1-8b")).toBe(50);
 		});
 
 		it("unknown model falls back to the conservative 32K context -> 16", () => {
 			expect(resolveLastMessagesDefault("some-unknown-model")).toBe(16);
 		});
 
-		it("tiny context floors at 5 (floor(8K * 0.4 / 800) = 4 -> 5)", () => {
+		it("tiny context floors at 5", () => {
 			withContext("tiny-model", 8_192);
 			expect(resolveLastMessagesDefault("tiny-model")).toBe(5);
 		});
@@ -135,24 +123,22 @@ describe("model-context.ts", () => {
 	describe("isOpenWeightModel", () => {
 		it("returns true for the open-weight families", () => {
 			expect(isOpenWeightModel("gpt-oss-120b")).toBe(true);
-			expect(isOpenWeightModel("gpt-oss-20b")).toBe(true);
 			expect(isOpenWeightModel("qwen3-30b-a3b-instruct-2507")).toBe(true);
-			expect(isOpenWeightModel("mistral-nemo-instruct-2407")).toBe(true);
-			expect(isOpenWeightModel("mistral-small-instruct-2409")).toBe(true);
-			expect(isOpenWeightModel("llama-3.1-8b-instruct")).toBe(true);
-			expect(isOpenWeightModel("meta-llama/llama-3.1-405b-instruct")).toBe(true);
+			expect(isOpenWeightModel("mistral-small-4-119b-2603")).toBe(true);
+			expect(isOpenWeightModel("llama-3.1-8b")).toBe(true);
 		});
 
 		it("returns false for closed-weight models", () => {
+			expect(isOpenWeightModel("gpt-5.2")).toBe(false);
+			expect(isOpenWeightModel("gpt-4.1")).toBe(false);
 			expect(isOpenWeightModel("gpt-4o")).toBe(false);
 			expect(isOpenWeightModel("claude-3-5-sonnet")).toBe(false);
-			expect(isOpenWeightModel("gemini-2.0-flash")).toBe(false);
 			expect(isOpenWeightModel("")).toBe(false);
 		});
 
 		it("is case-insensitive", () => {
 			expect(isOpenWeightModel("GPT-OSS-120B")).toBe(true);
-			expect(isOpenWeightModel("Llama-3.1-70B-Instruct")).toBe(true);
+			expect(isOpenWeightModel("Llama-3.1-8B")).toBe(true);
 		});
 	});
 });
