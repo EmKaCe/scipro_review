@@ -31,8 +31,8 @@ function withContext(modelId: string, context: number): void {
 
 describe("model-context.ts", () => {
 	describe("MODEL_CONTEXT_TOKENS registry", () => {
-		it("qwen3-30b-a3b-instruct-2507 -> 32_768", () => {
-			expect(MODEL_CONTEXT_TOKENS[KNOWN]).toBe(32_768);
+		it("qwen3-30b-a3b-instruct-2507 -> 262_144", () => {
+			expect(MODEL_CONTEXT_TOKENS[KNOWN]).toBe(262_144);
 		});
 
 		it("gpt-oss-120b -> 131_072 (128K)", () => {
@@ -43,14 +43,14 @@ describe("model-context.ts", () => {
 			expect(MODEL_CONTEXT_TOKENS["llama-3.1-8b"]).toBe(131_072);
 		});
 
-		it("mistral-small-4-119b-2603 -> 131_072 (~128K)", () => {
-			expect(MODEL_CONTEXT_TOKENS["mistral-small-4-119b-2603"]).toBe(131_072);
+		it("mistral-small-4-119b-2603 -> 262_144", () => {
+			expect(MODEL_CONTEXT_TOKENS["mistral-small-4-119b-2603"]).toBe(262_144);
 		});
 
 		it("closed-weight models (avoid for batch)", () => {
-			expect(MODEL_CONTEXT_TOKENS["gpt-5.2"]).toBe(131_072);
-			expect(MODEL_CONTEXT_TOKENS["gpt-4.1"]).toBe(131_072);
-			expect(MODEL_CONTEXT_TOKENS["gpt-4.1-mini"]).toBe(131_072);
+			expect(MODEL_CONTEXT_TOKENS["gpt-5.2"]).toBe(400_000);
+			expect(MODEL_CONTEXT_TOKENS["gpt-4.1"]).toBe(1_047_576);
+			expect(MODEL_CONTEXT_TOKENS["gpt-4.1-mini"]).toBe(1_047_576);
 		});
 
 		it("unknown model is not in the registry (32K fallback applies)", () => {
@@ -59,8 +59,8 @@ describe("model-context.ts", () => {
 	});
 
 	describe("resolveLastMessagesDefault", () => {
-		it("known model (qwen3-30b-a3b-instruct-2507) -> 16", () => {
-			expect(resolveLastMessagesDefault(KNOWN)).toBe(16);
+		it("qwen3-30b-a3b-instruct-2507 (262K) -> 50 (cap)", () => {
+			expect(resolveLastMessagesDefault(KNOWN)).toBe(50);
 		});
 
 		it("gpt-oss-120b (128K) -> 50 (cap)", () => {
@@ -87,8 +87,8 @@ describe("model-context.ts", () => {
 	});
 
 	describe("resolveSummaryTokenCap", () => {
-		it("known model -> floor(32_768 * 0.8) = 26_214", () => {
-			expect(resolveSummaryTokenCap(KNOWN)).toBe(26_214);
+		it("qwen3-30b (262K) -> min(100_000, floor(262_144 * 0.8)) = 100_000 (cap)", () => {
+			expect(resolveSummaryTokenCap(KNOWN)).toBe(100_000);
 		});
 
 		it("gpt-oss-120b -> min(100_000, floor(131_072 * 0.8)) = 100_000", () => {
@@ -102,8 +102,8 @@ describe("model-context.ts", () => {
 	});
 
 	describe("resolveSummarySizeTokens", () => {
-		it("known model -> floor(32_768 * 0.05) = 1_638", () => {
-			expect(resolveSummarySizeTokens(KNOWN)).toBe(1_638);
+		it("qwen3-30b (262K) -> min(4_000, floor(262_144 * 0.05)) = 4_000 (cap)", () => {
+			expect(resolveSummarySizeTokens(KNOWN)).toBe(4_000);
 		});
 
 		it("gpt-oss-120b -> min(4_000, floor(131_072 * 0.05)) = 4_000", () => {

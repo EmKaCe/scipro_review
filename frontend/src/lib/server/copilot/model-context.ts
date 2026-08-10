@@ -7,39 +7,47 @@
  * an explicit value in data/settings.yaml always wins.
  *
  * Model list source: chat.kiconnect.nrw deployments page (2026-08-10).
- * Only models actually deployed on KI Connect are listed.
+ * Context sizes verified from KI Connect token limits + provider docs.
  */
 
-/** Verified context-token sizes for KI Connect models.
+/** Verified context-token sizes for KI Connect models (max input tokens).
  * Unknown models fall back to a conservative 32_768. */
 export const MODEL_CONTEXT_TOKENS: Record<string, number> = {
 	// ── Open-weight models (no strict quotas) ──
 
-	// Qwen3-30B-A3B: 32_768 native. Operator: Academiccloud, Germany only.
-	"qwen3-30b-a3b-instruct-2507": 32_768,
+	// Qwen3-30B-A3B: 262,144 natively (KI Connect: 262.1k). HuggingFace confirms.
+	// Operator: Academiccloud, Germany only.
+	"qwen3-30b-a3b-instruct-2507": 262_144,
 
-	// GPT-OSS 120B: ~128K native context. Operator: Inferenz NRW, Germany only.
+	// GPT-OSS 120B: 131,072 context (KI Connect: 131.1k). OpenAI docs confirm.
+	// Operator: Inferenz NRW, Germany only.
 	"gpt-oss-120b": 131_072,
 
-	// Llama 3.1 8B Instruct: 128K native context. Operator: Academiccloud, Germany only.
+	// Llama 3.1 8B Instruct: 128K context (KI Connect: 128k).
+	// Operator: Academiccloud, Germany only.
 	"llama-3.1-8b": 131_072,
 
-	// Mistral Small 4 119B (2603 build): ~128K context. Operator: Inferenz NRW, Germany only.
-	"mistral-small-4-119b-2603": 131_072,
+	// Mistral Small 4 119B: 262,144 context (KI Connect: 262.1k). HuggingFace: 256k.
+	// Operator: Inferenz NRW, Germany only.
+	"mistral-small-4-119b-2603": 262_144,
 
 	// ── Closed-weight models (strict quotas — AVOID for batch workloads) ──
 
-	// GPT-5.2: large context (reasoning). Operator: Academiccloud, worldwide.
-	"gpt-5.2": 131_072,
+	// GPT-5.2: 400,000 context (KI Connect: 400k). Reasoning model.
+	// Operator: Academiccloud, worldwide.
+	"gpt-5.2": 400_000,
 
-	// GPT-5: large context (reasoning). Operator: Academiccloud, worldwide.
-	"gpt-5": 131_072,
+	// GPT-5: 400,000 context (KI Connect: 400k). Reasoning model.
+	// Operator: Academiccloud, worldwide.
+	"gpt-5": 400_000,
 
-	// GPT-4.1: 128K context. Operator: Academiccloud, worldwide.
-	"gpt-4.1": 131_072,
+	// GPT-4.1: 1,047,576 context (KI Connect: 1047.6k).
+	// Operator: Academiccloud, worldwide.
+	"gpt-4.1": 1_047_576,
 
-	// GPT-4.1-Mini: 128K context. Operator: Academiccloud, worldwide.
-	"gpt-4.1-mini": 131_072,
+	// GPT-4.1-Mini: 1,047,576 context (KI Connect: 1047.6k).
+	// Operator: Academiccloud, worldwide.
+	"gpt-4.1-mini": 1_047_576,
 };
 
 export const UNKNOWN_MODEL_CONTEXT_TOKENS = 32_768;
@@ -61,14 +69,14 @@ export function isOpenWeightModel(modelId: string): boolean {
 
 /**
  * Recommended default model for batch pre-evaluation.
- * gpt-oss-120b is preferred for its large context (128K) and open-weight licensing.
- * Falls back to qwen3-30b if the API key lacks Inferenz NRW access.
+ * qwen3-30b is preferred for its 262K context + Academiccloud operator
+ * (our API key is Academiccloud-scoped). gpt-oss-120b is Inferenz NRW.
  */
-export const RECOMMENDED_MODEL = "gpt-oss-120b";
+export const RECOMMENDED_MODEL = "qwen3-30b-a3b-instruct-2507";
 export const FALLBACK_MODEL = "qwen3-30b-a3b-instruct-2507";
 
 /** ~40% of context budgeted for message history; the rest goes to
- * instructions + 27 tool definitions + summary + current turn + output. */
+ * instructions + tool definitions + summary + current turn + output. */
 const HISTORY_BUDGET_FRACTION = 0.4;
 /** Conservative average tokens per stored message (teacher chats + tool cards). */
 const AVG_MSG_TOKENS = 800;
@@ -90,7 +98,7 @@ export function resolveSummaryTokenCap(modelId: string): number {
 /** Summary SIZE cap: keep the injected summary at ~5% of context, ≤ 4_000
  * tokens. Hermes caps summaries the same way (`min(context × 0.05, 12_000)`)
  * — a verbose summary injected as a system message would eat the context it
- * is supposed to save. For the default model: 0.05 × 32_768 ≈ 1_638 tokens. */
+ * is supposed to save. For the default model: 0.05 × 262_144 ≈ 13_107 → cap 4_000. */
 export function resolveSummarySizeTokens(modelId: string): number {
 	const context = MODEL_CONTEXT_TOKENS[modelId] ?? UNKNOWN_MODEL_CONTEXT_TOKENS;
 	return Math.min(4_000, Math.floor(context * 0.05));
