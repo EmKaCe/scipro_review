@@ -15,6 +15,12 @@
  */
 
 // ---------------------------------------------------------------------------
+// Imports
+// ---------------------------------------------------------------------------
+
+import { extractAndParseJSON } from "$lib/server/copilot/json-repair";
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -239,15 +245,23 @@ export class KiConnectClient {
 	/**
 	 * Call the chat completions endpoint and return the parsed JSON response.
 	 * Throws on HTTP errors or network failure.
+	 *
+	 * The response content is parsed with `extractAndParseJSON` (markdown
+	 * fence extraction + common JSON error repair). If that fails, the raw
+	 * content is sent back to the model once for correction (temperature 0,
+	 * `json_object` format); if the retry also fails to parse, an error
+	 * carrying the first 500 chars of the original content is thrown.
+	 *
+	 * An optional Zod `schema` validates the parsed result before it is
+	 * returned; validation failures throw with the joined Zod error messages.
 	 */
 	async chatCompletion(
 		system: string,
 		user: string,
 		temperature: number = 0.1,
 		responseFormat?: { type: string },
+		schema?: import("zod").ZodType<unknown>,
 	): Promise<Record<string, unknown>> {
-		const url = `${this.baseUrl}/chat/completions`;
-
 		const body: Record<string, unknown> = {
 			model: this.model,
 			messages: [
@@ -259,6 +273,75 @@ export class KiConnectClient {
 		if (responseFormat) {
 			body.response_format = responseFormat;
 		}
+
+		const content = await this.postChatCompletion(body);
+
+		let parsed: unknown;
+		try {
+			parsed = extractAndParseJSON(content);
+		} catch {
+			// One retry: ask the model to return corrected JSON.
+			const retryBody: Record<string, unknown> = {
+				model: this.model,
+				messages: [
+					{
+						role: "system",
+						content:
+							"Your previous response was not valid JSON. Return ONLY the corrected JSON object — no markdown fences, no extra text.",
+					},
+					{ role: "user", content: `Fix this JSON:\n${content}` },
+				],
+				temperature: 0,
+				response_format: { type: "json_object" },
+			};
+
+			let retryContent: string;
+			try {
+				retryContent = await this.postChatCompletion(retryBody);
+			} catch (retryErr) {
+				const status =
+					retryErr instanceof Error
+						? (retryErr.message.match(/\b\d{3}\b/)?.[0] ?? undefined)
+						: undefined;
+				if (status !== undefined) {
+					throw new Error(
+						`KI Connect: JSON repair retry failed with HTTP status ${status}`,
+						{ cause: retryErr },
+					);
+				}
+				throw retryErr;
+			}
+
+			try {
+				parsed = extractAndParseJSON(retryContent);
+			} catch {
+				throw new Error(
+					`KI Connect: model returned invalid JSON even after a repair retry. Original content (first 500 chars): ${content.slice(0, 500)}`,
+				);
+			}
+		}
+
+		if (schema) {
+			const result = schema.safeParse(parsed);
+			if (!result.success) {
+				throw new Error(
+					`KI Connect: response failed schema validation: ${result.error.issues
+						.map((issue) => issue.message)
+						.join("; ")}`,
+				);
+			}
+			return result.data as Record<string, unknown>;
+		}
+
+		return parsed as Record<string, unknown>;
+	}
+
+	/**
+	 * POST a chat completion body and return the raw response content string.
+	 * Throws on HTTP errors, network failure, or empty content.
+	 */
+	private async postChatCompletion(body: Record<string, unknown>): Promise<string> {
+		const url = `${this.baseUrl}/chat/completions`;
 
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -297,7 +380,7 @@ export class KiConnectClient {
 				throw new Error("KI Connect: empty response content");
 			}
 
-			return JSON.parse(content) as Record<string, unknown>;
+			return content;
 		} catch (err) {
 			if (err instanceof Error && err.name === "AbortError") {
 				throw new Error("KI Connect request timed out", { cause: err });
