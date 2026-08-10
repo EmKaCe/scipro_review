@@ -4,17 +4,13 @@ executor:
   cell_timeout_s: 30
 llm:
   base_url: https://chat.kiconnect.nrw/api/v1
-  model: qwen3-30b-a3b-instruct-2507
+  model: gpt-oss-120b
   timeout_ms: 60000
 copilot:
-  # How many recent thread messages the model sees per turn (recall window,
-  # 1-50). Omitting it lets the effective default follow the configured LLM's
-  # context size (qwen3-30b-a3b-instruct-2507 -> 16) — model switches apply
-  # automatically, so most setups never need to set this explicitly.
+  mode: ask
+  allowed_tools: []
+  deny_tools: []
+  approval_ttl_seconds: 60
+  session_cap: 20
   last_messages: 16
-  # Automatic compaction: when a thread outgrows the recall window, the
-  # server summarizes the out-of-window messages with the LLM and injects
-  # the summary as a system message on later turns (threads keep full
-  # context beyond the window at the cost of an extra LLM call per crossing).
-  # Set false to disable the summarization calls entirely.
   auto_compact: true

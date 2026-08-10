@@ -69,7 +69,7 @@ const ASSIGNMENTS_YAML = `assignments:
 /**
  * Nine categories (the real rubric's category keys) so the worksheet pipeline
  * runs its full 3-batch shape. Each category carries 2 positive + 2 negative
- * sub-points (36 total) — enough to exercise the 30-item truncation guard.
+ * sub-points (36 total) — enough to exercise the selection pipeline.
  */
 const CRITERIA_YAML = `categories:
   code_formatting:
@@ -273,7 +273,7 @@ function firstPositiveSubPoint(key: string): string {
  * keeps its header and checkbox items; by default exactly the first positive
  * sub-point of each category is checked and every category gets a short
  * additional note. `checkAll` checks every sub-point instead (used to
- * overflow the 30-item truncation guard).
+ * overflow the 200-item safety cap).
  */
 function filledBatchMarkdown(batchKeys: string[], checkAll = false): string {
 	const sections: string[] = [];
@@ -927,7 +927,9 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3, true));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		expect(result.rubricSelections).toHaveLength(30);
+		// Every sub-point checked across all 9 categories generates many
+		// selections — the 200-item safety cap is far above this fixture.
+		expect(result.rubricSelections!.length).toBeGreaterThan(30);
 		// Every kept entry is an exact rubric sub-point text.
 		for (const sel of result.rubricSelections!) {
 			expect(sel.categoryKey).toMatch(/^[a-z_]+$/);

@@ -256,19 +256,21 @@ function validateEnvelopeAgainstContext(
 		if (!rubric || rubric.categories.length === 0) {
 			return "rubricSelections were returned but the assignment has no rubric configured";
 		}
-		// Hard cap: more than 30 selections means the LLM ignored the
-		// explicit instruction to select 1-3 per category. TRUNCATE instead
-		// of rejecting — an overlong list is advisory noise, but the rest of
-		// the envelope is still valid and worth keeping.
-		if (selections.length > 30) {
+		// The worksheet pipeline methodically checks every rubric sub-point
+		// across all categories — 200+ items is expected. Bad entries
+		// (unknown categories, fabricated optionKeys) are stripped by the
+		// filter below; the cap exists only as a safety valve against
+		// unbounded growth (e.g. a model looping and appending infinitely).
+		const MAX_SELECTIONS = 200;
+		if (selections.length > MAX_SELECTIONS) {
 			console.warn(
-				`[pre-evaluation] rubricSelections has ${selections.length} items — the limit is 30 (1-3 per category). Truncating to the first 30.`,
+				`[pre-evaluation] rubricSelections has ${selections.length} items — exceeding safety cap of ${MAX_SELECTIONS}. Truncating.`,
 			);
 		}
 		// Strip entries that reference unknown categories (the LLM regularly
 		// uses grading DIMENSION keys like "scientific_programming" here) or
 		// fabricated optionKeys that match nothing after fuzzy matching.
-		const toClean = selections.length > 30 ? selections.slice(0, 30) : selections;
+		const toClean = selections.length > MAX_SELECTIONS ? selections.slice(0, MAX_SELECTIONS) : selections;
 		envelope.rubricSelections = toClean.filter((item) => {
 			// Shape guard: the LLM occasionally emits malformed entries.
 			if (
