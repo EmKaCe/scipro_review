@@ -12,8 +12,8 @@ import { json } from "@sveltejs/kit";
 import { getKiConnectClient, type KiConnectModel } from "$lib/server/ki-connect";
 import {
 	MODEL_CONTEXT_TOKENS,
-	UNKNOWN_MODEL_CONTEXT_TOKENS,
 	isOpenWeightModel,
+	resolveContextTokens,
 } from "$lib/server/copilot/model-context";
 
 /** One model entry served to the Settings page. */
@@ -39,8 +39,7 @@ export async function GET(): Promise<Response> {
 			id: model.id,
 			contextTokens:
 				model.context_length ??
-				MODEL_CONTEXT_TOKENS[model.id] ??
-				UNKNOWN_MODEL_CONTEXT_TOKENS,
+				resolveContextTokens(model.id),
 			isOpenWeight: isOpenWeightModel(model.id),
 			operator: model.owned_by || undefined,
 		}));

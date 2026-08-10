@@ -59,17 +59,79 @@ export const MODEL_CONTEXT_TOKENS: Record<string, number> = {
 export const UNKNOWN_MODEL_CONTEXT_TOKENS = 32_768;
 
 /**
+ * Resolve the context-token size for a model ID, normalizing KI Connect's
+ * vendor-prefixed names to our canonical keys.
+ *
+ * KI Connect prepends vendor prefixes the static map does not carry
+ * (e.g. the live API returns `openai-gpt-oss-120b` but our key is
+ * `gpt-oss-120b`).  This function strips known prefixes, lowercases,
+ * and tries sub-string containment before falling back to
+ * {@link UNKNOWN_MODEL_CONTEXT_TOKENS}.
+ */
+export function resolveContextTokens(modelId: string): number {
+	// 1) Exact match
+	if (MODEL_CONTEXT_TOKENS[modelId] !== undefined) return MODEL_CONTEXT_TOKENS[modelId];
+
+	const lower = modelId.toLowerCase().trim();
+
+	// 2) Lowercase exact match
+	for (const [key, tokens] of Object.entries(MODEL_CONTEXT_TOKENS)) {
+		if (key.toLowerCase() === lower) return tokens;
+	}
+
+	// 3) Strip vendor prefixes KI Connect adds
+	const stripped = lower
+		.replace(/^openai[-_]/, "")
+		.replace(/^mistralai[-_]/, "")
+		.replace(/^qwen[-_]/, "")
+		.replace(/^e5[-_]/, "");
+
+	for (const [key, tokens] of Object.entries(MODEL_CONTEXT_TOKENS)) {
+		if (key.toLowerCase() === stripped) return tokens;
+	}
+
+	// 3b) Normalize spaces → dashes and try again (KI "LLAMA 3.1 8B" vs our "llama-3.1-8b")
+	const spaceNormalized = stripped.replace(/\s+/g, "-");
+	for (const [key, tokens] of Object.entries(MODEL_CONTEXT_TOKENS)) {
+		if (key.toLowerCase() === spaceNormalized) return tokens;
+	}
+
+	// 3c) Try removing dashes/dots from our keys to match KI's compact forms
+	//     (KI "openai-gpt5.2" → stripped "gpt5.2" → our key "gpt-5.2" → undashed "gpt52")
+	//     (KI "openai-gpt41" → stripped "gpt41" → our key "gpt-4.1" → collapsed "gpt41")
+	for (const [key, tokens] of Object.entries(MODEL_CONTEXT_TOKENS)) {
+		const collapsed = key.toLowerCase().replace(/[-.]/g, "");
+		if (collapsed === stripped.replace(/[-.]/g, "")) return tokens;
+	}
+
+	// 4) Sub-string containment: the static key must appear as a whole
+	//    token inside the live id (e.g. live "LLAMA 3.1 8B" contains "llama")
+	for (const [key, tokens] of Object.entries(MODEL_CONTEXT_TOKENS)) {
+		const kl = key.toLowerCase();
+		if (kl.length >= 6 && lower.includes(kl)) return tokens;
+	}
+
+	return UNKNOWN_MODEL_CONTEXT_TOKENS;
+}
+
+/**
  * True for models with open weights (no strict quotas).
  * Closed-weight models (gpt-5.2, gpt-5, gpt-4.1, gpt-4.1-mini) have
  * strict quotas — callers should warn the teacher before using one.
+ *
+ * Normalizes KI Connect vendor prefixes before checking.
  */
 export function isOpenWeightModel(modelId: string): boolean {
 	const lower = modelId.toLowerCase();
+	// Strip KI Connect prefixes so "openai-gpt-oss-120b" → "gpt-oss-120b"
+	const normalized = lower
+		.replace(/^openai[-_]/, "")
+		.replace(/^mistralai[-_]/, "");
 	return (
-		lower.includes("qwen") ||
-		lower.includes("gpt-oss") ||
-		lower.includes("mistral") ||
-		lower.includes("llama")
+		normalized.includes("qwen") ||
+		normalized.includes("gpt-oss") ||
+		normalized.includes("mistral") ||
+		normalized.includes("llama")
 	);
 }
 
@@ -88,7 +150,7 @@ const HISTORY_BUDGET_FRACTION = 0.4;
 const AVG_MSG_TOKENS = 800;
 
 export function resolveLastMessagesDefault(modelId: string): number {
-	const context = MODEL_CONTEXT_TOKENS[modelId] ?? UNKNOWN_MODEL_CONTEXT_TOKENS;
+	const context = resolveContextTokens(modelId);
 	return Math.min(
 		50,
 		Math.max(5, Math.floor((context * HISTORY_BUDGET_FRACTION) / AVG_MSG_TOKENS)),
@@ -97,7 +159,7 @@ export function resolveLastMessagesDefault(modelId: string): number {
 
 /** Compaction input cap: never load more history than ~80% of the model's context. */
 export function resolveSummaryTokenCap(modelId: string): number {
-	const context = MODEL_CONTEXT_TOKENS[modelId] ?? UNKNOWN_MODEL_CONTEXT_TOKENS;
+	const context = resolveContextTokens(modelId);
 	return Math.min(100_000, Math.floor(context * 0.8));
 }
 
@@ -106,6 +168,6 @@ export function resolveSummaryTokenCap(modelId: string): number {
  * — a verbose summary injected as a system message would eat the context it
  * is supposed to save. For the default model: 0.05 × 262_144 ≈ 13_107 → cap 4_000. */
 export function resolveSummarySizeTokens(modelId: string): number {
-	const context = MODEL_CONTEXT_TOKENS[modelId] ?? UNKNOWN_MODEL_CONTEXT_TOKENS;
+	const context = resolveContextTokens(modelId);
 	return Math.min(4_000, Math.floor(context * 0.05));
 }
