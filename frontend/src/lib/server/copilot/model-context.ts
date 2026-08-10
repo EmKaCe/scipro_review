@@ -14,8 +14,41 @@ export const MODEL_CONTEXT_TOKENS: Record<string, number> = {
 	// advertises 256K long-context but that needs server-side extension —
 	// use the native number, conservatively.
 	"qwen3-30b-a3b-instruct-2507": 32_768,
+
+	// GPT-OSS family (OpenAI, open-weight): 128K native context.
+	"gpt-oss-120b": 131_072,
+
+	// Mistral family (open-weight)
+	"mistral-7b-instruct-v0.3": 32_768,
+	"mistral-nemo-instruct-2407": 128_000,
+	"mistral-large-instruct-2407": 128_000,
+	"mistral-small-instruct-2409": 32_768,
+
+	// Llama 3.1 family (open-weight, Meta): 128K native context
+	"llama-3.1-8b-instruct": 131_072,
+	"llama-3.1-70b-instruct": 131_072,
+	"llama-3.1-405b-instruct": 131_072,
+
+	// Llama 3 family (open-weight): 8K native context
+	"llama-3-8b-instruct": 8_192,
+	"llama-3-70b-instruct": 8_192,
 };
 export const UNKNOWN_MODEL_CONTEXT_TOKENS = 32_768;
+
+/**
+ * True for open-weight model families (qwen, gpt-oss, mistral, llama /
+ * meta-llama). Closed-weight models (gpt-4o, claude, …) come with strict
+ * quotas, so callers can warn the teacher before using one.
+ */
+export function isOpenWeightModel(modelId: string): boolean {
+	const lower = modelId.toLowerCase();
+	return (
+		lower.includes("qwen") ||
+		lower.includes("gpt-oss") ||
+		lower.includes("mistral") ||
+		lower.includes("llama")
+	);
+}
 
 /** ~40% of context budgeted for message history; the rest goes to
  * instructions + 27 tool definitions + summary + current turn + output. */

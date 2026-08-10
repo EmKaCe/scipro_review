@@ -12,5 +12,5 @@ copilot:
   deny_tools: []
   approval_ttl_seconds: 60
   session_cap: 20
-  last_messages: 16
+  last_messages: 50  # recall window for gpt-oss-120b (128K ctx); auto-default is 50 anyway
   auto_compact: true

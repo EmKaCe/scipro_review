@@ -104,6 +104,37 @@ function mergeRubricSelections(
 	return changed ? next : selections;
 }
 
+/**
+ * Merge `additionalNotes` into a NEW selections record, filling ONLY empty
+ * per-category notes (the rubric-category editor renders these as the
+ * category's teacher notes). Teacher-written notes are never overwritten
+ * and blank entries are skipped. Immutable: the input record and its sets
+ * are never mutated. Returns the ORIGINAL reference when nothing changed,
+ * and `undefined` when there is nothing to merge and the caller had no
+ * record.
+ */
+function mergeAdditionalNotes(
+	selections: Record<string, CategorySelections> | undefined,
+	notesData: Record<string, string> | undefined,
+): Record<string, CategorySelections> | undefined {
+	if (!notesData || Object.keys(notesData).length === 0) return selections;
+
+	let changed = false;
+	const next: Record<string, CategorySelections> = {};
+	for (const [key, sel] of Object.entries(selections ?? {})) {
+		next[key] = { ...sel, checked_items: new SvelteSet(sel.checked_items) };
+	}
+	for (const [catKey, note] of Object.entries(notesData)) {
+		if (!note || note.trim().length === 0) continue;
+		const existing = next[catKey] ?? emptyCategorySelections();
+		if ((existing.notes ?? "").trim().length === 0) {
+			next[catKey] = { ...existing, notes: note };
+			changed = true;
+		}
+	}
+	return changed ? next : selections;
+}
+
 /** `data` payload of a `grade` suggestion — subset of `PreEvalData`. */
 interface GradeSuggestionData {
 	gradeSuggestion?: {
@@ -113,6 +144,8 @@ interface GradeSuggestionData {
 	feedbackDraft?: string;
 	/** Optional rubric items to check alongside the score suggestions. */
 	rubricSelections?: RubricSelectionItem[];
+	/** Per-category notes to fill into empty category selections. */
+	additionalNotes?: Record<string, string>;
 }
 
 /** `data` payload of a `draft` suggestion. */
@@ -150,12 +183,14 @@ export function applySuggestionToState<T extends Record<string, number>>(
 				? data.feedbackDraft
 				: state.notesDraft;
 
-		// Merge rubric selections (sub-points to check) into the selections
-		// record, if the suggestion carries any. Callers without a record
-		// and suggestions without rubric data leave the state untouched.
-		const categorySelections = mergeRubricSelections(
-			state.categorySelections,
-			data.rubricSelections,
+		// Merge rubric selections (sub-points to check) and per-category
+		// additional notes into the selections record, if the suggestion
+		// carries any. Notes fill ONLY empty teacher notes — never clobber.
+		// Callers without a record and suggestions without data leave the
+		// state untouched.
+		const categorySelections = mergeAdditionalNotes(
+			mergeRubricSelections(state.categorySelections, data.rubricSelections),
+			data.additionalNotes,
 		);
 
 		return {

@@ -399,14 +399,20 @@ function currentModelName(): string {
 }
 
 /**
- * Weak model variants (qwen, 30b) need extra validation hints — they are the
- * ones that confuse dimension keys with rubric categoryKeys, emit percentages
- * instead of raw points, and invent sub-points that are not in the rubric.
- * Stronger models get no hints.
+ * Models under ~30B parameters benefit from extra validation hints — they are
+ * the ones that confuse dimension keys with rubric categoryKeys, emit
+ * percentages instead of raw points, and invent sub-points that are not in
+ * the rubric (qwen3, 7B/8B mistral & llama variants, mistral-small).
+ * Stronger models (e.g. gpt-oss-120b) get no hints.
  */
 function isWeakModel(): boolean {
 	const name = currentModelName().toLowerCase();
-	return name.includes("qwen") || name.includes("30b");
+	return (
+		name.includes("qwen") ||
+		name.includes("7b") ||
+		name.includes("8b") ||
+		name.includes("small") // mistral-small
+	);
 }
 
 /** Validation block appended to every phase system prompt (empty for strong models). */

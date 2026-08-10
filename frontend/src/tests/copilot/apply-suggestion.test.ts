@@ -271,5 +271,115 @@ describe("applySuggestionToState — rubric selections", () => {
 		expect(next.categorySelections).toBeDefined();
 		expect(next.categorySelections!.cat.checked_items.has("ok")).toBe(true);
 		expect(Object.keys(next.categorySelections!)).toEqual(["cat"]);
+		});
+});
+
+describe("applySuggestionToState — additional notes", () => {
+	it("merges additionalNotes into empty category notes, creating missing categories and skipping blank entries", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {
+				code_quality: {
+					checked_items: new SvelteSet([]),
+					notes: "",
+					comments: {},
+					deductions: {},
+				},
+			},
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				additionalNotes: {
+					code_quality: "Check the loop bounds.",
+					reporting: "Diagrams need captions.",
+					blank_category: "   ",
+				},
+			}),
+			state,
+		);
+
+		expect(next.categorySelections).toBeDefined();
+		// Existing category with empty notes is filled.
+		expect(next.categorySelections!.code_quality.notes).toBe("Check the loop bounds.");
+		// A category the suggestion named that did not exist yet is created.
+		expect(next.categorySelections!.reporting.notes).toBe("Diagrams need captions.");
+		expect(next.categorySelections!.reporting.checked_items.size).toBe(0);
+		// Whitespace-only notes are skipped entirely.
+		expect(next.categorySelections!.blank_category).toBeUndefined();
+		// The input record was not mutated.
+		expect(state.categorySelections!.code_quality.notes).toBe("");
+		expect(state.categorySelections!.reporting).toBeUndefined();
+	});
+
+	it("does not overwrite teacher-written category notes", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {
+				code_quality: {
+					checked_items: new SvelteSet([]),
+					notes: "Teacher's own note.",
+					comments: {},
+					deductions: {},
+				},
+			},
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				additionalNotes: { code_quality: "Suggested note." },
+			}),
+			state,
+		);
+
+		expect(next.categorySelections!.code_quality.notes).toBe("Teacher's own note.");
+		// The input record reference is kept when nothing changed.
+		expect(next.categorySelections).toBe(state.categorySelections);
+	});
+
+	it("merges additionalNotes alongside rubricSelections in one grade suggestion", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+			categorySelections: {
+				code_quality: {
+					checked_items: new SvelteSet([]),
+					notes: "",
+					comments: {},
+					deductions: {},
+				},
+			},
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				rubricSelections: [
+					{ categoryKey: "code_quality", optionKey: "Readable variable names." },
+				],
+				additionalNotes: {
+					code_quality: "Check the loop bounds.",
+					reporting: "Diagrams need captions.",
+				},
+			}),
+			state,
+		);
+
+		// Rubric items and notes land on the same category in one pass.
+		expect(next.categorySelections!.code_quality.checked_items.has("Readable variable names.")).toBe(
+			true,
+		);
+		expect(next.categorySelections!.code_quality.notes).toBe("Check the loop bounds.");
+		expect(next.categorySelections!.reporting.notes).toBe("Diagrams need captions.");
+		// Dimensions still merge alongside both.
+		expect(next.gradingInputs.code_quality_design).toBe(4);
+		// The input record was not mutated.
+		expect(state.categorySelections!.code_quality.checked_items.size).toBe(0);
+		expect(state.categorySelections!.code_quality.notes).toBe("");
 	});
 });
+
