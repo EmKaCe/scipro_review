@@ -65,8 +65,20 @@ const ENVELOPE = {
 		dimensions: { code_quality_design: 4 },
 		justification: "Solid work overall.",
 	},
+	rubricSelections: [],
 	feedbackDraft: "**Nice job** — keep it up.",
 	notebookSummary: "The notebook computes a soil quality index.",
+};
+
+// Split into phase responses for the 3-phase pipeline
+const PHASE1_MARKERS = { markers: ENVELOPE.markers };
+const PHASE2_SCORING = {
+	gradeSuggestion: ENVELOPE.gradeSuggestion,
+	rubricSelections: ENVELOPE.rubricSelections,
+};
+const PHASE3_FEEDBACK = {
+	feedbackDraft: ENVELOPE.feedbackDraft,
+	notebookSummary: ENVELOPE.notebookSummary,
 };
 
 function makeExecutionResult(): ExecutionResult {
@@ -128,7 +140,34 @@ beforeEach(async () => {
 	});
 
 	kiConnectMock.chatCompletion.mockReset();
-	kiConnectMock.chatCompletion.mockResolvedValue(ENVELOPE);
+	kiConnectMock.chatCompletion.mockImplementation(
+		async (systemPrompt: string) => {
+			if (systemPrompt.includes("Your ONLY job is to mark each cell")) {
+				return PHASE1_MARKERS;
+			}
+			// Phase 2a: scoring only (new split pipeline — must come before the legacy catch-all)
+			if (systemPrompt.includes("Your ONLY job is to assign RAW POINT scores")) {
+				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
+			}
+			// Phase 2b: rubric only (new split pipeline)
+			if (systemPrompt.includes("Your ONLY job is to select relevant rubric sub-points")) {
+				return { rubricSelections: ENVELOPE.rubricSelections };
+			}
+			// Self-critique pass: review scores (optional, gated by CRITIQUE_ENABLED)
+			if (systemPrompt.includes("reviewing dimension scores for correctness")) {
+				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
+			}
+			// Legacy handler for the old combined Phase 2 prompt — still matched by some
+			// prompt variants (Phase 2b carries this phrase in its opening sentence).
+			if (systemPrompt.includes("score ONE student submission using pre-computed cell markers")) {
+				return PHASE2_SCORING;
+			}
+			if (systemPrompt.includes("writing constructive feedback for ONE student")) {
+				return PHASE3_FEEDBACK;
+			}
+			throw new Error(`Unexpected system prompt: ${systemPrompt.slice(0, 100)}`);
+		},
+	);
 });
 
 afterEach(async () => {
@@ -213,8 +252,8 @@ describe("pre-evaluate", () => {
 		expect(stored.preEval!.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
 		expect(stored.preEval!.notebookSummary).toBe(ENVELOPE.notebookSummary);
 
-		// Exactly one KI Connect call.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(1);
+		// 5 KI Connect calls per submission (P1 markers, P2a scoring, critique, P2b rubric, P3 feedback).
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
 	});
 
 	it("resolves submissionId from args and assignmentId via the enabled-assignment fallback", async () => {
@@ -277,8 +316,9 @@ describe("draft-notes", () => {
 		expect(suggestion.body).toBe(ENVELOPE.feedbackDraft);
 		expect(suggestion.data.notes).toBe(ENVELOPE.feedbackDraft);
 
-		// Exactly one KI Connect call — and NOTHING is persisted by draft-notes.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(1);
+		// 5 KI Connect calls per submission (P1 markers, P2a scoring, critique, P2b rubric, P3 feedback)
+		// — and NOTHING is persisted by draft-notes.
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_A]!;
 		expect(stored.preEval).toBeUndefined();
 	});
@@ -320,8 +360,8 @@ describe("pre-evaluate-all", () => {
 		expect(failedRow?.ok).toBe(false);
 		expect(failedRow?.error).toContain("No stored execution result");
 
-		// The loop did not abort: exactly one call per successful row.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(2);
+		// The loop did not abort: 5 calls per successful row (×2 rows).
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(10);
 
 		const results = await readResults(ASSIGNMENT);
 		expect(results[STUDENT_A]!.preEval).toBeDefined();
@@ -343,6 +383,8 @@ describe("pre-evaluate-all", () => {
 		expect(summary.results.every((row) => row.ok === false)).toBe(true);
 		// A and B reach the LLM and fail there; C never reaches it (no stored
 		// execution result) — the loop survives both kinds of row failure.
+		// Each attempt makes 3 phase calls, but the first Phase 1 call
+		// for each row rejects, so only 2 calls per row actually fire.
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(2);
 
 		const results = await readResults(ASSIGNMENT);
