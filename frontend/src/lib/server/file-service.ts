@@ -150,6 +150,60 @@ export function classifyFile(fileName: string, assignmentId: string): Classified
 }
 
 // ---------------------------------------------------------------------------
+// Submission validation
+// ---------------------------------------------------------------------------
+
+export interface SubmissionValidation {
+	valid: boolean;
+	/** Human-readable reason when the file is rejected. */
+	error?: string;
+	/** Derived student id on success, e.g. "2026SS_03". */
+	studentId?: string;
+	/** Derived semester on success, e.g. "2026SS". */
+	semester?: string;
+}
+
+/**
+ * Validate an uploaded submission notebook BEFORE it is persisted: it must be
+ * valid JSON with a `cells` array, and its file name must carry the student
+ * id pattern (<semester>_<n>.ipynb). Returns the derived student id/semester
+ * on success; invalid files carry a human-readable `error` and are never
+ * written to disk or into the batch metadata.
+ */
+export function validateSubmissionFile(fileName: string, content: Buffer): SubmissionValidation {
+	const baseName = path.basename(fileName);
+
+	// 1. Must parse as JSON.
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(content.toString("utf-8"));
+	} catch {
+		return { valid: false, error: "Not a valid notebook: file is not valid JSON" };
+	}
+	// 2. Must be an object with a `cells` array.
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		return { valid: false, error: "Not a valid notebook: expected a JSON object" };
+	}
+	if (!Array.isArray((parsed as { cells?: unknown }).cells)) {
+		return { valid: false, error: 'Not a valid notebook: missing "cells" array' };
+	}
+	// 3. Student id + semester come from the file name.
+	const match = STUDENT_FILENAME_RE.exec(baseName);
+	if (!match) {
+		return {
+			valid: false,
+			error: "File name must match <semester>_<n>.ipynb (e.g. 2026SS_04.ipynb)",
+		};
+	}
+
+	return {
+		valid: true,
+		studentId: `${match[1]!}_${match[2]!}`,
+		semester: match[1]!,
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Persistence
 // ---------------------------------------------------------------------------
 

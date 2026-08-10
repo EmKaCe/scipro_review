@@ -26,7 +26,12 @@ import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { assignmentExists } from "$lib/server/assignments";
-import { classifyFile, type ClassifiedFile, type UploadKind } from "$lib/server/file-service";
+import {
+	classifyFile,
+	validateSubmissionFile,
+	type ClassifiedFile,
+	type UploadKind,
+} from "$lib/server/file-service";
 import { getDataDir, upsertSubmission } from "$lib/server/metadata";
 import { clearResult } from "$lib/server/results-store";
 import type { SubmissionUploadResult } from "$lib/services/submissions-api";
@@ -74,6 +79,24 @@ export async function POST(event: RequestEvent): Promise<Response> {
 				overrides.get(file.name),
 			);
 			const data = new Uint8Array(await file.arrayBuffer());
+
+			// Submissions are validated BEFORE they are persisted: a corrupt
+			// notebook never lands on disk or in the batch metadata, and the
+			// per-file error surfaces in the response for the UI to show.
+			if (classification.kind === "submission") {
+				const validation = validateSubmissionFile(file.name, Buffer.from(data));
+				if (!validation.valid) {
+					persisted.push({
+						fileName: file.name,
+						kind: "submission",
+						replaced: false,
+						bytes: data.byteLength,
+						error: validation.error ?? "Invalid submission file",
+					});
+					continue;
+				}
+			}
+
 			const replaced = await persistClassified(classification, data);
 
 			if (classification.kind === "submission") {
