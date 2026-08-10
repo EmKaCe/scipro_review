@@ -283,6 +283,16 @@ describe("POST /api/submissions/pre-evaluate", () => {
 		expect((await readJson(resp)).succeeded).toBe(2);
 	});
 
+	it("beginPreEvalRun is an atomic check-and-set — a second claim throws", () => {
+		beginPreEvalRun(ASSIGNMENT, 2);
+		// Synchronous check+set with no await between them: a request that
+		// raced past the route's fast-path guard cannot double-start a run.
+		expect(() => beginPreEvalRun(ASSIGNMENT, 2)).toThrow(/already in progress/);
+		// The first claim is untouched.
+		expect(getPreEvalRun().running).toBe(true);
+		expect(getPreEvalRun().total).toBe(2);
+	});
+
 	it("rejects unknown assignments with 404", async () => {
 		await expect(
 			preEvaluatePOST(postEvent("/api/submissions/pre-evaluate?assignment=nope")),

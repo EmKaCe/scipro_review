@@ -28,6 +28,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { preEvaluateSubmission } from "$lib/server/copilot/pre-evaluation";
 import { listSubmissions, updateStatus } from "$lib/server/metadata";
+import { withPersistLock } from "$lib/server/persist-lock";
 import {
 	beginPreEvalRun,
 	endPreEvalRun,
@@ -38,24 +39,6 @@ import { setPreEvaluation } from "$lib/server/results-store";
 
 /** Bounded concurrency for the KI Connect calls (2 in flight max). */
 const CONCURRENCY = 2;
-
-/**
- * Serializes the read-modify-write persist steps (results.json + metadata.json).
- * The KI Connect calls run concurrently, but the two stores are single-file
- * maps — parallel writers would clobber each other's updates (and collide on
- * the same-ms temp file). A per-process promise chain keeps the persist +
- * status-flip section atomic while the slow LLM calls stay in flight.
- */
-let persistChain: Promise<void> = Promise.resolve();
-
-function withPersistLock<T>(fn: () => Promise<T>): Promise<T> {
-	const run = persistChain.then(fn, fn);
-	persistChain = run.then(
-		() => undefined,
-		() => undefined,
-	);
-	return run;
-}
 
 /** One per-submission outcome row in the response. */
 interface PreEvaluateRow {
@@ -76,7 +59,9 @@ export async function POST(event: RequestEvent): Promise<Response> {
 
 	// One global run at a time: refuse while another pre-evaluation is in
 	// flight (the dashboard disables the button, but a second tab could
-	// still race in here).
+	// still race in here). This is only a fast-path — the authoritative
+	// guard is beginPreEvalRun's atomic check-and-set below, which closes
+	// the TOCTOU window between this check and the run actually starting.
 	if (getPreEvalRun().running) {
 		throw error(409, "A pre-evaluation run is already in progress");
 	}
@@ -100,7 +85,18 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	const results: PreEvaluateRow[] = [];
 	const startedAt = Date.now();
 
-	beginPreEvalRun(assignmentId, targets.length);
+	// Atomic check-and-set: throws when another request claimed the run slot
+	// after the fast-path check above (no await between the check and the
+	// assignment here, so a racing request gets a 409 instead of a second
+	// concurrent run).
+	try {
+		beginPreEvalRun(assignmentId, targets.length);
+	} catch (err) {
+		throw error(
+			409,
+			err instanceof Error ? err.message : "A pre-evaluation run is already in progress",
+		);
+	}
 	try {
 		await runWithConcurrency(targets, CONCURRENCY, async (target) => {
 			updatePreEvalRun({
@@ -127,10 +123,19 @@ export async function POST(event: RequestEvent): Promise<Response> {
 					results.push({ studentId: target.id, ok: true, error: null });
 				});
 			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				// Per-row failures must not vanish silently: the row is
+				// reported ok:false in the summary, but the server log is
+				// the only place that records WHY (the dashboard only shows
+				// the final counts) — log it so retries are not blind.
+				console.error(
+					`[pre-evaluate] submission "${target.id}" (assignment "${assignmentId}") failed: ${message}`,
+					err,
+				);
 				results.push({
 					studentId: target.id,
 					ok: false,
-					error: err instanceof Error ? err.message : String(err),
+					error: message,
 				});
 			}
 			updatePreEvalRun({ done: results.length });

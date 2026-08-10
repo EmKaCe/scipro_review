@@ -25,6 +25,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { getExecutorClient } from "$lib/server/executor-client";
 import { listSubmissions, updateStatus, upsertSubmission } from "$lib/server/metadata";
+import { withPersistLock } from "$lib/server/persist-lock";
 import { beginProcessRun, endProcessRun, updateProcessRun } from "$lib/server/process-progress";
 import {
 	deriveCellSummary,
@@ -99,7 +100,10 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	try {
 		for (const target of targets) {
 			// pending/error -> executing so the dashboard shows the run in progress.
-			await updateStatus(assignmentId, target.id, "executing");
+			// Single metadata write, but serialized with the other persist
+			// sections so it cannot interleave with a concurrent pre-evaluation
+			// run's read-modify-write of the same store files.
+			await withPersistLock(() => updateStatus(assignmentId, target.id, "executing"));
 			updateProcessRun({
 				currentStudentId: target.id,
 				currentStartedAt: Date.now(),
@@ -122,51 +126,57 @@ export async function POST(event: RequestEvent): Promise<Response> {
 				autofixSucceeded += execution.autofix.succeeded;
 
 				if (execution.success) {
-					await updateStatus(assignmentId, target.id, "executed");
-					const stored: StoredExecutionResult = {
-						success: true,
-						notebookPath: target.notebookPath,
-						cells: execution.cells,
-						fixedCells: execution.fixedCells,
-						totalCells: execution.totalCells,
-						executedCells: execution.executedCells,
-						errorCells: execution.errorCells,
-						durationSeconds: duration,
-						preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
-						modifiedFiles: execution.modifiedFiles ?? [],
-						autofix: execution.autofix,
-					};
-					await setResult(assignmentId, target.id, stored);
-					await upsertSubmission(assignmentId, target.id, {
-						cellSummary: deriveCellSummary(stored),
-						error: null,
+					await withPersistLock(async () => {
+						await updateStatus(assignmentId, target.id, "executed");
+						const stored: StoredExecutionResult = {
+							success: true,
+							notebookPath: target.notebookPath,
+							cells: execution.cells,
+							fixedCells: execution.fixedCells,
+							totalCells: execution.totalCells,
+							executedCells: execution.executedCells,
+							errorCells: execution.errorCells,
+							durationSeconds: duration,
+							preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+							modifiedFiles: execution.modifiedFiles ?? [],
+							autofix: execution.autofix,
+						};
+						await setResult(assignmentId, target.id, stored);
+						await upsertSubmission(assignmentId, target.id, {
+							cellSummary: deriveCellSummary(stored),
+							error: null,
+						});
+						results.push({ studentId: target.id, success: true, error: null });
 					});
-					results.push({ studentId: target.id, success: true, error: null });
 				} else {
 					const message = firstCellError(execution.cells) ?? "Execution failed";
-					await updateStatus(assignmentId, target.id, "error");
-					await upsertSubmission(assignmentId, target.id, { error: message });
-					await setResult(assignmentId, target.id, {
-						success: false,
-						notebookPath: target.notebookPath,
-						cells: execution.cells,
-						fixedCells: execution.fixedCells,
-						totalCells: execution.totalCells,
-						executedCells: execution.executedCells,
-						errorCells: execution.errorCells,
-						durationSeconds: duration,
-						preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
-						modifiedFiles: execution.modifiedFiles ?? [],
-						error: message,
-						autofix: execution.autofix,
+					await withPersistLock(async () => {
+						await updateStatus(assignmentId, target.id, "error");
+						await upsertSubmission(assignmentId, target.id, { error: message });
+						await setResult(assignmentId, target.id, {
+							success: false,
+							notebookPath: target.notebookPath,
+							cells: execution.cells,
+							fixedCells: execution.fixedCells,
+							totalCells: execution.totalCells,
+							executedCells: execution.executedCells,
+							errorCells: execution.errorCells,
+							durationSeconds: duration,
+							preprocessing: execution.preprocessing ?? EMPTY_PREPROCESSING,
+							modifiedFiles: execution.modifiedFiles ?? [],
+							error: message,
+							autofix: execution.autofix,
+						});
+						results.push({ studentId: target.id, success: false, error: message });
 					});
-					results.push({ studentId: target.id, success: false, error: message });
 				}
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				await updateStatus(assignmentId, target.id, "error");
-				await upsertSubmission(assignmentId, target.id, { error: message });
-				results.push({ studentId: target.id, success: false, error: message });
+				await withPersistLock(async () => {
+					await updateStatus(assignmentId, target.id, "error");
+					await upsertSubmission(assignmentId, target.id, { error: message });
+					results.push({ studentId: target.id, success: false, error: message });
+				});
 			}
 			updateProcessRun({
 				done: results.length,

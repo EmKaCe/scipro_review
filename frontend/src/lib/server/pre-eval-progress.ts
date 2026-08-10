@@ -45,7 +45,19 @@ const IDLE: PreEvalProgress = {
 
 let state: PreEvalProgress = { ...IDLE };
 
+/**
+ * Atomically claim the run slot: check-and-set in one synchronous step.
+ * There is no `await` between the check and the assignment, so two requests
+ * that both raced past a route's earlier `getPreEvalRun()` fast-path cannot
+ * both start a run — the second one throws here. The route converts the
+ * throw into a 409.
+ *
+ * Throws when a run is already in flight.
+ */
 export function beginPreEvalRun(assignmentId: string, total: number): void {
+	if (state.running) {
+		throw new Error("A pre-evaluation run is already in progress");
+	}
 	state = {
 		...IDLE,
 		running: true,
