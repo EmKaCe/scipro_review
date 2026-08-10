@@ -29,6 +29,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import type { Dirent } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 import * as yaml from "js-yaml";
 import { z } from "zod";
@@ -123,7 +124,9 @@ const KEY_PREVIEW_CELLS = 25;
 const SOURCE_TRUNCATION_MARKER = `\n… [source truncated after ${SOURCE_PREVIEW_LINES} lines]`;
 const OUTPUT_TRUNCATION_MARKER = "… [output truncated]";
 
-const PRE_EVALUATION_SYSTEM_PROMPT = `You are an expert teaching assistant for a Scientific Programming course. You produce a pre-evaluation of ONE student's Jupyter notebook submission for the teacher: per-cell comparison markers against the reference key, a suggested grade, rubric criteria selections, a feedback draft, and a notebook summary.
+const PRE_EVALUATION_SYSTEM_PROMPT = `You are an expert teaching assistant for the Scientific Programming with Python course at Hochschule Bonn-Rhein-Sieg, taught by Prof. Karl N. Kirschner. The course teaches students to apply scientific computing libraries (NumPy, Pandas, SciPy, scikit-learn) to real-world problems. The instructor expects correct, well-structured, documented code that demonstrates understanding of the scientific method: data loading, cleaning, exploration, modeling, validation, and thoughtful interpretation of results.
+
+You produce a pre-evaluation of ONE student's Jupyter notebook submission for the teacher: per-cell comparison markers against the reference key, a suggested grade, rubric criteria selections, a feedback draft, and a notebook summary.
 
 Return ONLY a JSON object with EXACTLY this shape:
 {
@@ -382,6 +385,49 @@ async function loadKeySummary(assignmentId: string): Promise<KeySummary | null> 
 	}
 }
 
+/**
+ * Load the assignment PDF text (assignment_<assignmentId>.pdf under
+ * materials root). Returns the extracted text or null when the PDF is
+ * missing, unreadable, or too large (capped at 12K chars to preserve
+ * token budget for cell previews).
+ */
+async function loadAssignmentPdfText(assignmentId: string): Promise<string | null> {
+	assertSafeSegment(assignmentId, "assignmentId");
+	const materialsRoot = path.join(getDataDir(), "materials", assignmentId);
+	let entries: Dirent[];
+	try {
+		entries = await readdir(materialsRoot, { withFileTypes: true });
+	} catch {
+		return null;
+	}
+	const pdfEntry = entries.find(
+		(entry) => !entry.isDirectory() && entry.name.toLowerCase().endsWith(".pdf"),
+	);
+	if (!pdfEntry) return null;
+	try {
+		// Use the executor's Python venv (pypdf is installed there) to
+		// extract text — avoids bundling a Node PDF library that pulls in
+		// browser DOM APIs incompatible with the server / vitest env.
+		const pythonBin = path.resolve(getDataDir(), "..", "executor", ".venv", "bin", "python");
+		const script = `
+import sys, json
+from pypdf import PdfReader
+reader = PdfReader(sys.argv[1])
+text = '\\n'.join(page.extract_text() or '' for page in reader.pages)
+print(text)
+`.trim();
+		const out = execFileSync(pythonBin, ["-c", script, path.join(materialsRoot, pdfEntry.name)], {
+			encoding: "utf-8",
+			maxBuffer: 256 * 1024,
+			timeout: 10_000,
+		});
+		const text = out.replace(/\n{3,}/g, "\n\n").trim();
+		return text.length > 12_000 ? `${text.slice(0, 12_000)}\n… [truncated]` : text;
+	} catch {
+		return null; // unreadable / invalid PDF
+	}
+}
+
 function formatKeySummary(key: KeySummary): string {
 	const lines: string[] = [];
 	for (const cell of key.cells) {
@@ -437,9 +483,16 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 	// Reference key — optional. A missing/unreadable key forces markers null.
 	const key = await loadKeySummary(assignmentId);
 
+	// Assignment instructions (PDF) — gives the LLM the actual assignment
+	// requirements, not just derivative rubric metadata.
+	const assignmentPdfText = await loadAssignmentPdfText(assignmentId);
+
 	const userParts: string[] = [
 		`Assignment: ${assignmentId}${assignment?.title ? ` (${assignment.title})` : ""}`,
 		"",
+		...(assignmentPdfText
+			? ["Assignment instructions (from the assignment PDF):", assignmentPdfText, ""]
+			: []),
 		"Rubric categories (criteria files):",
 		formatRubricForPrompt(rubric ?? { categories: [] }),
 		"",
