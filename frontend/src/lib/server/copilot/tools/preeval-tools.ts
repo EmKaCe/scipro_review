@@ -1,5 +1,5 @@
 /**
- * @file Copilot pre-evaluation tools (Phase 4c/4e).
+ * @file Copilot pre-evaluation tools.
  *
  *   pre-evaluate      — run the pre-evaluation service for one submission
  *                       (permission "auto"; writes the `preEval` block into

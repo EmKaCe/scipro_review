@@ -1,5 +1,5 @@
 /**
- * @file Automatic thread compaction (Task V).
+ * @file Automatic thread compaction.
  *
  * When a thread outgrows the recall window, the older messages fall outside
  * the model's context. `maybeCompactThread` summarizes those out-of-window

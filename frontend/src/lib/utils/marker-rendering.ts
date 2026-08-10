@@ -1,5 +1,5 @@
 /**
- * @file Pure rendering helpers for Phase 4c pre-evaluation cell markers.
+ * @file Pure rendering helpers for pre-evaluation cell markers.
  *
  * The components keep their own icon/label/class configs; this module owns
  * the three decisions that must stay consistent everywhere:

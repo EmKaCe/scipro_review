@@ -443,10 +443,10 @@ export function translateCell(cell: ExecutorCellResult, metadata?: CellMetadata)
 		error: cell.error,
 		traceback: cell.traceback,
 		execution_count: cell.execution_count,
-		// Markers (same/different/questionable) come from Phase 4
-		// pre-evaluation — the executor does not compute them. Until then the
-		// only honest marker is "error" (execution status) or "pending" (no
-		// comparison data yet).
+		// Markers (same/different/questionable) come from pre-evaluation —
+		// the executor does not compute them. Until then the only honest
+		// marker is "error" (execution status) or "pending" (no comparison
+		// data yet).
 		marker: cell.error ? "error" : "pending",
 	};
 }

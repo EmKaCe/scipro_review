@@ -188,7 +188,7 @@
 		return "—";
 	}
 
-	// ── Pre-evaluate All (Phase 4c) ──
+	// ── Pre-evaluate All ──
 	// Wire shape of GET /api/submissions/pre-evaluate/status.
 	interface PreEvalRunStatus {
 		running: boolean;
@@ -813,7 +813,7 @@
 		border-color: var(--accent);
 	}
 
-	/* ── Pre-Eval column chip (Phase 4c) ── */
+	/* ── Pre-Eval column chip ── */
 	.preeval-chip {
 		display: inline-flex;
 		align-items: center;

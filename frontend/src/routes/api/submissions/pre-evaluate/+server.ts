@@ -1,5 +1,5 @@
 /**
- * @file POST /api/submissions/pre-evaluate — batch pre-evaluation (Phase 4c).
+ * @file POST /api/submissions/pre-evaluate — batch pre-evaluation.
  *
  * Query param:
  *   assignment? — target assignment (default: first enabled assignment)

@@ -310,7 +310,7 @@
 		font-weight: 700;
 	}
 
-	/* Context window visibility (Task U.4 + Issue 11 meter bar). */
+	/* Context window visibility meter bar. */
 	.context-meter {
 		padding: 6px 12px;
 		border-bottom: 1px solid var(--border);

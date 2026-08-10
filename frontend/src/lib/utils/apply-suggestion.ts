@@ -1,5 +1,5 @@
 /**
- * @file Pure apply helper for copilot suggestions (Phase 4e).
+ * @file Pure apply helper for copilot suggestions.
  *
  * Converts a `CopilotSuggestion` payload into page state changes WITHOUT
  * touching any Svelte/store machinery — the page calls this and assigns the

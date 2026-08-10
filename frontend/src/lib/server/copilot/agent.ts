@@ -476,7 +476,7 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	// required for prepare-memory-step to take the memory path.
 	requestContext.set("mastra__threadId", effectiveThreadId);
 
-	// Automatic compaction (Task V): when the thread outgrows the recall
+	// Automatic compaction: when the thread outgrows the recall
 	// window, summarize the out-of-window messages with the LLM and inject
 	// the summary as a system message below. Best-effort — a compaction
 	// failure must never break the chat.

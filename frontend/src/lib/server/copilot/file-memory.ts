@@ -1,5 +1,5 @@
 /**
- * @file File-backed Mastra memory storage domain (Phase 4f).
+ * @file File-backed Mastra memory storage domain.
  *
  * Thread + message persistence for the copilot under the app's DATA_DIR,
  * following the repo's "files are the database" pattern (results-store-style
@@ -191,7 +191,7 @@ export class FileMemoryStore extends MemoryStorage {
 			return true;
 		});
 
-		// Honor the requested direction (Task U.2): Mastra's recall asks for
+		// Honor the requested direction: Mastra's recall asks for
 		// the NEWEST N messages (createdAt DESC + perPage) to build the
 		// lastMessages window. Sorting always ascending made the store
 		// paginate the OLDEST N instead — the rolling window silently showed

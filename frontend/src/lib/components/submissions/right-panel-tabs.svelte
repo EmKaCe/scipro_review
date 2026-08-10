@@ -66,13 +66,13 @@
 		onapply?: (suggestion: CopilotSuggestion) => void;
 		/**
 		 * Teacher-mode gate for the inline "Ask copilot" chips in rubric
-		 * categories (Phase 4e) — the page sets it from the copilot apiMode
+		 * categories — the page sets it from the copilot apiMode
 		 * holder; forwarded to RubricCategory.
 		 */
 		showAskCopilot?: boolean;
 		/**
-		 * Prompt delivered from the page's inline "Ask copilot" chips
-		 * (Task W3) — forwarded to CopilotPanel. $bindable so the panel's
+		 * Prompt delivered from the page's inline "Ask copilot" chips —
+		 * forwarded to CopilotPanel. $bindable so the panel's
 		 * consume-and-reset round-trip propagates back through this wrapper
 		 * to the page's queuedPrompt state.
 		 */

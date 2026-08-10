@@ -101,7 +101,7 @@ export interface PendingApproval {
 }
 
 /**
- * Thread metadata as served by GET /api/copilot/threads (Task T). Local
+ * Thread metadata as served by GET /api/copilot/threads. Local
  * mirror of the server's CopilotThreadMeta — the store never imports from
  * `$lib/server`.
  */
@@ -285,7 +285,7 @@ export function createCopilotStore(options?: {
 	let pendingSuggestions = $state<PendingSuggestion[]>([]);
 	let pendingApproval = $state<PendingApproval | null>(null);
 	let inputValue = $state("");
-	// Thread surface (Task T): the server is the source of truth for the
+	// Thread surface: the server is the source of truth for the
 	// thread list; localStorage holds only the ACTIVE thread id.
 	let threads = $state<CopilotThreadMeta[]>([]);
 	let activeThread = $state<CopilotThreadMeta | null>(null);
@@ -621,7 +621,7 @@ export function createCopilotStore(options?: {
 			// Ensure a thread id exists before the first turn and remember it
 			// so the conversation survives reloads. The first turn also sends
 			// a title derived from the first message (the server stores it
-			// when creating the thread — see Task T).
+			// when creating the thread).
 			const isNewThread = !activeThreadId;
 			if (isNewThread) {
 				activeThreadId = crypto.randomUUID();
@@ -691,7 +691,7 @@ export function createCopilotStore(options?: {
 	}
 
 	// -----------------------------------------------------------------------
-	// Thread management (Task T) — server-backed list/open/new/delete/rename
+	// Thread management — server-backed list/open/new/delete/rename
 	// -----------------------------------------------------------------------
 
 	/**
@@ -738,9 +738,9 @@ export function createCopilotStore(options?: {
 				createdAt: body.thread.createdAt,
 				updatedAt: body.thread.updatedAt,
 				messageCount: body.thread.messages.length,
-				// Context stats (Task U.3) ride the server meta — pass them
-				// through for the panel's context line + warning. Compaction
-				// stats (Task V) ride the same meta.
+				// Context stats ride the server meta — pass them through
+				// for the panel's context line + warning. Compaction stats
+				// ride the same meta.
 				recallLimit: body.thread.recallLimit,
 				recallCovered: body.thread.recallCovered,
 				droppedCount: body.thread.droppedCount,
@@ -850,7 +850,7 @@ export function createCopilotStore(options?: {
 
 	/**
 	 * Clear the in-memory transcript (UI-only reset). This does NOT rotate the
-	 * active thread id — a later "new conversation" action (Task T) generates
+	 * active thread id — a later "new conversation" action generates
 	 * a fresh thread id, calls clearStoredThreadId(), and resets the UI.
 	 */
 	function clearMessages(): void {
@@ -879,7 +879,7 @@ export function createCopilotStore(options?: {
 		set inputValue(v: string) {
 			inputValue = v;
 		},
-		// Thread surface (Task T): getters are REQUIRED — without them the
+		// Thread surface: getters are REQUIRED — without them the
 		// panel's copilot.threads / copilot.activeThread / copilot.loadingHistory
 		// would be undefined.
 		get threads() {

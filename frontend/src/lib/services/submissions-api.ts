@@ -224,8 +224,8 @@ export interface ExecutorWireCell {
 }
 
 /**
- * Pre-evaluation data attached to the submission detail wire shape (Phase 4c,
- * camelCase): `preEval: { markers, gradeSuggestion, feedbackDraft,
+ * Pre-evaluation data attached to the submission detail wire shape
+ * (camelCase): `preEval: { markers, gradeSuggestion, feedbackDraft,
  * notebookSummary, evaluatedAt }`. Types are declared next to the other cell
  * marker types in `$lib/types/submissions` and re-exported here so the API
  * contract is documented alongside the other wire types; the server-side

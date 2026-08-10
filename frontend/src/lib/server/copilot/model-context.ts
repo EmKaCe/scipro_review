@@ -1,5 +1,5 @@
 /**
- * @file Model-context math for the copilot (Task U.1, shared with Task V).
+ * @file Model-context math for the copilot.
  *
  * Single source of truth for how the recall window and compaction budgets
  * derive from the configured LLM's context size. The default recall window

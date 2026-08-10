@@ -20,7 +20,7 @@
 		/** Whether the category is in read-only mode (disables all interactions). */
 		disabled?: boolean;
 		/**
-		 * Teacher-mode gate for the inline "Ask copilot" chip (Phase 4e).
+		 * Teacher-mode gate for the inline "Ask copilot" chip.
 		 * The page sets it from the copilot apiMode holder; the chip is
 		 * never rendered in the student/static build.
 		 */
@@ -55,7 +55,7 @@
 	let hasCheckedItems = $derived(selections.checked_items.size > 0);
 
 	/**
-	 * Inline "Ask copilot" chip (Phase 4e): fire a `copilot-request` DOM
+	 * Inline "Ask copilot" chip: fire a `copilot-request` DOM
 	 * event with a prompt about this category. The submission page listens,
 	 * switches to the Copilot tab and forwards the prompt to the panel.
 	 */
@@ -259,7 +259,7 @@
 		overflow: visible;
 	}
 
-	/* Inline "Ask copilot" chip (Phase 4e) — subtle icon-only affordance. */
+	/* Inline "Ask copilot" chip — subtle icon-only affordance. */
 	.ask-copilot-chip {
 		display: inline-flex;
 		align-items: center;

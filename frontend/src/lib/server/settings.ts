@@ -22,7 +22,7 @@
  *     approval_ttl_seconds: 60      # approval card lifetime
  *     session_cap: 20               # auto-approvals per session in ask mode
  *     last_messages: 16             # recall window (1-50); omit to follow the model
- *     auto_compact: true            # summarize out-of-window messages (Task V)
+ *     auto_compact: true            # summarize out-of-window messages
  *
  * Secrets (KI_CONNECT_API_KEY) are never written to the settings file — the
  * key lives in the environment (and can be replaced at runtime via
@@ -80,7 +80,7 @@ export interface CopilotSettings {
 	 */
 	lastMessages: number;
 	/**
-	 * Automatic compaction (Task V): when the thread outgrows the recall
+	 * Automatic compaction: when the thread outgrows the recall
 	 * window (messageCount >= 2 * lastMessages), the server summarizes the
 	 * out-of-window messages with the LLM and injects the summary as a
 	 * system message on subsequent turns. Default true; false disables the
@@ -206,36 +206,33 @@ function defaults(file?: {
 	const executor = file?.executor ?? {};
 	const llm = file?.llm ?? {};
 	const copilot = file?.copilot ?? {};
-	// The recall-window default is model-aware (Task U.1): when the yaml
+	// The recall-window default is model-aware: when the yaml
 	// omits copilot.last_messages, the effective window follows the
 	// configured LLM's context size, so model switches apply automatically.
 	const llmModel = stringValue(llm.model, envString("KI_CONNECT_MODEL", DEFAULT_LLM_MODEL));
 
 	return {
 		executor: {
-			requestTimeoutMs: positiveNumber(
+			requestTimeoutMs: fileNumber(
 				executor.request_timeout_ms,
-				envNumber("EXECUTOR_REQUEST_TIMEOUT_MS", DEFAULT_REQUEST_TIMEOUT_MS),
+				"EXECUTOR_REQUEST_TIMEOUT_MS",
+				DEFAULT_REQUEST_TIMEOUT_MS,
 			),
-			notebookTimeoutMs: positiveNumber(
+			notebookTimeoutMs: fileNumber(
 				executor.notebook_timeout_ms,
-				envNumber("EXECUTOR_NOTEBOOK_TIMEOUT_MS", DEFAULT_NOTEBOOK_TIMEOUT_MS),
+				"EXECUTOR_NOTEBOOK_TIMEOUT_MS",
+				DEFAULT_NOTEBOOK_TIMEOUT_MS,
 			),
-			cellTimeoutS: positiveNumber(
+			cellTimeoutS: fileNumber(
 				executor.cell_timeout_s,
-				envNumber("EXECUTOR_CELL_TIMEOUT_S", DEFAULT_CELL_TIMEOUT_S),
+				"EXECUTOR_CELL_TIMEOUT_S",
+				DEFAULT_CELL_TIMEOUT_S,
 			),
 		},
 		llm: {
-			baseUrl: stringValue(
-				llm.base_url,
-				envString("KI_CONNECT_BASE_URL", DEFAULT_LLM_BASE_URL),
-			),
+			baseUrl: fileString(llm.base_url, "KI_CONNECT_BASE_URL", DEFAULT_LLM_BASE_URL),
 			model: llmModel,
-			timeoutMs: positiveNumber(
-				llm.timeout_ms,
-				envNumber("KI_CONNECT_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS),
-			),
+			timeoutMs: fileNumber(llm.timeout_ms, "KI_CONNECT_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS),
 		},
 		copilot: {
 			mode: copilotModeValue(copilot.mode, DEFAULT_COPILOT_MODE),
@@ -266,6 +263,16 @@ function positiveNumber(value: unknown, fallback: number): number {
 
 function stringValue(value: unknown, fallback: string): string {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+/** YAML number with env fallback: file value wins, then env, then default. */
+function fileNumber(fileValue: unknown, envKey: string, fallback: number): number {
+	return positiveNumber(fileValue, envNumber(envKey, fallback));
+}
+
+/** YAML string with env fallback: file value wins, then env, then default. */
+function fileString(fileValue: unknown, envKey: string, fallback: string): string {
+	return stringValue(fileValue, envString(envKey, fallback));
 }
 
 /** Boolean yaml value; anything that is not a real boolean falls back. */

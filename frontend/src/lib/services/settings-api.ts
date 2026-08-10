@@ -44,7 +44,7 @@ export interface CopilotSettings {
 	 */
 	lastMessages: number;
 	/**
-	 * Automatic compaction (Task V): summarize out-of-window messages with
+	 * Automatic compaction: summarize out-of-window messages with
 	 * the LLM and inject the summary as a system message on later turns.
 	 */
 	autoCompact: boolean;

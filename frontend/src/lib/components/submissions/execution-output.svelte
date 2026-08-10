@@ -41,7 +41,7 @@
 		 */
 		onDisposition?: (cellIndex: number, disposition: "accepted" | "ignored") => void;
 		/**
-		 * Pre-evaluation comparison data (Phase 4c). Absent, or
+		 * Pre-evaluation comparison data. Absent, or
 		 * `preEval.markers === null`, means no comparison data yet — cells
 		 * render WITHOUT approach badges (only execution errors) and a
 		 * pending notice shows. Verdicts are looked up per cell by index;
@@ -49,7 +49,7 @@
 		 */
 		preEval?: PreEvalData | null;
 		/**
-		 * Teacher-mode gate for the inline "Ask copilot" chips (Phase 4e).
+		 * Teacher-mode gate for the inline "Ask copilot" chips.
 		 * The page sets it from the copilot apiMode holder; chips are never
 		 * rendered in the student/static build.
 		 */
@@ -97,7 +97,7 @@
 	}
 
 	/**
-	 * Inline "Ask copilot" chip (Phase 4e): fire a `copilot-request` DOM
+	 * Inline "Ask copilot" chip: fire a `copilot-request` DOM
 	 * event with a cell-scoped prompt. The submission page listens, switches
 	 * to the Copilot tab and forwards the prompt to the panel.
 	 */
@@ -386,7 +386,7 @@
 		border-color: var(--accent);
 		color: var(--accent);
 	}
-	/* Inline "Ask copilot" chip (Phase 4e) — subtle icon-only affordance. */
+	/* Inline "Ask copilot" chip — subtle icon-only affordance. */
 	.ask-copilot-chip {
 		display: inline-flex;
 		align-items: center;

@@ -14,7 +14,7 @@
 		/** The student's executed cells. */
 		submissionCells: readonly CellInfo[];
 		/**
-		 * Pre-evaluation comparison data (Phase 4c). Absent, or
+		 * Pre-evaluation comparison data. Absent, or
 		 * `preEval.markers === null`, means no comparison data yet — the
 		 * pending/neutral notice is shown (cells are never defaulted to
 		 * "different"). This is an EXPLAINER, not an auditor: "different"

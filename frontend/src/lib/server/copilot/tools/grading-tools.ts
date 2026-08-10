@@ -1,5 +1,5 @@
 /**
- * @file Copilot GRADING WRITE tools (Phase 4b) — the agent's sanctioned way
+ * @file Copilot GRADING WRITE tools — the agent's sanctioned way
  * to persist teacher grading state, mirroring exactly what the teacher's own
  * Save action does (`POST /api/submissions/[id]/save`).
  *

@@ -1,5 +1,5 @@
 /**
- * @file Copilot OPS write tools (Phase 4d) — teacher operational actions.
+ * @file Copilot OPS write tools — teacher operational actions.
  *
  *   process-submission     — execute ONE submission via the same path as
  *                            POST /api/submissions/[id]/process (permission

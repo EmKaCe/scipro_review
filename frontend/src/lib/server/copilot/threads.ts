@@ -1,5 +1,5 @@
 /**
- * @file Thread management API over the FileMemoryStore (Task T).
+ * @file Thread management API over the FileMemoryStore.
  *
  * Exposes the file-backed memory domain as a thread surface the panel can
  * list/open/delete/rename:
@@ -113,7 +113,7 @@ function previewOf(message: MastraDBMessage | undefined): string | undefined {
 }
 
 /**
- * Rough token estimate of the recall window (Task U.3): chars of the last
+ * Rough token estimate of the recall window: chars of the last
  * `covered` messages / 4, rounded to 100. Mastra itself uses estimated-token
  * counting internally (chars / 4 is its own heuristic), so the label "est."
  * in the UI is honest.

@@ -1,5 +1,5 @@
 /**
- * @file Pre-evaluation service (Phase 4c) — a phased KI Connect pipeline
+ * @file Pre-evaluation service — a phased KI Connect pipeline
  * producing the teacher-facing pre-evaluation envelope for a submission:
  * per-cell markers against the reference key, a grade suggestion, a feedback
  * draft, and a notebook summary.

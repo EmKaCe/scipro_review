@@ -1,5 +1,5 @@
 /**
- * @file Copilot reference + ops-read tools (Phase 4b).
+ * @file Copilot reference + ops-read tools.
  *
  * Read-only inspection tools the copilot agent uses to ground its answers:
  *

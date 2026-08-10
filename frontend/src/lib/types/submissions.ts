@@ -29,7 +29,7 @@ export type SubmissionStatus =
 
 /** Marker indicating how a student's cell compares to the reference key. */
 export type CellMarker =
-	/** No comparison data yet — pre-evaluation (Phase 4) has not run. */
+	/** No comparison data yet — pre-evaluation has not run. */
 	| "pending"
 	/** Student used the same method/algorithm as the reference (rare). */
 	| "same"
@@ -57,7 +57,7 @@ export interface CellInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Pre-evaluation (Phase 4c)
+// Pre-evaluation
 // ---------------------------------------------------------------------------
 
 /** Pre-evaluation verdict kind for one compared cell. */
@@ -82,7 +82,7 @@ export interface PreEvalGradeSuggestion {
 
 /**
  * Pre-evaluation comparison + suggestion data attached to the submission
- * detail (Phase 4c). `markers: null` means pre-evaluation produced no
+ * detail. `markers: null` means pre-evaluation produced no
  * comparison data — the review UI must keep its pending/neutral state and
  * NEVER default non-error cells to "different".
  */
@@ -154,7 +154,7 @@ export interface SubmissionDetail extends SubmissionMeta {
 	 */
 	fixedCells?: CellInfo[];
 	/**
-	 * Pre-evaluation comparison + suggestion data (Phase 4c). Absent, or
+	 * Pre-evaluation comparison + suggestion data. Absent, or
 	 * `preEval.markers === null`, means pre-evaluation has not produced
 	 * comparison data yet — the review UI keeps its pending/neutral state.
 	 */

@@ -22,7 +22,7 @@
 		 */
 		assignmentId?: string;
 		/**
-		 * Prompt delivered from an inline "Ask copilot" chip (Task W3).
+		 * Prompt delivered from an inline "Ask copilot" chip.
 		 * $bindable: the panel consumes it (fills the input, focuses it)
 		 * and resets it to "" — the round-trip propagates back to the
 		 * page's queuedPrompt state, so re-clicking the same chip
@@ -37,7 +37,7 @@
 		 * actionLabel button). Receives the FULL suggestion payload, including
 		 * `data` — the structured apply payload emitted by the tool.
 		 *
-		 * Convention (4e): the repo communicates child→parent via callback
+		 * Convention: the repo communicates child→parent via callback
 		 * props (`onXxx`) — rubric-category, upload-panel, autofix-card,
 		 * right-panel-tabs (onTabChange/onSelectionsChange) — and has zero
 		 * `createEventDispatcher` call sites. The panel sits inside a wrapper
@@ -126,7 +126,7 @@
 	}
 
 	// -----------------------------------------------------------------------
-	// Suggestion apply/dismiss (4e) + thread switching (Task T)
+	// Suggestion apply/dismiss + thread switching
 	// -----------------------------------------------------------------------
 
 	/** Apply the suggestion: removes it from pending and forwards it to the page. */

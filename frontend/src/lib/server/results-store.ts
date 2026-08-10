@@ -34,7 +34,7 @@ export type StoredPreEvaluation = PreEvaluation & { evaluatedAt: string };
 /**
  * Stored execution result; `error` is set when execution failed. `preEval`
  * is present once the copilot's pre-evaluation has been persisted for the
- * submission (Phase 4c) — older stored results without it stay valid.
+ * submission — older stored results without it stay valid.
  */
 export type StoredExecutionResult = ExecutionResult & {
 	error?: string | null;
