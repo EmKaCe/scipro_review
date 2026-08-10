@@ -10,8 +10,14 @@
  * Context sizes verified from KI Connect token limits + provider docs.
  */
 
-/** Verified context-token sizes for KI Connect models (max input tokens).
- * Unknown models fall back to a conservative 32_768. */
+/**
+ * Fallback context-token sizes for KI Connect models (max input tokens).
+ *
+ * The PRIMARY source of model metadata is the live `GET /api/settings/models`
+ * endpoint (KiConnectClient.listModels, using `context_length` from the API).
+ * This static map is the fallback when KI Connect is unreachable or returns
+ * no model list; unknown models fall back to a conservative 32_768.
+ */
 export const MODEL_CONTEXT_TOKENS: Record<string, number> = {
 	// ── Open-weight models (no strict quotas) ──
 

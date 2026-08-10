@@ -1,11 +1,14 @@
 /**
  * @file /api/settings — read/write teacher-adjustable app settings.
  *
- * GET  — current settings (executor timeouts + LLM provider). Secrets are
- *        never exposed: the API only returns the settings-file surface.
- * PUT  — persist settings to data/settings.yaml. The full AppSettings shape
- *        is required; values are validated (positive numbers, non-empty
- *        strings) and merged over defaults on the next read.
+ * GET   — current settings (executor timeouts + LLM provider) plus a
+ *         `hasApiKey` boolean. Secrets are never exposed: the API never
+ *         returns the API key itself.
+ * PUT   — persist settings to data/settings.yaml. The full AppSettings shape
+ *         is required; values are validated (positive numbers, non-empty
+ *         strings) and merged over defaults on the next read.
+ * PATCH — replace the KI Connect API key in the server process
+ *         (`{ apiKey: string }`); the key never leaves the server again.
  *
  * These settings feed the server-side executor client and KI Connect client,
  * so a save here takes effect on the next batch/single execution request.
@@ -14,6 +17,7 @@
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
+import { hasApiKey, setApiKey } from "$lib/server/api-key-store";
 import {
 	loadSettings,
 	writeSettings,
@@ -60,9 +64,10 @@ function isAppSettings(value: unknown): value is AppSettings {
 	);
 }
 
+/** GET /api/settings — current settings plus whether an API key is set. */
 export async function GET(): Promise<Response> {
 	const settings = await loadSettings();
-	return json(settings);
+	return json({ ...settings, hasApiKey: hasApiKey() });
 }
 
 export async function PUT(event: RequestEvent): Promise<Response> {
@@ -79,5 +84,22 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 		);
 	}
 	await writeSettings(body);
-	return json(await loadSettings());
+	const settings = await loadSettings();
+	return json({ ...settings, hasApiKey: hasApiKey() });
+}
+
+/** PATCH /api/settings — replace the KI Connect API key in this process. */
+export async function PATCH(event: RequestEvent): Promise<Response> {
+	let body: unknown;
+	try {
+		body = await event.request.json();
+	} catch {
+		throw error(400, "Expected a JSON body");
+	}
+	const apiKey = (body as Record<string, unknown> | null)?.apiKey;
+	if (typeof apiKey !== "string") {
+		throw error(400, "Expected { apiKey: string }");
+	}
+	setApiKey(apiKey.trim());
+	return json({ ok: true });
 }

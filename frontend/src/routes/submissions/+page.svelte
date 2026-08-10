@@ -38,7 +38,6 @@
 	import CopilotPanel from "$lib/components/submissions/copilot-panel.svelte";
 	import { apiMode } from "$lib/components/submissions/copilot-store.svelte.js";
 	import {
-		ApiError,
 		downloadBackup,
 		fetchAssignments,
 		fetchExecutorLogs,
@@ -54,6 +53,7 @@
 	} from "$lib/services/submissions-api.js";
 	import type { MaterialsStatus, SubmissionUploadResult } from "$lib/services/submissions-api.js";
 	import PipelineLogPanel from "$lib/components/submissions/pipeline-log-panel.svelte";
+	import PipelineProgressBar from "$lib/components/submissions/pipeline-progress-bar.svelte";
 
 	// -----------------------------------------------------------------------
 	// Header config
@@ -135,6 +135,10 @@
 	let preEvalStatus = $state<PreEvalProgress | null>(null);
 	/** Pre-evaluation run start timestamp — drives polling + the live badge. */
 	let preEvalStartedAt = $state<number | null>(null);
+	/** Pre-evaluation run target count — drives "N of M" from live statuses. */
+	let preEvalTargetCount = $state(0);
+	/** Elapsed seconds while pre-evaluating (ticks via the shared stopwatch). */
+	let preEvalElapsed = $state(0);
 	/** Completed pre-evaluation run tallies (log panel run-complete banner). */
 	let preEvalRunSummary = $state<PreEvalRunSummary | null>(null);
 	/** Bulk delete confirm dialog. */
@@ -198,12 +202,17 @@
 	/** Ids targeted by the current process run (settled rows leave the set). */
 	const processTargetIds = new SvelteSet<string>();
 
-	// Stopwatch: tick every second while a process run is active.
+	// Stopwatch: tick every second while a process or pre-evaluation run is
+	// active (each counter only advances while its own run is in flight).
 	$effect(() => {
-		if (processStartedAt === null) return;
-		processElapsed = Math.floor((Date.now() - processStartedAt) / 1000);
+		if (processStartedAt === null && preEvalStartedAt === null) return;
 		const tick = () => {
-			processElapsed = Math.floor((Date.now() - (processStartedAt ?? Date.now())) / 1000);
+			if (processStartedAt !== null) {
+				processElapsed = Math.floor((Date.now() - processStartedAt) / 1000);
+			}
+			if (preEvalStartedAt !== null) {
+				preEvalElapsed = Math.floor((Date.now() - preEvalStartedAt) / 1000);
+			}
 			processCurrentElapsed =
 				processStatus?.currentStartedAt != null
 					? Math.floor((Date.now() - processStatus.currentStartedAt) / 1000)
@@ -228,6 +237,37 @@
 			preEvalStatus = await fetchPreEvalStatus();
 		} catch {
 			// Keep the last good status; the run still progresses server-side.
+		}
+	}
+
+	/**
+	 * Restore in-flight run trackers after a page reload from the unified
+	 * GET /api/pipeline/status (one call instead of two). Only re-arms the
+	 * stopwatch/polling; the per-run status endpoints still drive the data.
+	 */
+	async function fetchPipelineStatus(): Promise<void> {
+		try {
+			const res = await fetch(`${base}/api/pipeline/status`);
+			if (!res.ok) return;
+			const status = (await res.json()) as {
+				process?: ProcessProgress | null;
+				preEval?: PreEvalProgress | null;
+			};
+			const process = status.process;
+			if (process?.running && process.startedAt != null) {
+				processStartedAt = process.startedAt;
+				processTargetCount = process.total;
+				processElapsed = Math.floor((Date.now() - process.startedAt) / 1000);
+			}
+			const preEval = status.preEval;
+			if (preEval?.running && preEval.startedAt != null) {
+				preEvalStartedAt = preEval.startedAt;
+				preEvalTargetCount = preEval.total;
+				preEvalElapsed = Math.floor((Date.now() - preEval.startedAt) / 1000);
+			}
+		} catch {
+			// The per-run status fetches below still restore the tallies; a
+			// missing unified endpoint must not break the dashboard.
 		}
 	}
 
@@ -287,9 +327,12 @@
 		return () => clearInterval(timer);
 	});
 
-	// Restore the last completed-run summary after a page reload (the
-	// executor's log buffer persists, and the status keeps its final tallies).
+	// Restore run state after a page reload: the unified pipeline status
+	// re-arms in-flight run trackers (stopwatch/polling), and the per-run
+	// status fetches restore the final tallies (the executor's log buffer
+	// persists, and each status keeps its final tallies).
 	$effect(() => {
+		void fetchPipelineStatus();
 		void refreshProcessStatus();
 		void refreshPreEvalStatus();
 	});
@@ -342,6 +385,14 @@
 				? { done: preEvalStatus.done, total: preEvalStatus.total }
 				: null,
 	);
+
+	/**
+	 * Live pre-evaluation progress for the progress bar — the server status
+	 * wins; the restored target count is the fallback while the first poll
+	 * is still in flight.
+	 */
+	let preEvalBarDone = $derived(preEvalStatus?.done ?? 0);
+	let preEvalBarTotal = $derived(preEvalStatus?.total ?? preEvalTargetCount);
 
 	/** Format elapsed seconds as m:ss (or h:mm:ss past an hour). */
 	function formatElapsed(total: number): string {
@@ -705,8 +756,8 @@
 			addToast("success", `Reset ${ids.length} submission(s) to executed`, 3000);
 		});
 		bulkResetOpen = false;
-		}
-		</script>
+	}
+</script>
 
 <svelte:head>
 	<title>SciPro Review — Submissions</title>
@@ -1023,8 +1074,33 @@
 					<RotateCcw size={14} />
 					Reset
 				</Button>
-				</div>
+			</div>
 		</div>
+
+		<!-- ── Pipeline progress: live run bars (process + pre-evaluation) ── -->
+		{#if processStartedAt !== null || preEvalStartedAt !== null}
+			{#if processStartedAt !== null}
+				<PipelineProgressBar
+					done={progressDone}
+					total={progressTotal}
+					currentId={progressCurrentId}
+					elapsed={formatElapsed(processElapsed)}
+					autofixAttempts={processStatus?.autofixAttempts ?? 0}
+					autofixSucceeded={processStatus?.autofixSucceeded ?? 0}
+					running={processStartedAt !== null}
+				/>
+			{/if}
+			{#if preEvalStartedAt !== null}
+				<PipelineProgressBar
+					label="Pre-evaluating batch"
+					done={preEvalBarDone}
+					total={preEvalBarTotal}
+					currentId={preEvalStatus?.currentStudentId ?? null}
+					elapsed={formatElapsed(preEvalElapsed)}
+					running={preEvalStartedAt !== null}
+				/>
+			{/if}
+		{/if}
 
 		<!-- ── Pipeline log: executor + pre-evaluation activity (collapsible) ── -->
 		<PipelineLogPanel

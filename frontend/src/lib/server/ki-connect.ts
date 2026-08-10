@@ -66,6 +66,15 @@ export interface CellInfo {
 	[key: string]: unknown;
 }
 
+/** A model listed by the KI Connect API (`GET {baseUrl}/models`). */
+export interface KiConnectModel {
+	id: string;
+	object: string;
+	created: number;
+	owned_by: string;
+	context_length?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -235,6 +244,41 @@ export class KiConnectClient {
 		} catch (err) {
 			console.error("[ki-connect] autofix failed:", err);
 			return { skipped: true };
+		}
+	}
+
+	/**
+	 * List the models available on the KI Connect deployment
+	 * (`GET {baseUrl}/models`).
+	 *
+	 * Returns an empty array on any failure (non-2xx, network error,
+	 * no API key) — never throws. Callers fall back to the static model
+	 * map when the live list is unavailable.
+	 */
+	async listModels(): Promise<KiConnectModel[]> {
+		const url = `${this.baseUrl}/models`;
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+		try {
+			const resp = await fetch(url, {
+				method: "GET",
+				headers: {
+					...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+				},
+				signal: controller.signal,
+			});
+			if (!resp.ok) {
+				console.warn(`[ki-connect] listModels failed (HTTP ${resp.status})`);
+				return [];
+			}
+			const data = (await resp.json()) as { data?: KiConnectModel[] };
+			return Array.isArray(data?.data) ? data.data : [];
+		} catch (err) {
+			console.warn("[ki-connect] listModels failed:", err);
+			return [];
+		} finally {
+			clearTimeout(timeoutId);
 		}
 	}
 
@@ -437,4 +481,10 @@ export function getKiConnectClient(): KiConnectClient {
 		_defaultInstance = new KiConnectClient();
 	}
 	return _defaultInstance;
+}
+
+/** Drop the singleton so the next {@link getKiConnectClient} call builds a
+ * fresh instance (e.g. after the API key changed via the settings page). */
+export function resetKiConnectClient(): void {
+	_defaultInstance = null;
 }

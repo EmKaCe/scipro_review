@@ -10,8 +10,9 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { GET, PUT } from "../../routes/api/settings/+server";
+import { GET, PATCH, PUT } from "../../routes/api/settings/+server";
 import { loadSettings, writeSettings, type AppSettings } from "$lib/server/settings";
+import { setApiKey } from "$lib/server/api-key-store";
 import { resolveLastMessagesDefault } from "$lib/server/copilot/model-context";
 
 // ---------------------------------------------------------------------------
@@ -59,12 +60,22 @@ afterEach(async () => {
 	delete process.env.KI_CONNECT_BASE_URL;
 	delete process.env.KI_CONNECT_MODEL;
 	delete process.env.KI_CONNECT_TIMEOUT_MS;
+	delete process.env.KI_CONNECT_API_KEY;
+	setApiKey("");
 	await rm(dataDir, { recursive: true, force: true });
 });
 
 function putRequest(body: unknown): Request {
 	return new Request("http://localhost/api/settings", {
 		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
+	});
+}
+
+function patchRequest(body: unknown): Request {
+	return new Request("http://localhost/api/settings", {
+		method: "PATCH",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body),
 	});
@@ -160,18 +171,20 @@ describe("settings module", () => {
 // ---------------------------------------------------------------------------
 
 describe("/api/settings", () => {
-	it("GET returns the current settings", async () => {
+	it("GET returns the current settings plus hasApiKey (never the key)", async () => {
 		await writeSettings(FULL);
 
 		const resp = await GET();
 		expect(resp.status).toBe(200);
-		expect(await resp.json()).toEqual(FULL);
+		const body = (await resp.json()) as AppSettings & { hasApiKey: boolean };
+		expect(body).toEqual({ ...FULL, hasApiKey: false });
+		expect(JSON.stringify(body)).not.toContain("apiKey");
 	});
 
 	it("PUT persists valid settings and returns them", async () => {
 		const resp = await PUT({ request: putRequest(FULL) } as never);
 		expect(resp.status).toBe(200);
-		expect(await resp.json()).toEqual(FULL);
+		expect(await resp.json()).toEqual({ ...FULL, hasApiKey: false });
 
 		// Reload from disk to prove persistence.
 		expect(await loadSettings()).toEqual(FULL);
@@ -249,5 +262,32 @@ describe("/api/settings", () => {
 		}
 
 		expect(await loadSettings()).toEqual(before);
+	});
+
+	it("PATCH stores the API key and GET only reports hasApiKey", async () => {
+		expect(((await (await GET()).json()) as { hasApiKey: boolean }).hasApiKey).toBe(false);
+
+		const resp = await PATCH({
+			request: patchRequest({ apiKey: "  sk-new-key-abc  " }),
+		} as never);
+		expect(resp.status).toBe(200);
+		expect(await resp.json()).toEqual({ ok: true });
+
+		// GET exposes only the boolean — never the key itself.
+		const getBody = (await (await GET()).json()) as { hasApiKey: boolean };
+		expect(getBody.hasApiKey).toBe(true);
+		expect(JSON.stringify(getBody)).not.toContain("sk-new-key-abc");
+	});
+
+	it("PATCH rejects missing or non-string apiKey with 400", async () => {
+		for (const bad of [{}, { apiKey: 42 }, { apiKey: null }, { apiKey: ["x"] }]) {
+			let status: number | null = null;
+			try {
+				await PATCH({ request: patchRequest(bad) } as never);
+			} catch (err) {
+				status = (err as { status?: number }).status ?? null;
+			}
+			expect(status).toBe(400);
+		}
 	});
 });

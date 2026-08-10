@@ -24,8 +24,9 @@
  *     last_messages: 16             # recall window (1-50); omit to follow the model
  *     auto_compact: true            # summarize out-of-window messages (Task V)
  *
- * Secrets (KI_CONNECT_API_KEY) intentionally stay in the environment — the
- * settings file and its API never read or write API keys.
+ * Secrets (KI_CONNECT_API_KEY) are never written to the settings file — the
+ * key lives in the environment (and can be replaced at runtime via
+ * PATCH /api/settings, which updates the in-memory store + env only).
  *
  * Environment:
  *   DATA_DIR — data root (default: ./data, i.e. /app/data in Docker)

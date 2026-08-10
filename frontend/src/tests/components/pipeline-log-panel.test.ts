@@ -302,4 +302,51 @@ describe("pipeline-log-panel", () => {
 		expect(detail).toBeTruthy();
 		expect(within(detail as HTMLElement).getByText("2026SS_01")).toBeTruthy();
 	});
+
+	it("filters entries by message search and shows the match count", async () => {
+		render(PipelineLogPanel, { props: baseProps() });
+		await fireEvent.click(screen.getByRole("button", { name: /Pipeline log/ }));
+
+		await fireEvent.input(screen.getByLabelText("Filter log messages"), {
+			target: { value: "auto-fix" },
+		});
+
+		expect(screen.getByText(/still failing after re-run/)).toBeTruthy();
+		expect(screen.queryByText(/Executing: 2026SS_03/)).toBeNull();
+		expect(screen.queryByText("Execution failed")).toBeNull();
+		expect(screen.getByText("1 match")).toBeTruthy();
+	});
+
+	it("shows the empty state for a search with no matches", async () => {
+		render(PipelineLogPanel, { props: baseProps() });
+		await fireEvent.click(screen.getByRole("button", { name: /Pipeline log/ }));
+
+		await fireEvent.input(screen.getByLabelText("Filter log messages"), {
+			target: { value: "no-such-message" },
+		});
+
+		expect(screen.getByText(/No entries match/)).toBeTruthy();
+		expect(screen.queryByText(/Executing: 2026SS_03/)).toBeNull();
+	});
+
+	it("clears the message search via the clear button", async () => {
+		render(PipelineLogPanel, { props: baseProps() });
+		await fireEvent.click(screen.getByRole("button", { name: /Pipeline log/ }));
+
+		await fireEvent.input(screen.getByLabelText("Filter log messages"), {
+			target: { value: "auto-fix" },
+		});
+		expect(screen.queryByText(/Executing: 2026SS_03/)).toBeNull();
+
+		await fireEvent.click(screen.getByRole("button", { name: "Clear log search" }));
+		expect(screen.getByText(/Executing: 2026SS_03/)).toBeTruthy();
+	});
+
+	it("copies the visible entries as plain text", async () => {
+		render(PipelineLogPanel, { props: baseProps() });
+		await fireEvent.click(screen.getByRole("button", { name: /Pipeline log/ }));
+
+		await fireEvent.click(screen.getByRole("button", { name: /^Copy$/ }));
+		expect(screen.getByText("Copied")).toBeTruthy();
+	});
 });

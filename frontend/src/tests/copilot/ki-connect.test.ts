@@ -203,3 +203,71 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 		}
 	});
 });
+
+describe("KiConnectClient.listModels", () => {
+	let client: KiConnectClient;
+
+	beforeEach(() => {
+		vi.stubGlobal("fetch", vi.fn());
+		process.env.KI_CONNECT_API_KEY = TEST_API_KEY;
+		client = new KiConnectClient({ baseUrl: TEST_BASE_URL });
+	});
+
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		delete process.env.KI_CONNECT_API_KEY;
+	});
+
+	function modelsResponse(models: unknown, status = 200): Response {
+		return new Response(JSON.stringify({ data: models }), {
+			status,
+			headers: { "Content-Type": "application/json" },
+		});
+	}
+
+	it("returns the model list from GET {baseUrl}/models", async () => {
+		const models = [
+			{
+				id: "qwen3-30b-a3b-instruct-2507",
+				object: "model",
+				created: 1_750_000_000,
+				owned_by: "Academiccloud",
+				context_length: 262_144,
+			},
+			{ id: "gpt-4.1-mini", object: "model", created: 1_750_000_000, owned_by: "Academiccloud" },
+		];
+		fetchMock().mockResolvedValueOnce(modelsResponse(models));
+
+		const result = await client.listModels();
+
+		expect(result).toEqual(models);
+		expect(fetchMock()).toHaveBeenCalledTimes(1);
+		expect(fetchMock()).toHaveBeenCalledWith(
+			`${TEST_BASE_URL}/models`,
+			expect.objectContaining({
+				method: "GET",
+				headers: expect.objectContaining({
+					Authorization: `Bearer ${TEST_API_KEY}`,
+				}),
+			}),
+		);
+	});
+
+	it("returns an empty array on a non-2xx response", async () => {
+		fetchMock().mockResolvedValueOnce(new Response("unauthorized", { status: 401 }));
+
+		await expect(client.listModels()).resolves.toEqual([]);
+	});
+
+	it("returns an empty array on network failure", async () => {
+		fetchMock().mockRejectedValueOnce(new TypeError("fetch failed"));
+
+		await expect(client.listModels()).resolves.toEqual([]);
+	});
+
+	it("returns an empty array when the payload has no data array", async () => {
+		fetchMock().mockResolvedValueOnce(modelsResponse({ nope: true }));
+
+		await expect(client.listModels()).resolves.toEqual([]);
+	});
+});

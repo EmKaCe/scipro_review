@@ -11,6 +11,10 @@
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 	import Radio from "@lucide/svelte/icons/radio";
 	import ListFilter from "@lucide/svelte/icons/list-filter";
+	import Search from "@lucide/svelte/icons/search";
+	import X from "@lucide/svelte/icons/x";
+	import Copy from "@lucide/svelte/icons/copy";
+	import Check from "@lucide/svelte/icons/check";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import CheckCircle2 from "@lucide/svelte/icons/circle-check";
 	import XCircle from "@lucide/svelte/icons/x-circle";
@@ -54,16 +58,32 @@
 	/** Source filter: all sources, executor only, or pre-evaluation only. */
 	let sourceFilter = $state<"all" | PipelineLogSource>("all");
 
+	/** Case-insensitive message search over the source-filtered timeline. */
+	let searchQuery = $state("");
+
 	/** Entries under the active source filter. */
 	let visibleEntries = $derived(
 		entries.filter((e) => sourceFilter === "all" || (e.source ?? "executor") === sourceFilter),
+	);
+
+	/** Entries after the message search (on top of the source filter). */
+	let filteredEntries = $derived(
+		searchQuery === ""
+			? visibleEntries
+			: visibleEntries.filter((e) =>
+					e.message.toLowerCase().includes(searchQuery.toLowerCase()),
+				),
 	);
 
 	/** Whether pre-eval entries exist at all (filter affordance visibility). */
 	let hasPreEval = $derived(entries.some((e) => e.source === "pre-eval"));
 
 	/** Newest visible entry — the compact collapsed strip previews this. */
-	let latestEntry = $derived(visibleEntries[visibleEntries.length - 1] ?? null);
+	let latestEntry = $derived(filteredEntries[filteredEntries.length - 1] ?? null);
+
+	/** True briefly after a successful copy of the visible entries. */
+	let copied = $state(false);
+	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
 	// Open by default while a run is active: the first time `live` flips true
 	// the panel expands, and it stays open until the run ends (a manual
@@ -77,7 +97,7 @@
 	// out from under someone reading history. The method is optional-chained
 	// so non-browser environments (jsdom) don't crash.
 	$effect(() => {
-		if (!open || !live || !stickToTail || visibleEntries.length === 0) return;
+		if (!open || !live || !stickToTail || filteredEntries.length === 0) return;
 		scrollRef?.scrollTo?.({ top: scrollRef.scrollHeight });
 	});
 
@@ -114,6 +134,43 @@
 		if (level === "warning") return "log-warning";
 		if (level === "debug") return "log-debug";
 		return "log-info";
+	}
+
+	/** Copy the visible entries as one plain-text line per entry. */
+	function copyVisibleLog(): void {
+		const lines = filteredEntries.map(
+			(e) =>
+				`[${formatTime(e.ts)}] [${e.source === "pre-eval" ? "PRE-EVAL" : "EXEC"}] [${e.level}] ${
+					e.message
+				}`,
+		);
+		const text = lines.join("\n");
+		try {
+			if (navigator.clipboard?.writeText) {
+				void navigator.clipboard.writeText(text).then(flashCopied, () => {
+					// Clipboard rejected — leave the button in its default state.
+				});
+			} else {
+				// Non-secure context / jsdom: legacy textarea copy fallback.
+				const ta = document.createElement("textarea");
+				ta.value = text;
+				ta.style.position = "fixed";
+				ta.style.opacity = "0";
+				document.body.appendChild(ta);
+				ta.select();
+				document.execCommand?.("copy");
+				ta.remove();
+				flashCopied();
+			}
+		} catch {
+			// Copy failed — keep the button in its default state.
+		}
+	}
+
+	function flashCopied(): void {
+		copied = true;
+		if (copyResetTimer) clearTimeout(copyResetTimer);
+		copyResetTimer = setTimeout(() => (copied = false), 1500);
 	}
 
 	function escapeHtml(value: string): string {
@@ -188,7 +245,7 @@
 		{:else if summary}
 			<span class="pipeline-log-summary">{summary}</span>
 		{/if}
-		<span class="pipeline-log-count">{visibleEntries.length}</span>
+		<span class="pipeline-log-count">{filteredEntries.length}</span>
 		{#if open}
 			<ChevronUp size={14} />
 		{:else}
@@ -240,6 +297,36 @@
 					pre-evaluation.
 				</span>
 				<div class="pipeline-log-tools">
+					<div class="log-search">
+						<span class="log-search-icon" aria-hidden="true">
+							<Search size={12} />
+						</span>
+						<input
+							class="log-search-input"
+							type="text"
+							placeholder="Filter messages…"
+							aria-label="Filter log messages"
+							bind:value={searchQuery}
+						/>
+						{#if searchQuery}
+							<button
+								class="log-search-clear"
+								type="button"
+								aria-label="Clear log search"
+								title="Clear the message filter"
+								onclick={() => (searchQuery = "")}
+							>
+								<X size={11} />
+							</button>
+						{/if}
+						{#if searchQuery}
+							<span class="log-search-count">
+								{filteredEntries.length} match{filteredEntries.length === 1
+									? ""
+									: "es"}
+							</span>
+						{/if}
+					</div>
 					{#if hasPreEval}
 						<div
 							class="pipeline-log-filter"
@@ -279,6 +366,22 @@
 					<button
 						class="pipeline-log-tool"
 						type="button"
+						onclick={copyVisibleLog}
+						disabled={filteredEntries.length === 0}
+						title="Copy the visible entries as plain text"
+					>
+						<span class="pipeline-log-tool-icon">
+							{#if copied}
+								<Check size={12} />
+							{:else}
+								<Copy size={12} />
+							{/if}
+						</span>
+						{copied ? "Copied" : "Copy"}
+					</button>
+					<button
+						class="pipeline-log-tool"
+						type="button"
 						onclick={onRefresh}
 						disabled={loading}
 						title="Refresh logs"
@@ -292,14 +395,18 @@
 			</div>
 			{#if error}
 				<div class="pipeline-log-error">Logs unavailable: {error}</div>
-			{:else if visibleEntries.length === 0}
+			{:else if filteredEntries.length === 0}
 				<div class="pipeline-log-empty">
-					No pipeline activity captured yet. Start a batch or a pre-evaluation to see logs
-					here.
+					{#if searchQuery}
+						No entries match “{searchQuery}”.
+					{:else}
+						No pipeline activity captured yet. Start a batch or a pre-evaluation to see
+						logs here.
+					{/if}
 				</div>
 			{:else}
 				<div class="pipeline-log-lines" bind:this={scrollRef} onscroll={handleLinesScroll}>
-					{#each visibleEntries as entry (rowKey(entry))}
+					{#each filteredEntries as entry (rowKey(entry))}
 						<div
 							class="pipeline-log-row {levelClass(entry.level)}"
 							class:row-pre-eval={entry.source === "pre-eval"}
@@ -319,7 +426,6 @@
 									{entry.source === "pre-eval" ? "PRE-EVAL" : "EXEC"}
 								</span>
 								<span class="log-level">{entry.level}</span>
-								<span class="log-logger">{entry.logger}</span>
 								<span class="log-message">{entry.message}</span>
 								<span
 									class="row-caret"
@@ -402,6 +508,11 @@
 												)}</pre>
 										</div>
 									{:else}
+										<div class="log-detail-meta">
+											<span class="log-detail-logger"
+												>logger: {entry.logger}</span
+											>
+										</div>
 										<div class="log-detail-message">{entry.message}</div>
 									{/if}
 								</div>
@@ -556,6 +667,7 @@
 		align-items: center;
 		justify-content: space-between;
 		gap: 8px;
+		flex-wrap: wrap;
 		padding: 6px 14px;
 		background: var(--muted-bg);
 	}
@@ -567,7 +679,54 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
+		flex-wrap: wrap;
 	}
+	/* ── Message search ── */
+	.log-search {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		padding: 2px 8px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: var(--card);
+	}
+	.log-search-icon {
+		display: inline-flex;
+		align-items: center;
+		color: var(--muted-foreground);
+	}
+	.log-search-input {
+		width: 150px;
+		border: none;
+		background: transparent;
+		outline: none;
+		font-family: var(--font-mono);
+		font-size: 11px;
+		color: var(--fg);
+	}
+	.log-search-input::placeholder {
+		color: var(--muted-foreground);
+	}
+	.log-search-clear {
+		display: inline-flex;
+		align-items: center;
+		padding: 0;
+		border: none;
+		background: transparent;
+		color: var(--muted-foreground);
+		cursor: pointer;
+	}
+	.log-search-clear:hover {
+		color: var(--fg);
+	}
+	.log-search-count {
+		font-size: 10px;
+		color: var(--muted-foreground);
+		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+	}
+	/* ── Source filter (pill segmented control) ── */
 	.pipeline-log-filter {
 		display: inline-flex;
 		align-items: center;
@@ -581,17 +740,17 @@
 		color: var(--muted-foreground);
 		background: transparent;
 		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		padding: 2px 7px;
+		border-radius: 999px;
+		padding: 2px 9px;
 		cursor: pointer;
 	}
 	.pipeline-log-filter-opt:hover {
 		color: var(--fg);
 	}
 	.pipeline-log-filter-active {
-		color: var(--primary);
-		background: color-mix(in oklch, var(--accent) 12%, transparent);
-		border-color: color-mix(in oklch, var(--accent) 30%, transparent);
+		color: var(--primary-foreground);
+		background: var(--primary);
+		border-color: var(--primary);
 	}
 	.pipeline-log-tool {
 		display: inline-flex;
@@ -631,14 +790,14 @@
 		font-size: 12px;
 		color: var(--muted-foreground);
 	}
-	/* ── Log lines (monospace terminal) ── */
+	/* ── Log lines (terminal grid: time | source | level | message | caret) ── */
 	.pipeline-log-lines {
 		position: relative;
 		max-height: 260px;
 		overflow-y: auto;
 		padding: 6px 0;
-		font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
-		font-size: 11px;
+		font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
+		font-size: 12px;
 		line-height: 1.55;
 	}
 	.pipeline-log-row {
@@ -650,10 +809,27 @@
 	.pipeline-log-row.row-expanded {
 		background: color-mix(in oklch, var(--accent) 7%, transparent);
 	}
+	/* Level tinting (row background + inherited text color). */
+	.pipeline-log-row.log-error {
+		background: color-mix(in oklch, var(--destructive) 8%, transparent);
+	}
+	.log-error .log-level,
+	.log-error .log-message {
+		color: var(--destructive);
+	}
+	.log-warning .log-level,
+	.log-warning .log-message {
+		color: var(--warning);
+	}
+	.log-debug .log-level,
+	.log-debug .log-message {
+		color: var(--muted-foreground);
+	}
 	.pipeline-log-line {
-		display: flex;
+		display: grid;
+		grid-template-columns: 70px 55px 55px 1fr 20px;
 		align-items: baseline;
-		gap: 8px;
+		gap: 6px;
 		width: 100%;
 		padding: 1px 14px;
 		background: transparent;
@@ -667,16 +843,15 @@
 		background: color-mix(in oklch, var(--accent) 10%, transparent);
 	}
 	.log-time {
-		flex-shrink: 0;
 		color: var(--muted-foreground);
 		font-variant-numeric: tabular-nums;
 	}
 	.log-source {
-		flex-shrink: 0;
 		font-size: 9px;
 		font-weight: 700;
 		letter-spacing: 0.05em;
 		align-self: center;
+		justify-self: start;
 		color: var(--muted-foreground);
 		background: color-mix(in oklch, var(--muted-foreground) 12%, transparent);
 		border: 1px solid color-mix(in oklch, var(--muted-foreground) 22%, transparent);
@@ -690,25 +865,18 @@
 		border-color: color-mix(in oklch, var(--accent) 30%, transparent);
 	}
 	.log-level {
-		flex-shrink: 0;
-		width: 46px;
 		text-transform: uppercase;
 		font-size: 10px;
 		letter-spacing: 0.04em;
-	}
-	.log-logger {
-		flex-shrink: 0;
 		color: var(--muted-foreground);
 	}
 	.log-message {
-		flex: 1;
 		min-width: 0;
 		color: var(--fg);
 		white-space: pre-wrap;
 		word-break: break-word;
 	}
 	.row-caret {
-		flex-shrink: 0;
 		align-self: center;
 		display: inline-flex;
 		color: var(--muted-foreground);
@@ -718,21 +886,21 @@
 		transform: rotate(90deg);
 		color: var(--primary);
 	}
-	.log-error .log-level,
-	.log-error .log-message {
-		color: var(--destructive);
-	}
-	.log-warning .log-level,
-	.log-warning .log-message {
-		color: var(--warning);
-	}
-	.log-debug .log-message {
+	/* ── Expanded per-row detail (card surface) ── */
+	.pipeline-log-detail {
+		margin: 2px 10px 6px;
+		padding: 8px 10px;
+		background: var(--card);
+		border: 1px solid var(--border);
+		border-radius: var(--radius);
+		font-size: 11px;
 		color: var(--muted-foreground);
 	}
-	/* ── Expanded per-row detail ── */
-	.pipeline-log-detail {
-		padding: 2px 14px 8px 76px;
-		font-size: 11px;
+	.log-detail-meta {
+		margin-bottom: 4px;
+	}
+	.log-detail-logger {
+		font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
 		color: var(--muted-foreground);
 	}
 	.log-detail-message {

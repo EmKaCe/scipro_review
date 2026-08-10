@@ -154,8 +154,8 @@ describe("threads.ts", () => {
 			updatedAt: "2026-08-01T12:00:00.000Z",
 			messageCount: 1,
 			lastPreview: "How is the class doing overall?",
-			// No settings.yaml → model-aware default (16 for the default 32K model).
-			recallLimit: 16,
+			// No settings.yaml → model-aware default (50 for qwen3-30b with 262K ctx).
+			recallLimit: 50,
 			recallCovered: 1,
 			droppedCount: 0,
 			// 30 chars / 4 = 7.5 → rounds to 0 (below the 100 granularity).
