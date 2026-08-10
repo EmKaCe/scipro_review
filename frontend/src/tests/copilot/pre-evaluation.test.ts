@@ -219,6 +219,28 @@ function makeExecutionResult(): ExecutionResult {
 	};
 }
 
+/** Execution result with `n` simple code cells (indices 0..n-1). */
+function makeExecutionResultWithCellCount(n: number): ExecutionResult {
+	const cells = Array.from({ length: n }, (_, i) => ({
+		index: i,
+		type: "code" as const,
+		source: `print(${i})`,
+		original_source: `print(${i})`,
+		output: "",
+		error: null,
+		traceback: null,
+		execution_count: i + 1,
+		marker: "pending" as const,
+	}));
+	return {
+		...makeExecutionResult(),
+		cells,
+		totalCells: n,
+		executedCells: n,
+		errorCells: 0,
+	};
+}
+
 /** Set up the mock to return the default phase responses (routed by system prompt). */
 function setupDefaultMock(): void {
 	kiConnectMock.chatCompletion.mockImplementation(async (systemPrompt: string) => {
@@ -928,5 +950,168 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		);
 		expect(p2bSystem).not.toContain("Valid categoryKeys");
 		expect(phasePrompt(3)).toContain("Valid categoryKeys (use ONLY these): code_formatting");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Phase 1 chunking for large notebooks + per-call timeout
+// ---------------------------------------------------------------------------
+
+describe("Phase 1 chunking", () => {
+	/**
+	 * Route every call by prompt content: chunk 1 returns ABSOLUTE marker
+	 * indices, chunk 2 returns RELATIVE indices (0-based within the chunk)
+	 * to prove the merge offsets them to absolute.
+	 */
+	function mockChunkedPipeline(chunk1Count: number, chunk2Count: number): void {
+		kiConnectMock.chatCompletion.mockReset();
+		kiConnectMock.chatCompletion.mockImplementation(
+			async (system: string, user: string) => {
+				if (system.includes("mark each cell")) {
+					if (user.includes("chunk 1 of 2")) {
+						return {
+							markers: Array.from({ length: chunk1Count }, (_, i) => ({
+								cell_index: i,
+								marker: i % 2 === 0 ? "same" : "different",
+								reason: `chunk1 cell ${i}`,
+							})),
+						};
+					}
+					if (user.includes("chunk 2 of 2")) {
+						return {
+							markers: Array.from({ length: chunk2Count }, (_, i) => ({
+								cell_index: i, // relative to the chunk!
+								marker: "questionable",
+								reason: `chunk2 cell ${i}`,
+							})),
+						};
+					}
+					throw new Error(`Unexpected Phase 1 chunk prompt: ${user.slice(0, 120)}`);
+				}
+				if (system.includes("assign RAW POINT scores")) {
+					return {
+						gradeSuggestion: {
+							dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
+							justification: ENVELOPE.gradeSuggestion.justification,
+						},
+					};
+				}
+				if (system.includes("reviewing dimension scores")) {
+					return {
+						gradeSuggestion: {
+							dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
+							justification: ENVELOPE.gradeSuggestion.justification,
+						},
+					};
+				}
+				if (system.includes("select relevant rubric sub-points")) {
+					return { rubricSelections: ENVELOPE.rubricSelections };
+				}
+				if (system.includes("writing constructive feedback")) {
+					return PHASE3_FEEDBACK;
+				}
+				throw new Error(`Unexpected system prompt: ${system.slice(0, 100)}`);
+			},
+		);
+	}
+
+	it("splits Phase 1 into sequential chunks (> CHUNK_SIZE cells) and merges markers with absolute indices", async () => {
+		const cellCount = 25; // > CHUNK_SIZE (20) → 2 chunks of 20 + 5
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: makeExecutionResultWithCellCount(cellCount),
+		});
+		mockChunkedPipeline(20, 5);
+
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+
+		const calls = kiConnectMock.chatCompletion.mock.calls;
+		const phase1Calls = calls.filter((c) => String(c[0]).includes("mark each cell"));
+
+		// Phase 1 ran once per chunk: 2 chunk calls + 2a + critique + 2b + 3 = 6
+		expect(phase1Calls).toHaveLength(2);
+		expect(calls).toHaveLength(6);
+
+		// Chunk 1 prompt carries only cells 0..19; chunk 2 only cells 20..24
+		expect(String(phase1Calls[0]![1])).toContain("[Cell 0] code");
+		expect(String(phase1Calls[0]![1])).toContain("[Cell 19] code");
+		expect(String(phase1Calls[0]![1])).not.toContain("[Cell 20] code");
+		expect(String(phase1Calls[1]![1])).toContain("[Cell 20] code");
+		expect(String(phase1Calls[1]![1])).toContain("[Cell 24] code");
+		expect(String(phase1Calls[1]![1])).not.toContain("[Cell 19] code");
+
+		// Every chunk prompt carries the full grounded context
+		for (const call of phase1Calls) {
+			const user = String(call[1]);
+			expect(user).toContain("Reference key notebook (key.ipynb");
+			expect(user).toContain("Deterministic pre-analysis findings");
+			expect(user).toContain("Rubric overview (categories and sub-point counts):");
+			expect(user).toContain("<student_submission>");
+		}
+
+		// Merged markers: all 25 cells, absolute indices 0..24
+		expect(result.markers).toHaveLength(25);
+		const indices = result.markers!.map((m) => m.cell_index).sort((a, b) => a - b);
+		expect(indices).toEqual(Array.from({ length: 25 }, (_, i) => i));
+		// Chunk 2's RELATIVE indices 0..4 were offset to 20..24
+		const chunk2Markers = result.markers!.filter((m) => m.cell_index >= 20);
+		expect(chunk2Markers).toHaveLength(5);
+		expect(chunk2Markers.every((m) => m.marker === "questionable")).toBe(true);
+
+		// Every call carries the same per-call timeout (settings.llm.timeoutMs;
+		// the test DATA_DIR has no settings.yaml, so the 60s default applies)
+		const timeouts = calls.map((c) => c[5]);
+		for (const t of timeouts) {
+			expect(typeof t).toBe("number");
+			expect(t as number).toBeGreaterThan(0);
+		}
+		expect(new Set(timeouts).size).toBe(1);
+	});
+
+	it("keeps a single Phase 1 call for notebooks at or below CHUNK_SIZE", async () => {
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: makeExecutionResultWithCellCount(15),
+		});
+		// Fresh response objects — earlier tests mutate the shared
+		// PHASE1_MARKERS fixture (markers forced to null without a key).
+		kiConnectMock.chatCompletion.mockReset();
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(rubricResponse());
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
+
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+
+		const phase1Calls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
+			String(c[0]).includes("mark each cell"),
+		);
+		// 1 Phase 1 call + 2a + critique + 2b + 3 = 5 total
+		expect(phase1Calls).toHaveLength(1);
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
+		// No chunk banner; the prompt still shows the full 15-cell submission
+		expect(String(phase1Calls[0]![1])).not.toContain("chunk");
+		expect(String(phase1Calls[0]![1])).toContain("15 cells");
+		expect(result.markers).toEqual(ENVELOPE.markers);
+	});
+
+	it("fails the whole Phase 1 when any chunk call fails", async () => {
+		const cellCount = 25;
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: makeExecutionResultWithCellCount(cellCount),
+		});
+		kiConnectMock.chatCompletion.mockReset();
+		kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("chunk boom"));
+
+		await expect(
+			preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT }),
+		).rejects.toThrow(/Phase 1 \(markers chunk 1\/2\) KI Connect call failed/);
+		// No retry (non-timeout error), and no further chunks/phases ran
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(1);
 	});
 });

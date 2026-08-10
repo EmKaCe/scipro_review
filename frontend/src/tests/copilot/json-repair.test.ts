@@ -13,6 +13,14 @@ describe("extractAndParseJSON", () => {
 		});
 	});
 
+	it("parses clean JSON directly (happy path, no extraction needed)", () => {
+		// Whitespace around the object must be tolerated by the direct parse.
+		expect(extractAndParseJSON('  {"nested": {"list": [1, 2, 3]}, "ok": true}  ')).toEqual({
+			nested: { list: [1, 2, 3] },
+			ok: true,
+		});
+	});
+
 	it("parses a clean JSON array", () => {
 		expect(extractAndParseJSON("[1, 2, 3]")).toEqual([1, 2, 3]);
 	});
@@ -52,6 +60,24 @@ describe("extractAndParseJSON", () => {
 	it("returns the first JSON object when multiple code fences exist", () => {
 		const text = '```json\n{"a": 1}\n```\n\n```json\n{"b": 2}\n```';
 		expect(extractAndParseJSON(text)).toEqual({ a: 1 });
+	});
+
+	it("extracts only the first JSON block when multiple markdown blocks wrap the response", () => {
+		// The second block is NOT valid JSON — the aggressive
+		// first-fence-to-last-fence fallback must not swallow it.
+		const text =
+			'```json\n{"a": 1}\n```\n\nHere is a second block that is not JSON:\n```json\nnot json at all\n```';
+		expect(extractAndParseJSON(text)).toEqual({ a: 1 });
+	});
+
+	it("escapes unescaped literal newlines and tabs inside string values", () => {
+		// Real (unescaped) line break + tab inside double-quoted string values.
+		const text = '{"a": "line1\nline2", "tabbed": "x	y", "b": 2}';
+		expect(extractAndParseJSON(text)).toEqual({
+			a: "line1\nline2",
+			tabbed: "x	y",
+			b: 2,
+		});
 	});
 
 	it("throws on irreparable input (no braces at all)", () => {

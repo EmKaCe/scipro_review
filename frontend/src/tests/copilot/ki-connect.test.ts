@@ -138,4 +138,68 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 			client.chatCompletion("system", "user", 0.1, undefined, schema),
 		).rejects.toThrow(/Expected number|Invalid input/);
 	});
+
+	it("uses a per-call timeoutMs override instead of the instance default", async () => {
+		vi.useFakeTimers();
+		try {
+			// Instance default is 60s; the override must fire at 5s instead.
+			let capturedSignal: AbortSignal | undefined;
+			fetchMock().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => {
+				capturedSignal = init?.signal;
+				return new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => {
+						const err = new Error("Aborted by timeout");
+						err.name = "AbortError";
+						reject(err);
+					});
+				});
+			});
+
+			const promise = client.chatCompletion("system", "user", 0.1, undefined, undefined, 5_000);
+			// Attach the rejection handler BEFORE advancing timers so the
+			// abort rejection is never left unhandled.
+			const rejection = expect(promise).rejects.toThrow(/timed out/);
+
+			expect(capturedSignal).toBeDefined();
+			await vi.advanceTimersByTimeAsync(4_999);
+			expect(capturedSignal!.aborted).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(capturedSignal!.aborted).toBe(true);
+			await rejection;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("uses the instance default timeout when timeoutMs is omitted", async () => {
+		vi.useFakeTimers();
+		try {
+			const slowClient = new KiConnectClient({ baseUrl: TEST_BASE_URL, timeout: 3_000 });
+			let capturedSignal: AbortSignal | undefined;
+			fetchMock().mockImplementation((_url: unknown, init?: { signal?: AbortSignal }) => {
+				capturedSignal = init?.signal;
+				return new Promise((_resolve, reject) => {
+					init?.signal?.addEventListener("abort", () => {
+						const err = new Error("Aborted by timeout");
+						err.name = "AbortError";
+						reject(err);
+					});
+				});
+			});
+
+			const promise = slowClient.chatCompletion("system", "user");
+			// Attach the rejection handler BEFORE advancing timers so the
+			// abort rejection is never left unhandled.
+			const rejection = expect(promise).rejects.toThrow(/timed out/);
+
+			expect(capturedSignal).toBeDefined();
+			await vi.advanceTimersByTimeAsync(2_999);
+			expect(capturedSignal!.aborted).toBe(false);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(capturedSignal!.aborted).toBe(true);
+			await rejection;
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });

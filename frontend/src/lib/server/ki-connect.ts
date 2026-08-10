@@ -254,6 +254,11 @@ export class KiConnectClient {
 	 *
 	 * An optional Zod `schema` validates the parsed result before it is
 	 * returned; validation failures throw with the joined Zod error messages.
+	 *
+	 * An optional `timeoutMs` overrides the instance timeout for THIS call
+	 * only (applies to the initial request AND the JSON-repair retry); when
+	 * omitted, the instance timeout (constructor `opts.timeout`, default
+	 * {@link DEFAULT_TIMEOUT}) is used.
 	 */
 	async chatCompletion(
 		system: string,
@@ -261,6 +266,7 @@ export class KiConnectClient {
 		temperature: number = 0.1,
 		responseFormat?: { type: string },
 		schema?: import("zod").ZodType<unknown>,
+		timeoutMs?: number,
 	): Promise<Record<string, unknown>> {
 		const body: Record<string, unknown> = {
 			model: this.model,
@@ -274,7 +280,7 @@ export class KiConnectClient {
 			body.response_format = responseFormat;
 		}
 
-		const content = await this.postChatCompletion(body);
+		const content = await this.postChatCompletion(body, timeoutMs);
 
 		let parsed: unknown;
 		try {
@@ -297,7 +303,7 @@ export class KiConnectClient {
 
 			let retryContent: string;
 			try {
-				retryContent = await this.postChatCompletion(retryBody);
+				retryContent = await this.postChatCompletion(retryBody, timeoutMs);
 			} catch (retryErr) {
 				const status =
 					retryErr instanceof Error
@@ -338,13 +344,17 @@ export class KiConnectClient {
 
 	/**
 	 * POST a chat completion body and return the raw response content string.
-	 * Throws on HTTP errors, network failure, or empty content.
+	 * Throws on HTTP errors, network failure, or empty content. A per-call
+	 * `timeoutMs` overrides the instance timeout for this request only.
 	 */
-	private async postChatCompletion(body: Record<string, unknown>): Promise<string> {
+	private async postChatCompletion(
+		body: Record<string, unknown>,
+		timeoutMs?: number,
+	): Promise<string> {
 		const url = `${this.baseUrl}/chat/completions`;
 
 		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+		const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? this.timeout);
 
 		try {
 			const resp = await fetch(url, {
