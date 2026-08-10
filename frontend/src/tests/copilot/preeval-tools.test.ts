@@ -28,10 +28,14 @@ import { readResults, writeResults } from "$lib/server/results-store";
 
 const kiConnectMock = vi.hoisted(() => ({
 	chatCompletion: vi.fn(),
+	chatCompletionText: vi.fn(),
 }));
 
 vi.mock("$lib/server/ki-connect", () => ({
-	getKiConnectClient: () => ({ chatCompletion: kiConnectMock.chatCompletion }),
+	getKiConnectClient: () => ({
+		chatCompletion: kiConnectMock.chatCompletion,
+		chatCompletionText: kiConnectMock.chatCompletionText,
+	}),
 }));
 
 // ---------------------------------------------------------------------------
@@ -66,16 +70,16 @@ const ENVELOPE = {
 		justification: "Solid work overall.",
 	},
 	rubricSelections: [],
+	// The fixture has no criteria files — the worksheet pipeline is skipped,
+	// so the envelope carries an empty additionalNotes record.
+	additionalNotes: {},
 	feedbackDraft: "**Nice job** — keep it up.",
 	notebookSummary: "The notebook computes a soil quality index.",
 };
 
-// Split into phase responses for the 3-phase pipeline
+// Split into phase responses (Phase 2 is now 2a scoring + 2a critique;
+// the worksheet rubric batches are skipped entirely — no criteria files).
 const PHASE1_MARKERS = { markers: ENVELOPE.markers };
-const PHASE2_SCORING = {
-	gradeSuggestion: ENVELOPE.gradeSuggestion,
-	rubricSelections: ENVELOPE.rubricSelections,
-};
 const PHASE3_FEEDBACK = {
 	feedbackDraft: ENVELOPE.feedbackDraft,
 	notebookSummary: ENVELOPE.notebookSummary,
@@ -140,6 +144,7 @@ beforeEach(async () => {
 	});
 
 	kiConnectMock.chatCompletion.mockReset();
+	kiConnectMock.chatCompletionText.mockReset();
 	kiConnectMock.chatCompletion.mockImplementation(
 		async (systemPrompt: string) => {
 			if (systemPrompt.includes("Your ONLY job is to mark each cell")) {
@@ -149,18 +154,9 @@ beforeEach(async () => {
 			if (systemPrompt.includes("Your ONLY job is to assign RAW POINT scores")) {
 				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
 			}
-			// Phase 2b: rubric only (new split pipeline)
-			if (systemPrompt.includes("Your ONLY job is to select relevant rubric sub-points")) {
-				return { rubricSelections: ENVELOPE.rubricSelections };
-			}
 			// Self-critique pass: review scores (optional, gated by CRITIQUE_ENABLED)
 			if (systemPrompt.includes("reviewing dimension scores for correctness")) {
 				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
-			}
-			// Legacy handler for the old combined Phase 2 prompt — still matched by some
-			// prompt variants (Phase 2b carries this phrase in its opening sentence).
-			if (systemPrompt.includes("score ONE student submission using pre-computed cell markers")) {
-				return PHASE2_SCORING;
 			}
 			if (systemPrompt.includes("writing constructive feedback for ONE student")) {
 				return PHASE3_FEEDBACK;
@@ -168,6 +164,11 @@ beforeEach(async () => {
 			throw new Error(`Unexpected system prompt: ${systemPrompt.slice(0, 100)}`);
 		},
 	);
+	// The fixture has NO criteria files, so the worksheet pipeline is skipped
+	// and the raw-text path must never be hit.
+	kiConnectMock.chatCompletionText.mockImplementation(async () => {
+		throw new Error("Unexpected chatCompletionText call — no rubric is configured");
+	});
 });
 
 afterEach(async () => {
@@ -249,11 +250,16 @@ describe("pre-evaluate", () => {
 		expect(stored.preEval!.evaluatedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 		expect(stored.preEval!.markers).toEqual(ENVELOPE.markers);
 		expect(stored.preEval!.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
+		expect(stored.preEval!.rubricSelections).toEqual([]);
+		expect(stored.preEval!.additionalNotes).toEqual({});
 		expect(stored.preEval!.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
 		expect(stored.preEval!.notebookSummary).toBe(ENVELOPE.notebookSummary);
 
-		// 5 KI Connect calls per submission (P1 markers, P2a scoring, critique, P2b rubric, P3 feedback).
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
+		// 4 KI Connect calls per submission (P1 markers, P2a scoring, 2a
+		// critique, P3 feedback) — no worksheet batch calls: the fixture has
+		// no criteria files, so the worksheet pipeline is skipped.
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
+		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
 	});
 
 	it("resolves submissionId from args and assignmentId via the enabled-assignment fallback", async () => {
@@ -316,9 +322,10 @@ describe("draft-notes", () => {
 		expect(suggestion.body).toBe(ENVELOPE.feedbackDraft);
 		expect(suggestion.data.notes).toBe(ENVELOPE.feedbackDraft);
 
-		// 5 KI Connect calls per submission (P1 markers, P2a scoring, critique, P2b rubric, P3 feedback)
-		// — and NOTHING is persisted by draft-notes.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
+		// 4 KI Connect calls per submission (P1 markers, P2a scoring, 2a
+		// critique, P3 feedback) — and NOTHING is persisted by draft-notes.
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
+		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_A]!;
 		expect(stored.preEval).toBeUndefined();
 	});
@@ -360,8 +367,9 @@ describe("pre-evaluate-all", () => {
 		expect(failedRow?.ok).toBe(false);
 		expect(failedRow?.error).toContain("No stored execution result");
 
-		// The loop did not abort: 5 calls per successful row (×2 rows).
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(10);
+		// The loop did not abort: 4 calls per successful row (×2 rows).
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(8);
+		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
 
 		const results = await readResults(ASSIGNMENT);
 		expect(results[STUDENT_A]!.preEval).toBeDefined();

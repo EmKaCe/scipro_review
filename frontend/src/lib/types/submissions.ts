@@ -92,6 +92,8 @@ export interface PreEvalData {
 	gradeSuggestion: PreEvalGradeSuggestion;
 	/** Rubric sub-points selected by the LLM per category (categoryKey + optionKey). */
 	rubricSelections?: { categoryKey: string; optionKey: string }[];
+	/** Per-category additional notes filled by the teacher or pre-evaluation. */
+	additionalNotes?: Record<string, string>;
 	/** Draft feedback text produced by pre-evaluation. */
 	feedbackDraft: string;
 	/** Prose summary of the notebook for the teacher. */

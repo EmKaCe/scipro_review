@@ -343,6 +343,32 @@ export class KiConnectClient {
 	}
 
 	/**
+	 * Single-turn chat completion returning the RAW response text — no JSON
+	 * extraction or repair. Used by pipeline steps whose output is free-form
+	 * markdown (e.g. the pre-evaluation worksheet batch calls); the JSON
+	 * parsing in {@link chatCompletion} would mangle markdown responses.
+	 *
+	 * An optional `timeoutMs` overrides the instance timeout for this call
+	 * only (applies to the initial request only — there is no repair retry).
+	 */
+	async chatCompletionText(
+		system: string,
+		user: string,
+		temperature: number = 0.1,
+		timeoutMs?: number,
+	): Promise<string> {
+		const body: Record<string, unknown> = {
+			model: this.model,
+			messages: [
+				{ role: "system", content: system },
+				{ role: "user", content: user },
+			],
+			temperature,
+		};
+		return this.postChatCompletion(body, timeoutMs);
+	}
+
+	/**
 	 * POST a chat completion body and return the raw response content string.
 	 * Throws on HTTP errors, network failure, or empty content. A per-call
 	 * `timeoutMs` overrides the instance timeout for this request only.

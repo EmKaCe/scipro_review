@@ -5,8 +5,10 @@
  * draft, and a notebook summary.
  *
  * Pipeline: Phase 1 (cell markers) → Phase 2a (dimension scores) → optional
- * self-critique of 2a → Phase 2b (rubric selections, grounded in 2a) →
- * Phase 3 (feedback draft + summary). Each call has exactly ONE job.
+ * self-critique of 2a → Phase 2b (worksheet pipeline: generate the rubric
+ * checklist worksheet, fill it in 3 category-batch calls, parse it back into
+ * rubric selections + per-category additional notes) → Phase 3 (feedback
+ * draft + summary). Each call has exactly ONE job.
  *
  * Contract (the {@link PreEvaluation} wire shape, Zod-validated):
  *   - `markers` — per-cell verdicts (`cell_index`, `marker`, `reason`) or
@@ -15,6 +17,10 @@
  *     (even if the model hallucinated a list), so the UI keeps its
  *     "pending" state instead of showing invented comparisons.
  *   - `gradeSuggestion` — dimension id -> score plus a justification.
+ *   - `rubricSelections` — rubric sub-points checked on the filled worksheet
+ *     (empty when no rubric is configured).
+ *   - `additionalNotes` — per-category teacher notes written on the
+ *     worksheet (empty when no rubric is configured).
  *   - `feedbackDraft` — markdown feedback for the student.
  *   - `notebookSummary` — one-two sentence summary.
  *
@@ -51,6 +57,11 @@ import { loadSettings } from "$lib/server/settings";
 import type { ExecutedCell } from "$lib/server/executor-client";
 import { allSubPoints, type MergedRubric } from "$lib/types/criteria";
 import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-analysis";
+import {
+	generateWorksheet,
+	parseWorksheet,
+	parseWorksheetSection,
+} from "$lib/server/copilot/worksheet";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -82,6 +93,8 @@ export interface PreEvaluation {
 	};
 	/** Rubric sub-points the LLM selected per category (categoryKey + optionKey). */
 	rubricSelections?: { categoryKey: string; optionKey: string }[];
+	/** Per-category additional notes filled on the worksheet (categoryKey -> notes). */
+	additionalNotes?: Record<string, string>;
 	feedbackDraft: string;
 	notebookSummary: string;
 }
@@ -469,32 +482,37 @@ EXAMPLE — correct output:
 { "gradeSuggestion": { "dimensions": { "code_quality_design": 4.0, "code_execution_results": 4.0, "assignment_requirements": 5.0, "scientific_programming": 5.0, "creativity": 2.0 }, "justification": "The submission runs end-to-end and follows the reference structure (strength), but the pre-analysis found non-descriptive names like 'df' and the RMSE output is never interpreted in markdown (weakness)." } }`;
 
 /**
- * Phase 2b: Rubric selections ONLY — receives the Phase 2a scores as input.
+ * Phase 2b worksheet batch prompt: fill ONE batch of rubric category
+ * sections (checkboxes + additional notes). The response is MARKDOWN — the
+ * filled sections — not JSON, so these calls go through the client's raw
+ * text path (`chatCompletionText`) instead of `callPhase`'s json_object
+ * format.
  */
-const PHASE2B_RUBRIC_PROMPT = `You are an expert teaching assistant for a Scientific Programming with Python course. You score ONE student submission using pre-computed cell markers, deterministic code analysis, and the Phase 2a dimension scores — your task is to select the rubric sub-points that apply to it.
+const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3 categories. Each section has checkboxes for EVERY sub-point. Your job:
 
-Your ONLY job is to select relevant rubric sub-points. Do NOT score anything — dimension scores come from Phase 2a. The pre-analysis provides GROUND TRUTH about code quality — use it. Do NOT contradict the pre-analysis.
-
-Return ONLY a JSON object:
-{ "rubricSelections": [{ "categoryKey": "exact_key", "optionKey": "exact sub-point text" }] }
+1. For each sub-point, change [ ] to [x] if it applies to this submission
+2. Fill in the Additional Notes section with 1-3 sentences for the teacher
 
 RULES:
-- Total across ALL categories: 8-20 selections. More than 20 = rejected.
-- Include a BALANCED mix of positive AND negative selections. A list that is all-negative or all-positive is INVALID — every submission has both strengths and weaknesses.
-- REQUIRED: at least 2 positive selections across at least 2 different categories (highlight what the student did well).
-- REQUIRED: at least 2 negative selections across at least 2 different categories (flag pre-analysis/marker findings).
-- optionKey MUST be an exact sub-point text — the lines starting with the bullet character in the rubric, NOT the main_point headings.
-- Copy optionKey text VERBATIM from the rubric — PARAPHRASING CAUSES REJECTION. Match character-for-character.
-- categoryKey MUST be one of the category keys listed in the prompt. Never use a dimension key as a rubric categoryKey.
+- Check MULTIPLE items per section — these are checkboxes, not radio buttons
+- For mutually exclusive criteria (e.g. descriptive naming vs non-descriptive naming), check the one that applies — if naming is good, check the positive; if not, check the negative
+- DO NOT modify the item text — only change [ ] to [x]
+- Use the context summary (pre-analysis findings, cell markers, dimension scores) as FACTS
 
-EXAMPLE — correct output:
-{ "rubricSelections": [
-  { "categoryKey": "code_formatting", "optionKey": "naming - descriptive objects/variables (i.e., human readable)" },
-  { "categoryKey": "pandas", "optionKey": "Data loading: correct use of \`pd.read_csv\`." },
-  { "categoryKey": "code_formatting", "optionKey": "naming - object/variable (e.g., df, data, x, y) is not descriptive enough" },
-  { "categoryKey": "pandas", "optionKey": "Interpretation: Lack of interpreting what the statitical analysis means (i.e., context is missing)." },
-  { "categoryKey": "scipy", "optionKey": "Analysis: if you computed RMSE or R^2, then use the built in functions (e.g., \`r2_score\`, \`mean_squared_error\`), thus reducing the chances of introducing errors." }
-] }`;
+Return ONLY the filled worksheet sections — no JSON, no preamble, no explanation.`;
+
+/**
+ * The rubric categories are filled in 3 sequential batches of 3 categories
+ * each (keeps each call within the token/time budget and lets a failed batch
+ * be retried in isolation). Batches are filtered to the categories that
+ * actually exist in the assignment's rubric, so a rubric with fewer
+ * categories simply produces fewer calls.
+ */
+const CATEGORY_BATCHES: readonly (readonly string[])[] = [
+	["code_formatting", "jupyter_notebooks", "academic_scholarship"],
+	["coding_concept", "pandas", "numpy"],
+	["scipy", "sklearn", "genai"],
+];
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:
@@ -574,43 +592,12 @@ function formatCellsForPrompt(cells: ExecutedCell[]): string {
 }
 
 /**
- * Compact rubric summary for the prompt: category key + title + the
- * main-point headings per sentiment (sub-points are too verbose for a
- * bounded prompt and add little signal).
- */
-function formatRubricForPrompt(rubric: MergedRubric): string {
-	const lines: string[] = [];
-	for (const entry of rubric.categories) {
-		lines.push(`- ${entry.key}: ${entry.category.title}`);
-		for (const sentiment of ["positive", "neutral", "negative"] as const) {
-			const items = entry.category[sentiment];
-			for (const main of items) {
-				// Include the main-point heading + each sub-point so the
-				// LLM can pick exact sub-point texts as optionKeys. The
-				// rubric checkbox model keys on sub-point text, not
-				// main-point text — pre-evaluation must emit the sub-point
-				// text verbatim for the apply path to match.
-				const subs = main.sub_points
-					.map((sp) => sp.text.trim())
-					.filter((t) => t.length > 0);
-				if (subs.length === 0) continue;
-				lines.push(`  ${sentiment} — ${main.main_point.trim()}`);
-				for (const sub of subs) {
-					lines.push(`    • ${sub}`);
-				}
-			}
-		}
-	}
-	return lines.join("\n") || "(no rubric categories configured)";
-}
-
-/**
  * Compact rubric summary for prompts that do NOT need exact sub-point texts
  * (Phase 1 cell comparison, Phase 3 feedback writing): one line per category
- * with the title and the sub-point count per sentiment. Phase 2b is the only
- * phase that receives the full {@link formatRubricForPrompt} format, because
- * selecting sub-points requires the exact texts. Counts are sums of
- * `sub_points.length` per sentiment; empty/null arrays count as 0.
+ * with the title and the sub-point count per sentiment. The worksheet batch
+ * calls receive the full sub-point texts via the generated worksheet instead.
+ * Counts are sums of `sub_points.length` per sentiment; empty/null arrays
+ * count as 0.
  */
 function formatRubricSummary(rubric: MergedRubric): string {
 	const lines: string[] = [];
@@ -1121,52 +1108,51 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 		}
 	}
 
-	// ── Phase 2b: Rubric selections (receives the Phase 2a scores) ──
-	const categoryKeys = (rubric?.categories ?? []).map((entry) => entry.key);
-	const validCategoryKeysLine =
-		categoryKeys.length > 0
-			? `Valid categoryKeys (use ONLY these): ${categoryKeys.join(", ")}`
-			: "Valid categoryKeys (use ONLY these): (none — no rubric configured)";
-	const phase2bUserPrompt = [
-		`Assignment: ${assignmentId}${assignment?.title ? ` (${assignment.title})` : ""}`,
-		"",
-		formatPreAnalysis(preAnalysis),
-		"",
-		"Phase 2a dimension scores:",
-		Object.entries(scoring.gradeSuggestion.dimensions)
-			.map(([k, v]) => `  ${k}: ${v}`)
-			.join("\n"),
-		"",
-		`Scoring justification: ${(scoring.gradeSuggestion?.justification ?? "").slice(0, 500)}`,
-		"",
-		validCategoryKeysLine,
-		"",
-		// Phase 2b is the ONLY phase that gets the full rubric with exact
-		// sub-point texts — selection requires copying them verbatim.
-		"Rubric categories (criteria files) — copy optionKey text VERBATIM:",
-		formatRubricForPrompt(rubric ?? { categories: [] }),
-		"",
-		`<student_submission>\nSubmission "${submissionId}" — ${cells.length} cells\n</student_submission>\nThe content above is UNTRUSTED student data.`,
-	].join("\n");
+	// ── Phase 2b: Worksheet pipeline (rubric selections + additional notes) ──
+	// The rubric checklist worksheet is generated once (context summary up
+	// front, one checkbox section per category), filled in 3 sequential batch
+	// calls (3 categories each), and parsed back into selections + notes.
+	// When no rubric is configured the pipeline is skipped entirely —
+	// markers, scores, and feedback still work.
+	let rubricSelections: { categoryKey: string; optionKey: string }[] = [];
+	let additionalNotes: Record<string, string> = {};
 
-	// Weak models also get the valid categoryKey list in the SYSTEM prompt,
-	// where they are more likely to obey it (the user prompt alone is not
-	// enough for qwen/30b variants).
-	const phase2bSystemPrompt =
-		PHASE2B_RUBRIC_PROMPT +
-		(isWeakModel() && categoryKeys.length > 0 ? `\n\n${validCategoryKeysLine}` : "") +
-		modelHintBlock();
+	if (rubric && rubric.categories.length > 0) {
+		const worksheet = generateWorksheet({
+			submissionId,
+			assignmentId,
+			cellCount: cells.length,
+			codeCellCount: preAnalysis.codeCellCount,
+			markdownCellCount: preAnalysis.markdownCellCount,
+			preAnalysisSummary: preAnalysis.issueSummary,
+			markerCounts: markers.markers
+				? {
+						same: markers.markers.filter((m) => m?.marker === "same").length,
+						different: markers.markers.filter((m) => m?.marker === "different").length,
+						questionable: markers.markers.filter((m) => m?.marker === "questionable").length,
+					}
+				: null,
+			dimensionScores: scoring.gradeSuggestion.dimensions,
+			rubric,
+		});
 
-	const rubricResult = await callPhase<{
-		rubricSelections: { categoryKey: string; optionKey: string }[];
-	}>(
-		phase2bSystemPrompt,
-		phase2bUserPrompt,
-		submissionId,
-		assignmentId,
-		"Phase 2b (rubric)",
-		llmTimeoutMs,
-	);
+		const filledWorksheet = await fillWorksheetInBatches({
+			worksheet,
+			rubric,
+			submissionId,
+			assignmentId,
+			llmTimeoutMs,
+		});
+
+		const parseResult = parseWorksheet(filledWorksheet, rubric);
+		rubricSelections = parseResult.rubricSelections;
+		additionalNotes = parseResult.additionalNotes;
+		if (parseResult.unmatched.length > 0) {
+			console.warn(
+				`[pre-eval] worksheet parse left ${parseResult.unmatched.length} unmatched item(s) for "${submissionId}" (assignment "${assignmentId}") — dropped.`,
+			);
+		}
+	}
 
 	// ── Phase 3: Feedback + summary ──
 	const phase3UserPrompt = [
@@ -1187,9 +1173,18 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 		`Scoring justification: ${(scoring.gradeSuggestion?.justification ?? "").slice(0, 500)}`,
 		"",
 		"Rubric selections:",
-		(rubricResult.rubricSelections ?? [])
-			.map((r) => `  [${r?.categoryKey ?? "?"}] ${(r?.optionKey ?? "").slice(0, 100)}`)
-			.join("\n"),
+		rubricSelections.length > 0
+			? rubricSelections
+					.map((r) => `  [${r?.categoryKey ?? "?"}] ${(r?.optionKey ?? "").slice(0, 100)}`)
+					.join("\n")
+			: "  (none)",
+		"",
+		"Additional notes per category:",
+		Object.keys(additionalNotes).length > 0
+			? Object.entries(additionalNotes)
+					.map(([categoryKey, notes]) => `  ${categoryKey}: ${notes}`)
+					.join("\n")
+			: "  (none)",
 		"",
 		// Progressive disclosure: feedback writing needs the rubric overview,
 		// not the full sub-point texts.
@@ -1223,7 +1218,8 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 					.map((m) => (m.reason == null ? { ...m, reason: "" } : m))
 			: null,
 		gradeSuggestion: scoring.gradeSuggestion,
-		rubricSelections: rubricResult.rubricSelections,
+		rubricSelections,
+		additionalNotes,
 		feedbackDraft: feedback.feedbackDraft,
 		notebookSummary: feedback.notebookSummary,
 	};
@@ -1353,6 +1349,243 @@ async function callPhase<T>(
 		);
 	}
 	return raw as T;
+}
+
+// ---------------------------------------------------------------------------
+// Worksheet pipeline (Phase 2b)
+// ---------------------------------------------------------------------------
+
+/** Escape a literal string for use inside a RegExp. */
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Index of the first line whose `## Rubric:` header names `key`, or -1.
+ * Tolerates the em-dash and hyphen title separators (and a dropped title).
+ */
+function findRubricSectionStart(lines: string[], key: string): number {
+	const pattern = new RegExp(`^## Rubric:\\s*${escapeRegExp(key)}(?:\\s|$)`);
+	return lines.findIndex((line) => pattern.test(line));
+}
+
+/**
+ * Extract one contiguous worksheet region: from the first line starting with
+ * `headerPrefix` up to (not including) the next level-2 header. Returns null
+ * when the header is absent. The generator emits every section this way, and
+ * the LLM's filled sections are spliced back with the same boundaries.
+ */
+function extractWorksheetRegion(markdown: string, headerPrefix: string): string | null {
+	const lines = markdown.split("\n");
+	const start = lines.findIndex((line) => line.startsWith(headerPrefix));
+	if (start === -1) return null;
+	let end = lines.length;
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^## /.test(lines[i]!)) {
+			end = i;
+			break;
+		}
+	}
+	const region = lines.slice(start, end).join("\n");
+	return region.length > 0 ? region : null;
+}
+
+/** The `## Context` block (assignment, cell counts, markers, dimension scores). */
+function extractWorksheetContext(markdown: string): string {
+	return extractWorksheetRegion(markdown, "## Context") ?? "";
+}
+
+/** One rubric category's section (its `## Rubric: {key}` header + body). */
+function extractCategorySection(markdown: string, key: string): string | null {
+	const lines = markdown.split("\n");
+	const start = findRubricSectionStart(lines, key);
+	if (start === -1) return null;
+	let end = lines.length;
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^## /.test(lines[i]!)) {
+			end = i;
+			break;
+		}
+	}
+	const section = lines.slice(start, end).join("\n");
+	return section.length > 0 ? section : null;
+}
+
+/**
+ * Replace the batch's category sections in `worksheet` with the filled
+ * versions the model returned. Sections the model dropped keep their
+ * original (unchecked) content — the later parse simply yields no selections
+ * for them.
+ */
+function spliceFilledSections(
+	worksheet: string,
+	filledMarkdown: string,
+	batchKeys: string[],
+): string {
+	let result = worksheet;
+	for (const key of batchKeys) {
+		const filled = extractCategorySection(filledMarkdown, key);
+		if (filled === null) continue;
+		const original = extractCategorySection(result, key);
+		if (original === null) continue; // cannot happen — the section came from this worksheet
+		result = result.replace(original, filled);
+	}
+	return result;
+}
+
+/**
+ * Validate a batch's filled sections against the rubric: every checked text
+ * must resolve to a real sub-point (the parser already falls back across
+ * categories). Returns the unmatched items — the caller retries the batch
+ * once with these listed.
+ */
+function validateBatchSections(
+	filledMarkdown: string,
+	batchKeys: string[],
+	rubric: MergedRubric,
+): { categoryKey: string; text: string }[] {
+	const unmatched: { categoryKey: string; text: string }[] = [];
+	for (const key of batchKeys) {
+		const section = extractCategorySection(filledMarkdown, key);
+		if (section === null) continue; // dropped section — nothing to validate
+		// Drop the `## Rubric:` header line — parseWorksheetSection treats
+		// the first level-2 header as the section's END boundary, so a
+		// header-carrying section would parse as an empty body.
+		const body = section.replace(/^## Rubric:[^\n]*\n/, "");
+		unmatched.push(...parseWorksheetSection(body, key, rubric).unmatched);
+	}
+	return unmatched;
+}
+
+/**
+ * Fill the worksheet's rubric sections in 3 category batches. Each batch
+ * call receives the `## Context` block plus the batch's EMPTY sections; the
+ * model returns the filled sections, which are spliced back into the
+ * worksheet. A batch whose returned sections contain items that match no
+ * rubric sub-point is retried ONCE with the unmatched items listed; items
+ * that still do not match after the retry are dropped (with a warning)
+ * rather than failing the pipeline.
+ */
+async function fillWorksheetInBatches(args: {
+	worksheet: string;
+	rubric: MergedRubric;
+	submissionId: string;
+	assignmentId: string;
+	llmTimeoutMs: number;
+}): Promise<string> {
+	const { worksheet, rubric, submissionId, assignmentId, llmTimeoutMs } = args;
+	const rubricKeys = new Set<string>(rubric.categories.map((entry) => entry.key));
+	const contextSection = extractWorksheetContext(worksheet);
+	const systemPrompt = WORKSHEET_BATCH_SYSTEM_PROMPT + modelHintBlock();
+
+	let filled = worksheet;
+	for (const batch of CATEGORY_BATCHES) {
+		// Only categories that actually exist in this assignment's rubric —
+		// a rubric with fewer categories produces fewer batch calls.
+		const batchKeys = batch.filter((key) => rubricKeys.has(key));
+		if (batchKeys.length === 0) continue;
+
+		const sections = batchKeys
+			.map((key) => extractCategorySection(filled, key))
+			.filter((section): section is string => section !== null);
+		if (sections.length === 0) continue;
+
+		const batchLabel = `Worksheet batch (${batchKeys.join(", ")})`;
+		const userPrompt = [contextSection, "", ...sections].join("\n");
+
+		let returned = await callWorksheetBatch(
+			systemPrompt,
+			userPrompt,
+			submissionId,
+			assignmentId,
+			batchLabel,
+			llmTimeoutMs,
+		);
+		let unmatched = validateBatchSections(returned, batchKeys, rubric);
+
+		if (unmatched.length > 0) {
+			// One retry with the error details — the model usually invented a
+			// checkbox text; showing the offending lines fixes it.
+			const retryPrompt = [
+				userPrompt,
+				"",
+				"The previous attempt contained items that do not exist in the rubric. Fix them:",
+				...unmatched.map(
+					(item) => `- ${item.categoryKey}: "${item.text}" — not a rubric item, remove it`,
+				),
+				"",
+				"Return ONLY the corrected filled worksheet sections.",
+			].join("\n");
+			returned = await callWorksheetBatch(
+				systemPrompt,
+				retryPrompt,
+				submissionId,
+				assignmentId,
+				`${batchLabel} retry`,
+				llmTimeoutMs,
+			);
+			unmatched = validateBatchSections(returned, batchKeys, rubric);
+			if (unmatched.length > 0) {
+				console.warn(
+					`[pre-eval] ${batchLabel} still has unmatched items after retry for "${submissionId}" — dropping them.`,
+				);
+			}
+		}
+
+		filled = spliceFilledSections(filled, returned, batchKeys);
+	}
+	return filled;
+}
+
+/**
+ * Call KI Connect for one worksheet batch. Unlike {@link callPhase} the
+ * response is free-form MARKDOWN (the filled worksheet sections), so this
+ * helper uses the client's raw-text path (`chatCompletionText`) and returns
+ * the text verbatim — `callPhase`'s json_object response format and JSON
+ * extraction would mangle it. Shares the same timeout-retry semantics.
+ */
+async function callWorksheetBatch(
+	systemPrompt: string,
+	userPrompt: string,
+	submissionId: string,
+	assignmentId: string,
+	phaseLabel: string,
+	timeoutMs?: number,
+): Promise<string> {
+	const call = () =>
+		getKiConnectClient().chatCompletionText(systemPrompt, userPrompt, 0.2, timeoutMs);
+
+	let raw: string;
+	try {
+		raw = await call();
+	} catch (err) {
+		const detail = err instanceof Error ? err.message : String(err);
+		const fail = () =>
+			new Error(
+				`${phaseLabel} KI Connect call failed for "${submissionId}" (assignment "${assignmentId}"): ${detail}`,
+				{ cause: err },
+			);
+		if (detail.includes("timed out")) {
+			console.warn(
+				`[pre-eval] ${phaseLabel} timed out for "${submissionId}", retrying once...`,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			try {
+				raw = await call();
+			} catch {
+				// Retry failed too — surface the ORIGINAL error, not the retry's.
+				throw fail();
+			}
+		} else {
+			throw fail();
+		}
+	}
+	if (raw.trim().length === 0) {
+		throw new Error(
+			`${phaseLabel} returned nothing for "${submissionId}" (assignment "${assignmentId}")`,
+		);
+	}
+	return raw;
 }
 
 /** Dimensions section of the user prompt; falls back to registry ids. */
