@@ -40,7 +40,7 @@
 	}
 </script>
 
-<div class="copilot-card approval-card">
+<div class="copilot-card approval-card" aria-live="assertive">
 	<div class="card-header">
 		<ShieldAlert size={14} />
 		<span class="card-label">Approval required</span>

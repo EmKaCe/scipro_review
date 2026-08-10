@@ -30,21 +30,37 @@ Both modes share the same SvelteKit codebase. The build adapter (`ADAPTER=static
 
 ---
 
+## Documentation
+
+The app ships with an in-app **teacher documentation** page at [`/docs`](frontend/src/routes/docs/+page.svelte), covering:
+
+- **Getting Started** — Docker prerequisites, clone, `.env` setup, first start
+- **Configuration** — `.env` variables, settings page, assignments & grading config YAML
+- **Uploading Submissions** — file naming, classification, kind override, materials
+- **Running the Pipeline** — Process All / Pre-evaluate All, progress & logs, auto-fix
+- **Grading Workflow** — reference comparison, rubric, grading sidebar, save & export
+- **AI Copilot** — slash commands, approval modes, tool permissions, suggestions
+- **Backup & Restore** — full data-directory backup ZIP download/restore
+- **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
+- **Deployment** — local, LAN, Tailscale, data persistence, upgrades
+
+---
+
 ## Tech Stack
 
-| Technology      | Purpose                                         |
-| --------------- | ----------------------------------------------- |
-| SvelteKit 2     | App framework (SPA + Node server)               |
-| Svelte 5        | UI with runes (`$state`, `$derived`, `$effect`) |
-| Tailwind CSS v4 | Utility-first styling                           |
-| shadcn-svelte   | UI primitive components                         |
-| TypeScript 6    | Type-safe source                                |
-| IndexedDB       | Client-side persistence (student mode)          |
-| js-yaml         | Criteria loading and export                     |
-| Zod 4           | Import validation                               |
-| marked          | Evaluation Markdown rendering                   |
-| Vitest          | Unit testing                                    |
-| TanStack Table | Data grid for submissions dashboard (teacher mode) |
+| Technology      | Purpose                                            |
+| --------------- | -------------------------------------------------- |
+| SvelteKit 2     | App framework (SPA + Node server)                  |
+| Svelte 5        | UI with runes (`$state`, `$derived`, `$effect`)    |
+| Tailwind CSS v4 | Utility-first styling                              |
+| shadcn-svelte   | UI primitive components                            |
+| TypeScript 6    | Type-safe source                                   |
+| IndexedDB       | Client-side persistence (student mode)             |
+| js-yaml         | Criteria loading and export                        |
+| Zod 4           | Import validation                                  |
+| marked          | Evaluation Markdown rendering                      |
+| Vitest          | Unit testing                                       |
+| TanStack Table  | Data grid for submissions dashboard (teacher mode) |
 
 ---
 
@@ -95,16 +111,16 @@ pnpm start:teacher        # Start server on port 4174
 
 ### Common Commands
 
-| Command              | Description                         |
-| -------------------- | ----------------------------------- |
-| `pnpm dev:student`   | Dev server (student/static mode)    |
-| `pnpm dev:teacher`   | Dev server (teacher/node mode)      |
-| `pnpm build:student` | Build for GitHub Pages              |
-| `pnpm build:teacher` | Build for Node/Docker               |
-| `pnpm check`         | Type-check with `svelte-check`      |
-| `pnpm lint`          | Prettier check + ESLint             |
-| `pnpm format`        | Format all files with Prettier      |
-| `pnpm test`          | Run unit tests (Vitest)             |
+| Command                                 | Description                                                                      |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `pnpm dev:student`                      | Dev server (student/static mode)                                                 |
+| `pnpm dev:teacher`                      | Dev server (teacher/node mode)                                                   |
+| `pnpm build:student`                    | Build for GitHub Pages                                                           |
+| `pnpm build:teacher`                    | Build for Node/Docker                                                            |
+| `pnpm check`                            | Type-check with `svelte-check`                                                   |
+| `pnpm lint`                             | Prettier check + ESLint                                                          |
+| `pnpm format`                           | Format all files with Prettier                                                   |
+| `pnpm test`                             | Run unit tests (Vitest)                                                          |
 | `bash scripts/smoke-production-csrf.sh` | Production-build ORIGIN/CSRF gate: upload must 403 without `ORIGIN`, 200 with it |
 
 ---

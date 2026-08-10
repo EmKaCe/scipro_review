@@ -235,17 +235,17 @@ describe("pipeline-log-panel", () => {
 		expect(screen.getAllByText("PRE-EVAL")).toHaveLength(2);
 		expect(screen.getAllByText("EXEC")).toHaveLength(3);
 
-		await fireEvent.click(screen.getByRole("button", { name: "Executor" }));
+		await fireEvent.click(screen.getByRole("radio", { name: "Executor" }));
 		expect(screen.queryByText("PRE-EVAL")).toBeNull();
 		expect(screen.getAllByText("EXEC")).toHaveLength(3);
 		expect(screen.queryByText(/Pre-evaluated "2026SS_01"/)).toBeNull();
 
-		await fireEvent.click(screen.getByRole("button", { name: "Pre-eval" }));
+		await fireEvent.click(screen.getByRole("radio", { name: "Pre-eval" }));
 		expect(screen.getAllByText("PRE-EVAL")).toHaveLength(2);
 		expect(screen.queryByText("EXEC")).toBeNull();
 		expect(screen.queryByText(/Executing: 2026SS_03/)).toBeNull();
 
-		await fireEvent.click(screen.getByRole("button", { name: "All" }));
+		await fireEvent.click(screen.getByRole("radio", { name: "All" }));
 		expect(screen.getAllByText("PRE-EVAL")).toHaveLength(2);
 		expect(screen.getAllByText("EXEC")).toHaveLength(3);
 	});

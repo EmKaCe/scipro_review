@@ -486,7 +486,12 @@
 			tabindex="0"
 			aria-label="Drop files here or click to browse"
 			onclick={handlePick}
-			onkeydown={(e) => e.key === "Enter" && handlePick()}
+			onkeydown={(e) => {
+				if (e.key === "Enter" || e.key === " ") {
+					e.preventDefault();
+					handlePick();
+				}
+			}}
 			ondragenter={handleDragEnter}
 			ondragleave={handleDragLeave}
 			ondragover={handleDragOver}
@@ -512,7 +517,7 @@
 		</div>
 
 		{#if error}
-			<p class="request-error"><CircleAlert size={14} /> {error}</p>
+			<p class="request-error" role="alert"><CircleAlert size={14} /> {error}</p>
 		{/if}
 
 		{#if files.length > 0}

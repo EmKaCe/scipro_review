@@ -92,6 +92,14 @@
 	data-state={headerState}
 	class="sticky top-0 z-40 flex h-14 items-center border-b border-border bg-background/80 px-4 backdrop-blur-md {className}"
 >
+	<!-- Skip link (WCAG 2.1 AA 2.4.1) — first focusable element in the app -->
+	<a
+		href="#main-content"
+		class="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-50 focus:rounded-[var(--radius)] focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-lg"
+	>
+		Skip to main content
+	</a>
+
 	<!-- Left -->
 	<div class="flex min-w-0 flex-1 items-center gap-2">
 		{#if showBack}

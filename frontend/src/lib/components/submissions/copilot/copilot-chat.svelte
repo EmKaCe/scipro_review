@@ -109,7 +109,13 @@
 	}
 </script>
 
-<div class="copilot-messages" bind:this={messagesEl}>
+<div
+	class="copilot-messages"
+	bind:this={messagesEl}
+	role="log"
+	aria-live="polite"
+	aria-label="Chat messages"
+>
 	{#if messages.length === 0}
 		<div class="empty-state">
 			<Sparkles size={24} class="empty-icon" />
@@ -187,7 +193,7 @@
 					{onDismiss}
 				/>
 			{:else if msg.kind === "error"}
-				<div class="msg msg-assistant msg-error">
+				<div class="msg msg-assistant msg-error" role="article">
 					<div class="msg-error-line">
 						<TriangleAlert size={12} />
 						<div class="msg-content">{msg.content}</div>
@@ -195,7 +201,10 @@
 					<span class="msg-time">{msgTime(msg.timestamp)}</span>
 				</div>
 			{:else}
-				<div class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}">
+				<div
+					class="msg {msg.role === 'teacher' ? 'msg-teacher' : 'msg-assistant'}"
+					role="article"
+				>
 					<div class="msg-content">
 						{#if msg.role === "assistant"}
 							<!-- Assistant content is markdown (Issue 6); teacher

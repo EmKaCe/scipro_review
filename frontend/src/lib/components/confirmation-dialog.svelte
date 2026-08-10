@@ -39,21 +39,30 @@
 
 	let dialogRef: HTMLDivElement | undefined = $state();
 	let typingValue = $state("");
+	/** Element focused before the dialog opened — focus returns here on close. */
+	let previouslyFocused: HTMLElement | null = null;
 
 	$effect(() => {
 		if (open) typingValue = "";
 	});
 
 	$effect(() => {
-		if (open && dialogRef) {
-			const focusable = dialogRef.querySelectorAll<HTMLElement>(
-				'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-			);
-			if (focusable.length > 0) {
-				focusable[0].focus();
-			} else {
-				dialogRef.focus();
+		if (open) {
+			// Remember the trigger so focus can be restored on close (WCAG 2.1 AA 2.4.3).
+			previouslyFocused = document.activeElement as HTMLElement | null;
+			if (dialogRef) {
+				const focusable = dialogRef.querySelectorAll<HTMLElement>(
+					'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+				);
+				if (focusable.length > 0) {
+					focusable[0].focus();
+				} else {
+					dialogRef.focus();
+				}
 			}
+		} else if (previouslyFocused) {
+			previouslyFocused.focus();
+			previouslyFocused = null;
 		}
 	});
 
@@ -94,9 +103,10 @@
 {#if open}
 	<div
 		bind:this={dialogRef}
-		role="dialog"
+		role="alertdialog"
 		aria-modal="true"
 		aria-labelledby="confirm-dialog-title"
+		aria-describedby="confirm-dialog-desc"
 		tabindex="-1"
 		class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm transition-opacity duration-200"
 		onclick={handleOverlayClick}
@@ -142,7 +152,10 @@
 								<TooltipContent>Close</TooltipContent>
 							</Tooltip>
 						</div>
-						<div class="mt-1 text-sm leading-relaxed text-muted-foreground">
+						<div
+							id="confirm-dialog-desc"
+							class="mt-1 text-sm leading-relaxed text-muted-foreground"
+						>
 							<!-- eslint-disable svelte/no-at-html-tags -- Messages are trusted/internal HTML -->
 							{@html message}
 

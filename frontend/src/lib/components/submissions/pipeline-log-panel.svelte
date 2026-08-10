@@ -238,7 +238,7 @@
 		<Terminal size={14} />
 		<span class="pipeline-log-title">Pipeline log</span>
 		{#if live}
-			<span class="pipeline-log-live">
+			<span class="pipeline-log-live" aria-live="polite" aria-label="Live updates active">
 				<Radio size={11} />
 				Live
 			</span>
@@ -330,7 +330,7 @@
 					{#if hasPreEval}
 						<div
 							class="pipeline-log-filter"
-							role="group"
+							role="radiogroup"
 							aria-label="Log source filter"
 						>
 							<ListFilter size={12} />
@@ -338,6 +338,8 @@
 								class="pipeline-log-filter-opt"
 								class:pipeline-log-filter-active={sourceFilter === "all"}
 								type="button"
+								role="radio"
+								aria-checked={sourceFilter === "all"}
 								onclick={() => (sourceFilter = "all")}
 								title="Show executor and pre-evaluation entries"
 							>
@@ -347,6 +349,8 @@
 								class="pipeline-log-filter-opt"
 								class:pipeline-log-filter-active={sourceFilter === "executor"}
 								type="button"
+								role="radio"
+								aria-checked={sourceFilter === "executor"}
 								onclick={() => (sourceFilter = "executor")}
 								title="Show executor entries only"
 							>
@@ -356,6 +360,8 @@
 								class="pipeline-log-filter-opt"
 								class:pipeline-log-filter-active={sourceFilter === "pre-eval"}
 								type="button"
+								role="radio"
+								aria-checked={sourceFilter === "pre-eval"}
 								onclick={() => (sourceFilter = "pre-eval")}
 								title="Show pre-evaluation entries only"
 							>
@@ -704,6 +710,11 @@
 		font-family: var(--font-mono);
 		font-size: 11px;
 		color: var(--fg);
+	}
+	.log-search-input:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: 4px;
 	}
 	.log-search-input::placeholder {
 		color: var(--muted-foreground);

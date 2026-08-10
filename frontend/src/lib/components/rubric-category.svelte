@@ -243,6 +243,9 @@
 							class="min-h-[4.5rem] rounded-[var(--radius)] border border-border bg-background px-3 py-2 text-sm text-foreground {disabled
 								? 'opacity-70'
 								: ''}"
+							role="textbox"
+							aria-multiline="true"
+							aria-label="Category notes"
 						></div>
 					</div>
 				{/if}
@@ -301,6 +304,11 @@
 	:global(.ProseMirror) {
 		outline: none;
 		min-height: 3rem;
+	}
+	:global(.ProseMirror:focus-visible) {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: var(--radius);
 	}
 
 	:global(.ProseMirror p.is-editor-empty:first-child::before) {

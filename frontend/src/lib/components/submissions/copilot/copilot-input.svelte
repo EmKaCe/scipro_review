@@ -150,6 +150,7 @@
 			placeholder={assignmentScope
 				? "Ask about the assignment..."
 				: "Ask the copilot or type / for commands..."}
+			aria-label="Chat message"
 			value={inputValue}
 			oninput={(e) => (inputValue = (e.target as HTMLInputElement).value)}
 			onkeydown={handleKeydown}
@@ -233,6 +234,11 @@
 		font-size: 12px;
 		color: var(--foreground);
 		padding: 4px 0;
+	}
+	.input-field:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: 4px;
 	}
 	.input-field::placeholder {
 		color: var(--muted-foreground);

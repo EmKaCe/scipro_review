@@ -60,7 +60,11 @@
 
 	<!-- Result Card -->
 	<div class="space-y-3 border-t border-border pt-4">
-		<div class="flex items-baseline justify-between">
+		<div
+			class="flex items-baseline justify-between"
+			aria-live="polite"
+			aria-label="Current grade"
+		>
 			<span class="text-2xl font-bold tracking-tight tabular-nums"
 				>{gradeResult
 					? `${gradeResult.total_weighted.toFixed(1)} / ${gradeResult.total_weighted_max}`

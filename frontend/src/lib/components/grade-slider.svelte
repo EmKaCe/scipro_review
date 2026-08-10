@@ -93,4 +93,16 @@
 		transform: scale(1.05);
 		box-shadow: 0 1px 2px oklch(0 0 0 / 0.2);
 	}
+
+	.grade-slider:focus-visible::-webkit-slider-thumb {
+		box-shadow:
+			0 0 0 3px var(--background),
+			0 0 0 5px var(--ring);
+	}
+
+	.grade-slider:focus-visible::-moz-range-thumb {
+		box-shadow:
+			0 0 0 3px var(--background),
+			0 0 0 5px var(--ring);
+	}
 </style>

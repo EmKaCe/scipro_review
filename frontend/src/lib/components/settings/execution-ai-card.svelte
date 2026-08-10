@@ -292,6 +292,7 @@
 								type={apiKeyVisible ? "text" : "password"}
 								class="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-2 pr-9 text-sm text-foreground"
 								placeholder="sk-..."
+								aria-label="KI Connect API key"
 								bind:value={apiKeyInput}
 							/>
 							<button

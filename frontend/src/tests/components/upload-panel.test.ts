@@ -128,6 +128,8 @@ describe("upload-panel.svelte (real upload flow)", () => {
 
 		const input = document.querySelector('input[type="file"]') as HTMLInputElement;
 		await fireEvent.change(input, { target: { files: [notebookFile("2026SS_05.ipynb")] } });
+		// Wait for async validation to settle before the upload button appears.
+		await screen.findByText("2026SS_05.ipynb");
 		await fireEvent.click(screen.getByText("Upload 1 file"));
 
 		expect(loadSpy).toHaveBeenCalledWith("another_assignment");

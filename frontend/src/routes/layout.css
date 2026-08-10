@@ -29,6 +29,21 @@
 	outline-offset: 2px;
 }
 
+/* Reduced motion (WCAG 2.1 AA 2.3.3) — collapse animations, transitions
+   and smooth scrolling for users who request reduced motion. The
+   !important overrides component-level animation/transition declarations
+   without touching any token values. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	::before,
+	::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+}
+
 :root {
 	--background: oklch(1 0 0);
 	--foreground: oklch(0.148 0.004 228.8);

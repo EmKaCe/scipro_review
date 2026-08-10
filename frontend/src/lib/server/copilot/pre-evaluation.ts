@@ -49,13 +49,19 @@ import { z } from "zod";
 import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 import { getAssignmentById } from "$lib/server/assignments";
-import { loadCriteriaForAssignment } from "$lib/server/criteria";
+import { loadCriteriaFile, loadCriteriaForAssignment } from "$lib/server/criteria";
 import { getKiConnectClient } from "$lib/server/ki-connect";
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
+import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
 import { readResults, type StoredExecutionResult } from "$lib/server/results-store";
 import { loadSettings } from "$lib/server/settings";
 import type { ExecutedCell } from "$lib/server/executor-client";
-import { allSubPoints, type MergedRubric } from "$lib/types/criteria";
+import {
+	allSubPoints,
+	type Category,
+	type MergedRubric,
+	type Sentiment,
+} from "$lib/types/criteria";
 import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-analysis";
 import {
 	generateWorksheet,
@@ -1159,6 +1165,20 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 				`[pre-eval] worksheet parse left ${parseResult.unmatched.length} unmatched item(s) for "${submissionId}" (assignment "${assignmentId}") — dropped.`,
 			);
 		}
+
+		// Balanced-criteria diagnostics (9.1): mandatory categories
+		// (Jupyter Notebooks, Academic Scholarship, assignment-specific)
+		// should carry at least one selection per sentiment section that has
+		// options — and at least one selection overall. Gaps are WARNINGS
+		// only: the result is accepted, never retried (the worksheet
+		// pipeline is expensive and a retry may not fix the gap).
+		await logBalancedCriteriaWarnings({
+			submissionId,
+			assignmentId,
+			rubric,
+			criteriaFiles: assignment?.criteria_files,
+			rubricSelections,
+		});
 	}
 
 	// ── Phase 3: Feedback + summary ──
@@ -1593,6 +1613,167 @@ async function callWorksheetBatch(
 		);
 	}
 	return raw;
+}
+
+// ---------------------------------------------------------------------------
+// Balanced criteria diagnostics (9.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * General-rubric categories whose verdict ALWAYS applies — a submission's
+ * notebook structure (Jupyter Notebooks) and its scholarship (Academic
+ * Scholarship) always warrant at least one checked sub-point, so the
+ * worksheet must never come back empty for them. Assignment-specific
+ * categories are added at runtime (see {@link mandatoryCategoryKeys}).
+ */
+const MANDATORY_GENERAL_CATEGORY_KEYS = new Set([
+	"jupyter_notebooks",
+	"academic_scholarship",
+]);
+
+/** The three sentiment sections of the worksheet. */
+const SENTIMENT_SECTIONS = ["positive", "neutral", "negative"] as const;
+
+/** Whether the category offers at least one selectable sub-point in the section. */
+function sentimentHasOptions(category: Category, sentiment: Sentiment): boolean {
+	return category[sentiment].some((mp) => mp.sub_points.length > 0);
+}
+
+/** Whether the given sub-point text belongs to the category's sentiment section. */
+function sentimentContains(category: Category, sentiment: Sentiment, optionKey: string): boolean {
+	return category[sentiment].some((mp) => mp.sub_points.some((sp) => sp.text === optionKey));
+}
+
+/**
+ * The categories that must carry at least one rubric selection after the
+ * worksheet pipeline: the always-applicable general categories
+ * (`jupyter_notebooks`, `academic_scholarship`) plus every assignment-
+ * specific category — each assignment-specific section covers a technique
+ * the assignment requires, so leaving it untouched is a gap the teacher
+ * should know about. Assignment-specific keys are those NOT defined in the
+ * assignment's general criteria file (registry entry ending in
+ * `general.yaml`). Falls back to just the known general keys when the
+ * general file is missing or unreadable — never throws.
+ */
+async function mandatoryCategoryKeys(
+	rubric: MergedRubric,
+	criteriaFiles: readonly string[] | undefined,
+): Promise<Set<string>> {
+	const keys = new Set<string>();
+	for (const entry of rubric.categories) {
+		if (MANDATORY_GENERAL_CATEGORY_KEYS.has(entry.key)) keys.add(entry.key);
+	}
+
+	const generalPath = criteriaFiles?.find((file) => file.endsWith("general.yaml"));
+	if (!generalPath) return keys;
+
+	try {
+		const general = await loadCriteriaFile(generalPath);
+		if (general) {
+			for (const entry of rubric.categories) {
+				if (!(entry.key in general.categories)) keys.add(entry.key);
+			}
+		}
+	} catch (err) {
+		console.warn(
+			`[pre-eval] could not load the general criteria file (${generalPath}) for mandatory-category diagnostics:`,
+			err instanceof Error ? err.message : err,
+		);
+	}
+	return keys;
+}
+
+/**
+ * Post-worksheet diagnostic (9.1): warn about mandatory categories with
+ * selection gaps.
+ *
+ * For every mandatory category the filled worksheet should have checked at
+ * least one sub-point per sentiment section that HAS selectable options —
+ * and at least one selection overall. Gaps are surfaced as warnings in the
+ * server console AND as a single `warning` entry in the pre-eval log (the
+ * dashboard's pipeline-log panel renders the `warning` level), but the
+ * result is ACCEPTED either way: no retry, no throw. The pre-evaluation
+ * succeeded — the teacher just needs to know where to look before
+ * finalizing the review.
+ */
+async function logBalancedCriteriaWarnings(opts: {
+	submissionId: string;
+	assignmentId: string;
+	rubric: MergedRubric;
+	criteriaFiles: readonly string[] | undefined;
+	rubricSelections: { categoryKey: string; optionKey: string }[];
+}): Promise<void> {
+	const { submissionId, assignmentId, rubric, criteriaFiles, rubricSelections } = opts;
+
+	const mandatoryKeys = await mandatoryCategoryKeys(rubric, criteriaFiles);
+	if (mandatoryKeys.size === 0) return;
+
+	// Index selections by category and by the sentiment section their
+	// option belongs to. A selection the parse fallback resolved to a
+	// different category counts for ITS OWN category.
+	const selectedSentiments = new Map<string, Set<Sentiment>>();
+	const selectionCounts = new Map<string, number>();
+	for (const selection of rubricSelections) {
+		const entry = rubric.categories.find((e) => e.key === selection.categoryKey);
+		if (!entry) continue;
+		selectionCounts.set(entry.key, (selectionCounts.get(entry.key) ?? 0) + 1);
+		for (const sentiment of SENTIMENT_SECTIONS) {
+			if (sentimentContains(entry.category, sentiment, selection.optionKey)) {
+				let set = selectedSentiments.get(entry.key);
+				if (!set) {
+					set = new Set();
+					selectedSentiments.set(entry.key, set);
+				}
+				set.add(sentiment);
+			}
+		}
+	}
+
+	const warnings: string[] = [];
+	for (const entry of rubric.categories) {
+		if (!mandatoryKeys.has(entry.key)) continue;
+		const title = entry.category.title;
+
+		// Per-section balance: a sentiment section with selectable options
+		// that came back with zero checked items. Sections without rubric
+		// options are skipped — nothing could have been selected there.
+		for (const sentiment of SENTIMENT_SECTIONS) {
+			if (!sentimentHasOptions(entry.category, sentiment)) continue;
+			if (!selectedSentiments.get(entry.key)?.has(sentiment)) {
+				warnings.push(
+					`Category '${title}' has no rubric selections in its ${sentiment} section — may need manual review`,
+				);
+			}
+		}
+
+		// Total gap: the category came back entirely empty across all
+		// sentiments — the strongest signal that the model skipped it.
+		if ((selectionCounts.get(entry.key) ?? 0) === 0) {
+			warnings.push(`Category '${title}' has zero rubric selections — may need manual review`);
+		}
+	}
+	if (warnings.length === 0) return;
+
+	for (const warning of warnings) {
+		console.warn(
+			`[pre-eval] ${warning} (submission "${submissionId}", assignment "${assignmentId}")`,
+		);
+	}
+
+	// One aggregate entry per submission — the panel's one-entry-per-row
+	// rhythm stays intact, and the teacher sees the gaps in the same log
+	// stream as the row's ok:true settlement line. ok stays true: the
+	// pre-evaluation succeeded, it just has gaps the teacher should review.
+	appendPreEvalLog({
+		level: "warning",
+		logger: "pre-eval",
+		submissionId,
+		message: `Balanced-criteria check: ${warnings.length} gap(s) for "${submissionId}" — ${warnings.join("; ")}`,
+		grades: {},
+		markerCount: 0,
+		selectionCount: rubricSelections.length,
+		ok: true,
+	});
 }
 
 /** Dimensions section of the user prompt; falls back to registry ids. */

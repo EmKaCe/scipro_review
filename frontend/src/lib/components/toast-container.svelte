@@ -38,6 +38,9 @@
 
 <div
 	class="toast-container pointer-events-none fixed top-4 right-4 z-50 flex w-full max-w-sm flex-col gap-2 {className}"
+	role="status"
+	aria-live="polite"
+	aria-label="Notifications"
 >
 	{#each toasts as toast (toast.id)}
 		{@const Icon = iconMap[toast.type]}

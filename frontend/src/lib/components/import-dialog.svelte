@@ -29,19 +29,28 @@
 	let readOnly = $state(true);
 	let errorMessage = $state("");
 	let isDragOver = $state(false);
+	/** Element focused before the dialog opened — focus returns here on close. */
+	let previouslyFocused: HTMLElement | null = null;
 
 	let canImport = $derived(selectedFiles.length > 0);
 
 	$effect(() => {
-		if (open && dialogRef) {
-			const focusable = dialogRef.querySelectorAll<HTMLElement>(
-				'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
-			);
-			if (focusable.length > 0) {
-				focusable[0].focus();
-			} else {
-				dialogRef.focus();
+		if (open) {
+			// Remember the trigger so focus can be restored on close (WCAG 2.1 AA 2.4.3).
+			previouslyFocused = document.activeElement as HTMLElement | null;
+			if (dialogRef) {
+				const focusable = dialogRef.querySelectorAll<HTMLElement>(
+					'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+				);
+				if (focusable.length > 0) {
+					focusable[0].focus();
+				} else {
+					dialogRef.focus();
+				}
 			}
+		} else if (previouslyFocused) {
+			previouslyFocused.focus();
+			previouslyFocused = null;
 		}
 	});
 

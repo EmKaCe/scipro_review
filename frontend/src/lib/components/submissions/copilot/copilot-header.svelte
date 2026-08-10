@@ -122,6 +122,7 @@
 			class:thread-selector-active={sidebarOpen}
 			title={activeThread.title}
 			aria-label="Select conversation"
+			aria-expanded={sidebarOpen}
 			onclick={onToggleSidebar}
 		>
 			<span class="active-thread-title">{activeThread.title}</span>
@@ -180,6 +181,7 @@
 		class="header-btn"
 		class:header-btn-active={sidebarOpen}
 		aria-label="Conversation history"
+		aria-expanded={sidebarOpen}
 		title="Conversation history"
 		onclick={onToggleSidebar}
 	>

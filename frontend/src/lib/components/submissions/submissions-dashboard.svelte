@@ -327,12 +327,14 @@
 				type="text"
 				class="search-input"
 				placeholder="Search by student ID..."
+				aria-label="Search submissions"
 				value={searchQuery}
 				oninput={(e) => onSearchChange(e.currentTarget.value)}
 			/>
 		</div>
 		<select
 			class="filter-select"
+			aria-label="Filter by status"
 			value={statusFilter}
 			onchange={(e) => onStatusFilterChange(e.currentTarget.value)}
 		>
@@ -378,10 +380,14 @@
 
 	<!-- Table -->
 	<div class="table-scroll">
-		<table class="submissions-table">
+		<table class="submissions-table" aria-label="Submissions table" role="grid">
 			<thead>
-				<tr>
-					<th class="col-select" aria-label="Select all submissions">
+				<tr aria-rowindex={1}>
+					<th
+						class="col-select"
+						role="columnheader"
+						aria-label="Select all submissions"
+					>
 						<Checkbox
 							checked={allVisibleSelected}
 							indeterminate={headerIndeterminate}
@@ -391,8 +397,9 @@
 					</th>
 					<th
 						class="col-id"
+						role="columnheader"
+						aria-sort={sortKey === "studentId" ? (sortAsc ? "ascending" : "descending") : "none"}
 						onclick={() => toggleSort("studentId")}
-						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("studentId")}
 					>
@@ -407,8 +414,9 @@
 					</th>
 					<th
 						class="col-status"
+						role="columnheader"
+						aria-sort={sortKey === "status" ? (sortAsc ? "ascending" : "descending") : "none"}
 						onclick={() => toggleSort("status")}
-						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("status")}
 					>
@@ -423,8 +431,9 @@
 					</th>
 					<th
 						class="col-cells"
+						role="columnheader"
+						aria-sort={sortKey === "cellSummary" ? (sortAsc ? "ascending" : "descending") : "none"}
 						onclick={() => toggleSort("cellSummary")}
-						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("cellSummary")}
 					>
@@ -438,8 +447,9 @@
 					</th>
 					<th
 						class="col-preeval"
+						role="columnheader"
+						aria-sort={sortKey === "preEvalGrade" ? (sortAsc ? "ascending" : "descending") : "none"}
 						onclick={() => toggleSort("preEvalGrade")}
-						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("preEvalGrade")}
 					>
@@ -453,8 +463,9 @@
 					</th>
 					<th
 						class="col-grade"
+						role="columnheader"
+						aria-sort={sortKey === "teacherGrade" ? (sortAsc ? "ascending" : "descending") : "none"}
 						onclick={() => toggleSort("teacherGrade")}
-						role="button"
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("teacherGrade")}
 					>
@@ -466,14 +477,14 @@
 							class="sort-arrow-icon"
 						/>
 					</th>
-					<th class="col-actions"></th>
+					<th class="col-actions" role="columnheader"></th>
 				</tr>
 			</thead>
 			<tbody>
-				{#each sorted as sub (sub.id)}
+				{#each sorted as sub, i (sub.id)}
 					{@const cfg = statusConfig[sub.status] ?? statusConfig.pending}
 					{@const StatusIcon = cfg.icon}
-					<tr>
+					<tr aria-rowindex={i + 2}>
 						<td class="col-select">
 							<Checkbox
 								checked={selectedIds.has(sub.id)}
@@ -606,6 +617,11 @@
 		font-size: 13px;
 		color: var(--fg);
 		padding: 3px 0;
+	}
+	.search-input:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+		border-radius: 4px;
 	}
 	.search-input::placeholder {
 		color: var(--muted-foreground);

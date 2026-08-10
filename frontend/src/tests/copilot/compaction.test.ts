@@ -265,7 +265,7 @@ describe("maybeCompactThread (V.2)", () => {
 	it("caps a verbose summary to resolveSummarySizeTokens(modelId) * 4 chars", async () => {
 		await seedThread(8);
 		const capChars = resolveSummarySizeTokens(DEFAULT_MODEL_ID) * 4;
-		expect(capChars).toBe(6552); // 0.05 * 32768 = 1638 tokens * 4
+		expect(capChars).toBe(16000); // 0.05 * 262144 = 13107 → cap 4000 tokens * 4
 		const longSummary = "x".repeat(capChars + 5000);
 
 		const result = await maybeCompactThread({

@@ -21,6 +21,8 @@
 
 <div
 	class="danger-zone overflow-hidden rounded-[var(--radius)] border border-destructive bg-card shadow-sm"
+	role="group"
+	aria-label="Danger zone"
 >
 	<div class="p-5 pb-3">
 		<div class="flex items-center gap-2">

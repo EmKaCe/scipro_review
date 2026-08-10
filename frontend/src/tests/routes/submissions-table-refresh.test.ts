@@ -95,7 +95,7 @@ function meta(id: string, status: SubmissionMeta["status"] = "executed"): Submis
 
 /** Click the confirm button inside the open ConfirmationDialog. */
 function clickDialogConfirm(label: string) {
-	const dialog = screen.getByRole("dialog");
+	const dialog = screen.getByRole("alertdialog");
 	const btn = [...dialog.querySelectorAll("button")].find((b) => b.textContent?.trim() === label);
 	if (!btn) throw new Error(`Dialog button "${label}" not found`);
 	fireEvent.click(btn);

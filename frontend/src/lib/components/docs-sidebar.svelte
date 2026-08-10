@@ -1,6 +1,4 @@
 <script lang="ts">
-	import Lock from "@lucide/svelte/icons/lock";
-
 	/** Props for the documentation sidebar navigation component. */
 	interface Props {
 		/** ID of the currently active/visible documentation section. */
@@ -12,19 +10,18 @@
 	interface NavItem {
 		id: string;
 		label: string;
-		icon?: boolean;
 	}
 
 	const navItems: NavItem[] = [
 		{ id: "getting-started", label: "Getting Started" },
-		{ id: "starting-review", label: "Starting a Review" },
-		{ id: "completing-review", label: "Completing a Review" },
-		{ id: "saving", label: "Saving & Resuming" },
-		{ id: "importing", label: "Importing Reviews" },
-		{ id: "exporting", label: "Exporting Reviews" },
-		{ id: "previewing", label: "Previewing Evaluations" },
-		{ id: "shortcuts", label: "Keyboard Shortcuts" },
-		{ id: "faq", label: "FAQ" },
+		{ id: "configuration", label: "Configuration" },
+		{ id: "uploading", label: "Uploading Submissions" },
+		{ id: "pipeline", label: "Running the Pipeline" },
+		{ id: "grading", label: "Grading Workflow" },
+		{ id: "copilot", label: "AI Copilot" },
+		{ id: "backup", label: "Backup & Restore" },
+		{ id: "troubleshooting", label: "Troubleshooting" },
+		{ id: "deployment", label: "Deployment" },
 	];
 
 	function handleClick(id: string, e: MouseEvent) {
@@ -48,9 +45,6 @@
 		>
 			<span class="flex items-center gap-1.5">
 				{item.label}
-				{#if item.icon}
-					<Lock size={10} class="shrink-0" />
-				{/if}
 			</span>
 		</a>
 	{/each}

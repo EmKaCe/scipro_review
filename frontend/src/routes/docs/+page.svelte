@@ -21,27 +21,27 @@
 
 	let sectionIds = $derived([
 		"getting-started",
-		"starting-review",
-		"completing-review",
-		"saving",
-		"importing",
-		"exporting",
-		"previewing",
-		"shortcuts",
-		"faq",
+		"configuration",
+		"uploading",
+		"pipeline",
+		"grading",
+		"copilot",
+		"backup",
+		"troubleshooting",
+		"deployment",
 	]);
 
 	let sectionLabels = $derived.by(() => {
 		const all: Record<string, string> = {
 			"getting-started": "Getting Started",
-			"starting-review": "Starting a Review",
-			"completing-review": "Completing a Review",
-			saving: "Saving & Resuming",
-			importing: "Importing Reviews",
-			exporting: "Exporting Reviews",
-			previewing: "Previewing Evaluations",
-			shortcuts: "Keyboard Shortcuts",
-			faq: "FAQ",
+			configuration: "Configuration",
+			uploading: "Uploading Submissions",
+			pipeline: "Running the Pipeline",
+			grading: "Grading Workflow",
+			copilot: "AI Copilot",
+			backup: "Backup & Restore",
+			troubleshooting: "Troubleshooting",
+			deployment: "Deployment",
 		};
 		const visible: Record<string, string> = {};
 		for (const id of sectionIds) {

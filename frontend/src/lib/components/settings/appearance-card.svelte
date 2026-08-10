@@ -33,6 +33,8 @@
 	<div class="px-5 pb-5">
 		<div
 			class="flex items-center gap-2 rounded-[var(--radius)] border border-border bg-background p-1"
+			role="radiogroup"
+			aria-label="Color scheme"
 		>
 			{#each themes as theme (theme.value)}
 				<input
