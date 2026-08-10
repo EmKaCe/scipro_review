@@ -46,7 +46,6 @@
 		fetchPreEvalLogs,
 		fetchPreEvalStatus,
 		fetchProcessStatus,
-		preEvaluateSubmissions,
 		restoreBackup,
 		type ExecutorLogEntry,
 		type PreEvalProgress,
@@ -180,9 +179,6 @@
 	);
 	let bulkCanReset = $derived(
 		scopeList.some((s) => s.status === "graded" || s.status === "pre-evaluated"),
-	);
-	let bulkCanPreEval = $derived(
-		scopeList.some((s) => s.status === "executed" || s.status === "error"),
 	);
 
 	/** Short id preview for the destructive confirm dialogs. */
@@ -709,58 +705,8 @@
 			addToast("success", `Reset ${ids.length} submission(s) to executed`, 3000);
 		});
 		bulkResetOpen = false;
-	}
-
-	/**
-	 * Pre-evaluate the executed/error rows of the current assignment. The
-	 * route targets executed/error submissions regardless of the selection
-	 * (the API is assignment-scoped, one global run at a time) and refuses
-	 * to start while another run is in flight (409). The dashboard's
-	 * "Pre-evaluate All" toolbar button uses the same endpoint.
-	 */
-	async function handleBulkPreEvaluate() {
-		if (bulkBusy || !bulkCanPreEval) return;
-		bulkBusy = true;
-		bulkAction = "Pre-evaluating";
-		// Start the log/status polling so the panel fills in live as rows
-		// settle (one KI Connect call per submission, concurrency 2).
-		preEvalStartedAt = Date.now();
-		preEvalStatus = null;
-		preEvalRunSummary = null;
-		try {
-			const summary = await preEvaluateSubmissions(selectedAssignment);
-			// Completed-run tallies for the log panel banner.
-			preEvalRunSummary = {
-				submitted: summary.submitted,
-				succeeded: summary.succeeded,
-				failed: summary.failed,
-			};
-			addToast(
-				"success",
-				`Pre-evaluated ${summary.succeeded} of ${summary.submitted} submission(s)${
-					summary.failed > 0 ? `, ${summary.failed} failed` : ""
-				}`,
-				5000,
-			);
-			// The run flipped rows to "pre-evaluated" — refresh the list.
-			await submissionsStore.refresh();
-		} catch (e) {
-			if (e instanceof ApiError && e.status === 409) {
-				addToast("error", "A pre-evaluation run is already in progress", 4000);
-			} else {
-				addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
-			}
-		} finally {
-			bulkBusy = false;
-			bulkAction = null;
-			preEvalStartedAt = null;
-			// Fetch once more — the route already wrote its final tallies, so
-			// the panel can show the completed run summary (banner + log lines).
-			void refreshPreEvalStatus();
-			void refreshLogs();
 		}
-	}
-</script>
+		</script>
 
 <svelte:head>
 	<title>SciPro Review — Submissions</title>
@@ -1077,17 +1023,7 @@
 					<RotateCcw size={14} />
 					Reset
 				</Button>
-				<Button
-					variant="outline"
-					size="sm"
-					title="Pre-evaluate the executed/error submissions (one KI call per submission)"
-					onclick={handleBulkPreEvaluate}
-					disabled={bulkBusy || !bulkCanPreEval}
-				>
-					<Sparkles size={14} />
-					Pre-evaluate
-				</Button>
-			</div>
+				</div>
 		</div>
 
 		<!-- ── Pipeline log: executor + pre-evaluation activity (collapsible) ── -->
