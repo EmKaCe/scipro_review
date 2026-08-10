@@ -265,6 +265,14 @@
 				preEvalTargetCount = preEval.total;
 				preEvalElapsed = Math.floor((Date.now() - preEval.startedAt) / 1000);
 			}
+			// A recovered run means row statuses are changing server-side —
+			// refresh the table immediately so it shows the live state, and the
+			// polling effect keeps it synced (every 5s) from here on. Skipped
+			// when the assignment list hasn't resolved yet — the effect on
+			// selectedAssignment loads the table as soon as it is set.
+			if ((process?.running || preEval?.running) && selectedAssignment) {
+				void loadSubmissions();
+			}
 		} catch {
 			// The per-run status fetches below still restore the tallies; a
 			// missing unified endpoint must not break the dashboard.
@@ -313,6 +321,9 @@
 		logsLoading = false;
 	}
 
+	/** Last time the submissions store was refreshed by the run poller (ms epoch). */
+	let lastStoreRefresh = 0;
+
 	$effect(() => {
 		if (processStartedAt === null && preEvalStartedAt === null) return;
 		// Immediate fetch + poll every 2s while a batch run is active.
@@ -323,6 +334,14 @@
 			void refreshProcessStatus();
 			void refreshPreEvalStatus();
 			void refreshLogs();
+			// Table sync during an active run: refresh the store at most
+			// every 5s so row statuses stay current without hammering the
+			// list endpoint. Failures keep the last good list (next tick
+			// retries) — the live status polls are unaffected.
+			if (selectedAssignment && Date.now() - lastStoreRefresh > 5000) {
+				lastStoreRefresh = Date.now();
+				void submissionsStore.load(selectedAssignment).catch(() => {});
+			}
 		}, 2000);
 		return () => clearInterval(timer);
 	});
