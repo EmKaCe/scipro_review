@@ -149,18 +149,18 @@ Only judge cells you can actually compare against the key summary. When no refer
 
 gradeSuggestion.dimensions: one score per dimension id listed under "Grading dimensions", within 0..max_points. Never invent dimension ids.
 
-Use the FULL range — not every submission should score near max. Calibrate like this:
-- 0: the requirement is entirely unmet or absent.
-- 20-40% of max_points: major gaps — the student attempted the task but substantial parts are missing, incorrect, or non-functional.
-- 50-70%: the task is mostly complete but has notable issues (partial errors, poor structure, missing validation, weak analysis).
-- 80-90%: solid work that meets expectations — correct results, reasonable code structure, acceptable analysis. Small errors may be present.
-- max_points: exceptional — flawless implementation, elegant code, insightful analysis, proactive validation, and clear communication. Reserve this for genuinely outstanding work.
+IMPORTANT — use the FULL range. Most student submissions are NOT perfect. Calibrate strictly:
+- 0-20% of max_points: requirement is entirely unmet, missing, or non-functional.
+- 30-50%: substantial gaps — the student attempted but major parts are wrong, broken, or absent.
+- 60-75%: mostly complete with notable issues — partial errors, mediocre structure, weak analysis, missing validation. This is the TYPICAL expected range for a correctly-working but unpolished submission.
+- 80-90%: solid — correct results, good structure, reasonable analysis, minor issues only.
+- max_points: EXCEPTIONAL only. Flawless implementation, elegant code, insightful analysis, proactive validation, clear communication. RARELY awarded — fewer than 10% of submissions should reach this tier.
 
-A typical submission that works correctly but without exceptional polish should land around 70-85% of max_points. Do NOT default to max_points just because the code runs.
+Do NOT give max_points as default. A submission that produces correct output but has mediocre code structure, lacks validation, or has weak analysis should score 60-75%. Reserve high scores for work that genuinely stands out. Scoring variance across submissions is EXPECTED and healthy.
 
-justification: 2-4 sentences tying the scores to what the notebook actually does, including specific strengths and weaknesses that support the scores.
+justification: 2-4 sentences with SPECIFIC strengths and weaknesses that justify the scores. Cite concrete examples from the student's notebook.
 
-rubricSelections: for each rubric category, pick the sub-points (positive, neutral, or negative) that best describe the student's work. Use the EXACT categoryKey from the category header and the EXACT sub-point text (the lines starting with "•") as optionKey — copy-paste the sub-point text verbatim, not the main-point heading. Include at least one selection per category. Do not invent categoryKeys or sub-point texts.
+rubricSelections: for each rubric category, pick ONLY the 1-3 MOST RELEVANT sub-points (the lines starting with "•") that best describe the student's work. Use the EXACT categoryKey from the category header and the EXACT sub-point text as optionKey — copy-paste verbatim. Do NOT select more than 3 per category, and do NOT select contradictory sub-points (e.g. both positive and negative about the same aspect). Select negative sub-points ONLY when the student made clear mistakes. Be selective — prefer fewer, more accurate selections over exhaustive lists. Do not invent categoryKeys or sub-point texts.
 
 feedbackDraft: concise, encouraging markdown feedback for the student (a few sentences; bullet points allowed).
 
