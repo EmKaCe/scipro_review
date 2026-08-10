@@ -166,7 +166,7 @@
 		scopeList.some((s) => s.status === "graded" || s.status === "pre-evaluated"),
 	);
 	let bulkCanPreEval = $derived(
-		scopeList.some((s) => s.status === "executed" || s.status === "pre-evaluated"),
+		scopeList.some((s) => s.status === "executed" || s.status === "error"),
 	);
 
 	/** Short id preview for the destructive confirm dialogs. */

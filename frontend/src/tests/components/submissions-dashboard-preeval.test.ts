@@ -252,6 +252,63 @@ describe("submissions-dashboard pre-evaluation wiring", () => {
 		});
 	});
 
+	it("refreshes the list directly after the POST when no poll ever observes the run", async () => {
+		// Worst-case race: the run is so fast that every status poll sees
+		// the idle (running:false, total:0) state — the polling loop can
+		// never detect the run, so the list refresh must come from the
+		// POST handler itself.
+		vi.stubGlobal(
+			"fetch",
+			vi.fn(async (input: RequestInfo | URL, _init?: RequestInit) => {
+				const url = String(input);
+				if (url.includes("/api/submissions/pre-evaluate/status")) {
+					return jsonResponse({ running: false, done: 0, total: 0 });
+				}
+				if (url.includes("/api/submissions/pre-evaluate")) {
+					return jsonResponse({
+						assignmentId: "soil_contamination",
+						submitted: 2,
+						succeeded: 2,
+						failed: 0,
+						results: [
+							{ studentId: "2026SS_02", ok: true, error: null },
+							{ studentId: "2026SS_03", ok: true, error: null },
+						],
+					});
+				}
+				if (url.includes("/api/submissions")) {
+					listCalls += 1;
+					return jsonResponse({
+						assignmentId: "soil_contamination",
+						submissions: SUBMISSIONS.map((s) =>
+							s.status === "executed" || s.status === "error"
+								? { ...s, status: "pre-evaluated" }
+								: s,
+						),
+					});
+				}
+				return jsonResponse({ message: "not found" }, 404);
+			}),
+		);
+
+		renderDashboard();
+		const button = await screen.findByRole("button", { name: /pre-evaluate all/i });
+		fireEvent.click(button);
+
+		await waitFor(() => {
+			expect(addToast).toHaveBeenCalledWith(
+				"success",
+				"Pre-evaluated 2 of 2 submission(s)",
+				5000,
+			);
+		});
+		// The POST handler refreshed the store — the flipped statuses show
+		// up even though no poll ever saw the run.
+		await waitFor(() => {
+			expect(listCalls).toBeGreaterThan(0);
+		});
+	});
+
 	it("surfaces a 409 already-running response as an error toast", async () => {
 		// The button is disabled while running, but a second tab could race:
 		// the route answers 409 and the dashboard must not crash.

@@ -202,7 +202,11 @@
 
 	/** Live run record from the status endpoint (null until first fetch). */
 	let preEvalStatus = $state<PreEvalRunStatus | null>(null);
-	/** True between the POST and the first status poll (run may be over already). */
+	/**
+	 * True between the POST and its resolution (the run may be over by the
+	 * time the response arrives). Only the POST handler clears this — an
+	 * idle status observation must never disarm the polling loop mid-run.
+	 */
 	let preEvalStarting = $state(false);
 	/** Whether the previous poll observed a running run (drives row refresh). */
 	let preEvalWasRunning = $state(false);
@@ -212,7 +216,11 @@
 		submissions.some((s) => s.status === "executed" || s.status === "error"),
 	);
 
-	/** True while a pre-evaluation run is starting or in flight. */
+	/**
+	 * True while a pre-evaluation run is starting or in flight. Armed by
+	 * preEvalStarting (POST in flight) or a status observation with
+	 * running:true — never disarmed by a total:0 idle observation.
+	 */
 	let preEvalRunning = $derived(preEvalStarting || (preEvalStatus?.running ?? false));
 
 	let preEvalDone = $derived(preEvalStatus?.done ?? 0);
@@ -235,13 +243,12 @@
 			const status = (await res.json()) as PreEvalRunStatus;
 			if (seq !== statusRequestSeq) return; // superseded — ignore
 			const wasRunning = preEvalWasRunning;
-			const wasStarting = preEvalStarting;
 			preEvalStatus = status;
 			preEvalWasRunning = status.running;
-			preEvalStarting = false;
-			// A run that was observed in flight (or just started) finished:
-			// the route flipped rows to "pre-evaluated" — refresh the list.
-			if (!status.running && status.total > 0 && (wasRunning || wasStarting)) {
+			// A run that was observed in flight finished: the route flipped
+			// rows to "pre-evaluated" — refresh the list. The POST handler
+			// refreshes directly too; this covers the reload-mid-run case.
+			if (!status.running && status.total > 0 && wasRunning) {
 				void submissionsStore.refresh();
 			}
 		} catch {
@@ -276,7 +283,6 @@
 				{ method: "POST" },
 			);
 			if (res.status === 409) {
-				preEvalStarting = false;
 				addToast("error", "A pre-evaluation run is already in progress", 4000);
 				return;
 			}
@@ -296,11 +302,18 @@
 				}`,
 				5000,
 			);
-			// The polling loop (armed by preEvalStarting) refreshes the rows
-			// once the run finishes.
+			// The route runs the whole batch before responding and flips the
+			// target rows to "pre-evaluated" — refresh the list directly so
+			// the table shows the new statuses immediately (a fast run can
+			// finish before the first status poll ever observes running:true).
+			await submissionsStore.refresh();
 		} catch (e) {
-			preEvalStarting = false;
 			addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+		} finally {
+			// Only the POST handler clears the starting flag: an idle status
+			// observation (running:false, total:0 before the run registers)
+			// must not disarm the polling loop mid-run.
+			preEvalStarting = false;
 		}
 	}
 </script>
