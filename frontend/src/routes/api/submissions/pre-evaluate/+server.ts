@@ -29,6 +29,7 @@ import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { preEvaluateSubmission } from "$lib/server/copilot/pre-evaluation";
 import { listSubmissions, updateStatus } from "$lib/server/metadata";
 import { withPersistLock } from "$lib/server/persist-lock";
+import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
 import {
 	beginPreEvalRun,
 	endPreEvalRun,
@@ -122,6 +123,23 @@ export async function POST(event: RequestEvent): Promise<Response> {
 					await updateStatus(assignmentId, target.id, "pre-evaluated", { force: true });
 					results.push({ studentId: target.id, ok: true, error: null });
 				});
+				// Pipeline-log line: the dashboard's log panel shows one
+				// entry per row so the teacher sees each submission settle
+				// (grade scores, marker count, rubric selection count).
+				appendPreEvalLog({
+					level: "info",
+					logger: "pre-eval",
+					submissionId: target.id,
+					message: `Pre-evaluated "${target.id}" — ${envelope.markers?.length ?? 0} cell marker(s), ${
+						envelope.rubricSelections?.length ?? 0
+					} rubric selection(s)`,
+					grades: envelope.gradeSuggestion.dimensions,
+					markerCount: envelope.markers?.length ?? 0,
+					selectionCount: envelope.rubricSelections?.length ?? 0,
+					rubricSelections: envelope.rubricSelections ?? [],
+					ok: true,
+				});
+				updatePreEvalRun({ succeeded: results.filter((r) => r.ok).length });
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				// Per-row failures must not vanish silently: the row is
@@ -137,6 +155,17 @@ export async function POST(event: RequestEvent): Promise<Response> {
 					ok: false,
 					error: message,
 				});
+				appendPreEvalLog({
+					level: "error",
+					logger: "pre-eval",
+					submissionId: target.id,
+					message: `Pre-evaluation failed for "${target.id}": ${message}`,
+					grades: {},
+					markerCount: 0,
+					selectionCount: 0,
+					ok: false,
+				});
+				updatePreEvalRun({ failed: results.filter((r) => !r.ok).length });
 			}
 			updatePreEvalRun({ done: results.length });
 		});

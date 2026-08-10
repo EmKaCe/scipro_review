@@ -20,6 +20,7 @@ import path from "node:path";
 
 import type { ExecutionResult } from "$lib/server/executor-client";
 import { upsertSubmission } from "$lib/server/metadata";
+import { getPreEvalLogs, resetPreEvalLogs } from "$lib/server/pre-eval-logs";
 import {
 	beginPreEvalRun,
 	endPreEvalRun,
@@ -30,6 +31,7 @@ import {
 import { readResults, writeResults } from "$lib/server/results-store";
 
 import { POST as preEvaluatePOST } from "../../routes/api/submissions/pre-evaluate/+server";
+import { GET as preEvaluateLogsGET } from "../../routes/api/submissions/pre-evaluate/logs/+server";
 import { GET as preEvaluateStatusGET } from "../../routes/api/submissions/pre-evaluate/status/+server";
 
 // ---------------------------------------------------------------------------
@@ -147,11 +149,13 @@ beforeEach(async () => {
 	preEvalService.preEvaluateSubmission.mockReset();
 	preEvalService.preEvaluateSubmission.mockResolvedValue(ENVELOPE);
 	resetPreEvalRun();
+	resetPreEvalLogs();
 });
 
 afterEach(async () => {
 	delete process.env.DATA_DIR;
 	await rm(dataDir, { recursive: true, force: true });
+	resetPreEvalLogs();
 });
 
 /** Minimal RequestEvent stub (routes only touch url/params/request). */
@@ -215,6 +219,25 @@ describe("POST /api/submissions/pre-evaluate", () => {
 		}
 		// The pending row was never touched.
 		expect(results[STUDENT_C]).toBeUndefined();
+
+		// One pipeline-log line per settled row, tagged "pre-eval" with the
+		// envelope's grade scores, marker count, and rubric selection count.
+		const log = getPreEvalLogs();
+		expect(log.truncated).toBe(false);
+		expect(log.entries).toHaveLength(2);
+		expect(log.entries.map((e) => e.submissionId).sort()).toEqual([STUDENT_A, STUDENT_B]);
+		for (const entry of log.entries) {
+			expect(entry.source).toBe("pre-eval");
+			expect(entry.ok).toBe(true);
+			expect(entry.level).toBe("info");
+			expect(entry.grades).toEqual(ENVELOPE.gradeSuggestion.dimensions);
+			expect(entry.markerCount).toBe(ENVELOPE.markers!.length);
+			expect(entry.selectionCount).toBe(0);
+		}
+		// Run tallies: both rows succeeded.
+		const progress = getPreEvalRun();
+		expect(progress.succeeded).toBe(2);
+		expect(progress.failed).toBe(0);
 	});
 
 	it("marks successful rows pre-evaluated (lifecycle step) and clears the run", async () => {
@@ -269,6 +292,19 @@ describe("POST /api/submissions/pre-evaluate", () => {
 
 		// Both rows settled in the run tally.
 		expect(getPreEvalRun().done).toBe(2);
+		// Tallies split: one success, one failure — and the failed row gets
+		// an error-tagged log line with no grade data.
+		expect(getPreEvalRun().succeeded).toBe(1);
+		expect(getPreEvalRun().failed).toBe(1);
+		const log = getPreEvalLogs();
+		expect(log.entries).toHaveLength(2);
+		const failedEntry = log.entries.find((e) => e.submissionId === STUDENT_B)!;
+		expect(failedEntry.ok).toBe(false);
+		expect(failedEntry.level).toBe("error");
+		expect(failedEntry.grades).toEqual({});
+		expect(failedEntry.markerCount).toBe(0);
+		expect(failedEntry.selectionCount).toBe(0);
+		expect(failedEntry.message).toContain("upstream timeout");
 	});
 
 	it("refuses with 409 while a pre-evaluation run is already in flight", async () => {
@@ -337,7 +373,7 @@ describe("GET /api/submissions/pre-evaluate/status", () => {
 	it("returns live progress while running and retains final tallies after", async () => {
 		beginPreEvalRun(ASSIGNMENT, 4);
 		updatePreEvalRun({ currentStudentId: STUDENT_B, currentStartedAt: 123456 });
-		updatePreEvalRun({ done: 1 });
+		updatePreEvalRun({ done: 1, succeeded: 1, failed: 0 });
 
 		const running = await readJson(
 			await preEvaluateStatusGET(makeEvent("/api/submissions/pre-evaluate/status")),
@@ -346,6 +382,8 @@ describe("GET /api/submissions/pre-evaluate/status", () => {
 		expect(running.assignmentId).toBe(ASSIGNMENT);
 		expect(running.total).toBe(4);
 		expect(running.done).toBe(1);
+		expect(running.succeeded).toBe(1);
+		expect(running.failed).toBe(0);
 		expect(running.currentStudentId).toBe(STUDENT_B);
 		expect(running.currentStartedAt).toBe(123456);
 
@@ -357,6 +395,43 @@ describe("GET /api/submissions/pre-evaluate/status", () => {
 		// Final tallies survive the run end (dashboard shows the summary).
 		expect(finished.done).toBe(1);
 		expect(finished.total).toBe(4);
+		expect(finished.succeeded).toBe(1);
+		expect(finished.failed).toBe(0);
 		expect(finished.currentStudentId).toBeNull();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/submissions/pre-evaluate/logs
+// ---------------------------------------------------------------------------
+
+describe("GET /api/submissions/pre-evaluate/logs", () => {
+	it("reports an empty buffer when no rows were processed", async () => {
+		const body = await readJson(
+			await preEvaluateLogsGET(makeEvent("/api/submissions/pre-evaluate/logs")),
+		);
+		expect(body.entries).toEqual([]);
+		expect(body.truncated).toBe(false);
+	});
+
+	it("returns appended pre-eval entries oldest → newest with the limit clamp", async () => {
+		// A run emits two rows; the endpoint surfaces both.
+		await preEvaluatePOST(postEvent());
+
+		const body = await readJson(
+			await preEvaluateLogsGET(makeEvent("/api/submissions/pre-evaluate/logs?limit=1")),
+		);
+		expect(body.truncated).toBe(true);
+		const single = (body.entries as Array<Record<string, unknown>>)[0]!;
+		expect(single.source).toBe("pre-eval");
+		// Append order is nondeterministic under concurrency — either row.
+		expect([STUDENT_A, STUDENT_B]).toContain(single.submissionId);
+
+		const all = await readJson(
+			await preEvaluateLogsGET(makeEvent("/api/submissions/pre-evaluate/logs?limit=abc")),
+		);
+		// Unparsable limit falls back to the default (both entries).
+		expect((all.entries as unknown[]).length).toBe(2);
+		expect(all.truncated).toBe(false);
 	});
 });

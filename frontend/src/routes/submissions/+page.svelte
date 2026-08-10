@@ -38,13 +38,19 @@
 	import CopilotPanel from "$lib/components/submissions/copilot-panel.svelte";
 	import { apiMode } from "$lib/components/submissions/copilot-store.svelte.js";
 	import {
+		ApiError,
 		downloadBackup,
 		fetchAssignments,
 		fetchExecutorLogs,
 		fetchMaterials,
+		fetchPreEvalLogs,
+		fetchPreEvalStatus,
 		fetchProcessStatus,
+		preEvaluateSubmissions,
 		restoreBackup,
 		type ExecutorLogEntry,
+		type PreEvalProgress,
+		type PreEvalRunSummary,
 		type ProcessProgress,
 	} from "$lib/services/submissions-api.js";
 	import type { MaterialsStatus, SubmissionUploadResult } from "$lib/services/submissions-api.js";
@@ -122,6 +128,16 @@
 	let logEntries = $state<ExecutorLogEntry[]>([]);
 	let logsLoading = $state(false);
 	let logsError = $state<string | null>(null);
+	/**
+	 * Live batch pre-evaluation progress from GET
+	 * /api/submissions/pre-evaluate/status. Null until the first poll
+	 * succeeds — the run still works, the panel just shows no live counts.
+	 */
+	let preEvalStatus = $state<PreEvalProgress | null>(null);
+	/** Pre-evaluation run start timestamp — drives polling + the live badge. */
+	let preEvalStartedAt = $state<number | null>(null);
+	/** Completed pre-evaluation run tallies (log panel run-complete banner). */
+	let preEvalRunSummary = $state<PreEvalRunSummary | null>(null);
 	/** Bulk delete confirm dialog. */
 	let bulkDeleteOpen = $state(false);
 	/** Bulk reset confirm dialog. */
@@ -202,7 +218,7 @@
 		return () => clearInterval(timer);
 	});
 
-	// ── Live batch progress + executor logs (polls while a batch runs) ──
+	// ── Live batch progress + pipeline logs (polls while a run runs) ──
 	async function refreshProcessStatus() {
 		try {
 			processStatus = await fetchProcessStatus();
@@ -211,26 +227,65 @@
 		}
 	}
 
-	async function refreshLogs() {
-		logsLoading = true;
-		logsError = null;
+	async function refreshPreEvalStatus() {
 		try {
-			const res = await fetchExecutorLogs(200);
-			logEntries = res.entries;
-		} catch (e) {
-			logsError = e instanceof Error ? e.message : "Failed to load executor logs";
-		} finally {
-			logsLoading = false;
+			preEvalStatus = await fetchPreEvalStatus();
+		} catch {
+			// Keep the last good status; the run still progresses server-side.
 		}
 	}
 
+	/**
+	 * Fetch executor + pre-evaluation log lines and merge them into one
+	 * timeline (oldest → newest). Each source is fetched independently so a
+	 * dead executor never hides pre-eval entries (or vice versa); the error
+	 * state is only shown when BOTH sources fail. The calls are deferred
+	 * into promise callbacks so a missing/undefined fetcher (partial API
+	 * mocks) surfaces as a per-source rejection, not a synchronous throw.
+	 */
+	async function refreshLogs() {
+		logsLoading = true;
+		const [executor, preEval] = await Promise.allSettled([
+			Promise.resolve().then(() => fetchExecutorLogs(200)),
+			Promise.resolve().then(() => fetchPreEvalLogs(200)),
+		]);
+		const merged: ExecutorLogEntry[] = [];
+		const failures: string[] = [];
+		if (executor.status === "fulfilled") {
+			merged.push(
+				...executor.value.entries.map((e) => ({ ...e, source: "executor" as const })),
+			);
+		} else {
+			failures.push(
+				executor.reason instanceof Error
+					? executor.reason.message
+					: "Executor logs unavailable",
+			);
+		}
+		if (preEval.status === "fulfilled") {
+			merged.push(...preEval.value.entries);
+		} else {
+			failures.push(
+				preEval.reason instanceof Error
+					? preEval.reason.message
+					: "Pre-evaluation logs unavailable",
+			);
+		}
+		merged.sort((a, b) => a.ts - b.ts);
+		logEntries = merged;
+		logsError = failures.length === 2 ? failures.join("; ") : null;
+		logsLoading = false;
+	}
+
 	$effect(() => {
-		if (processStartedAt === null) return;
-		// Immediate fetch + poll every 2s while the batch runs.
+		if (processStartedAt === null && preEvalStartedAt === null) return;
+		// Immediate fetch + poll every 2s while a batch run is active.
 		void refreshProcessStatus();
+		void refreshPreEvalStatus();
 		void refreshLogs();
 		const timer = setInterval(() => {
 			void refreshProcessStatus();
+			void refreshPreEvalStatus();
 			void refreshLogs();
 		}, 2000);
 		return () => clearInterval(timer);
@@ -240,6 +295,7 @@
 	// executor's log buffer persists, and the status keeps its final tallies).
 	$effect(() => {
 		void refreshProcessStatus();
+		void refreshPreEvalStatus();
 	});
 
 	/** Done/total for the bulk bar — server status wins, statuses fall back. */
@@ -261,6 +317,34 @@
 						: ""
 				}`
 			: null,
+	);
+
+	/**
+	 * Completed pre-evaluation run tallies for the log panel banner. The POST
+	 * response wins (it carries exact succeeded/failed counts); after a page
+	 * reload the status endpoint's retained final tallies are the fallback.
+	 */
+	let preEvalBanner = $derived(
+		preEvalRunSummary ??
+			(preEvalStatus && !preEvalStatus.running && preEvalStatus.total > 0
+				? {
+						submitted: preEvalStatus.total,
+						succeeded: preEvalStatus.succeeded,
+						failed: preEvalStatus.failed,
+					}
+				: null),
+	);
+
+	/**
+	 * Live done/total for the log panel's compact collapsed strip — the
+	 * active run wins (batch process status first, pre-evaluation second).
+	 */
+	let logProgress = $derived(
+		processStartedAt !== null && processStatus
+			? { done: processStatus.done, total: processStatus.total }
+			: preEvalStartedAt !== null && preEvalStatus
+				? { done: preEvalStatus.done, total: preEvalStatus.total }
+				: null,
 	);
 
 	/** Format elapsed seconds as m:ss (or h:mm:ss past an hour). */
@@ -638,23 +722,18 @@
 		if (bulkBusy || !bulkCanPreEval) return;
 		bulkBusy = true;
 		bulkAction = "Pre-evaluating";
+		// Start the log/status polling so the panel fills in live as rows
+		// settle (one KI Connect call per submission, concurrency 2).
+		preEvalStartedAt = Date.now();
+		preEvalStatus = null;
+		preEvalRunSummary = null;
 		try {
-			const resp = await fetch(
-				`${base}/api/submissions/pre-evaluate?assignment=${encodeURIComponent(selectedAssignment)}`,
-				{ method: "POST" },
-			);
-			if (resp.status === 409) {
-				addToast("error", "A pre-evaluation run is already in progress", 4000);
-				return;
-			}
-			if (!resp.ok) {
-				const body = (await resp.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(body?.message ?? `Pre-evaluation failed (${resp.status})`);
-			}
-			const summary = (await resp.json()) as {
-				submitted: number;
-				succeeded: number;
-				failed: number;
+			const summary = await preEvaluateSubmissions(selectedAssignment);
+			// Completed-run tallies for the log panel banner.
+			preEvalRunSummary = {
+				submitted: summary.submitted,
+				succeeded: summary.succeeded,
+				failed: summary.failed,
 			};
 			addToast(
 				"success",
@@ -666,10 +745,19 @@
 			// The run flipped rows to "pre-evaluated" — refresh the list.
 			await submissionsStore.refresh();
 		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+			if (e instanceof ApiError && e.status === 409) {
+				addToast("error", "A pre-evaluation run is already in progress", 4000);
+			} else {
+				addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+			}
 		} finally {
 			bulkBusy = false;
 			bulkAction = null;
+			preEvalStartedAt = null;
+			// Fetch once more — the route already wrote its final tallies, so
+			// the panel can show the completed run summary (banner + log lines).
+			void refreshPreEvalStatus();
+			void refreshLogs();
 		}
 	}
 </script>
@@ -1002,13 +1090,15 @@
 			</div>
 		</div>
 
-		<!-- ── Pipeline log: executor + autofix activity (collapsible) ── -->
+		<!-- ── Pipeline log: executor + pre-evaluation activity (collapsible) ── -->
 		<PipelineLogPanel
 			entries={logEntries}
-			live={processStartedAt !== null}
+			live={processStartedAt !== null || preEvalStartedAt !== null}
 			loading={logsLoading}
 			error={logsError}
 			summary={logSummary}
+			preEvalSummary={preEvalBanner}
+			progress={logProgress}
 			onRefresh={refreshLogs}
 		/>
 

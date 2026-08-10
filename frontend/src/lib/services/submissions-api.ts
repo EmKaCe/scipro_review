@@ -86,6 +86,31 @@ export interface BatchProcessResponse {
 	results: BatchItemResult[];
 }
 
+/** One per-submission outcome row in POST /api/submissions/pre-evaluate. */
+export interface PreEvaluateRow {
+	studentId: string;
+	ok: boolean;
+	/** Set when the row failed; failures never abort the loop. */
+	error: string | null;
+}
+
+/** POST /api/submissions/pre-evaluate response. */
+export interface PreEvaluateBatchResponse {
+	assignmentId: string;
+	submitted: number;
+	succeeded: number;
+	failed: number;
+	totalDurationSeconds: number;
+	results: PreEvaluateRow[];
+}
+
+/** Completed pre-evaluation run tallies (log panel run-complete banner). */
+export interface PreEvalRunSummary {
+	submitted: number;
+	succeeded: number;
+	failed: number;
+}
+
 /** Live progress of the current batch run (GET /api/submissions/process/status). */
 export interface ProcessProgress {
 	/** True while a batch process run is in flight. */
@@ -107,19 +132,68 @@ export interface ProcessProgress {
 	autofixSucceeded: number;
 }
 
-/** One captured executor pipeline log line (GET /api/executor/logs). */
+/** Which pipeline stage produced a log line (filter key in the log panel). */
+export type PipelineLogSource = "executor" | "pre-eval";
+
+/**
+ * One captured pipeline log line. Executor lines come from GET
+ * /api/executor/logs (no `source` — defaults to "executor"); pre-evaluation
+ * lines come from GET /api/submissions/pre-evaluate/logs and carry the
+ * `source: "pre-eval"` tag plus the per-submission detail fields.
+ */
 export interface ExecutorLogEntry {
-	id: number;
+	id: number | string;
 	ts: number;
 	level: string;
 	logger: string;
 	message: string;
+	/** Producer of the line; executor entries omit it (legacy wire shape). */
+	source?: PipelineLogSource;
+	/** Pre-eval only: submission the entry refers to. */
+	submissionId?: string;
+	/** Pre-eval only: suggested grade scores, dimension id -> points. */
+	grades?: Record<string, number>;
+	/** Pre-eval only: number of cell comparison markers produced. */
+	markerCount?: number;
+	/** Pre-eval only: number of rubric sub-point selections produced. */
+	selectionCount?: number;
+	/** Pre-eval only: the rubric sub-point selections (categoryKey + optionKey). */
+	rubricSelections?: { categoryKey: string; optionKey: string }[];
+	/** Pre-eval only: true when the row pre-evaluated successfully. */
+	ok?: boolean;
 }
 
 /** GET /api/executor/logs response. */
 export interface ExecutorLogsResponse {
 	entries: ExecutorLogEntry[];
 	truncated: boolean;
+}
+
+/** GET /api/submissions/pre-evaluate/logs response (pre-eval entries only). */
+export interface PreEvalLogsResponse {
+	entries: ExecutorLogEntry[];
+	truncated: boolean;
+}
+
+/** Live progress of the current pre-evaluation run (GET …/pre-evaluate/status). */
+export interface PreEvalProgress {
+	/** True while a batch pre-evaluation run is in flight. */
+	running: boolean;
+	assignmentId: string | null;
+	/** Epoch ms when the run started. */
+	startedAt: number | null;
+	/** Student id of the submission most recently started (concurrency 2). */
+	currentStudentId: string | null;
+	/** Epoch ms when that submission's pre-evaluation started. */
+	currentStartedAt: number | null;
+	/** Submissions settled (pre-evaluated or failed). */
+	done: number;
+	/** Total submissions targeted by the run. */
+	total: number;
+	/** Submissions that produced a persisted pre-evaluation envelope. */
+	succeeded: number;
+	/** Submissions that failed (prior status kept). */
+	failed: number;
 }
 
 /** Grading patch accepted by POST /api/submissions/[id]/save (all optional). */
@@ -451,6 +525,20 @@ export async function processSubmission(
 	);
 }
 
+/**
+ * POST /api/submissions/pre-evaluate — batch pre-evaluate the executed/error
+ * rows of the assignment (one KI Connect call per row). Throws ApiError with
+ * status 409 when another pre-evaluation run is already in flight.
+ */
+export async function preEvaluateSubmissions(
+	assignmentId: string,
+): Promise<PreEvaluateBatchResponse> {
+	return requestJson<PreEvaluateBatchResponse>(
+		`/api/submissions/pre-evaluate?assignment=${encodeURIComponent(assignmentId)}`,
+		{ method: "POST" },
+	);
+}
+
 /** GET /api/submissions/process/status — live progress of the current batch. */
 export async function fetchProcessStatus(): Promise<ProcessProgress> {
 	return requestJson<ProcessProgress>("/api/submissions/process/status");
@@ -459,6 +547,16 @@ export async function fetchProcessStatus(): Promise<ProcessProgress> {
 /** GET /api/executor/logs — recent executor pipeline log lines. */
 export async function fetchExecutorLogs(limit = 200): Promise<ExecutorLogsResponse> {
 	return requestJson<ExecutorLogsResponse>(`/api/executor/logs?limit=${limit}`);
+}
+
+/** GET /api/submissions/pre-evaluate/logs — recent pre-evaluation log lines. */
+export async function fetchPreEvalLogs(limit = 200): Promise<PreEvalLogsResponse> {
+	return requestJson<PreEvalLogsResponse>(`/api/submissions/pre-evaluate/logs?limit=${limit}`);
+}
+
+/** GET /api/submissions/pre-evaluate/status — live batch pre-evaluation progress. */
+export async function fetchPreEvalStatus(): Promise<PreEvalProgress> {
+	return requestJson<PreEvalProgress>("/api/submissions/pre-evaluate/status");
 }
 
 /** POST /api/submissions/[id]/save — persist grading state (rubric/dimensions/notes). */

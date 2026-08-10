@@ -31,6 +31,10 @@ export interface PreEvalProgress {
 	done: number;
 	/** Total submissions targeted by the run. */
 	total: number;
+	/** Submissions that produced a persisted pre-evaluation envelope. */
+	succeeded: number;
+	/** Submissions that failed (reported ok:false, prior status kept). */
+	failed: number;
 }
 
 const IDLE: PreEvalProgress = {
@@ -41,6 +45,8 @@ const IDLE: PreEvalProgress = {
 	currentStartedAt: null,
 	done: 0,
 	total: 0,
+	succeeded: 0,
+	failed: 0,
 };
 
 let state: PreEvalProgress = { ...IDLE };
@@ -72,8 +78,8 @@ export function updatePreEvalRun(patch: Partial<PreEvalProgress>): void {
 }
 
 export function endPreEvalRun(): void {
-	// Keep the final tallies (done/total) so the UI can show the completed
-	// run summary; running flips to false.
+	// Keep the final tallies (done/total/succeeded/failed) so the UI can
+	// show the completed run summary; running flips to false.
 	state = { ...state, running: false, currentStudentId: null, currentStartedAt: null };
 }
 
