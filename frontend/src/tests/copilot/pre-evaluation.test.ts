@@ -1355,7 +1355,7 @@ describe("worksheet JSON output (Zod) + evidence-based verification pass", () =>
 		// Wave 5 swaps the primary model to gpt-oss-120b; the verify pass
 		// must stay pinned to qwen3-30b (a different model + different
 		// instructions breaks same-model bias reproduction).
-		kiConnectMock.model = "gpt-oss-120b";
+		kiConnectMock.model = "openai-gpt-oss-120b";
 		setupDefaultMock();
 
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
@@ -1734,7 +1734,7 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 	it("appends the gpt-oss-120b reasoning_effort hint to every gpt-oss-120b-routed system prompt", async () => {
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
-		kiConnectMock.model = "gpt-oss-120b";
+		kiConnectMock.model = "openai-gpt-oss-120b";
 		setupDefaultMock();
 
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
@@ -1965,7 +1965,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		expect(call).toBeDefined();
 		// [2] = temperature, [6] = per-call model override.
 		expect(call![2]).toBe(0.2);
-		expect(call![6]).toBe("gpt-oss-120b");
+		expect(call![6]).toBe("openai-gpt-oss-120b");
 		// The phase's own model drives the hint block, not the global one.
 		expect(String(call![0])).toContain('set reasoning_effort to "medium"');
 	});
@@ -1980,7 +1980,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		expect(calls.length).toBeGreaterThan(0);
 		for (const call of calls) {
 			expect(call[2]).toBe(0.1);
-			expect(call[6]).toBe("gpt-oss-120b");
+			expect(call[6]).toBe("openai-gpt-oss-120b");
 		}
 	});
 
@@ -2004,7 +2004,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 	});
 
 	it("modelHintBlock returns GPT hint when passed gpt-oss-120b", () => {
-		const block = modelHintBlock("gpt-oss-120b");
+		const block = modelHintBlock("openai-gpt-oss-120b");
 		expect(block).toContain('set reasoning_effort to "medium"');
 		expect(block).toContain("The model supports configurable reasoning effort levels");
 		// gpt-oss-120b is not a weak model — no CRITICAL REMINDER.

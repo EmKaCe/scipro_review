@@ -586,7 +586,7 @@ const WORKSHEET_VERIFY_MODEL = "qwen3-30b-a3b-instruct-2507";
  * filling failure mode). Phase 2b-verify stays pinned to qwen3-30b
  * (see {@link WORKSHEET_VERIFY_MODEL}).
  */
-const PHASE_2_MODEL = "gpt-oss-120b";
+const PHASE_2_MODEL = "openai-gpt-oss-120b";
 
 /**
  * Phase 2b-verify prompt: a second model call AFTER the primary worksheet
