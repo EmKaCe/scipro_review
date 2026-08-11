@@ -6,9 +6,12 @@
  *
  * Pipeline: Phase 1 (cell markers) → Phase 2a (dimension scores) → optional
  * self-critique of 2a → Phase 2b (worksheet pipeline: generate the rubric
- * checklist worksheet, fill it in 3 category-batch calls, parse it back into
- * rubric selections + per-category additional notes) → Phase 3 (feedback
- * draft + summary). Each call has exactly ONE job.
+ * checklist worksheet, fill it in 3 category-batch calls — the markdown
+ * worksheet stays the INPUT while the OUTPUT is JSON validated against a Zod
+ * schema — then a 2b-verify pass on a second model prunes evidence-less
+ * selections; parse the verified JSON into rubric selections + per-category
+ * additional notes) → Phase 3 (feedback draft + summary). Each call has
+ * exactly ONE job.
  *
  * Contract (the {@link PreEvaluation} wire shape, Zod-validated):
  *   - `markers` — per-cell verdicts (`cell_index`, `marker`, `reason`) or
@@ -50,7 +53,7 @@ import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 import { getAssignmentById } from "$lib/server/assignments";
 import { loadCriteriaFile, loadCriteriaForAssignment } from "$lib/server/criteria";
-import { getKiConnectClient } from "$lib/server/ki-connect";
+import { getKiConnectClient, KiConnectClient } from "$lib/server/ki-connect";
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
 import { readResults, type StoredExecutionResult } from "$lib/server/results-store";
@@ -63,11 +66,12 @@ import {
 	type Sentiment,
 } from "$lib/types/criteria";
 import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-analysis";
+import { generateWorksheet } from "$lib/server/copilot/worksheet";
 import {
-	generateWorksheet,
-	parseWorksheet,
-	parseWorksheetSection,
-} from "$lib/server/copilot/worksheet";
+	worksheetBatchSchema,
+	type WorksheetBatchOutput,
+	type WorksheetCategoryResult,
+} from "$lib/server/copilot/worksheet-json-schema";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -515,10 +519,11 @@ EXAMPLE — correct output:
 
 /**
  * Phase 2b worksheet batch prompt: fill ONE batch of rubric category
- * sections (checkboxes + additional notes). The response is MARKDOWN — the
- * filled sections — not JSON, so these calls go through the client's raw
- * text path (`chatCompletionText`) instead of `callPhase`'s json_object
- * format.
+ * sections (checkboxes + additional notes). The markdown worksheet stays the
+ * INPUT — the visible un-checked negatives are context the model needs — but
+ * the OUTPUT is JSON (one category-result object per category key) validated
+ * against {@link worksheetBatchSchema}, so these calls go through the
+ * client's JSON path (`chatCompletion`) instead of the raw-text path.
  */
 const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3-4 categories. Each section has checkboxes for EVERY sub-point. Your job:
 
@@ -544,7 +549,7 @@ RULES:
 - EVIDENCE: For EVERY sub-point you mark [x], you MUST cite a specific, verifiable fact from the pre-analysis or execution record. Example: checking "imports - not alphabetized" requires evidence like "pre-analysis found numpy imported before pathlib." If you cannot cite a specific fact, leave the item unchecked or mark it [N/A].
 - ADDITIONAL NOTES: Only write what you can VERIFY from the provided context (cell sources, execution outputs, pre-analysis facts). If the execution record is truncated, do NOT assert the content of unseen cells — note the truncation instead. "The references section could not be fully verified due to execution record truncation" is acceptable; "proper library citations with DOIs" when you cannot see them is NOT.
 
-Return ONLY the filled worksheet sections — no JSON, no preamble, no explanation.`;
+Return ONLY a JSON object matching this schema. Output format: a JSON object with a 'categories' field containing a record of category keys to category results. Each category result: { "overall": "GOOD" | "OKAY" | "POOR" | "N/A", "checked": [{ "item": "<exact rubric sub-point text>", "evidence": "<1-sentence citation of a pre-analysis fact>" }], "notes": "<1-3 sentences for the teacher>" }. When overall is "N/A", checked MUST be empty. No duplicate item texts. The worksheet sections above are your INPUT — do NOT return them.`;
 
 /**
  * The rubric categories are filled in 3 sequential batches of 3 categories
@@ -559,6 +564,32 @@ const CATEGORY_BATCHES: readonly (readonly string[])[] = [
 	["pandas", "numpy", "scipy", "sklearn"],
 	["genai", "user_defined_functions", "function_calling", "plotting_visualization"],
 ];
+
+/**
+ * The model pinned for the Phase 2b-verify pass — deliberately the weak
+ * qwen3-30b rather than the primary model (Wave 5 swaps the primary to
+ * gpt-oss-120b): a DIFFERENT model with DIFFERENT instructions breaks
+ * same-model bias reproduction.
+ */
+const WORKSHEET_VERIFY_MODEL = "qwen3-30b-a3b-instruct-2507";
+
+/**
+ * Phase 2b-verify prompt: a second model call AFTER the primary worksheet
+ * pass. It receives the primary pass's JSON output and prunes every checked
+ * item whose evidence does not cite a specific, verifiable pre-analysis
+ * fact. Different instructions from the primary pass — and the call runs on
+ * a different model (qwen3-30b) — so the verify pass is not just the
+ * primary model re-affirming its own selections. Output is JSON with the
+ * SAME schema as the primary pass.
+ */
+const WORKSHEET_VERIFY_SYSTEM_PROMPT = `You are reviewing rubric selections for factual correctness. You receive the JSON output of a worksheet pass: rubric sub-points that were checked for a student submission, each with a one-sentence evidence citation.
+
+For EACH checked item:
+1. Does the evidence sentence cite a specific, verifiable fact from the pre-analysis?
+2. If NO → REMOVE the item from the checked array.
+3. If YES but the evidence is weak → flag it as LOW_CONFIDENCE: keep the item but append " (LOW_CONFIDENCE)" to its evidence sentence.
+
+Return the CORRECTED JSON with only evidence-supported items. Output format: a JSON object with a 'categories' field containing a record of category keys to category results.`;
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:
@@ -1156,10 +1187,14 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 
 	// ── Phase 2b: Worksheet pipeline (rubric selections + additional notes) ──
 	// The rubric checklist worksheet is generated once (context summary up
-	// front, one checkbox section per category), filled in 3 sequential batch
-	// calls (3 categories each), and parsed back into selections + notes.
-	// When no rubric is configured the pipeline is skipped entirely —
-	// markers, scores, and feedback still work.
+	// front, one checkbox section per category) and kept as the INPUT for 3
+	// sequential batch calls (3 categories each). Each batch returns JSON
+	// (validated against the worksheet Zod schema) instead of filled
+	// markdown, and a 2b-verify pass on a SECOND model (qwen3-30b, different
+	// instructions) prunes selections whose evidence does not cite a
+	// verifiable pre-analysis fact. The verified JSON is parsed back into
+	// selections + notes. When no rubric is configured the pipeline is
+	// skipped entirely — markers, scores, and feedback still work.
 	let rubricSelections: { categoryKey: string; optionKey: string }[] = [];
 	let additionalNotes: Record<string, string> = {};
 
@@ -1182,7 +1217,7 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 			rubric,
 		});
 
-		const filledWorksheet = await fillWorksheetInBatches({
+		const batchOutput = await fillWorksheetInBatches({
 			worksheet,
 			rubric,
 			submissionId,
@@ -1190,7 +1225,28 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 			llmTimeoutMs,
 		});
 
-		const parseResult = parseWorksheet(filledWorksheet, rubric);
+		// Phase 2b-verify: a second model call with DIFFERENT instructions
+		// (and a different model — qwen3-30b) prunes checked items whose
+		// evidence does not cite a verifiable pre-analysis fact. Non-fatal:
+		// on failure the primary selections are kept, same policy as the
+		// Phase 2a self-critique.
+		let verifiedOutput = batchOutput;
+		try {
+			verifiedOutput = await verifyWorksheetSelections({
+				output: batchOutput,
+				submissionId,
+				assignmentId,
+				llmTimeoutMs,
+			});
+		} catch (err) {
+			console.warn(
+				`[pre-eval] Phase 2b-verify failed for "${submissionId}" (assignment "${assignmentId}") — keeping the primary worksheet selections.`,
+				err instanceof Error ? err.message : err,
+			);
+		}
+
+		// The PRUNED selections win — never the pre-verify originals.
+		const parseResult = parseWorksheetJson(verifiedOutput, rubric);
 		rubricSelections = parseResult.rubricSelections;
 		additionalNotes = parseResult.additionalNotes;
 		if (parseResult.unmatched.length > 0) {
@@ -1472,59 +1528,61 @@ function extractCategorySection(markdown: string, key: string): string | null {
 }
 
 /**
- * Replace the batch's category sections in `worksheet` with the filled
- * versions the model returned. Sections the model dropped keep their
- * original (unchecked) content — the later parse simply yields no selections
- * for them.
+ * Resolve a checked item text to a rubric sub-point. Tries the stated
+ * category first (exact match), then falls back to ALL categories — an LLM
+ * filling the worksheet may place items under the wrong section. Returns
+ * null when the text matches nowhere.
  */
-function spliceFilledSections(
-	worksheet: string,
-	filledMarkdown: string,
-	batchKeys: string[],
-): string {
-	let result = worksheet;
-	for (const key of batchKeys) {
-		const filled = extractCategorySection(filledMarkdown, key);
-		if (filled === null) continue;
-		const original = extractCategorySection(result, key);
-		if (original === null) continue; // cannot happen — the section came from this worksheet
-		result = result.replace(original, filled);
+function resolveCheckedItem(
+	rubric: MergedRubric,
+	statedCategoryKey: string,
+	item: string,
+): { categoryKey: string; optionKey: string } | null {
+	const stated = rubric.categories.find((entry) => entry.key === statedCategoryKey);
+	if (stated && allSubPoints(stated.category).some((sp) => sp.text === item)) {
+		return { categoryKey: statedCategoryKey, optionKey: item };
 	}
-	return result;
+	for (const entry of rubric.categories) {
+		if (allSubPoints(entry.category).some((sp) => sp.text === item)) {
+			return { categoryKey: entry.key, optionKey: item };
+		}
+	}
+	return null;
 }
 
 /**
- * Validate a batch's filled sections against the rubric: every checked text
- * must resolve to a real sub-point (the parser already falls back across
- * categories). Returns the unmatched items — the caller retries the batch
- * once with these listed.
+ * Checked items in a batch's JSON that match no rubric sub-point anywhere
+ * (exact match after the schema's trim). Returns the unmatched items — the
+ * caller retries the batch once with these listed (the old markdown parser
+ * reported the same drift through `unmatched`).
  */
-function validateBatchSections(
-	filledMarkdown: string,
-	batchKeys: string[],
+function findUnmatchedCheckedItems(
+	result: WorksheetBatchOutput,
+	batchKeys: readonly string[],
 	rubric: MergedRubric,
-): { categoryKey: string; text: string }[] {
-	const unmatched: { categoryKey: string; text: string }[] = [];
+): { categoryKey: string; item: string }[] {
+	const unmatched: { categoryKey: string; item: string }[] = [];
 	for (const key of batchKeys) {
-		const section = extractCategorySection(filledMarkdown, key);
-		if (section === null) continue; // dropped section — nothing to validate
-		// Drop the `## Rubric:` header line — parseWorksheetSection treats
-		// the first level-2 header as the section's END boundary, so a
-		// header-carrying section would parse as an empty body.
-		const body = section.replace(/^## Rubric:[^\n]*\n/, "");
-		unmatched.push(...parseWorksheetSection(body, key, rubric).unmatched);
+		const category = result.categories[key];
+		if (!category) continue;
+		for (const checked of category.checked) {
+			if (resolveCheckedItem(rubric, key, checked.item) === null) {
+				unmatched.push({ categoryKey: key, item: checked.item });
+			}
+		}
 	}
 	return unmatched;
 }
 
 /**
  * Fill the worksheet's rubric sections in 3 category batches. Each batch
- * call receives the `## Context` block plus the batch's EMPTY sections; the
- * model returns the filled sections, which are spliced back into the
- * worksheet. A batch whose returned sections contain items that match no
- * rubric sub-point is retried ONCE with the unmatched items listed; items
- * that still do not match after the retry are dropped (with a warning)
- * rather than failing the pipeline.
+ * call receives the `## Context` block plus the batch's EMPTY markdown
+ * sections — the worksheet stays the INPUT (visible un-checked negatives) —
+ * while the model returns JSON (one category-result object per category
+ * key), validated against {@link worksheetBatchSchema}. A batch whose
+ * returned items contain texts that match no rubric sub-point is retried
+ * ONCE with the unmatched items listed; items that still do not match after
+ * the retry are dropped (with a warning) rather than failing the pipeline.
  */
 async function fillWorksheetInBatches(args: {
 	worksheet: string;
@@ -1532,13 +1590,13 @@ async function fillWorksheetInBatches(args: {
 	submissionId: string;
 	assignmentId: string;
 	llmTimeoutMs: number;
-}): Promise<string> {
+}): Promise<WorksheetBatchOutput> {
 	const { worksheet, rubric, submissionId, assignmentId, llmTimeoutMs } = args;
 	const rubricKeys = new Set<string>(rubric.categories.map((entry) => entry.key));
 	const contextSection = extractWorksheetContext(worksheet);
 	const systemPrompt = WORKSHEET_BATCH_SYSTEM_PROMPT + modelHintBlock();
 
-	let filled = worksheet;
+	const categories: Record<string, WorksheetCategoryResult> = {};
 	for (const batch of CATEGORY_BATCHES) {
 		// Only categories that actually exist in this assignment's rubric —
 		// a rubric with fewer categories produces fewer batch calls.
@@ -1546,14 +1604,14 @@ async function fillWorksheetInBatches(args: {
 		if (batchKeys.length === 0) continue;
 
 		const sections = batchKeys
-			.map((key) => extractCategorySection(filled, key))
+			.map((key) => extractCategorySection(worksheet, key))
 			.filter((section): section is string => section !== null);
 		if (sections.length === 0) continue;
 
 		const batchLabel = `Worksheet batch (${batchKeys.join(", ")})`;
 		const userPrompt = [contextSection, "", ...sections].join("\n");
 
-		let returned = await callWorksheetBatch(
+		let result = await callWorksheetBatch(
 			systemPrompt,
 			userPrompt,
 			submissionId,
@@ -1561,7 +1619,7 @@ async function fillWorksheetInBatches(args: {
 			batchLabel,
 			llmTimeoutMs,
 		);
-		let unmatched = validateBatchSections(returned, batchKeys, rubric);
+		let unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
 
 		if (unmatched.length > 0) {
 			// One retry with the error details — the model usually invented a
@@ -1571,12 +1629,12 @@ async function fillWorksheetInBatches(args: {
 				"",
 				"The previous attempt contained items that do not exist in the rubric. Fix them:",
 				...unmatched.map(
-					(item) => `- ${item.categoryKey}: "${item.text}" — not a rubric item, remove it`,
+					(item) => `- ${item.categoryKey}: "${item.item}" — not a rubric item, remove it`,
 				),
 				"",
-				"Return ONLY the corrected filled worksheet sections.",
+				"Return ONLY the corrected JSON object.",
 			].join("\n");
-			returned = await callWorksheetBatch(
+			result = await callWorksheetBatch(
 				systemPrompt,
 				retryPrompt,
 				submissionId,
@@ -1584,7 +1642,7 @@ async function fillWorksheetInBatches(args: {
 				`${batchLabel} retry`,
 				llmTimeoutMs,
 			);
-			unmatched = validateBatchSections(returned, batchKeys, rubric);
+			unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
 			if (unmatched.length > 0) {
 				console.warn(
 					`[pre-eval] ${batchLabel} still has unmatched items after retry for "${submissionId}" — dropping them.`,
@@ -1592,17 +1650,26 @@ async function fillWorksheetInBatches(args: {
 			}
 		}
 
-		filled = spliceFilledSections(filled, returned, batchKeys);
+		// Merge the batch's categories into the aggregate — only keys this
+		// batch actually asked about (a stray category the model invented is
+		// dropped; it cannot resolve to rubric items anyway).
+		for (const key of batchKeys) {
+			const category = result.categories[key];
+			if (category) categories[key] = category;
+		}
 	}
-	return filled;
+	return { categories };
 }
 
 /**
- * Call KI Connect for one worksheet batch. Unlike {@link callPhase} the
- * response is free-form MARKDOWN (the filled worksheet sections), so this
- * helper uses the client's raw-text path (`chatCompletionText`) and returns
- * the text verbatim — `callPhase`'s json_object response format and JSON
- * extraction would mangle it. Shares the same timeout-retry semantics.
+ * Call KI Connect for one worksheet batch. The response is JSON — one
+ * category-result object per category key — so this helper uses the client's
+ * JSON path (`chatCompletion`, which handles JSON extraction AND the
+ * repair-retry ladder), passing {@link worksheetBatchSchema} so the client
+ * validates before returning. The parsed JSON is re-validated here so the
+ * pipeline's contract (validated worksheet output or a descriptive error)
+ * holds regardless of the client. Shares the same timeout-retry semantics as
+ * {@link callPhase}.
  */
 async function callWorksheetBatch(
 	systemPrompt: string,
@@ -1611,11 +1678,18 @@ async function callWorksheetBatch(
 	assignmentId: string,
 	phaseLabel: string,
 	timeoutMs?: number,
-): Promise<string> {
+): Promise<WorksheetBatchOutput> {
 	const call = () =>
-		getKiConnectClient().chatCompletionText(systemPrompt, userPrompt, 0.2, timeoutMs);
+		getKiConnectClient().chatCompletion(
+			systemPrompt,
+			userPrompt,
+			0.2,
+			{ type: "json_object" },
+			worksheetBatchSchema,
+			timeoutMs,
+		);
 
-	let raw: string;
+	let raw: unknown;
 	try {
 		raw = await call();
 	} catch (err) {
@@ -1640,12 +1714,161 @@ async function callWorksheetBatch(
 			throw fail();
 		}
 	}
-	if (raw.trim().length === 0) {
+	if (raw === null || raw === undefined) {
 		throw new Error(
 			`${phaseLabel} returned nothing for "${submissionId}" (assignment "${assignmentId}")`,
 		);
 	}
-	return raw;
+	// Simple duck-type validation — the Zod schema below does the real work.
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error(
+			`${phaseLabel} returned non-object for "${submissionId}" (assignment "${assignmentId}"): ${typeof raw}`,
+		);
+	}
+	const parsed = worksheetBatchSchema.safeParse(raw);
+	if (!parsed.success) {
+		throw new Error(
+			`${phaseLabel} returned invalid worksheet JSON for "${submissionId}" (assignment "${assignmentId}"): ${parsed.error.issues
+				.map((issue) => issue.message)
+				.join("; ")}`,
+		);
+	}
+	return parsed.data;
+}
+
+/**
+ * The client used for the Phase 2b-verify pass — pinned to qwen3-30b
+ * regardless of the configured primary model (a DIFFERENT model + different
+ * instructions breaks same-model bias reproduction). Reuses the default
+ * client when it already runs qwen3-30b.
+ */
+function worksheetVerifyClient(): KiConnectClient {
+	const client = getKiConnectClient();
+	const model = (client as unknown as { model?: unknown }).model;
+	if (model === WORKSHEET_VERIFY_MODEL) return client;
+	return new KiConnectClient({ model: WORKSHEET_VERIFY_MODEL });
+}
+
+/**
+ * Phase 2b-verify: send the primary worksheet pass's JSON output to a SECOND
+ * model call with DIFFERENT instructions — evidence-based pruning — on a
+ * client pinned to qwen3-30b. Returns the CORRECTED output (only
+ * evidence-supported items), validated against the same Zod schema. Follows
+ * the same timeout-retry semantics as {@link callWorksheetBatch}; callers
+ * treat failure as non-fatal and keep the primary selections.
+ */
+async function verifyWorksheetSelections(args: {
+	output: WorksheetBatchOutput;
+	submissionId: string;
+	assignmentId: string;
+	llmTimeoutMs: number;
+}): Promise<WorksheetBatchOutput> {
+	const { output, submissionId, assignmentId, llmTimeoutMs } = args;
+	const systemPrompt = WORKSHEET_VERIFY_SYSTEM_PROMPT + modelHintBlock();
+	const userPrompt = `Worksheet selections to verify:\n${JSON.stringify(output, null, 2)}`;
+
+	const call = () =>
+		worksheetVerifyClient().chatCompletion(
+			systemPrompt,
+			userPrompt,
+			0.2,
+			{ type: "json_object" },
+			worksheetBatchSchema,
+			llmTimeoutMs,
+		);
+
+	let raw: unknown;
+	try {
+		raw = await call();
+	} catch (err) {
+		const detail = err instanceof Error ? err.message : String(err);
+		const fail = () =>
+			new Error(
+				`Worksheet verify KI Connect call failed for "${submissionId}" (assignment "${assignmentId}"): ${detail}`,
+				{ cause: err },
+			);
+		if (detail.includes("timed out")) {
+			console.warn(
+				`[pre-eval] worksheet verify timed out for "${submissionId}", retrying once...`,
+			);
+			await new Promise((resolve) => setTimeout(resolve, 2000));
+			try {
+				raw = await call();
+			} catch {
+				// Retry failed too — surface the ORIGINAL error, not the retry's.
+				throw fail();
+			}
+		} else {
+			throw fail();
+		}
+	}
+	if (raw === null || raw === undefined) {
+		throw new Error(
+			`Worksheet verify returned nothing for "${submissionId}" (assignment "${assignmentId}")`,
+		);
+	}
+	if (typeof raw !== "object" || Array.isArray(raw)) {
+		throw new Error(
+			`Worksheet verify returned non-object for "${submissionId}" (assignment "${assignmentId}"): ${typeof raw}`,
+		);
+	}
+	const parsed = worksheetBatchSchema.safeParse(raw);
+	if (!parsed.success) {
+		throw new Error(
+			`Worksheet verify returned invalid JSON for "${submissionId}" (assignment "${assignmentId}"): ${parsed.error.issues
+				.map((issue) => issue.message)
+				.join("; ")}`,
+		);
+	}
+	return parsed.data;
+}
+
+// ---------------------------------------------------------------------------
+// Worksheet JSON parsing (Phase 2b output → rubric selections)
+// ---------------------------------------------------------------------------
+
+/** Result of parsing a verified worksheet JSON output. */
+export interface WorksheetJsonParseResult {
+	rubricSelections: { categoryKey: string; optionKey: string }[];
+	/** categoryKey -> notes, for every category present in the output. */
+	additionalNotes: Record<string, string>;
+	/** Checked items that matched no rubric sub-point anywhere. */
+	unmatched: { categoryKey: string; item: string }[];
+}
+
+/**
+ * Parse the verified worksheet JSON output into rubric selections + notes.
+ * Iterates the rubric's category order (not the JSON's insertion order) so
+ * the result is deterministic; each category's checked items are resolved to
+ * rubric sub-points (stated category first, then a fallback across ALL
+ * categories — the LLM may place items under the wrong category). Checked
+ * texts that match nowhere land in `unmatched` (the batch retry loop already
+ * warned) and are dropped. N/A categories carry no checked items
+ * (schema-enforced) → zero selections for them, but their notes are kept.
+ */
+export function parseWorksheetJson(
+	output: WorksheetBatchOutput,
+	rubric: MergedRubric,
+): WorksheetJsonParseResult {
+	const rubricSelections: { categoryKey: string; optionKey: string }[] = [];
+	const additionalNotes: Record<string, string> = {};
+	const unmatched: { categoryKey: string; item: string }[] = [];
+
+	for (const entry of rubric.categories) {
+		const category = output.categories[entry.key];
+		if (!category) continue;
+		for (const checked of category.checked) {
+			const resolved = resolveCheckedItem(rubric, entry.key, checked.item);
+			if (resolved) {
+				rubricSelections.push(resolved);
+			} else {
+				unmatched.push({ categoryKey: entry.key, item: checked.item });
+			}
+		}
+		additionalNotes[entry.key] = category.notes;
+	}
+
+	return { rubricSelections, additionalNotes, unmatched };
 }
 
 // ---------------------------------------------------------------------------
