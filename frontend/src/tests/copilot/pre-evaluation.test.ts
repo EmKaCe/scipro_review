@@ -1196,7 +1196,7 @@ describe("worksheet pipeline and semantic validation", () => {
 		expect(worksheetCall).toBeDefined();
 		const systemPrompt = String(worksheetCall![0]);
 		expect(systemPrompt).toContain("EVIDENCE");
-		expect(systemPrompt).toContain("cite a specific, verifiable fact");
+		expect(systemPrompt).toContain("Focus on checking the RIGHT items");
 	});
 
 	it("places the WORKFLOW section before the RULES section in the worksheet system prompt", async () => {
@@ -1276,7 +1276,7 @@ describe("worksheet JSON output (Zod) + evidence-based verification pass", () =>
 		expect(worksheetBatchSchema.safeParse(naEmpty).success).toBe(true);
 	});
 
-	it("rejects a checked item missing its evidence field", () => {
+	it("accepts a checked item missing its evidence field (evidence is optional)", () => {
 		const noEvidence = {
 			categories: {
 				code_formatting: {
@@ -1286,7 +1286,7 @@ describe("worksheet JSON output (Zod) + evidence-based verification pass", () =>
 				},
 			},
 		};
-		expect(() => worksheetBatchSchema.parse(noEvidence)).toThrow();
+		expect(() => worksheetBatchSchema.parse(noEvidence)).not.toThrow();
 	});
 
 	it("parses worksheet JSON output into rubric selections", () => {
@@ -1970,16 +1970,16 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		expect(String(call![0])).toContain('set reasoning_effort to "medium"');
 	});
 
-	it("routes Phase 2b primary to gpt-oss-120b with T=0.1", async () => {
+	it("routes Phase 2b primary to openai-gpt-oss-120b with T=0.2", async () => {
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
 		const calls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
 			String(c[0]).includes("evaluating rubric categories"),
 		);
-		// Every worksheet batch (primary pass) runs on gpt-oss-120b at 0.1.
+		// Every worksheet batch (primary pass) runs on openai-gpt-oss-120b at 0.2.
 		expect(calls.length).toBeGreaterThan(0);
 		for (const call of calls) {
-			expect(call[2]).toBe(0.1);
+			expect(call[2]).toBe(0.2);
 			expect(call[6]).toBe("openai-gpt-oss-120b");
 		}
 	});

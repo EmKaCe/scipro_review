@@ -38,8 +38,9 @@ import { z } from "zod";
 export const worksheetCheckedItemSchema = z.object({
 	/** Exact sub-point text from the rubric, copied verbatim. */
 	item: z.string().trim().min(1, "checked item text must be a non-empty string"),
-	/** One-sentence citation of a specific, verifiable pre-analysis fact. */
-	evidence: z.string().trim().min(1, "evidence must be a non-empty string"),
+	/** Optional evidence citation — may be absent for categories where the model
+	 *  checks many items; post-processing Pass 6 fills evidence from execution records. */
+	evidence: z.string().optional(),
 });
 
 /** One category's worksheet verdict. */

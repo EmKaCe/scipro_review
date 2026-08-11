@@ -542,16 +542,11 @@ RULES:
 - FIRST, decide the OVERALL quality for each category: is this aspect GOOD, OKAY, or POOR in this submission? Then check items from the MATCHING sentiment. A submission with clean code formatting should have mostly POSITIVE items checked. A submission with serious formatting problems should have NEGATIVE items. Do NOT check items from all sentiments in the same category — that produces a contradictory, unusable rubric.
 - Check MULTIPLE items per section — these are checkboxes, not radio buttons — but ALL checked items should be consistent with your overall quality assessment.
 - CRITICAL — MUTUAL EXCLUSION: For criteria that are logical opposites (e.g., "imports alphabetized" vs "imports NOT alphabetized", "descriptive naming" vs "non-descriptive naming"), you MUST check ONLY ONE — the one that matches the actual submission. Checking both is a direct contradiction and makes the rubric unusable. If unsure, leave BOTH unchecked rather than creating a contradiction.
-- N/A OPTION — NOT APPLICABLE: If a sub-point genuinely does not apply to this submission, mark it as [N/A] instead of [ ] or [x]. Use [N/A] for:
-  * GenAI accusations when there is zero evidence of AI-generated content in the pre-analysis
-  * "Code does not run" on submissions with zero execution errors in the execution record
-  * "ID not included" when the SciPro ID is clearly visible in the notebook
-  * Any other accusation unsupported by the pre-analysis facts
-  An [N/A] means "this rubric line is irrelevant for this submission." Do NOT check [x] on items that don't apply just to fill the section. N/A is always preferred over a fabricated verdict.
+- N/A OPTION — NOT APPLICABLE: Use N/A as the overall verdict for a category ONLY when the category has NO applicable sub-points AT ALL. N/A is appropriate for GenAI (when pre-analysis shows zero evidence of AI-generated content) and for plagiarism sub-points (when no similarity detected). For ALL OTHER categories, you MUST choose GOOD, OKAY, or POOR and check at least SOME items — a category with zero selections defeats the purpose of rubric grading. N/A on a non-GenAI, non-plagiarism category is only acceptable when the category truly has no relevance to this submission type.
 - The pre-analysis findings are FACTS. If pre-analysis says "imports not alphabetized", you MUST check the negative item and MUST NOT check the positive item.
 - DO NOT modify the item text — only change [ ] to [x]
 - Use the context summary (pre-analysis findings, cell markers, dimension scores) as FACTS
-- EVIDENCE: For EVERY sub-point you mark [x], you MUST cite a specific, verifiable fact from the pre-analysis or execution record. Example: checking "imports - not alphabetized" requires evidence like "pre-analysis found numpy imported before pathlib." If you cannot cite a specific fact, leave the item unchecked or mark it [N/A].
+- EVIDENCE: For each category where you check items, include a brief note in the notes field summarizing your reasoning — cite one or two specific facts from the pre-analysis. You do NOT need to cite evidence for every individual checked item. The evidence field within checked items is optional — set it to an empty string when you have many items to check. Focus on checking the RIGHT items rather than exhaustively citing evidence for each one.
 - ADDITIONAL NOTES: Only write what you can VERIFY from the provided context (cell sources, execution outputs, pre-analysis facts). If the execution record is truncated, do NOT assert the content of unseen cells — note the truncation instead. "The references section could not be fully verified due to execution record truncation" is acceptable; "proper library citations with DOIs" when you cannot see them is NOT.
 
 Return ONLY a JSON object matching this schema. Output format: a JSON object with a 'categories' field containing a record of category keys to category results. Each category result: { "overall": "GOOD" | "OKAY" | "POOR" | "N/A", "checked": [{ "item": "<exact rubric sub-point text>", "evidence": "<1-sentence citation of a pre-analysis fact>" }], "notes": "<1-3 sentences for the teacher>" }. When overall is "N/A", checked MUST be empty. No duplicate item texts. The worksheet sections above are your INPUT — do NOT return them.`;
@@ -1243,7 +1238,7 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 			assignmentId,
 			llmTimeoutMs,
 			model: PHASE_2_MODEL,
-			temperature: 0.1,
+			temperature: 0.2,
 		});
 
 		// Phase 2b-verify: a second model call with DIFFERENT instructions
