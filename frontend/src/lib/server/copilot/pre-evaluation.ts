@@ -501,16 +501,19 @@ EXAMPLE — correct output:
  * text path (`chatCompletionText`) instead of `callPhase`'s json_object
  * format.
  */
-const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3 categories. Each section has checkboxes for EVERY sub-point. Your job:
+const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3-4 categories. Each section has checkboxes for EVERY sub-point. Your job:
 
 1. For each sub-point, change [ ] to [x] if it applies to this submission
 2. Fill in the Additional Notes section with 1-3 sentences for the teacher
 
 RULES:
-- Check MULTIPLE items per section — these are checkboxes, not radio buttons
-- For mutually exclusive criteria (e.g. descriptive naming vs non-descriptive naming), check the one that applies — if naming is good, check the positive; if not, check the negative
+- FIRST, decide the OVERALL quality for each category: is this aspect GOOD, OKAY, or POOR in this submission? Then check items from the MATCHING sentiment. A submission with clean code formatting should have mostly POSITIVE items checked. A submission with serious formatting problems should have NEGATIVE items. Do NOT check items from all sentiments in the same category — that produces a contradictory, unusable rubric.
+- Check MULTIPLE items per section — these are checkboxes, not radio buttons — but ALL checked items should be consistent with your overall quality assessment.
+- CRITICAL — MUTUAL EXCLUSION: For criteria that are logical opposites (e.g., "imports alphabetized" vs "imports NOT alphabetized", "descriptive naming" vs "non-descriptive naming"), you MUST check ONLY ONE — the one that matches the actual submission. Checking both is a direct contradiction and makes the rubric unusable. If unsure, leave BOTH unchecked rather than creating a contradiction.
+- The pre-analysis findings are FACTS. If pre-analysis says "imports not alphabetized", you MUST check the negative item and MUST NOT check the positive item.
 - DO NOT modify the item text — only change [ ] to [x]
 - Use the context summary (pre-analysis findings, cell markers, dimension scores) as FACTS
+- ADDITIONAL NOTES: Only write what you can VERIFY from the provided context (cell sources, execution outputs, pre-analysis facts). If the execution record is truncated, do NOT assert the content of unseen cells — note the truncation instead. "The references section could not be fully verified due to execution record truncation" is acceptable; "proper library citations with DOIs" when you cannot see them is NOT.
 
 Return ONLY the filled worksheet sections — no JSON, no preamble, no explanation.`;
 
@@ -523,8 +526,9 @@ Return ONLY the filled worksheet sections — no JSON, no preamble, no explanati
  */
 const CATEGORY_BATCHES: readonly (readonly string[])[] = [
 	["code_formatting", "jupyter_notebooks", "academic_scholarship"],
-	["coding_concept", "pandas", "numpy"],
-	["scipy", "sklearn", "genai"],
+	["coding_concept", "following_instructions", "general_feedback"],
+	["pandas", "numpy", "scipy", "sklearn"],
+	["genai", "user_defined_functions", "function_calling", "plotting_visualization"],
 ];
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */

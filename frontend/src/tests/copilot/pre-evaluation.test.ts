@@ -209,6 +209,85 @@ const CRITERIA_YAML = `categories:
         sub_points:
           - text: GenAI usage not disclosed
           - text: GenAI output copied unexamined
+  following_instructions:
+    title: Following Instructions
+    additional_notes: true
+    positive:
+      - main_point: Instructions followed
+        sub_points:
+          - text: All submission requirements met
+          - text: Disallowed libraries avoided
+    neutral: []
+    negative:
+      - main_point: Instruction issues
+        sub_points:
+          - text: Disallowed libraries used
+          - text: Not a Jupyter notebook
+  general_feedback:
+    title: General Feedback
+    additional_notes: true
+    positive:
+      - main_point: Overall assessment
+        sub_points:
+          - text: Excellent work
+          - text: Very good work
+          - text: Good work
+    neutral:
+      - main_point: Overall assessment
+        sub_points:
+          - text: Okay — needs improvement
+    negative:
+      - main_point: Problems
+        sub_points:
+          - text: Code does not run
+          - text: No interpretation of results
+  user_defined_functions:
+    title: User-defined Functions
+    additional_notes: true
+    positive:
+      - main_point: Good function usage
+        sub_points:
+          - text: Docstring provides context
+          - text: Type hints applied
+    neutral:
+      - main_point: Minor improvements
+        sub_points:
+          - text: Use raise instead of assert
+    negative:
+      - main_point: Function issues
+        sub_points:
+          - text: Docstring missing
+          - text: Type hints missing
+  function_calling:
+    title: Function (and Method) Calling
+    additional_notes: true
+    positive:
+      - main_point: Good calling
+        sub_points:
+          - text: Clear function calls
+    neutral: []
+    negative:
+      - main_point: Calling issues
+        sub_points:
+          - text: Parameters on separate lines unnecessarily
+          - text: Keyword arguments not used
+  plotting_visualization:
+    title: Plotting / Visualization
+    additional_notes: true
+    positive:
+      - main_point: Good plotting
+        sub_points:
+          - text: Clear data presentation
+          - text: Good color palette
+    neutral:
+      - main_point: Minor improvements
+        sub_points:
+          - text: One aspect could improve
+    negative:
+      - main_point: Plot issues
+        sub_points:
+          - text: No plot present
+          - text: Plot severely lacking
 `;
 
 const GRADING_YAML = `dimensions:
@@ -257,10 +336,11 @@ function makeRubric(): MergedRubric {
 
 const RUBRIC = makeRubric();
 
-/** The 3 worksheet category batches (mirror of the module's CATEGORY_BATCHES). */
+/** The 4 worksheet category batches (mirror of the module's CATEGORY_BATCHES). */
 const BATCH_1 = ["code_formatting", "jupyter_notebooks", "academic_scholarship"];
-const BATCH_2 = ["coding_concept", "pandas", "numpy"];
-const BATCH_3 = ["scipy", "sklearn", "genai"];
+const BATCH_2 = ["coding_concept", "following_instructions", "general_feedback"];
+const BATCH_3 = ["pandas", "numpy", "scipy", "sklearn"];
+const BATCH_4 = ["genai", "user_defined_functions", "function_calling", "plotting_visualization"];
 
 /** First positive sub-point text of a category — the default checked item. */
 function firstPositiveSubPoint(key: string): string {
@@ -473,7 +553,8 @@ function setupDefaultMock(): void {
 			}
 			if (userPrompt.includes("code_formatting")) return filledBatchMarkdown(BATCH_1);
 			if (userPrompt.includes("coding_concept")) return filledBatchMarkdown(BATCH_2);
-			if (userPrompt.includes("scipy")) return filledBatchMarkdown(BATCH_3);
+			if (userPrompt.includes("pandas")) return filledBatchMarkdown(BATCH_3);
+			if (userPrompt.includes("genai")) return filledBatchMarkdown(BATCH_4);
 			throw new Error(`Unexpected worksheet user prompt: ${userPrompt.slice(0, 100)}`);
 		},
 	);
@@ -601,7 +682,7 @@ describe("preEvaluateSubmission", () => {
 		// 7 calls per submission: P1, 2a, 2a critique, 3 worksheet batches,
 		// P3 — the 3 batch calls go through the raw-text path.
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
-		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(3);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
 		for (const call of kiConnectMock.chatCompletion.mock.calls) {
 			expect(call[3]).toEqual({ type: "json_object" });
 		}
@@ -742,6 +823,7 @@ describe("worksheet pipeline and semantic validation", () => {
 		);
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
@@ -755,11 +837,11 @@ describe("worksheet pipeline and semantic validation", () => {
 		expect(
 			result.rubricSelections!.some((s) => s.optionKey === "Readable variable names."),
 		).toBe(false);
-		expect(result.rubricSelections).toHaveLength(9);
+		expect(result.rubricSelections).toHaveLength(14);
 		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
 
 		// The retry call carried the unmatched-item details.
-		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(5);
 		const retryPrompt = String(kiConnectMock.chatCompletionText.mock.calls[1]![1]);
 		expect(retryPrompt).toContain("not a rubric item");
 		expect(retryPrompt).toContain("Readable variable names.");
@@ -785,6 +867,7 @@ describe("worksheet pipeline and semantic validation", () => {
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(fabricated); // batch 1 retry — still bad
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 			const result = await preEvaluateSubmission({
 				submissionId: STUDENT,
@@ -795,7 +878,7 @@ describe("worksheet pipeline and semantic validation", () => {
 			expect(
 				result.rubricSelections!.some((s) => s.optionKey.includes("Totally fabricated")),
 			).toBe(false);
-			expect(result.rubricSelections).toHaveLength(8);
+			expect(result.rubricSelections).toHaveLength(13);
 			expect(result.rubricSelections).toEqual(
 				expect.arrayContaining([
 					{
@@ -807,8 +890,8 @@ describe("worksheet pipeline and semantic validation", () => {
 			expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
 			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
 
-			// One retry per batch, then the unmatched item is dropped with a warning.
-			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
+			// One retry per batch, then the unmatched item is dropped with a w…
+			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(5);
 			expect(warnSpy).toHaveBeenCalledWith(
 				expect.stringContaining("still has unmatched items after retry"),
 			);
@@ -857,6 +940,7 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		// Prompt rendering must not crash; null entries are dropped and
@@ -884,6 +968,7 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		await expect(
 			preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT }),
@@ -907,6 +992,7 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		await expect(
 			preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT }),
@@ -914,7 +1000,7 @@ describe("worksheet pipeline and semantic validation", () => {
 	});
 
 	it("truncates rubricSelections with more than 30 items to the first 30", async () => {
-		// Every sub-point checked across all 9 categories = 36 selections;
+		// Every sub-point checked across all 14 categories = 36 selections;
 		// the semantic validation truncates to the first 30.
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
@@ -925,9 +1011,10 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1, true));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2, true));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3, true));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4, true));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		// Every sub-point checked across all 9 categories generates many
+		// Every sub-point checked across all 14 categories generates many
 		// selections — the 200-item safety cap is far above this fixture.
 		expect(result.rubricSelections!.length).toBeGreaterThan(30);
 		// Every kept entry is an exact rubric sub-point text.
@@ -1076,12 +1163,13 @@ describe("KI Connect failure handling", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		// Phase 1 attempted twice (timeout + retry), then 2a, critique, 3
 		// batches, 3 → 5 JSON calls + 3 worksheet calls.
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
-		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(3);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
 		expect(result).toMatchObject(ENVELOPE);
 	});
 
@@ -1169,6 +1257,7 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		// The corrected scores flow into the envelope and the worksheet context.
@@ -1189,6 +1278,7 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+			kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 			const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 			// Critique failure is non-fatal: the pipeline continues with the
@@ -1196,7 +1286,7 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 			expect(result.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
 			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
 			expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
-			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(3);
+			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
 			expect(warnSpy).toHaveBeenCalledWith(
 				expect.stringContaining("self-critique failed"),
 				expect.any(String),
@@ -1306,7 +1396,8 @@ describe("Phase 1 chunking", () => {
 			async (system: string, user: string) => {
 				if (user.includes("code_formatting")) return filledBatchMarkdown(BATCH_1);
 				if (user.includes("coding_concept")) return filledBatchMarkdown(BATCH_2);
-				if (user.includes("scipy")) return filledBatchMarkdown(BATCH_3);
+				if (user.includes("pandas")) return filledBatchMarkdown(BATCH_3);
+				if (user.includes("genai")) return filledBatchMarkdown(BATCH_4);
 				throw new Error(`Unexpected worksheet user prompt: ${user.slice(0, 120)}`);
 			},
 		);
@@ -1328,10 +1419,10 @@ describe("Phase 1 chunking", () => {
 		const phase1Calls = calls.filter((c) => String(c[0]).includes("mark each cell"));
 
 		// Phase 1 ran once per chunk: 2 chunk calls + 2a + critique + 3
-		// worksheet batches + 3 = 5 JSON calls + 3 worksheet calls.
+		// = 5 JSON calls + 4 worksheet calls.
 		expect(phase1Calls).toHaveLength(2);
 		expect(calls).toHaveLength(5);
-		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(3);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
 
 		// Chunk 1 prompt carries only cells 0..19; chunk 2 only cells 20..24
 		expect(String(phase1Calls[0]![1])).toContain("[Cell 0] code");
@@ -1390,6 +1481,7 @@ describe("Phase 1 chunking", () => {
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_1));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_2));
 		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_3));
+		kiConnectMock.chatCompletionText.mockResolvedValueOnce(filledBatchMarkdown(BATCH_4));
 
 		const result = await preEvaluateSubmission({
 			submissionId: STUDENT,
@@ -1402,7 +1494,7 @@ describe("Phase 1 chunking", () => {
 		// 1 Phase 1 call + 2a + critique + 3 batches + 3 = 7 total
 		expect(phase1Calls).toHaveLength(1);
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
-		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(3);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(4);
 		// No chunk banner; the prompt still shows the full 15-cell submission
 		expect(String(phase1Calls[0]![1])).not.toContain("chunk");
 		expect(String(phase1Calls[0]![1])).toContain("15 cells");
