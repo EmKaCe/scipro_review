@@ -1023,6 +1023,73 @@ describe("worksheet pipeline and semantic validation", () => {
 			expect(sel.optionKey.length).toBeGreaterThan(0);
 		}
 	});
+
+	it("keeps N/A verdicts on the GenAI category when pre-analysis shows no GenAI markers", async () => {
+		// The deterministic pre-analysis finds ZERO GenAI markers in this
+		// fixture — so the model marks every GenAI sub-point [N/A] instead
+		// of fabricating a verdict. The rest of the batch fills normally.
+		const naGenai = filledBatchMarkdown(BATCH_4)
+			.replace("- [x] GenAI usage documented", "- [N/A] GenAI usage documented")
+			.replace("- [ ] GenAI output critically reviewed", "- [N/A] GenAI output critically reviewed")
+			.replace("- [ ] GenAI usage not disclosed", "- [N/A] GenAI usage not disclosed")
+			.replace("- [ ] GenAI output copied unexamined", "- [N/A] GenAI output copied unexamined");
+		kiConnectMock.chatCompletion.mockReset();
+		kiConnectMock.chatCompletionText.mockReset();
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
+		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
+		// Capture the returned worksheet text — mock.calls only records
+		// the arguments, so the [N/A]-carrying response is captured here.
+		let returnedGenaiWorksheet = "";
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			if (user.includes("genai")) {
+				returnedGenaiWorksheet = naGenai;
+				return naGenai;
+			}
+			if (user.includes("pandas")) return filledBatchMarkdown(BATCH_3);
+			if (user.includes("coding_concept")) return filledBatchMarkdown(BATCH_2);
+			return filledBatchMarkdown(BATCH_1);
+		});
+
+		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		// The N/A items produced NO fabricated verdicts: the genai category
+		// has zero rubric selections, while the batch's other categories
+		// keep theirs (14 categories − genai = 13 selections).
+		expect(result.rubricSelections!.some((s) => s.categoryKey === "genai")).toBe(false);
+		expect(result.rubricSelections).toHaveLength(13);
+		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
+
+		// The worksheet the model returned carries the [N/A] markers on the
+		// GenAI category, and the system prompt told it about the N/A option.
+		expect(returnedGenaiWorksheet).toContain("- [N/A] GenAI usage not disclosed");
+		expect(returnedGenaiWorksheet).toContain("- [N/A] GenAI output copied unexamined");
+		expect(returnedGenaiWorksheet).not.toContain("- [x] GenAI");
+		const genaiCall = kiConnectMock.chatCompletionText.mock.calls.find((c) =>
+			String(c[1]).includes("genai"),
+		);
+		expect(genaiCall).toBeDefined();
+		expect(String(genaiCall![0])).toContain("N/A OPTION");
+	});
+
+	it("requires cited evidence for every checked sub-point in the worksheet system prompt", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const systemPrompt = String(kiConnectMock.chatCompletionText.mock.calls[0]![0]);
+		expect(systemPrompt).toContain("EVIDENCE");
+		expect(systemPrompt).toContain("cite a specific, verifiable fact");
+	});
+
+	it("places the WORKFLOW section before the RULES section in the worksheet system prompt", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const systemPrompt = String(kiConnectMock.chatCompletionText.mock.calls[0]![0]);
+		const workflowIndex = systemPrompt.indexOf("WORKFLOW for each category");
+		const rulesIndex = systemPrompt.indexOf("RULES:");
+		expect(workflowIndex).toBeGreaterThanOrEqual(0);
+		expect(rulesIndex).toBeGreaterThan(workflowIndex);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -1331,6 +1398,26 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		for (const call of allCalls) {
 			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
 		}
+	});
+
+	it("appends the gpt-oss-120b reasoning_effort hint to every system prompt", async () => {
+		kiConnectMock.chatCompletion.mockReset();
+		kiConnectMock.chatCompletionText.mockReset();
+		kiConnectMock.model = "gpt-oss-120b";
+		setupDefaultMock();
+
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const allCalls = [
+			...kiConnectMock.chatCompletion.mock.calls,
+			...kiConnectMock.chatCompletionText.mock.calls,
+		];
+		for (const call of allCalls) {
+			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
+			expect(String(call[0])).toContain("The model supports configurable reasoning effort levels");
+		}
+		// gpt-oss-120b is NOT a weak model — the CRITICAL REMINDER block
+		// must not appear alongside the reasoning-effort hint.
+		expect(String(allCalls[0]![0])).not.toContain("CRITICAL REMINDER");
 	});
 });
 

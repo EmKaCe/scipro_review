@@ -4,6 +4,8 @@ assignments:
     enabled: true
     criteria_files:
       - data/criteria/general.yaml
+      - data/criteria/following_instructions.yaml
+      - data/criteria/general_feedback.yaml
       - data/criteria/soil_contamination.yaml
     dimensions:
       - code_quality_design

@@ -396,6 +396,13 @@ const CRITIQUE_ENABLED = true;
 const MODEL_HINT_BLOCK = `CRITICAL REMINDER: Double-check your output before returning. Common mistakes: using dimension keys as rubric categoryKeys, emitting percentages instead of raw points, selecting sub-points that do not exist in the rubric.`;
 
 /**
+ * Extra guidance appended to every phase system prompt for gpt-oss-120b: the
+ * model supports configurable reasoning effort levels, so the prompt tells
+ * the pipeline to run it at "medium" effort.
+ */
+const GPT_OSS_120B_HINT_BLOCK = `When using gpt-oss-120b: set reasoning_effort to "medium" in the system prompt. The model supports configurable reasoning effort levels.`;
+
+/**
  * The configured model name, read off the KI Connect client. Returns ""
  * when the client exposes no model name (e.g. stubbed clients in tests).
  */
@@ -420,9 +427,21 @@ function isWeakModel(): boolean {
 	);
 }
 
-/** Validation block appended to every phase system prompt (empty for strong models). */
+/**
+ * Model-specific guidance appended to every phase system prompt: the weak-model
+ * validation reminder (see {@link MODEL_HINT_BLOCK}) and the gpt-oss-120b
+ * reasoning-effort instruction (see {@link GPT_OSS_120B_HINT_BLOCK}). Returns
+ * "" when neither applies.
+ */
 function modelHintBlock(): string {
-	return isWeakModel() ? `\n\n${MODEL_HINT_BLOCK}` : "";
+	const hints: string[] = [];
+	if (isWeakModel()) {
+		hints.push(MODEL_HINT_BLOCK);
+	}
+	if (currentModelName().toLowerCase().includes("gpt-oss-120b")) {
+		hints.push(GPT_OSS_120B_HINT_BLOCK);
+	}
+	return hints.length > 0 ? `\n\n${hints.join("\n\n")}` : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -503,16 +522,26 @@ EXAMPLE — correct output:
  */
 const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3-4 categories. Each section has checkboxes for EVERY sub-point. Your job:
 
-1. For each sub-point, change [ ] to [x] if it applies to this submission
-2. Fill in the Additional Notes section with 1-3 sentences for the teacher
+WORKFLOW for each category:
+1. Read the pre-analysis FACTS for this submission
+2. State your OVERALL assessment in 1 sentence: GOOD / OKAY / POOR / N/A
+3. THEN fill the checkboxes — matching items from the sentiment that aligns with your assessment
+4. Then write 1-3 sentences of additional notes grounded in evidence
 
 RULES:
 - FIRST, decide the OVERALL quality for each category: is this aspect GOOD, OKAY, or POOR in this submission? Then check items from the MATCHING sentiment. A submission with clean code formatting should have mostly POSITIVE items checked. A submission with serious formatting problems should have NEGATIVE items. Do NOT check items from all sentiments in the same category — that produces a contradictory, unusable rubric.
 - Check MULTIPLE items per section — these are checkboxes, not radio buttons — but ALL checked items should be consistent with your overall quality assessment.
 - CRITICAL — MUTUAL EXCLUSION: For criteria that are logical opposites (e.g., "imports alphabetized" vs "imports NOT alphabetized", "descriptive naming" vs "non-descriptive naming"), you MUST check ONLY ONE — the one that matches the actual submission. Checking both is a direct contradiction and makes the rubric unusable. If unsure, leave BOTH unchecked rather than creating a contradiction.
+- N/A OPTION — NOT APPLICABLE: If a sub-point genuinely does not apply to this submission, mark it as [N/A] instead of [ ] or [x]. Use [N/A] for:
+  * GenAI accusations when there is zero evidence of AI-generated content in the pre-analysis
+  * "Code does not run" on submissions with zero execution errors in the execution record
+  * "ID not included" when the SciPro ID is clearly visible in the notebook
+  * Any other accusation unsupported by the pre-analysis facts
+  An [N/A] means "this rubric line is irrelevant for this submission." Do NOT check [x] on items that don't apply just to fill the section. N/A is always preferred over a fabricated verdict.
 - The pre-analysis findings are FACTS. If pre-analysis says "imports not alphabetized", you MUST check the negative item and MUST NOT check the positive item.
 - DO NOT modify the item text — only change [ ] to [x]
 - Use the context summary (pre-analysis findings, cell markers, dimension scores) as FACTS
+- EVIDENCE: For EVERY sub-point you mark [x], you MUST cite a specific, verifiable fact from the pre-analysis or execution record. Example: checking "imports - not alphabetized" requires evidence like "pre-analysis found numpy imported before pathlib." If you cannot cite a specific fact, leave the item unchecked or mark it [N/A].
 - ADDITIONAL NOTES: Only write what you can VERIFY from the provided context (cell sources, execution outputs, pre-analysis facts). If the execution record is truncated, do NOT assert the content of unseen cells — note the truncation instead. "The references section could not be fully verified due to execution record truncation" is acceptable; "proper library citations with DOIs" when you cannot see them is NOT.
 
 Return ONLY the filled worksheet sections — no JSON, no preamble, no explanation.`;
