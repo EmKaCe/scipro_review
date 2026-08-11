@@ -17,7 +17,7 @@ import path from "node:path";
 import {
 	findSentimentAndMainPoint,
 	generateKarlJson,
-	karlGrade,
+	legacyGrade,
 	weightedPercentage,
 } from "$lib/server/copilot/legacy-export";
 import type { GenerateKarlJsonOptions } from "$lib/server/copilot/legacy-export";
@@ -161,7 +161,7 @@ describe("generateKarlJson", () => {
 
 	it("applies the weighted formula and grade boundaries (87.0 → 1.7)", async () => {
 		expect(weightedPercentage(BASE_DIMENSIONS)).toBe(87.0);
-		expect(karlGrade(87.0)).toBe(1.7);
+		expect(legacyGrade(87.0)).toBe(1.7);
 
 		const output = await generateKarlJson(makeOptions());
 		expect(output["evaluation-textbox"]).toContain("1.7");
@@ -169,15 +169,15 @@ describe("generateKarlJson", () => {
 	});
 
 	it("maps every grade boundary correctly", () => {
-		expect(karlGrade(95)).toBe(1.0);
-		expect(karlGrade(94.99)).toBe(1.3);
-		expect(karlGrade(90)).toBe(1.3);
-		expect(karlGrade(85)).toBe(1.7);
-		expect(karlGrade(80)).toBe(2.0);
-		expect(karlGrade(75)).toBe(2.3);
-		expect(karlGrade(70)).toBe(2.7);
-		expect(karlGrade(69.99)).toBe(3.0);
-		expect(karlGrade(0)).toBe(3.0);
+		expect(legacyGrade(95)).toBe(1.0);
+		expect(legacyGrade(94.99)).toBe(1.3);
+		expect(legacyGrade(90)).toBe(1.3);
+		expect(legacyGrade(85)).toBe(1.7);
+		expect(legacyGrade(80)).toBe(2.0);
+		expect(legacyGrade(75)).toBe(2.3);
+		expect(legacyGrade(70)).toBe(2.7);
+		expect(legacyGrade(69.99)).toBe(3.0);
+		expect(legacyGrade(0)).toBe(3.0);
 	});
 
 	it("caps the weighted percentage at 100", () => {

@@ -1,6 +1,6 @@
 /**
  * @file Mapping from internal rubric category keys to Karl's form element-ID
- * prefixes, plus buildKarlId() — the helper that assembles full Karl element
+ * prefixes, plus buildLegacyId() — the helper that assembles full Karl element
  * IDs for rubric checkboxes.
  *
  * Karl's form (karlkirschner.github.io/scipro_assignments_grading) builds
@@ -36,7 +36,7 @@ export const LEGACY_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
 };
 
 /** The 14 internal category keys supported by the mapping above. */
-export type KarlCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
+export type LegacyCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
 
 /**
  * Assemble a Karl form element ID for a rubric checkbox.
@@ -52,7 +52,7 @@ export type KarlCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
  * Throws for an unknown category key so a typo fails loudly instead of
  * emitting a silently-broken ID that Karl's form would reject on upload.
  */
-export function buildKarlId(
+export function buildLegacyId(
 	categoryKey: string,
 	sentiment: string,
 	mainPoint: string,

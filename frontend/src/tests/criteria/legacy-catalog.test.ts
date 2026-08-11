@@ -1,6 +1,6 @@
 /**
  * @file Unit tests for legacy-catalog.ts — the category-key → Karl element-ID
- * prefix mapping and buildKarlId() helper.
+ * prefix mapping and buildLegacyId() helper.
  *
  * Karl's form rebuilds checkbox IDs at runtime from raw category/sentiment/
  * mainPoint/subPoint text (generate.js line 96), so the helper must preserve
@@ -8,21 +8,21 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildKarlId, LEGACY_CATEGORY_PREFIXES } from "$lib/server/criteria/legacy-catalog";
+import { buildLegacyId, LEGACY_CATEGORY_PREFIXES } from "$lib/server/criteria/legacy-catalog";
 
 describe("legacy-catalog", () => {
 	it("maps general_feedback to Karl's 'general' prefix", () => {
-		const id = buildKarlId("general_feedback", "positive", "Overall", "good");
+		const id = buildLegacyId("general_feedback", "positive", "Overall", "good");
 		expect(id.startsWith("general-")).toBe(true);
 	});
 
 	it("maps following_instructions to 'followingInstructions'", () => {
-		const id = buildKarlId("following_instructions", "neutral", "main", "sub");
+		const id = buildLegacyId("following_instructions", "neutral", "main", "sub");
 		expect(id.startsWith("followingInstructions-")).toBe(true);
 	});
 
 	it("preserves Karl's double space in the jupyterNotebooks negative mainPoint", () => {
-		const id = buildKarlId(
+		const id = buildLegacyId(
 			"jupyter_notebooks",
 			"negative",
 			"Notebook was poorly done,  which",
@@ -32,7 +32,7 @@ describe("legacy-catalog", () => {
 	});
 
 	it("preserves Karl's 'separatation' typo", () => {
-		const id = buildKarlId(
+		const id = buildLegacyId(
 			"jupyter_notebooks",
 			"negative",
 			"separatation of the tasks",
@@ -42,19 +42,19 @@ describe("legacy-catalog", () => {
 	});
 
 	it("maps code_formatting to 'codeFormatting'", () => {
-		const id = buildKarlId("code_formatting", "positive", "PEP8", "followed");
+		const id = buildLegacyId("code_formatting", "positive", "PEP8", "followed");
 		expect(id.startsWith("codeFormatting-")).toBe(true);
 	});
 
 	it("returns a string of the form prefix-sentiment-mainPoint-subPoint", () => {
-		const id = buildKarlId("numpy", "positive", "used arrays", "efficiently");
+		const id = buildLegacyId("numpy", "positive", "used arrays", "efficiently");
 		expect(id).toBe("NumPy-positive-used arrays-efficiently");
 	});
 
 	it("does NOT clean or normalize any text — raw strings pass through", () => {
 		const mainPoint = "  Spaced   OUT  text, with punctuation!";
 		const subPoint = "trailing space ";
-		const id = buildKarlId("scipy", "neutral", mainPoint, subPoint);
+		const id = buildLegacyId("scipy", "neutral", mainPoint, subPoint);
 		expect(id).toBe(`SciPy-neutral-${mainPoint}-${subPoint}`);
 		expect(id).toContain("  Spaced   OUT  text, with punctuation!");
 		expect(id.endsWith("trailing space ")).toBe(true);
@@ -63,7 +63,7 @@ describe("legacy-catalog", () => {
 	it("produces valid non-empty IDs for all 14 category keys", () => {
 		expect(Object.keys(LEGACY_CATEGORY_PREFIXES)).toHaveLength(14);
 		for (const key of Object.keys(LEGACY_CATEGORY_PREFIXES)) {
-			const id = buildKarlId(key, "positive", "main point", "sub point");
+			const id = buildLegacyId(key, "positive", "main point", "sub point");
 			expect(id).not.toBe("");
 			expect(id.startsWith(`${LEGACY_CATEGORY_PREFIXES[key]}-`)).toBe(true);
 		}

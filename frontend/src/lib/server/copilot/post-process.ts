@@ -134,11 +134,11 @@ interface CategoryInfo {
 	/** Internal rubric category key, e.g. "code_formatting". */
 	key: string;
 	/** Karl form element-ID prefix, e.g. "codeFormatting". */
-	karl: string;
+	legacy: string;
 }
 
 const CATEGORIES: readonly CategoryInfo[] = Object.entries(LEGACY_CATEGORY_PREFIXES).map(
-	([key, karl]) => ({ key, karl }),
+	([key, legacy]) => ({ key, legacy }),
 );
 
 /** Normalize a category key for lookup: lowercase, strip non-alphanumerics. */
@@ -150,7 +150,7 @@ function normalizeCategoryKey(value: string): string {
 const CATEGORY_LOOKUP = new Map<string, CategoryInfo>();
 for (const cat of CATEGORIES) {
 	CATEGORY_LOOKUP.set(normalizeCategoryKey(cat.key), cat);
-	CATEGORY_LOOKUP.set(normalizeCategoryKey(cat.karl), cat);
+	CATEGORY_LOOKUP.set(normalizeCategoryKey(cat.legacy), cat);
 }
 
 /** Resolve a category from either its internal key or its Karl prefix. */
@@ -248,7 +248,7 @@ function setNote(
 ): void {
 	const oldValue = state.notes[cat.key] ?? null;
 	state.notes[cat.key] = note;
-	fixes.push({ pass, field: `${cat.karl}-textarea`, oldValue, newValue: note, reason });
+	fixes.push({ pass, field: `${cat.legacy}-textarea`, oldValue, newValue: note, reason });
 }
 
 function addCheckbox(
@@ -264,7 +264,7 @@ function addCheckbox(
 	state.selections = withSelectionAdded(state.selections, cat.key, optionKey);
 	fixes.push({
 		pass,
-		field: `${cat.karl}-${sentiment}:${optionKey}`,
+		field: `${cat.legacy}-${sentiment}:${optionKey}`,
 		oldValue: null,
 		newValue: "checked",
 		reason,
@@ -422,10 +422,10 @@ function passCheckboxTextareaSync(state: WorkingState, fixes: PostProcessFix[]):
 		state.selections = withSelectionAdded(state.selections, cat.key, rule.optionKey);
 		fixes.push({
 			pass: "checkbox-textarea-sync",
-			field: `${cat.karl}-${rule.sentiment}:${rule.optionKey}`,
+			field: `${cat.legacy}-${rule.sentiment}:${rule.optionKey}`,
 			oldValue: null,
 			newValue: "checked",
-			reason: `The ${cat.karl} textarea claims "${rule.optionKey}"; checked the matching rubric item.`,
+			reason: `The ${cat.legacy} textarea claims "${rule.optionKey}"; checked the matching rubric item.`,
 		});
 	}
 }
@@ -475,7 +475,7 @@ function passDisallowedLibraryScan(state: WorkingState, fixes: PostProcessFix[])
 	const disallowed = imports.filter((module) => !ALLOWED_IMPORTS.has(module));
 	const cat = resolveCategory("following_instructions");
 	if (!cat) return;
-	const field = `${cat.karl}-positive:${FOLLOWING_INSTRUCTIONS_NO_DISALLOWED}`;
+	const field = `${cat.legacy}-positive:${FOLLOWING_INSTRUCTIONS_NO_DISALLOWED}`;
 
 	if (disallowed.length > 0) {
 		if (hasOption(state.selections, cat.key, FOLLOWING_INSTRUCTIONS_NO_DISALLOWED)) {
@@ -562,7 +562,7 @@ function passStripPlagiarism(state: WorkingState, fixes: PostProcessFix[]): void
 		state.notes[cat.key] = text;
 		fixes.push({
 			pass: "strip-plagiarism",
-			field: `${cat.karl}-textarea`,
+			field: `${cat.legacy}-textarea`,
 			oldValue: note,
 			newValue: text,
 			reason: `Stripped ${removed} sentence(s) containing plagiarism language (plagiarism is a separate deliverable, never part of the grading JSON).`,
@@ -601,7 +601,7 @@ function passStripFiller(state: WorkingState, fixes: PostProcessFix[]): void {
 		state.notes[cat.key] = replacement;
 		fixes.push({
 			pass: "strip-filler",
-			field: `${cat.karl}-textarea`,
+			field: `${cat.legacy}-textarea`,
 			oldValue: note,
 			newValue: replacement,
 			reason:
@@ -872,7 +872,7 @@ function passFillTextareas(
 		state.notes[cat.key] = note;
 		fixes.push({
 			pass: "fill-textarea",
-			field: `${cat.karl}-textarea`,
+			field: `${cat.legacy}-textarea`,
 			oldValue: current ?? null,
 			newValue: note,
 			reason: `Textarea was empty or shorter than ${TEXTAREA_MIN_CHARS} characters; generated a note from execution-record evidence.`,

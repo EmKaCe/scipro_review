@@ -11,7 +11,7 @@
  * This module turns a pre-evaluation result (dimension scores, rubric
  * selections, additional notes) into that flat JSON:
  *   - 5 grading slider keys, e.g. "codequality-grading": "4.5"
- *   - N checkbox keys built via buildKarlId(...) → "checked"
+ *   - N checkbox keys built via buildLegacyId(...) → "checked"
  *   - one textarea key per category that has notes (prefix + "-textarea",
  *     incl. "general-textarea" for general_feedback)
  *   - one "evaluation-textbox" summary (grade, weighted %, key findings)
@@ -28,7 +28,7 @@
  */
 
 import { loadCriteriaFile } from "$lib/server/criteria";
-import { buildKarlId } from "$lib/server/criteria/legacy-catalog";
+import { buildLegacyId } from "$lib/server/criteria/legacy-catalog";
 import type { Category, Sentiment } from "$lib/types/criteria";
 
 // ---------------------------------------------------------------------------
@@ -36,7 +36,7 @@ import type { Category, Sentiment } from "$lib/types/criteria";
 // ---------------------------------------------------------------------------
 
 /** Internal dimension key → Karl form slider element ID. */
-const KARL_SLIDER_KEYS: Readonly<Record<string, string>> = {
+const LEGACY_SLIDER_KEYS: Readonly<Record<string, string>> = {
 	code_quality_design: "codequality-grading",
 	code_execution_results: "codeexecution-grading",
 	assignment_requirements: "assignmentrequirements-grading",
@@ -110,7 +110,7 @@ export function weightedPercentage(dimensions: Record<string, number>): number {
 }
 
 /** Map a weighted percentage to the grade scale used for the Karl export. */
-export function karlGrade(weighted: number): number {
+export function legacyGrade(weighted: number): number {
 	if (weighted >= 95) return 1.0;
 	if (weighted >= 90) return 1.3;
 	if (weighted >= 85) return 1.7;
@@ -172,7 +172,7 @@ export async function findSentimentAndMainPoint(
 }
 
 // ---------------------------------------------------------------------------
-// Karl prefix (derived via buildKarlId)
+// Karl prefix (derived via buildLegacyId)
 // ---------------------------------------------------------------------------
 
 const MAIN_POINT_SENTINEL = "__main_point__";
@@ -180,12 +180,12 @@ const SUB_POINT_SENTINEL = "__sub_point__";
 
 /**
  * Derive the Karl element-ID prefix for a category key using only
- * buildKarlId — the category→prefix mapping itself is internal to
- * legacy-catalog. buildKarlId returns "prefix-sentiment-mainPoint-subPoint",
+ * buildLegacyId — the category→prefix mapping itself is internal to
+ * legacy-catalog. buildLegacyId returns "prefix-sentiment-mainPoint-subPoint",
  * so stripping the known suffix of a sentinel call yields the prefix.
  */
-function karlPrefixFor(categoryKey: string): string {
-	const id = buildKarlId(categoryKey, "positive", MAIN_POINT_SENTINEL, SUB_POINT_SENTINEL);
+function legacyPrefixFor(categoryKey: string): string {
+	const id = buildLegacyId(categoryKey, "positive", MAIN_POINT_SENTINEL, SUB_POINT_SENTINEL);
 	const suffix = `-positive-${MAIN_POINT_SENTINEL}-${SUB_POINT_SENTINEL}`;
 	if (!id.endsWith(suffix)) {
 		throw new Error(
@@ -208,7 +208,7 @@ function buildEvaluationTextbox(opts: {
 	rubricSelections: readonly KarlRubricSelection[];
 	additionalNotes: Record<string, string>;
 }): string {
-	const dimensionSummary = Object.entries(KARL_SLIDER_KEYS)
+	const dimensionSummary = Object.entries(LEGACY_SLIDER_KEYS)
 		.map(
 			([dimKey]) =>
 				`${DIMENSION_LABELS[dimKey] ?? dimKey} ${(opts.dimensions[dimKey] ?? 0).toFixed(1)}`,
@@ -249,7 +249,7 @@ function buildEvaluationTextbox(opts: {
 /**
  * Convert pre-evaluation results into the flat Karl-form JSON object.
  *
- * Every key is either a Karl element ID (checkbox via buildKarlId, slider,
+ * Every key is either a Karl element ID (checkbox via buildLegacyId, slider,
  * textarea, evaluation-textbox) and every value is the string Karl's form
  * expects. Throws when a rubric selection cannot be matched to the criteria
  * YAML or references an unknown category — failing loudly beats emitting a
@@ -261,13 +261,13 @@ export async function generateKarlJson(
 	const { submissionId, dimensions, rubricSelections, additionalNotes, criteriaFiles } = options;
 
 	const weighted = weightedPercentage(dimensions);
-	const grade = karlGrade(weighted);
+	const grade = legacyGrade(weighted);
 
 	const output: Record<string, string> = {};
 
 	// 5 grading slider keys — always emitted, values as score strings.
-	for (const [dimKey, karlKey] of Object.entries(KARL_SLIDER_KEYS)) {
-		output[karlKey] = (dimensions[dimKey] ?? 0).toFixed(1);
+	for (const [dimKey, legacyKey] of Object.entries(LEGACY_SLIDER_KEYS)) {
+		output[legacyKey] = (dimensions[dimKey] ?? 0).toFixed(1);
 	}
 
 	// Checkbox keys for rubric selections.
@@ -285,7 +285,7 @@ export async function generateKarlJson(
 				`Rubric option "${selection.optionKey}" not found in category "${selection.categoryKey}"`,
 			);
 		}
-		const id = buildKarlId(
+		const id = buildLegacyId(
 			selection.categoryKey,
 			match.sentiment,
 			match.mainPoint,
@@ -296,7 +296,7 @@ export async function generateKarlJson(
 
 	// Textarea keys for categories that carry notes (general_feedback → "general-textarea").
 	for (const [categoryKey, note] of Object.entries(additionalNotes)) {
-		output[`${karlPrefixFor(categoryKey)}-textarea`] = note;
+		output[`${legacyPrefixFor(categoryKey)}-textarea`] = note;
 	}
 
 	// Summary textarea.

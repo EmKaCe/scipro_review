@@ -233,12 +233,12 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 			);
 		}
 
-		let karlExport: Awaited<ReturnType<typeof generateAssignmentExport>> = {
+		let legacyExport: Awaited<ReturnType<typeof generateAssignmentExport>> = {
 			exports: {},
 			failed: [],
 		};
 		try {
-			karlExport = await generateAssignmentExport(assignmentId);
+			legacyExport = await generateAssignmentExport(assignmentId);
 		} catch (err) {
 			console.warn(
 				`[pre-evaluate-all] Karl export failed for "${assignmentId}": ${
