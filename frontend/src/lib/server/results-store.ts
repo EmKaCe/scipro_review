@@ -20,6 +20,8 @@ import path from "node:path";
 import type { ExecutionResult } from "./executor-client";
 import { assertSafeSegment, getDataDir } from "./metadata";
 import type { PreEvaluation } from "./copilot/pre-evaluation";
+import type { PostProcessData, PostProcessFix } from "./copilot/post-process";
+import type { CalibrationAdjustment } from "./copilot/cohort-calibration";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -35,10 +37,22 @@ export type StoredPreEvaluation = PreEvaluation & { evaluatedAt: string };
  * Stored execution result; `error` is set when execution failed. `preEval`
  * is present once the copilot's pre-evaluation has been persisted for the
  * submission — older stored results without it stay valid.
+ *
+ * Wave 8: `preEval` stays the RAW LLM envelope; the corrected grading data
+ * from postProcessSubmission is stored as a SIBLING (`postProcessed` +
+ * `postProcessFixes`) so the teacher can diff raw vs corrected, and
+ * `calibrationAdjustments` carries the advisory cross-submission score
+ * corrections from cohort calibration.
  */
 export type StoredExecutionResult = ExecutionResult & {
 	error?: string | null;
 	preEval?: StoredPreEvaluation;
+	/** Corrected grading data from postProcessSubmission (6 deterministic passes). */
+	postProcessed?: PostProcessData;
+	/** Every post-processing correction applied, with reasons (empty when nothing changed). */
+	postProcessFixes?: PostProcessFix[];
+	/** Score adjustments from cross-submission cohort calibration (advisory). */
+	calibrationAdjustments?: CalibrationAdjustment[];
 };
 
 /** results.json contents — a map keyed by studentId. */
@@ -115,7 +129,16 @@ export async function clearResult(assignmentId: string, studentId: string): Prom
 }
 
 /**
- * Persist (or replace) the pre-evaluation envelope for one submission.
+ * Persist (or replace) the pre-evaluation envelope for one submission,
+ * alongside the post-processed (corrected) grading data.
+ *
+ * The stored shape is CANONICAL regardless of how callers pass the data:
+ * `preEval` is always the RAW LLM envelope, and `postProcessed` /
+ * `postProcessFixes` are stored as siblings. Callers that spread the full
+ * preEvaluateSubmission return (which already carries postProcessed +
+ * postProcessFixes) can pass it directly — the nested fields are pulled out
+ * and normalized here. Explicit `postProcessed`/`postProcessFixes`
+ * arguments win over nested ones when both are given.
  *
  * Requires an existing stored execution result — pre-evaluation is built
  * from executed cells, so there is nothing to attach the envelope to when
@@ -126,6 +149,8 @@ export async function setPreEvaluation(
 	assignmentId: string,
 	studentId: string,
 	preEval: StoredPreEvaluation,
+	postProcessed?: PostProcessData,
+	postProcessFixes?: PostProcessFix[],
 ): Promise<void> {
 	assertSafeSegment(studentId, "studentId");
 	const results = await readResults(assignmentId);
@@ -135,7 +160,21 @@ export async function setPreEvaluation(
 			`Cannot store pre-evaluation for "${studentId}": no stored execution result in assignment "${assignmentId}"`,
 		);
 	}
-	results[studentId] = { ...existing, preEval };
+	// Normalize: pull any nested post-processed data out of the envelope so
+	// the stored preEval stays the raw LLM output (see StoredExecutionResult).
+	const { postProcessed: nestedPostProcessed, postProcessFixes: nestedFixes, ...rawPreEval } =
+		preEval as StoredPreEvaluation & {
+			postProcessed?: PostProcessData;
+			postProcessFixes?: PostProcessFix[];
+		};
+	const resolvedPostProcessed = postProcessed ?? nestedPostProcessed;
+	const resolvedFixes = postProcessFixes ?? nestedFixes;
+	results[studentId] = {
+		...existing,
+		preEval: rawPreEval,
+		...(resolvedPostProcessed ? { postProcessed: resolvedPostProcessed } : {}),
+		...(resolvedFixes ? { postProcessFixes: resolvedFixes } : {}),
+	};
 	await writeResults(assignmentId, results);
 }
 

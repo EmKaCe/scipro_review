@@ -56,7 +56,7 @@ import { loadCriteriaFile, loadCriteriaForAssignment } from "$lib/server/criteri
 import { getKiConnectClient, KiConnectClient } from "$lib/server/ki-connect";
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
-import { readResults, type StoredExecutionResult } from "$lib/server/results-store";
+import { readResults, writeResults, type StoredExecutionResult } from "$lib/server/results-store";
 import { loadSettings } from "$lib/server/settings";
 import type { ExecutedCell } from "$lib/server/executor-client";
 import {
@@ -72,6 +72,16 @@ import {
 	type WorksheetBatchOutput,
 	type WorksheetCategoryResult,
 } from "$lib/server/copilot/worksheet-json-schema";
+import {
+	postProcessSubmission,
+	type PostProcessData,
+	type PostProcessFix,
+} from "$lib/server/copilot/post-process";
+import {
+	calibrateCohortFromResults,
+	type CalibrationAdjustment,
+} from "$lib/server/copilot/cohort-calibration";
+import { generateKarlJson } from "$lib/server/copilot/karl-export";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -113,6 +123,22 @@ export interface PreEvaluateInput {
 	submissionId: string;
 	assignmentId: string;
 }
+
+/**
+ * The pre-evaluation envelope plus the POST-PROCESSED (corrected) grading
+ * data. `postProcessed` is the output of postProcessSubmission's 6
+ * deterministic correction passes (dimensions, rubric selections,
+ * additional notes); `postProcessFixes` records every correction with its
+ * reason so the teacher can diff raw vs corrected. The raw envelope fields
+ * (`gradeSuggestion`, `rubricSelections`, `additionalNotes`, ...) are
+ * untouched — both views travel together.
+ */
+export type PreEvaluationWithPostProcess = PreEvaluation & {
+	/** Corrected grading data from postProcessSubmission. */
+	postProcessed: PostProcessData;
+	/** Every post-processing correction applied (empty when nothing changed). */
+	postProcessFixes: PostProcessFix[];
+};
 
 // ---------------------------------------------------------------------------
 // Zod validation (markers nullable — never fabricated)
@@ -1027,7 +1053,9 @@ function formatPreAnalysis(pa: PreAnalysis): string {
  * 2a's scores, Phase 3 receives everything. Weak models additionally get a
  * validation-reminder block in every system prompt (see modelHintBlock).
  */
-export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<PreEvaluation> {
+export async function preEvaluateSubmission(
+	input: PreEvaluateInput,
+): Promise<PreEvaluationWithPostProcess> {
 	const { submissionId, assignmentId } = input;
 	assertSafeSegment(assignmentId, "assignmentId");
 	assertSafeSegment(submissionId, "submissionId");
@@ -1372,7 +1400,26 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 		);
 	}
 
-	return envelope;
+	// ── Post-processing (Wave 8): 6 deterministic correction passes ──
+	// Runs AFTER Phase 3 on the FINAL raw envelope (post score caps + post
+	// semantic validation). Pure logic — no LLM calls. The corrected data is
+	// returned alongside the raw envelope; callers persist it via
+	// setPreEvaluation's postProcessed field (which normalizes the stored
+	// shape to preEval (raw) + postProcessed (sibling)).
+	const { data: postProcessed, result: postProcessResult } = postProcessSubmission({
+		submissionId,
+		dimensions: envelope.gradeSuggestion.dimensions,
+		rubricSelections: envelope.rubricSelections ?? [],
+		additionalNotes: envelope.additionalNotes ?? {},
+		preAnalysis,
+		executionRecord: stored,
+	});
+
+	return {
+		...envelope,
+		postProcessed,
+		postProcessFixes: postProcessResult.fixes,
+	};
 }
 
 /**
@@ -1417,6 +1464,104 @@ function applyScoreCaps(
 	if (pa.unusedImports.length > 0) {
 		cap("code_quality_design", 4);
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Wave 8 — batch operations (cohort calibration + Karl export)
+// ---------------------------------------------------------------------------
+
+/**
+ * Run cross-submission cohort calibration for an assignment AFTER every
+ * submission has been pre-evaluated. Reads the stored pre-evaluation
+ * envelopes (the raw `preEval.gradeSuggestion.dimensions` — the canonical
+ * Phase 2a input), derives deterministic score adjustments (hard caps,
+ * bounded-fit CER cap, per-cluster outliers), and writes them back to each
+ * submission's stored result as `calibrationAdjustments`.
+ *
+ * Deterministic — no LLM calls. Returns the adjustments sorted by
+ * submissionId (empty when every score was already consistent; in that case
+ * nothing is written).
+ */
+export async function runCohortCalibration(assignmentId: string): Promise<{
+	assignmentId: string;
+	adjustments: CalibrationAdjustment[];
+	/** Number of submissions that received at least one adjustment. */
+	calibratedCount: number;
+}> {
+	const results = await readResults(assignmentId);
+	// Fit metrics (R²/RMSE/bounds) are not persisted by the results store, so
+	// no `outcomes` map is passed — calibrateCohortFromResults derives the
+	// error flags from the stored execution results and treats everything
+	// else as `no_metrics`. Callers that extract fit metrics from executed
+	// cell outputs can pass them via calibrateCohortScores directly.
+	const adjustments = calibrateCohortFromResults(results);
+	if (adjustments.length === 0) {
+		return { assignmentId, adjustments: [], calibratedCount: 0 };
+	}
+
+	// Write the adjustments back, grouped per submission (one write for the
+	// whole file keeps the store consistent).
+	const bySubmission = new Map<string, CalibrationAdjustment[]>();
+	for (const adjustment of adjustments) {
+		const list = bySubmission.get(adjustment.submissionId) ?? [];
+		list.push(adjustment);
+		bySubmission.set(adjustment.submissionId, list);
+	}
+	for (const [studentId, list] of bySubmission) {
+		const stored = results[studentId];
+		if (!stored) continue;
+		results[studentId] = { ...stored, calibrationAdjustments: list };
+	}
+	await writeResults(assignmentId, results);
+
+	return { assignmentId, adjustments, calibratedCount: bySubmission.size };
+}
+
+/**
+ * Generate the Karl-form grading JSON for every pre-evaluated submission of
+ * an assignment. Prefers the POST-PROCESSED grading data (corrected
+ * dimensions / rubric selections / notes); falls back to the raw envelope
+ * when post-processing was not run.
+ *
+ * Per-submission failures (a rubric selection that no longer matches the
+ * criteria files — generateKarlJson's contract) are isolated and returned
+ * in `failed` so one stale selection cannot sink the whole batch export.
+ */
+export async function generateAssignmentExport(
+	assignmentId: string,
+): Promise<{
+	/** studentId → flat Karl-form JSON (element id → value string). */
+	exports: Record<string, Record<string, string>>;
+	/** Submissions whose export failed, with the error message. */
+	failed: { submissionId: string; error: string }[];
+}> {
+	const assignment = await getAssignmentById(assignmentId);
+	const criteriaFiles = assignment?.criteria_files ?? [];
+	const results = await readResults(assignmentId);
+
+	const exports: Record<string, Record<string, string>> = {};
+	const failed: { submissionId: string; error: string }[] = [];
+	for (const [studentId, stored] of Object.entries(results)) {
+		if (!stored.preEval) continue;
+		try {
+			exports[studentId] = await generateKarlJson({
+				submissionId: studentId,
+				dimensions:
+					stored.postProcessed?.dimensions ?? stored.preEval.gradeSuggestion.dimensions,
+				rubricSelections:
+					stored.postProcessed?.rubricSelections ?? stored.preEval.rubricSelections ?? [],
+				additionalNotes:
+					stored.postProcessed?.additionalNotes ?? stored.preEval.additionalNotes ?? {},
+				criteriaFiles,
+			});
+		} catch (err) {
+			failed.push({
+				submissionId: studentId,
+				error: err instanceof Error ? err.message : String(err),
+			});
+		}
+	}
+	return { exports, failed };
 }
 
 /**

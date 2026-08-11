@@ -30,7 +30,11 @@ import { suggestionResult, type SuggestionResult } from "../agent";
 import { resolveAssignmentId } from "$lib/server/assignments";
 import { listSubmissions } from "$lib/server/metadata";
 import { setPreEvaluation } from "$lib/server/results-store";
-import { preEvaluateSubmission } from "../pre-evaluation";
+import {
+	preEvaluateSubmission,
+	runCohortCalibration,
+	generateAssignmentExport,
+} from "../pre-evaluation";
 import type { CopilotRegistry, CopilotTool, ToolContext } from "../registry";
 
 // ---------------------------------------------------------------------------
@@ -167,7 +171,9 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 	description:
 		"Pre-evaluate EVERY submission of an assignment (one KI Connect call per submission — expensive). " +
 		"Persists each envelope into the stored results and returns a per-submission summary with totals; " +
-		"rows that fail (e.g. not executed yet) are reported with ok:false and do not abort the loop.",
+		"rows that fail (e.g. not executed yet) are reported with ok:false and do not abort the loop. " +
+		"After the loop, the batch post-stages run: cross-submission cohort calibration (deterministic score adjustments) " +
+		"and Karl-form grading JSON generation for every pre-evaluated submission.",
 	permission: "approval",
 	inputSchema: preEvaluateAllArgsSchema,
 	run: async (args, ctx) => {
@@ -207,12 +213,48 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 			}
 		}
 
+		// ── Wave 8 batch post-stages: cohort calibration then Karl export ──
+		// Both are deterministic (no LLM calls) and run AFTER every
+		// submission has been pre-evaluated. Failures must not lose the
+		// per-row results already collected — they are logged and the tool
+		// still returns (the summary carries the empty result).
+		let calibration: Awaited<ReturnType<typeof runCohortCalibration>> = {
+			assignmentId,
+			adjustments: [],
+			calibratedCount: 0,
+		};
+		try {
+			calibration = await runCohortCalibration(assignmentId);
+		} catch (err) {
+			console.warn(
+				`[pre-evaluate-all] cohort calibration failed for "${assignmentId}": ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
+
+		let karlExport: Awaited<ReturnType<typeof generateAssignmentExport>> = {
+			exports: {},
+			failed: [],
+		};
+		try {
+			karlExport = await generateAssignmentExport(assignmentId);
+		} catch (err) {
+			console.warn(
+				`[pre-evaluate-all] Karl export failed for "${assignmentId}": ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
+
 		return {
 			assignmentId,
 			total: rows.length,
 			succeeded,
 			failed: rows.length - succeeded,
 			results: rows,
+			calibration,
+			karlExport,
 		};
 	},
 };

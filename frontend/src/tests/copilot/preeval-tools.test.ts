@@ -243,7 +243,9 @@ describe("pre-evaluate", () => {
 		expect(suggestion.title).toBe("Grade suggestion ready");
 		expect(suggestion.actionLabel).toBe("Apply suggested scores");
 		expect(suggestion.body).toBe(ENVELOPE.notebookSummary);
-		expect(suggestion.data).toEqual(ENVELOPE);
+		// Wave 8: the envelope now carries postProcessed/postProcessFixes
+		// alongside the raw fields — match the raw envelope only.
+		expect(suggestion.data).toMatchObject(ENVELOPE);
 
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_A]!;
 		expect(stored.preEval).toBeDefined();
@@ -272,7 +274,9 @@ describe("pre-evaluate", () => {
 
 		const suggestion = unwrapGrade(result);
 		expect(suggestion.kind).toBe("grade");
-		expect(suggestion.data).toEqual(ENVELOPE);
+		// Wave 8: the envelope now carries postProcessed/postProcessFixes
+		// alongside the raw fields — match the raw envelope only.
+		expect(suggestion.data).toMatchObject(ENVELOPE);
 		const stored = (await readResults(ASSIGNMENT))[STUDENT_B]!;
 		expect(stored.preEval).toBeDefined();
 	});

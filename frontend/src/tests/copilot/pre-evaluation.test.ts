@@ -21,9 +21,15 @@ import {
 	preEvaluateSubmission,
 	parseWorksheetJson,
 	modelHintBlock,
+	runCohortCalibration,
+	type PreEvaluation,
 } from "$lib/server/copilot/pre-evaluation";
 import type { ExecutionResult } from "$lib/server/executor-client";
-import { writeResults } from "$lib/server/results-store";
+import {
+	readResults,
+	setPreEvaluation,
+	writeResults,
+} from "$lib/server/results-store";
 import { parseCategoryKey, type Category, type MergedRubric } from "$lib/types/criteria";
 import {
 	worksheetBatchSchema,
@@ -682,7 +688,10 @@ describe("preEvaluateSubmission", () => {
 			assignmentId: ASSIGNMENT,
 		});
 
-		expect(result).toEqual(ENVELOPE);
+		// The raw envelope is returned verbatim; Wave 8 post-processing rides
+		// along as `postProcessed`/`postProcessFixes` (asserted in detail in
+		// the Wave 8 describe block below).
+		expect(result).toMatchObject(ENVELOPE);
 		// The envelope carries both the worksheet-derived rubric selections
 		// and the per-category additional notes.
 		expect(result.rubricSelections).toEqual(ENVELOPE.rubricSelections);
@@ -2020,4 +2029,120 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		// qwen3-30b is not gpt-oss-120b — no reasoning-effort hint.
 		expect(block).not.toContain("reasoning_effort");
 	});
-});
+	});
+
+	// ---------------------------------------------------------------------------
+	// Wave 8 — post-processing, cohort calibration, Karl export wiring
+	// ---------------------------------------------------------------------------
+
+	describe("Wave 8 pipeline wiring", () => {
+		it("calls postProcessSubmission after Phase 3 and returns the corrected data alongside the raw envelope", async () => {
+			const result = await preEvaluateSubmission({
+				submissionId: STUDENT,
+				assignmentId: ASSIGNMENT,
+			});
+
+			// Raw envelope fields are untouched (post-processing never mutates them).
+			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
+			expect(result.notebookSummary).toBe(ENVELOPE.notebookSummary);
+			expect(result.gradeSuggestion.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
+
+			// The corrected data + fix log ride along — postProcessSubmission ran.
+			expect(result.postProcessed).toBeDefined();
+			expect(result.postProcessed.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
+			expect(Array.isArray(result.postProcessFixes)).toBe(true);
+
+			// Deterministic pass 3 (disallowed-library-scan): the fixture imports
+			// only numpy (allowed), so the no-disallowed-libraries positive is
+			// added to following_instructions — and the fix is recorded.
+			expect(
+				result.postProcessed.rubricSelections.some(
+					(s) =>
+						s.categoryKey === "following_instructions" &&
+						s.optionKey === "Disallowed libraries were not used.",
+				),
+			).toBe(true);
+			expect(
+				result.postProcessFixes.some(
+					(fix) => fix.pass === "disallowed-library-scan" && fix.newValue === "checked",
+				),
+			).toBe(true);
+		});
+
+		it("stores post-processed data alongside the raw pre-eval envelope", async () => {
+			const envelope = await preEvaluateSubmission({
+				submissionId: STUDENT,
+				assignmentId: ASSIGNMENT,
+			});
+			// Persist the FULL preEvaluateSubmission return — setPreEvaluation
+			// normalizes it into preEval (raw) + postProcessed (sibling).
+			await setPreEvaluation(ASSIGNMENT, STUDENT, {
+				...envelope,
+				evaluatedAt: "2026-08-11T00:00:00.000Z",
+			});
+
+			const stored = (await readResults(ASSIGNMENT))[STUDENT]!;
+			// preEval stays the RAW LLM envelope — no post-processed data nested inside.
+			expect(stored.preEval!.markers).toEqual(ENVELOPE.markers);
+			expect(stored.preEval!.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
+			expect(
+				(stored.preEval as PreEvaluation & { postProcessed?: unknown }).postProcessed,
+			).toBeUndefined();
+			// The corrected data is stored as a SIBLING of preEval.
+			expect(stored.postProcessed).toEqual(envelope.postProcessed);
+			expect(stored.postProcessFixes).toEqual(envelope.postProcessFixes);
+			// No calibration has run yet.
+			expect(stored.calibrationAdjustments).toBeUndefined();
+		});
+
+		it("runs cohort calibration over the batch and writes adjustments back to each submission", async () => {
+			// Two pre-evaluated submissions: STUDENT (already consistent) and a
+			// second one whose CER score of 6.0 is impossible (top of the scale
+			// is 5.5 — the hard cap fires deterministically).
+			const other = "2026SS_39";
+			const base = await preEvaluateSubmission({
+				submissionId: STUDENT,
+				assignmentId: ASSIGNMENT,
+			});
+			await setPreEvaluation(ASSIGNMENT, STUDENT, {
+				...base,
+				evaluatedAt: "2026-08-11T00:00:00.000Z",
+			});
+			await writeResults(ASSIGNMENT, {
+				[STUDENT]: (await readResults(ASSIGNMENT))[STUDENT]!,
+				[other]: {
+					...makeExecutionResult(),
+					preEval: {
+						...base,
+						gradeSuggestion: {
+							...base.gradeSuggestion,
+							dimensions: { ...base.gradeSuggestion.dimensions, code_execution_results: 6 },
+						},
+						evaluatedAt: "2026-08-11T00:00:00.000Z",
+					},
+				},
+			});
+
+			const calibration = await runCohortCalibration(ASSIGNMENT);
+
+			// The 6.0 cap fires (calibrateCohortFromResults → calibrateCohortScores).
+			const cerAdjustment = calibration.adjustments.find(
+				(adj) => adj.submissionId === other && adj.dimension === "code_execution_results",
+			);
+			expect(cerAdjustment).toBeDefined();
+			expect(cerAdjustment!.oldScore).toBe(6);
+			expect(cerAdjustment!.newScore).toBe(5.5);
+			expect(calibration.calibratedCount).toBeGreaterThan(0);
+
+			// The adjustments are written back into the stored results.
+			const storedOther = (await readResults(ASSIGNMENT))[other]!;
+			expect(storedOther.calibrationAdjustments).toBeDefined();
+			expect(
+				storedOther.calibrationAdjustments!.some(
+					(adj) => adj.dimension === "code_execution_results" && adj.newScore === 5.5,
+				),
+			).toBe(true);
+			// The raw envelope itself is NOT mutated by calibration.
+			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(6);
+		});
+	});
