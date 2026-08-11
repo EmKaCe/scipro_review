@@ -1,5 +1,5 @@
 /**
- * @file Unit tests for karl-catalog.ts — the category-key → Karl element-ID
+ * @file Unit tests for legacy-catalog.ts — the category-key → Karl element-ID
  * prefix mapping and buildKarlId() helper.
  *
  * Karl's form rebuilds checkbox IDs at runtime from raw category/sentiment/
@@ -8,9 +8,9 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { buildKarlId, KARL_CATEGORY_PREFIXES } from "$lib/server/criteria/karl-catalog";
+import { buildKarlId, LEGACY_CATEGORY_PREFIXES } from "$lib/server/criteria/legacy-catalog";
 
-describe("karl-catalog", () => {
+describe("legacy-catalog", () => {
 	it("maps general_feedback to Karl's 'general' prefix", () => {
 		const id = buildKarlId("general_feedback", "positive", "Overall", "good");
 		expect(id.startsWith("general-")).toBe(true);
@@ -61,11 +61,11 @@ describe("karl-catalog", () => {
 	});
 
 	it("produces valid non-empty IDs for all 14 category keys", () => {
-		expect(Object.keys(KARL_CATEGORY_PREFIXES)).toHaveLength(14);
-		for (const key of Object.keys(KARL_CATEGORY_PREFIXES)) {
+		expect(Object.keys(LEGACY_CATEGORY_PREFIXES)).toHaveLength(14);
+		for (const key of Object.keys(LEGACY_CATEGORY_PREFIXES)) {
 			const id = buildKarlId(key, "positive", "main point", "sub point");
 			expect(id).not.toBe("");
-			expect(id.startsWith(`${KARL_CATEGORY_PREFIXES[key]}-`)).toBe(true);
+			expect(id.startsWith(`${LEGACY_CATEGORY_PREFIXES[key]}-`)).toBe(true);
 		}
 	});
 });

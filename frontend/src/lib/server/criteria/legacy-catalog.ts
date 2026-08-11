@@ -18,7 +18,7 @@
  * (general.json, scipy_sklearn_soil.json, user_function.json,
  * plotting_data.json) via the generate.js ID rule.
  */
-export const KARL_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
+export const LEGACY_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
 	code_formatting: "codeFormatting",
 	coding_concept: "codingConcept",
 	jupyter_notebooks: "jupyterNotebooks",
@@ -36,14 +36,14 @@ export const KARL_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
 };
 
 /** The 14 internal category keys supported by the mapping above. */
-export type KarlCategoryKey = keyof typeof KARL_CATEGORY_PREFIXES;
+export type KarlCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
 
 /**
  * Assemble a Karl form element ID for a rubric checkbox.
  *
  * Format: `karlPrefix + "-" + sentiment + "-" + mainPoint + "-" + subPoint`
  * (generate.js line 96), where karlPrefix is looked up from
- * KARL_CATEGORY_PREFIXES.
+ * LEGACY_CATEGORY_PREFIXES.
  *
  * Raw text is preserved verbatim — NO cleaning, NO normalization. Spaces,
  * typos, and punctuation are all part of the ID, so the generated key
@@ -58,7 +58,7 @@ export function buildKarlId(
 	mainPoint: string,
 	subPoint: string,
 ): string {
-	const prefix = KARL_CATEGORY_PREFIXES[categoryKey];
+	const prefix = LEGACY_CATEGORY_PREFIXES[categoryKey];
 	if (prefix === undefined) {
 		throw new Error(`Unknown rubric category key: "${categoryKey}"`);
 	}

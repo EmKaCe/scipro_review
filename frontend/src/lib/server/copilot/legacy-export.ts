@@ -28,7 +28,7 @@
  */
 
 import { loadCriteriaFile } from "$lib/server/criteria";
-import { buildKarlId } from "$lib/server/criteria/karl-catalog";
+import { buildKarlId } from "$lib/server/criteria/legacy-catalog";
 import type { Category, Sentiment } from "$lib/types/criteria";
 
 // ---------------------------------------------------------------------------
@@ -181,7 +181,7 @@ const SUB_POINT_SENTINEL = "__sub_point__";
 /**
  * Derive the Karl element-ID prefix for a category key using only
  * buildKarlId — the category→prefix mapping itself is internal to
- * karl-catalog. buildKarlId returns "prefix-sentiment-mainPoint-subPoint",
+ * legacy-catalog. buildKarlId returns "prefix-sentiment-mainPoint-subPoint",
  * so stripping the known suffix of a sentinel call yields the prefix.
  */
 function karlPrefixFor(categoryKey: string): string {
@@ -189,7 +189,7 @@ function karlPrefixFor(categoryKey: string): string {
 	const suffix = `-positive-${MAIN_POINT_SENTINEL}-${SUB_POINT_SENTINEL}`;
 	if (!id.endsWith(suffix)) {
 		throw new Error(
-			`karl-catalog produced unexpected ID "${id}" — cannot derive prefix for "${categoryKey}"`,
+			`legacy-catalog produced unexpected ID "${id}" — cannot derive prefix for "${categoryKey}"`,
 		);
 	}
 	return id.slice(0, -suffix.length);

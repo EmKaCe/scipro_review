@@ -1,5 +1,5 @@
 /**
- * @file Unit tests for the Karl-form grading JSON export (karl-export.ts).
+ * @file Unit tests for the Karl-form grading JSON export (legacy-export.ts).
  *
  * Uses a real temp DATA_DIR fixture (criteria/general.yaml) so the export's
  * criteria loading and sentiment/main-point lookup run against actual YAML.
@@ -19,8 +19,8 @@ import {
 	generateKarlJson,
 	karlGrade,
 	weightedPercentage,
-} from "$lib/server/copilot/karl-export";
-import type { GenerateKarlJsonOptions } from "$lib/server/copilot/karl-export";
+} from "$lib/server/copilot/legacy-export";
+import type { GenerateKarlJsonOptions } from "$lib/server/copilot/legacy-export";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -93,7 +93,7 @@ const SLIDER_KEYS = [
 	"creativity-grading",
 ];
 
-/** The 14 Karl form prefixes (ground truth, independent of karl-catalog). */
+/** The 14 Karl form prefixes (ground truth, independent of legacy-catalog). */
 const KNOWN_PREFIXES = [
 	"codeFormatting",
 	"codingConcept",
@@ -129,7 +129,7 @@ function makeOptions(overrides: Partial<GenerateKarlJsonOptions> = {}): Generate
 let dataDir: string;
 
 beforeEach(async () => {
-	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-karl-export-"));
+	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-legacy-export-"));
 	process.env.DATA_DIR = dataDir;
 	await mkdir(path.join(dataDir, "criteria"), { recursive: true });
 	await writeFile(path.join(dataDir, "criteria", "general.yaml"), CRITERIA_YAML);

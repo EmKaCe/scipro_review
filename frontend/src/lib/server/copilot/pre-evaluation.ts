@@ -81,7 +81,7 @@ import {
 	calibrateCohortFromResults,
 	type CalibrationAdjustment,
 } from "$lib/server/copilot/cohort-calibration";
-import { generateKarlJson } from "$lib/server/copilot/karl-export";
+import { generateKarlJson } from "$lib/server/copilot/legacy-export";
 
 // ---------------------------------------------------------------------------
 // Wire contract

@@ -32,8 +32,8 @@
  * This module runs only on the SvelteKit server (`$lib/server/`).
  */
 
-import { weightedPercentage } from "./karl-export";
-import { KARL_CATEGORY_PREFIXES } from "$lib/server/criteria/karl-catalog";
+import { weightedPercentage } from "./legacy-export";
+import { LEGACY_CATEGORY_PREFIXES } from "$lib/server/criteria/legacy-catalog";
 import type { PreAnalysis } from "$lib/server/copilot/pre-analysis";
 import type { ExecutionResult, ExecutedCell } from "$lib/server/executor-client";
 
@@ -137,7 +137,7 @@ interface CategoryInfo {
 	karl: string;
 }
 
-const CATEGORIES: readonly CategoryInfo[] = Object.entries(KARL_CATEGORY_PREFIXES).map(
+const CATEGORIES: readonly CategoryInfo[] = Object.entries(LEGACY_CATEGORY_PREFIXES).map(
 	([key, karl]) => ({ key, karl }),
 );
 

@@ -254,7 +254,7 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 			failed: rows.length - succeeded,
 			results: rows,
 			calibration,
-			karlExport,
+			legacy-export
 		};
 	},
 };
