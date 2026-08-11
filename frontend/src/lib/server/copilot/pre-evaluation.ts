@@ -422,8 +422,8 @@ function currentModelName(): string {
  * the rubric. qwen3-30b (MoE, ~3B active) and llama-3.1-8b qualify;
  * gpt-oss-120b and mistral-small-4-119b (119B) do not.
  */
-function isWeakModel(): boolean {
-	const name = currentModelName().toLowerCase();
+function isWeakModel(modelName?: string): boolean {
+	const name = (modelName ?? currentModelName()).toLowerCase();
 	return (
 		name.includes("qwen") ||
 		name.includes("8b") ||
@@ -436,13 +436,18 @@ function isWeakModel(): boolean {
  * validation reminder (see {@link MODEL_HINT_BLOCK}) and the gpt-oss-120b
  * reasoning-effort instruction (see {@link GPT_OSS_120B_HINT_BLOCK}). Returns
  * "" when neither applies.
+ *
+ * Phases may pass the model actually used for THEIR call — per-phase model
+ * routing (Phase 2a/2b on gpt-oss-120b, 2b-verify on qwen3-30b) means the
+ * global client model no longer describes every call. Falls back to
+ * {@link currentModelName} when no explicit model is given.
  */
-function modelHintBlock(): string {
+export function modelHintBlock(modelName?: string): string {
 	const hints: string[] = [];
-	if (isWeakModel()) {
+	if (isWeakModel(modelName)) {
 		hints.push(MODEL_HINT_BLOCK);
 	}
-	if (currentModelName().toLowerCase().includes("gpt-oss-120b")) {
+	if ((modelName ?? currentModelName()).toLowerCase().includes("gpt-oss-120b")) {
 		hints.push(GPT_OSS_120B_HINT_BLOCK);
 	}
 	return hints.length > 0 ? `\n\n${hints.join("\n\n")}` : "";
@@ -572,6 +577,16 @@ const CATEGORY_BATCHES: readonly (readonly string[])[] = [
  * same-model bias reproduction.
  */
 const WORKSHEET_VERIFY_MODEL = "qwen3-30b-a3b-instruct-2507";
+
+/**
+ * The model for the quality-critical scoring phases (Wave 5): Phase 2a
+ * dimension scoring, the 2a self-critique, and the Phase 2b worksheet
+ * primary pass all run on gpt-oss-120b — stronger instruction following
+ * than qwen3-30b on many-constraint conditional tasks (the rubric
+ * filling failure mode). Phase 2b-verify stays pinned to qwen3-30b
+ * (see {@link WORKSHEET_VERIFY_MODEL}).
+ */
+const PHASE_2_MODEL = "gpt-oss-120b";
 
 /**
  * Phase 2b-verify prompt: a second model call AFTER the primary worksheet
@@ -1142,12 +1157,14 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 	].join("\n");
 
 	let scoring = await callPhase<ScoringResult>(
-		PHASE2A_SCORING_PROMPT + modelHintBlock(),
+		PHASE2A_SCORING_PROMPT + modelHintBlock(PHASE_2_MODEL),
 		phase2aUserPrompt,
 		submissionId,
 		assignmentId,
 		"Phase 2a (scoring)",
 		llmTimeoutMs,
+		PHASE_2_MODEL,
+		0.2,
 	);
 
 	// ── Phase 2a self-critique ──
@@ -1157,12 +1174,14 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 	if (CRITIQUE_ENABLED) {
 		try {
 			const critique = await callPhase<ScoringResult>(
-				CRITIQUE_SYSTEM_PROMPT + modelHintBlock(),
+				CRITIQUE_SYSTEM_PROMPT + modelHintBlock(PHASE_2_MODEL),
 				JSON.stringify(scoring),
 				submissionId,
 				assignmentId,
 				"Phase 2a critique",
 				llmTimeoutMs,
+				PHASE_2_MODEL,
+				0.2,
 			);
 			if (
 				critique &&
@@ -1223,6 +1242,8 @@ export async function preEvaluateSubmission(input: PreEvaluateInput): Promise<Pr
 			submissionId,
 			assignmentId,
 			llmTimeoutMs,
+			model: PHASE_2_MODEL,
+			temperature: 0.1,
 		});
 
 		// Phase 2b-verify: a second model call with DIFFERENT instructions
@@ -1414,15 +1435,18 @@ async function callPhase<T>(
 	assignmentId: string,
 	phaseLabel: string,
 	timeoutMs?: number,
+	model?: string,
+	temperature: number = 0.2,
 ): Promise<T> {
 	const call = () =>
 		getKiConnectClient().chatCompletion(
 			systemPrompt,
 			userPrompt,
-			0.2,
+			temperature,
 			{ type: "json_object" },
 			undefined,
 			timeoutMs,
+			model,
 		);
 
 	let raw: unknown;
@@ -1590,11 +1614,13 @@ async function fillWorksheetInBatches(args: {
 	submissionId: string;
 	assignmentId: string;
 	llmTimeoutMs: number;
+	model?: string;
+	temperature?: number;
 }): Promise<WorksheetBatchOutput> {
-	const { worksheet, rubric, submissionId, assignmentId, llmTimeoutMs } = args;
+	const { worksheet, rubric, submissionId, assignmentId, llmTimeoutMs, model, temperature } = args;
 	const rubricKeys = new Set<string>(rubric.categories.map((entry) => entry.key));
 	const contextSection = extractWorksheetContext(worksheet);
-	const systemPrompt = WORKSHEET_BATCH_SYSTEM_PROMPT + modelHintBlock();
+	const systemPrompt = WORKSHEET_BATCH_SYSTEM_PROMPT + modelHintBlock(model);
 
 	const categories: Record<string, WorksheetCategoryResult> = {};
 	for (const batch of CATEGORY_BATCHES) {
@@ -1618,6 +1644,8 @@ async function fillWorksheetInBatches(args: {
 			assignmentId,
 			batchLabel,
 			llmTimeoutMs,
+			model,
+			temperature,
 		);
 		let unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
 
@@ -1641,6 +1669,8 @@ async function fillWorksheetInBatches(args: {
 				assignmentId,
 				`${batchLabel} retry`,
 				llmTimeoutMs,
+				model,
+				temperature,
 			);
 			unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
 			if (unmatched.length > 0) {
@@ -1678,15 +1708,18 @@ async function callWorksheetBatch(
 	assignmentId: string,
 	phaseLabel: string,
 	timeoutMs?: number,
+	model?: string,
+	temperature: number = 0.2,
 ): Promise<WorksheetBatchOutput> {
 	const call = () =>
 		getKiConnectClient().chatCompletion(
 			systemPrompt,
 			userPrompt,
-			0.2,
+			temperature,
 			{ type: "json_object" },
 			worksheetBatchSchema,
 			timeoutMs,
+			model,
 		);
 
 	let raw: unknown;
@@ -1764,17 +1797,18 @@ async function verifyWorksheetSelections(args: {
 	llmTimeoutMs: number;
 }): Promise<WorksheetBatchOutput> {
 	const { output, submissionId, assignmentId, llmTimeoutMs } = args;
-	const systemPrompt = WORKSHEET_VERIFY_SYSTEM_PROMPT + modelHintBlock();
+	const systemPrompt = WORKSHEET_VERIFY_SYSTEM_PROMPT + modelHintBlock(WORKSHEET_VERIFY_MODEL);
 	const userPrompt = `Worksheet selections to verify:\n${JSON.stringify(output, null, 2)}`;
 
 	const call = () =>
 		worksheetVerifyClient().chatCompletion(
 			systemPrompt,
 			userPrompt,
-			0.2,
+			0.1,
 			{ type: "json_object" },
 			worksheetBatchSchema,
 			llmTimeoutMs,
+			WORKSHEET_VERIFY_MODEL,
 		);
 
 	let raw: unknown;

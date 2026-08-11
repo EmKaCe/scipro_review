@@ -311,9 +311,11 @@ export class KiConnectClient {
 		responseFormat?: { type: string },
 		schema?: import("zod").ZodType<unknown>,
 		timeoutMs?: number,
+		model?: string,
 	): Promise<Record<string, unknown>> {
+		const effectiveModel = model ?? this.model;
 		const body: Record<string, unknown> = {
-			model: this.model,
+			model: effectiveModel,
 			messages: [
 				{ role: "system", content: system },
 				{ role: "user", content: user },
@@ -332,7 +334,7 @@ export class KiConnectClient {
 		} catch {
 			// One retry: ask the model to return corrected JSON.
 			const retryBody: Record<string, unknown> = {
-				model: this.model,
+				model: effectiveModel,
 				messages: [
 					{
 						role: "system",
@@ -400,9 +402,10 @@ export class KiConnectClient {
 		user: string,
 		temperature: number = 0.1,
 		timeoutMs?: number,
+		model?: string,
 	): Promise<string> {
 		const body: Record<string, unknown> = {
-			model: this.model,
+			model: model ?? this.model,
 			messages: [
 				{ role: "system", content: system },
 				{ role: "user", content: user },

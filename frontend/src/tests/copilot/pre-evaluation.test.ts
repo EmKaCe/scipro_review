@@ -17,7 +17,11 @@ import os from "node:os";
 import path from "node:path";
 import * as yaml from "js-yaml";
 
-import { preEvaluateSubmission, parseWorksheetJson } from "$lib/server/copilot/pre-evaluation";
+import {
+	preEvaluateSubmission,
+	parseWorksheetJson,
+	modelHintBlock,
+} from "$lib/server/copilot/pre-evaluation";
 import type { ExecutionResult } from "$lib/server/executor-client";
 import { writeResults } from "$lib/server/results-store";
 import { parseCategoryKey, type Category, type MergedRubric } from "$lib/types/criteria";
@@ -1659,63 +1663,99 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		}
 	});
 
-	it("injects the CRITICAL REMINDER hint for weak models", async () => {
+	it("injects the CRITICAL REMINDER hint for weak/default-model phases", async () => {
 		// The default mock model is qwen3-30b-a3b-instruct-2507 — a weak
-		// variant. Every system prompt (JSON phases AND worksheet batches)
-		// must carry the validation reminder.
+		// variant. Phases WITHOUT a model override (Phase 1 markers, the
+		// 2b-verify pass pinned to qwen3-30b, Phase 3 feedback) carry the
+		// validation reminder; phases routed to gpt-oss-120b (2a, 2a
+		// critique, worksheet batches) carry the reasoning-effort hint
+		// instead.
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		const allCalls = [
-			...kiConnectMock.chatCompletion.mock.calls,
-			...kiConnectMock.chatCompletionText.mock.calls,
-		];
-		for (const call of allCalls) {
+		const calls = kiConnectMock.chatCompletion.mock.calls;
+		const weakModelCalls = calls.filter(
+			(c) =>
+				String(c[0]).includes("mark each cell") ||
+				String(c[0]).includes("reviewing rubric selections for factual correctness") ||
+				String(c[0]).includes("writing constructive feedback"),
+		);
+		expect(weakModelCalls.length).toBeGreaterThan(0);
+		for (const call of weakModelCalls) {
 			expect(String(call[0])).toContain("CRITICAL REMINDER");
 			expect(String(call[0])).toContain(
 				"using dimension keys as rubric categoryKeys, emitting percentages instead of raw points",
 			);
 		}
+		// The gpt-oss-120b-routed phases must NOT carry the weak-model block.
+		const gptRoutedCalls = calls.filter(
+			(c) =>
+				String(c[0]).includes("assign RAW POINT scores") ||
+				String(c[0]).includes("reviewing dimension scores") ||
+				String(c[0]).includes("evaluating rubric categories"),
+		);
+		expect(gptRoutedCalls.length).toBeGreaterThan(0);
+		for (const call of gptRoutedCalls) {
+			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+		}
 		// The worksheet batch system prompt is the rubric-selection step now.
-		const worksheetCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
+		const worksheetCall = calls.find((c) =>
 			String(c[0]).includes("evaluating rubric categories"),
 		);
 		expect(worksheetCall).toBeDefined();
 		expect(String(worksheetCall![0])).toContain("evaluating rubric categories");
 	});
 
-	it("omits the model hints for stronger models", async () => {
+	it("omits the model hints for phases on a stronger default model", async () => {
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
 		kiConnectMock.model = "gpt-4o";
 		setupDefaultMock();
 
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		const allCalls = [
-			...kiConnectMock.chatCompletion.mock.calls,
-			...kiConnectMock.chatCompletionText.mock.calls,
-		];
-		for (const call of allCalls) {
-			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+		const calls = kiConnectMock.chatCompletion.mock.calls;
+		// Phase 1 and Phase 3 have no model override → gpt-4o gets no hints.
+		for (const call of calls) {
+			if (
+				String(call[0]).includes("mark each cell") ||
+				String(call[0]).includes("writing constructive feedback")
+			) {
+				expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+				expect(String(call[0])).not.toContain("reasoning_effort");
+			}
 		}
+		// The 2b-verify pass is pinned to qwen3-30b regardless of the
+		// global model — it carries the weak-model reminder.
+		const verifyCall = calls.find((c) =>
+			String(c[0]).includes("reviewing rubric selections for factual correctness"),
+		);
+		expect(verifyCall).toBeDefined();
+		expect(String(verifyCall![0])).toContain("CRITICAL REMINDER");
 	});
 
-	it("appends the gpt-oss-120b reasoning_effort hint to every system prompt", async () => {
+	it("appends the gpt-oss-120b reasoning_effort hint to every gpt-oss-120b-routed system prompt", async () => {
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
 		kiConnectMock.model = "gpt-oss-120b";
 		setupDefaultMock();
 
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		const allCalls = [
-			...kiConnectMock.chatCompletion.mock.calls,
-			...kiConnectMock.chatCompletionText.mock.calls,
-		];
-		for (const call of allCalls) {
+		const calls = kiConnectMock.chatCompletion.mock.calls;
+		// Everything except the 2b-verify pass runs on gpt-oss-120b (either
+		// by per-phase routing or via the global model) → GPT hint present.
+		const gptRoutedCalls = calls.filter(
+			(c) => !String(c[0]).includes("reviewing rubric selections for factual correctness"),
+		);
+		expect(gptRoutedCalls.length).toBeGreaterThan(0);
+		for (const call of gptRoutedCalls) {
 			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
 			expect(String(call[0])).toContain("The model supports configurable reasoning effort levels");
 		}
-		// gpt-oss-120b is NOT a weak model — the CRITICAL REMINDER block
-		// must not appear alongside the reasoning-effort hint.
-		expect(String(allCalls[0]![0])).not.toContain("CRITICAL REMINDER");
+		// The verify pass is pinned to qwen3-30b → weak-model hint, no GPT hint.
+		const verifyCall = calls.find((c) =>
+			String(c[0]).includes("reviewing rubric selections for factual correctness"),
+		);
+		expect(verifyCall).toBeDefined();
+		expect(String(verifyCall![0])).toContain("CRITICAL REMINDER");
+		expect(String(verifyCall![0])).not.toContain("reasoning_effort");
 	});
 });
 
@@ -1908,5 +1948,76 @@ describe("Phase 1 chunking", () => {
 		).rejects.toThrow(/Phase 1 \(markers chunk 1\/2\) KI Connect call failed/);
 		// No retry (non-timeout error), and no further chunks/phases ran
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Wave 5: per-phase model + temperature routing
+// ---------------------------------------------------------------------------
+
+describe("Wave 5 per-phase model + temperature routing", () => {
+	it("routes Phase 2a to gpt-oss-120b with T=0.2", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const call = kiConnectMock.chatCompletion.mock.calls.find((c) =>
+			String(c[0]).includes("assign RAW POINT scores"),
+		);
+		expect(call).toBeDefined();
+		// [2] = temperature, [6] = per-call model override.
+		expect(call![2]).toBe(0.2);
+		expect(call![6]).toBe("gpt-oss-120b");
+		// The phase's own model drives the hint block, not the global one.
+		expect(String(call![0])).toContain('set reasoning_effort to "medium"');
+	});
+
+	it("routes Phase 2b primary to gpt-oss-120b with T=0.1", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const calls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
+			String(c[0]).includes("evaluating rubric categories"),
+		);
+		// Every worksheet batch (primary pass) runs on gpt-oss-120b at 0.1.
+		expect(calls.length).toBeGreaterThan(0);
+		for (const call of calls) {
+			expect(call[2]).toBe(0.1);
+			expect(call[6]).toBe("gpt-oss-120b");
+		}
+	});
+
+	it("routes Phase 2b-verify to qwen3-30b-a3b-instruct-2507 with T=0.1", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const verifyCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
+			String(c[0]).includes("reviewing rubric selections for factual correctness"),
+		);
+		expect(verifyCall).toBeDefined();
+		expect(verifyCall![2]).toBe(0.1);
+		expect(verifyCall![6]).toBe("qwen3-30b-a3b-instruct-2507");
+
+		// The verify pass deliberately uses a DIFFERENT model than the
+		// primary worksheet pass (breaks same-model bias reproduction).
+		const worksheetCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
+			String(c[0]).includes("evaluating rubric categories"),
+		);
+		expect(worksheetCall).toBeDefined();
+		expect(verifyCall![6]).not.toBe(worksheetCall![6]);
+	});
+
+	it("modelHintBlock returns GPT hint when passed gpt-oss-120b", () => {
+		const block = modelHintBlock("gpt-oss-120b");
+		expect(block).toContain('set reasoning_effort to "medium"');
+		expect(block).toContain("The model supports configurable reasoning effort levels");
+		// gpt-oss-120b is not a weak model — no CRITICAL REMINDER.
+		expect(block).not.toContain("CRITICAL REMINDER");
+	});
+
+	it("modelHintBlock returns weak-model hint when passed qwen3-30b", () => {
+		const block = modelHintBlock("qwen3-30b-a3b-instruct-2507");
+		expect(block).toContain("CRITICAL REMINDER");
+		expect(block).toContain(
+			"using dimension keys as rubric categoryKeys, emitting percentages instead of raw points",
+		);
+		// qwen3-30b is not gpt-oss-120b — no reasoning-effort hint.
+		expect(block).not.toContain("reasoning_effort");
 	});
 });
