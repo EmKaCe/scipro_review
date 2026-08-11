@@ -1,0 +1,20 @@
+categories:
+  general_feedback:
+    title: General Feedback
+    additional_notes: true
+    positive:
+      - main_point: Overall, your work done on this assignment was
+        sub_points:
+          - text: excellent
+          - text: very good
+          - text: good
+    neutral:
+      - main_point: Overall, your work done on this assignment was
+        sub_points:
+          - text: okay  - there is notable room for improvement
+    negative:
+      - main_point: The following were problems with your solutions
+        sub_points:
+          - text: "execution - the code does not run because of the following problem(s):"
+            comment: true
+          - text: interpretation - there was no or little attempt to interpret or discuss the code's results

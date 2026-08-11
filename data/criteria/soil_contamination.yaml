@@ -142,3 +142,108 @@ categories:
           thorough - so much so that it implies you heavy GenAI usage. This raises
           the concern that you do not understand the solution that present to that
           depth.'
+  user_defined_functions:
+    title: User-defined Functions
+    additional_notes: true
+    positive:
+      - main_point: Good use of the following
+        sub_points:
+          - text: docstring - providing context; stating what the function does
+          - text: docstring - clearly defining all input variables/objects
+          - text: docstring - clearly defining the returned object(s)
+          - text: internal check - proper use of 'if not isinstance', 'raise' statements, etc.
+          - text: isolating ideas to user-defined functions
+          - text: optional parameters - nice idea to include them
+          - text: type hinting - applied well for input variables (and for what is returned, if applicable)
+          - text: type hinting - good use of the typing library
+    neutral:
+      - main_point: Okay user-defined function(s), but the following could be improved
+        sub_points:
+          - text: assert vs. raise - it is better to use 'raise' since 'assert' can be bypassed
+          - text: complex - a bit too many ideas placed into a single function
+    negative:
+      - main_point: No user-defined functions employed
+        sub_points:
+          - text: Your solution did not include user-defined functions to isolate concepts, improves reusability, transferability and debugging
+      - main_point: Missed opportunity
+        sub_points:
+          - text: You missed an obvious situation to crete a user-defined function that would have made your code more concise.
+      - main_point: Your user-defined functions had the following problems
+        sub_points:
+          - text: complex - too many ideas place in a single function, which limits reusability, transferability and debugging
+          - text: documentation - used comments instead of docstrings to provide context and usage for a function
+          - text: docstring - poorly formatted (e.g., bad indentations, separation of ideas, etc.)
+          - text: docstring - none provided for specifying context
+          - text: docstring - no statement about what the input variables are
+          - text: docstring - no statement about what the function returns
+          - text: docstring - units should be specified for the input and output variables/objects
+          - text: global variables - use local variable in your function (e.g., improves transferability)
+          - text: internal checks - none provided (e.g., 'if not isinstance')
+          - text: internal checks - the check logic is overly complicated or too dense, whose checks should be separated for readability.
+          - text: inconsistency - not all functions follow the same style (e.g., some have docstrings, some do not; some have internal checks, some do not)
+          - text: overall solution - creating a homework solution using primarily user-defined functions is not ideal, as it can make the code less concise and more difficult to follow
+          - text: structure - main code logic should be nested under the internal checks (e.g., within an else statement) for clear flow control
+          - text: trivial function - does very little, and arguably does not warrant being a function
+          - text: type hinting - incorrect type(s)
+          - text: type hinting - none provided
+          - text: types redundancy - type hinting is enough, no need to also specify the types again in the docstring
+  function_calling:
+    title: Function (and Method) Calling
+    additional_notes: true
+    positive: []
+    neutral: []
+    negative:
+      - main_point: ''
+        sub_points:
+          - text: formatting - placing each parameter being passed onto a new line is not necessary and makes the code less concise
+          - text: keyword arguments calls - include the parameter that are being assigned the argument to (e.g., 'my_function(param1=arg1, param2=arg2)'. Doing so ensure that the arguments are passed correctly.
+  plotting_visualization:
+    title: Plotting / Visualization
+    additional_notes: true
+    positive:
+      - main_point: Overall plot feedback
+        sub_points:
+          - text: 'General: Choices behind the plot(s) were well done, resulting in clear and informative data presentation'
+          - text: 'Color palette: well chosen'
+          - text: 'matplotlib: Good usage of matplotlib for your homework assignment.'
+          - text: 'Seaborn: Good usage of Seaborn for your homework assignment.'
+          - text: 'Visualization: Very well done, resulting in clear and informative data presentation and understanding.'
+      - main_point: The plot details were good regarding
+        sub_points:
+          - text: axis labels
+          - text: color
+          - text: font size
+          - text: legend
+          - text: line style
+          - text: line thickness
+          - text: point style
+          - text: point size
+          - text: title
+          - text: including units
+    neutral: []
+    negative:
+      - main_point: Overall plot feedback
+        sub_points:
+          - text: 'Plotting Data: Data was not visualized/plotted.'
+          - text: 'Plot Type(s): Type was poorly chosen. It would have been more appropriate to plot the data as:'
+          - text: 'Related Plots/Data: Do not have the same axis range, preventing direct comparisons.'
+      - main_point: 'Composition: Data Overload/Too Many Plots'
+        sub_points:
+          - text: 'Data Overload: The data amount given in a the plot(s) was too much, leading to clutter. Consider separating the data better.'
+          - text: 'Too Many Plots: Combining the data into a single (or a reduced number) plots would have been a more concise presentation and allowed easier comparison.'
+      - main_point: Missing Essential Plot Elements
+        sub_points:
+          - text: 'Axis Labels: One or two axis lables are missing or incomplete'
+          - text: 'Legend: A legend is missing, which is need when multiple data series are present.'
+          - text: 'Title: Plot title is missing.'
+          - text: 'Units: Missing on axis labels or title.'
+      - main_point: Poor Choice or Execution of Elements
+        sub_points:
+          - text: 'Axes and Data: inDependent data should be on the x-axis and dependent data on the y-axis.'
+          - text: 'Axis Labels: Insufficient detail, misleading, or without units.'
+          - text: 'Color: Poor contrast or poor color mapping (i.e., difficult to distinguish).'
+          - text: 'Color: Different data series should be assigned different colors to distinguish them.'
+          - text: 'Font Size: Too small/large, which significantly impacts readability.'
+          - text: 'Line/Point Styles: Confusingly similar or inappropriate for the data type.'
+          - text: 'Line Styles: A different thickness would have been more appropriate.'
+          - text: 'Point Styles: A different size would have been more appropriate.'
