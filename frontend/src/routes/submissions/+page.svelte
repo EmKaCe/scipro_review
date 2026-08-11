@@ -20,6 +20,7 @@
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Play from "@lucide/svelte/icons/play";
 	import RotateCcw from "@lucide/svelte/icons/rotate-ccw";
+	import Eraser from "@lucide/svelte/icons/eraser";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import ListChecks from "@lucide/svelte/icons/list-checks";
 	import HardDriveDownload from "@lucide/svelte/icons/hard-drive-download";
@@ -145,6 +146,17 @@
 	let bulkDeleteOpen = $state(false);
 	/** Bulk reset confirm dialog. */
 	let bulkResetOpen = $state(false);
+	/** Pre-evaluation reset confirm dialog. */
+	let preEvalResetOpen = $state(false);
+	/** True while the pre-evaluation reset POST is in flight. */
+	let preEvalResetBusy = $state(false);
+	/**
+	 * True while a pre-evaluation run is starting or in flight — the reset
+	 * must not race the run's writers (the route also refuses with 409).
+	 */
+	let preEvalRunning = $derived(preEvalStartedAt !== null || (preEvalStatus?.running ?? false));
+	/** The assignment has pre-evaluated rows — something to reset. */
+	let canResetPreEvaluation = $derived(submissions.some((s) => s.status === "pre-evaluated"));
 
 	/**
 	 * Action scope: the selection when rows are selected, otherwise the whole
@@ -776,6 +788,46 @@
 		});
 		bulkResetOpen = false;
 	}
+
+	/**
+	 * Reset pre-evaluation for the whole assignment: POST to
+	 * /api/submissions/pre-evaluate/reset, which flips rows back to
+	 * "executed" and clears the stored preEval envelopes so the batch can be
+	 * pre-evaluated again. Grading data is untouched.
+	 */
+	async function handlePreEvalReset() {
+		if (preEvalResetBusy || preEvalRunning) return;
+		preEvalResetBusy = true;
+		try {
+			const res = await fetch(`${base}/api/submissions/pre-evaluate/reset`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ assignmentId: selectedAssignment }),
+			});
+			if (res.status === 409) {
+				addToast("error", "A pre-evaluation run is in progress", 4000);
+				return;
+			}
+			if (!res.ok) {
+				const body = (await res.json().catch(() => null)) as { message?: string } | null;
+				throw new Error(body?.message ?? `Pre-evaluation reset failed (${res.status})`);
+			}
+			const body = (await res.json()) as { reset: number };
+			addToast(
+				"success",
+				`${body.reset} submission(s) reset. Run pre-evaluation to regenerate.`,
+				4000,
+			);
+			// The route flipped rows back to "executed" — refresh the list so
+			// the table shows the re-runnable statuses immediately.
+			await submissionsStore.refresh();
+		} catch (e) {
+			addToast("error", e instanceof Error ? e.message : "Pre-evaluation reset failed", 4000);
+		} finally {
+			preEvalResetBusy = false;
+		}
+		preEvalResetOpen = false;
+	}
 </script>
 
 <svelte:head>
@@ -1086,6 +1138,19 @@
 				<Button
 					variant="outline"
 					size="sm"
+					title="Clear pre-evaluation results for the whole assignment so the batch can be pre-evaluated again"
+					onclick={() => (preEvalResetOpen = true)}
+					disabled={bulkBusy ||
+						preEvalResetBusy ||
+						preEvalRunning ||
+						!canResetPreEvaluation}
+				>
+					<Eraser size={14} />
+					Reset Pre-Evaluation
+				</Button>
+				<Button
+					variant="outline"
+					size="sm"
 					title="Reset grading progress on the submissions"
 					onclick={() => (bulkResetOpen = true)}
 					disabled={bulkBusy || !bulkCanReset}
@@ -1181,6 +1246,17 @@
 	variant="danger"
 	onconfirm={handleBulkReset}
 	oncancel={() => (bulkResetOpen = false)}
+/>
+
+<!-- Pre-evaluation reset confirmation (whole assignment). -->
+<ConfirmationDialog
+	open={preEvalResetOpen}
+	title="Reset Pre-Evaluation"
+	message="This will clear all pre-evaluation results for the selected assignment. Run pre-evaluation again to regenerate."
+	confirmLabel="Reset"
+	variant="danger"
+	onconfirm={handlePreEvalReset}
+	oncancel={() => (preEvalResetOpen = false)}
 />
 
 <style>

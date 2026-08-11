@@ -49,7 +49,9 @@ export interface SemanticOptions {
 export const MAX_SEMANTIC_PAIRS = 20;
 export const MAX_CHARS_PER_NOTEBOOK = 4000;
 
-const SEMANTIC_SYSTEM_PROMPT = `You are an experienced plagiarism detection assistant for a Scientific Programming course. You are given two student Jupyter notebook submissions for the same assignment. Determine whether the two students solved the assignment in essentially the same way — same approach, same code structure, unusually similar variable names or comments. Ignore code that is identical only because it was provided as part of the assignment template.
+const SEMANTIC_SYSTEM_PROMPT = `You are an experienced plagiarism detection assistant for a Scientific Programming course. You are given two student Jupyter notebook submissions for the same assignment. Determine whether the two students solved the assignment in essentially the same way — same approach, same code structure, unusually similar variable names or comments.
+
+This course provides a shared assignment template and code examples, so ignore code that is identical only because it was provided as part of the assignment template. Independently written submissions converging on standard library calls (e.g. numpy, pandas, matplotlib idioms) should NOT be flagged — flag only evidence of copying beyond what the shared template and ordinary standard library usage would naturally produce.
 
 Respond with JSON only, exactly matching this structure:
 {
