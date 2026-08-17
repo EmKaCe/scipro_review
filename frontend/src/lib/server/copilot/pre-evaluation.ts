@@ -577,7 +577,7 @@ PER-DIMENSION GUIDE — what each dimension measures:
 - code_quality_design: readability and structure — descriptive names, no dead code, no magic numbers.
 - code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution with basic output is the BASELINE = 4/6 (a working submission that runs end-to-end and prints its results deserves 4, not 3). +1 (→ 5/6) for markdown interpretation of the outputs (results explained in context, not just printed). +1 (→ 5.5/6) for model-quality discussion: R²/RMSE interpreted against the data scale, parameter reasonableness, limitations. Cap at 5.5/6 — 6 is reserved for flawless execution AND interpretation. RMSE computed but never discussed → cap at 4/6.
 - assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
-- scientific_programming: scientific methodology. Anchor scale (6-point dimension, FIT-QUALITY driven — the professor's actual grading pattern): 5-5.5 = the fit reproduces the reference solution (A≈1210.91, B≈-484.95, L≈684.48) AND parameter standard errors are reported from the covariance matrix AND results are discussed in context; 4-4.5 = correct fit reproducing the reference, metrics computed, some discussion (built-in metrics are a suggestion, NOT a requirement — hand-rolled RMSE still earns 4.5); 3 = correct fit but covariance never used, or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission whose fit reproduces the reference values deserves 4+ — do not anchor it at 3.
+- scientific_programming: scientific methodology. Anchor scale (6-point dimension, FIT-QUALITY driven — the professor's actual grading pattern): 5-5.5 = the fit reproduces the reference solution (A≈1210.91, B≈-484.95, L≈684.48) AND parameter standard errors are reported from the covariance matrix AND results are discussed in context; 4-4.5 = correct fit reproducing the reference, metrics computed, some discussion (built-in metrics are a suggestion, NOT a requirement — hand-rolled RMSE still earns 4.5), OR a constrained/bounded fit that is sub-reference (e.g. RMSE 42.58 vs 25.18) but whose metrics are computed AND discussed in context — the professor awards 4.5 to correct methodology with computed+discussed metrics even when the constrained fit is worse than the reference; 3 = correct fit but covariance never used, or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission whose fit reproduces the reference values deserves 4+ — do not anchor it at 3.
 - creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
 
 MANDATORY SELF-CHECK before finalizing:
@@ -1083,9 +1083,9 @@ function buildExtraAnalysisEvidence(cells: readonly { type: string; source: stri
 	// professor gave 4.5 to submissions computing RMSE by hand or missing
 	// built-ins entirely). So the strongest signal is FIT REPRODUCTION.
 	const fitReproducesReference =
-		/\bA\b[^\n]{0,50}?1210\.9\d*/i.test(outputText) &&
-		/\bB\b[^\n]{0,50}?-?484\.9\d*/i.test(outputText) &&
-		/\bL\b[^\n]{0,50}?684\.4\d*/i.test(outputText);
+		/\bA\b[^\n]{0,60}?1210\.9\d*/i.test(outputText) &&
+		/\bB\b[^\n]{0,60}?-?484\.9\d*/i.test(outputText) &&
+		/\bL\b[^\n]{0,60}?684\.4\d*/i.test(outputText);
 	const stdErrReported =
 		(/(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i.test(outputText) &&
 			/\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/.test(outputText)) ||
