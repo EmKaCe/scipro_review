@@ -574,7 +574,7 @@ PER-DIMENSION GUIDE — what each dimension measures:
 - code_quality_design: readability and structure — descriptive names, no dead code, no magic numbers.
 - code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution with basic output is the BASELINE = 4/6 (a working submission that runs end-to-end and prints its results deserves 4, not 3). +1 (→ 5/6) for markdown interpretation of the outputs (results explained in context, not just printed). +1 (→ 5.5/6) for model-quality discussion: R²/RMSE interpreted against the data scale, parameter reasonableness, limitations. Cap at 5.5/6 — 6 is reserved for flawless execution AND interpretation. RMSE computed but never discussed → cap at 4/6.
 - assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
-- scientific_programming: scientific methodology. Anchor scale (6-point dimension): 5-5.5 = uses library built-ins (sklearn r2_score / mean_squared_error, NOT hand-rolled formulas) AND reports parameter standard errors from the covariance matrix AND discusses R²/RMSE in context (vs data scale, physical plausibility); 4-4.5 = uses built-ins, computes the metrics, some discussion of results; 3 = hand-rolled formulas or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission that uses sklearn built-ins and reports covariance-matrix standard errors deserves 5+ — do not anchor it at 3.
+- scientific_programming: scientific methodology. Anchor scale (6-point dimension, FIT-QUALITY driven — the professor's actual grading pattern): 5-5.5 = the fit reproduces the reference solution (A≈1210.91, B≈-484.95, L≈684.48) AND parameter standard errors are reported from the covariance matrix AND results are discussed in context; 4-4.5 = correct fit reproducing the reference, metrics computed, some discussion (built-in metrics are a suggestion, NOT a requirement — hand-rolled RMSE still earns 4.5); 3 = correct fit but covariance never used, or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission whose fit reproduces the reference values deserves 4+ — do not anchor it at 3.
 - creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
 
 MANDATORY SELF-CHECK before finalizing:
@@ -1071,6 +1071,34 @@ function buildExtraAnalysisEvidence(cells: readonly { type: string; source: stri
 			markdownSource + codeSource,
 		);
 	bullets.push(`- physical-insight discussion (e.g. why a parameter is non-physical): ${physicalInsight ? "yes" : "no"}`);
+
+	// (e) Scientific-methodology signals the professor rewarded (scientific_programming).
+	// The emailed ground truth shows the professor's scale is FIT-QUALITY driven:
+	// a correct fit reproducing the reference values = 4.5-5.5 (std-errors +
+	// discussion push to 5.5); correct fit but covariance unused = 4; execution
+	// error = 3.5. Built-in metrics are a suggestion, not a requirement (the
+	// professor gave 4.5 to submissions computing RMSE by hand or missing
+	// built-ins entirely). So the strongest signal is FIT REPRODUCTION.
+	const fitReproducesReference =
+		/\bA\b[^\n]{0,50}?1210\.9\d*/i.test(outputText) &&
+		/\bB\b[^\n]{0,50}?-?484\.9\d*/i.test(outputText) &&
+		/\bL\b[^\n]{0,50}?684\.4\d*/i.test(outputText);
+	const stdErrReported =
+		(/(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i.test(outputText) &&
+			/\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/.test(outputText)) ||
+		(/\bstandard error\b/i.test(outputText) && fitReproducesReference);
+	const usesBuiltinMetrics =
+		/\b(?:r2_score|mean_squared_error|mean_absolute_error)\s*\(/i.test(codeSource);
+	const usesBounds = /\bbounds\s*=/i.test(codeSource);
+	const unitAware =
+		/\b(?:mg\/kg|kg|g|m|km|cm|mm|s|min|h|°C|K|N|J|kJ|Pa|bar|%)\b/i.test(markdownSource);
+	bullets.push(
+		`- fit reproduces reference values (A=1210.91, B=-484.95, L=684.48): ${fitReproducesReference ? "yes" : "no"}`,
+		`- parameter standard errors reported with ±: ${stdErrReported ? "yes" : "no"}`,
+		`- sklearn built-in metrics (r2_score/mean_squared_error): ${usesBuiltinMetrics ? "yes" : "no"}`,
+		`- explicit parameter bounds (bounds=): ${usesBounds ? "yes" : "no"}`,
+		`- unit awareness in markdown: ${unitAware ? "yes" : "no"}`,
+	);
 
 	return `EXTRA ANALYSIS EVIDENCE (deterministic, from the executed notebook):\n${bullets.join("\n")}`;
 }
