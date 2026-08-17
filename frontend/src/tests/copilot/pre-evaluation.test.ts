@@ -1786,7 +1786,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			expect(
 				derivedGradingConfidence({
 					...clean,
-					preAnalysis: makePreAnalysis({ disallowedImports: ["sklearn"] }),
+					preAnalysis: makePreAnalysis({ disallowedImports: ["tensorflow"] }),
 				}),
 			).toBe("needs_review");
 		});

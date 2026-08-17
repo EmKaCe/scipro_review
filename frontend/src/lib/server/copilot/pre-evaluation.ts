@@ -437,8 +437,6 @@ const PRE_EVALUATION_LLM_TIMEOUT_MS = 120_000;
  * pipeline can call out the violation instead of hoping the model notices.
  */
 const SOIL_CONTAMINATION_DISALLOWED_LIBRARIES = [
-	"scikit-learn",
-	"sklearn",
 	"tensorflow",
 	"torch",
 	"keras",
