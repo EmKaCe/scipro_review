@@ -201,8 +201,37 @@ describe("calibrateCohortScores", () => {
 		expect(adjustments[0].reason).toContain("reference-fit median");
 	});
 
-	it("flags score outlier in homogeneous execution cluster", () => {
-		// Five submissions with the same R² — four scored CER 5.5, one 4.0.
+	it("flags score outliers when dissenters exist on both sides of the mode", () => {
+		// Six submissions with the same R² — four scored CER 5.0 (mode), one
+		// 4.0 (below), one 5.5 (above). Both sides present → flag both.
+		const adjustments = calibrateCohortScores(
+			scores([
+				["s1", { [CER]: 5.0 }],
+				["s2", { [CER]: 5.0 }],
+				["s3", { [CER]: 5.0 }],
+				["s4", { [CER]: 5.0 }],
+				["s5", { [CER]: 4.0 }],
+				["s6", { [CER]: 5.5 }],
+			]),
+			SOIL_CONTAMINATION_ANCHORS,
+			outcomes(["s1", "s2", "s3", "s4", "s5", "s6"], { rSquared: 0.98, rmse: 20 }),
+		);
+
+		expect(adjustments).toHaveLength(2);
+		expect(adjustments.map((a) => a.submissionId).sort()).toEqual(["s5", "s6"]);
+		expect(adjustments[0]).toMatchObject({
+			dimension: CER,
+			newScore: 5.0, // cluster median
+		});
+		expect(adjustments[0].reason).toContain("homogeneous");
+	});
+
+	it("does NOT flag one-sided dissenters — the mode is a bias, not a consensus", () => {
+		// Four scored CER 5.5, one 4.0 — all dissenters BELOW the mode. This
+		// is the 2026-08-17 regression: the LLM's scientific_programming
+		// scores clustered at 3 (under-score bias) while the correct 4.5-5.5
+		// scores were the dissenters; the old logic dragged the correct
+		// scores DOWN to the cluster median (mean Δ 0.66 → 1.39).
 		const adjustments = calibrateCohortScores(
 			scores([
 				["s1", { [CER]: 5.5 }],
@@ -215,14 +244,7 @@ describe("calibrateCohortScores", () => {
 			outcomes(["s1", "s2", "s3", "s4", "s5"], { rSquared: 0.98, rmse: 20 }),
 		);
 
-		expect(adjustments).toHaveLength(1);
-		expect(adjustments[0]).toMatchObject({
-			submissionId: "s5",
-			dimension: CER,
-			oldScore: 4.0,
-			newScore: 5.5, // cluster median
-		});
-		expect(adjustments[0].reason).toContain("homogeneous");
+		expect(adjustments).toHaveLength(0);
 	});
 
 	it("returns empty adjustments when all scores are consistent", () => {

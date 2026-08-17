@@ -533,6 +533,24 @@ function detectOutliers(
 		return;
 	}
 
+	// Only flag when dissenters exist on BOTH sides of the mode. A one-sided
+	// distribution (all dissenters above or all below) means the mode is a
+	// systematic bias, not a consensus — correcting toward it amplifies the
+	// bias. Observed 2026-08-17: after the fit-quality fix, the LLM's
+	// scientific_programming scores clustered at 3 (under-score bias) while
+	// the correct 4.5-5.5 scores were the dissenters; the old logic dragged
+	// the correct scores DOWN to the cluster median, making the gate worse
+	// (mean Δ 0.66 → 1.39).
+	let below = 0;
+	let above = 0;
+	for (const { score } of entries) {
+		if (score < mode) below++;
+		else if (score > mode) above++;
+	}
+	if (below === 0 || above === 0) {
+		return;
+	}
+
 	const median = medianOf(entries.map((entry) => entry.score));
 	for (const { id, score } of entries) {
 		if (score === mode || adjusted.has(adjustKey(id, dimension))) {
