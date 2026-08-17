@@ -58,6 +58,17 @@ export interface AutofixResult {
 	[key: string]: unknown;
 }
 
+/** Thrown when KI Connect rate-limits a request (HTTP 429). Carries the
+ * server's Retry-After hint when one was provided. */
+class RateLimitedError extends Error {
+	readonly retryAfterMs: number | undefined;
+	constructor(retryAfterMs?: number) {
+		super("KI Connect: rate limited (429)");
+		this.name = "RateLimitedError";
+		this.retryAfterMs = retryAfterMs;
+	}
+}
+
 export interface CellInfo {
 	index?: number;
 	type?: string;
@@ -425,53 +436,73 @@ export class KiConnectClient {
 		timeoutMs?: number,
 	): Promise<string> {
 		const url = `${this.baseUrl}/chat/completions`;
+		const effectiveTimeout = timeoutMs ?? this.timeout;
+		const MAX_ATTEMPTS = 4;
 
-		const controller = new AbortController();
-		const timeoutId = setTimeout(() => controller.abort(), timeoutMs ?? this.timeout);
+		let lastRateLimitMs = 1000;
+		for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+			const controller = new AbortController();
+			const timeoutId = setTimeout(() => controller.abort(), effectiveTimeout);
+			try {
+				const resp = await fetch(url, {
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${this.apiKey}`,
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify(body),
+					signal: controller.signal,
+				});
 
-		try {
-			const resp = await fetch(url, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${this.apiKey}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify(body),
-				signal: controller.signal,
-			});
+				if (resp.status === 401) {
+					throw new Error("KI Connect: authentication failed (check KI_CONNECT_API_KEY)");
+				}
+				if (resp.status === 429) {
+					// Rate limited — the deployment throttles burst concurrency/RPM.
+					// Retry with backoff (respect Retry-After when provided) instead of
+					// failing the row: a batch run must survive a transient 429.
+					const retryAfterRaw = resp.headers.get("retry-after");
+					const retryAfterMs = retryAfterRaw
+						? Number(retryAfterRaw) * 1000 || Date.parse(retryAfterRaw) - Date.now() || 1000
+						: undefined;
+					lastRateLimitMs = retryAfterMs ?? lastRateLimitMs;
+					if (attempt < MAX_ATTEMPTS - 1) {
+						await new Promise((r) => setTimeout(r, lastRateLimitMs * 2 ** attempt));
+						continue;
+					}
+					throw new RateLimitedError(lastRateLimitMs);
+				}
+				if (resp.status >= 400 && resp.status < 500) {
+					const detail = await resp.text().catch(() => "");
+					throw new Error(`KI Connect returned ${resp.status}: ${detail.slice(0, 500)}`);
+				}
+				if (resp.status >= 500) {
+					const detail = await resp.text().catch(() => "");
+					throw new Error(`KI Connect server error ${resp.status}: ${detail.slice(0, 500)}`);
+				}
 
-			if (resp.status === 401) {
-				throw new Error("KI Connect: authentication failed (check KI_CONNECT_API_KEY)");
-			}
-			if (resp.status === 429) {
-				throw new Error("KI Connect: rate limited (429)");
-			}
-			if (resp.status >= 400 && resp.status < 500) {
-				const detail = await resp.text().catch(() => "");
-				throw new Error(`KI Connect returned ${resp.status}: ${detail.slice(0, 500)}`);
-			}
-			if (resp.status >= 500) {
-				const detail = await resp.text().catch(() => "");
-				throw new Error(`KI Connect server error ${resp.status}: ${detail.slice(0, 500)}`);
-			}
+				const data = (await resp.json()) as {
+					choices?: Array<{ message?: { content?: string } }>;
+				};
+				const content = data?.choices?.[0]?.message?.content ?? "";
+				if (!content) {
+					throw new Error("KI Connect: empty response content");
+				}
 
-			const data = (await resp.json()) as {
-				choices?: Array<{ message?: { content?: string } }>;
-			};
-			const content = data?.choices?.[0]?.message?.content ?? "";
-			if (!content) {
-				throw new Error("KI Connect: empty response content");
+				return content;
+			} catch (err) {
+				if (err instanceof RateLimitedError) {
+					throw err; // exhausted retries — let the caller decide
+				}
+				if (err instanceof Error && err.name === "AbortError") {
+					throw new Error("KI Connect request timed out", { cause: err });
+				}
+				throw err;
+			} finally {
+				clearTimeout(timeoutId);
 			}
-
-			return content;
-		} catch (err) {
-			if (err instanceof Error && err.name === "AbortError") {
-				throw new Error("KI Connect request timed out", { cause: err });
-			}
-			throw err;
-		} finally {
-			clearTimeout(timeoutId);
 		}
+		throw new RateLimitedError(lastRateLimitMs);
 	}
 }
 
