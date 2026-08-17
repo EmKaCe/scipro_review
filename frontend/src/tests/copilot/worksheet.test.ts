@@ -115,6 +115,22 @@ const CRITERIA_YAML = `categories:
           - text: units - were not provided when needed
           - text: sentences - not clean, concise and/or context provided (C^3)
           - text: sentences - incomplete sentences (e.g., capitalization, subject, verb) when needed (including in f-strings)
+  plotting_visualization:
+    title: Plotting / Visualization
+    additional_notes: true
+    positive:
+      - main_point: The plot details were good regarding
+        sub_points:
+          - text: axis labels
+          - text: title
+          - text: including units
+    neutral: []
+    negative:
+      - main_point: Missing Essential Plot Elements
+        sub_points:
+          - text: 'Axis Labels: One or two axis lables are missing or incomplete'
+          - text: 'Title: Plot title is missing.'
+          - text: 'Units: Missing on axis labels or title.'
 `;
 
 /** Build the MergedRubric from the fixture YAML (same shape as loadCriteriaForAssignment). */
@@ -187,8 +203,8 @@ describe("generateWorksheet", () => {
 		expect(md.match(/### Neutral/g)).toHaveLength(2);
 
 		// Every category gets an Additional Notes slot with the placeholder.
-		expect(md.match(/### Additional Notes/g)).toHaveLength(4);
-		expect(md.split("_(to be filled)_").length - 1).toBe(4);
+		expect(md.match(/### Additional Notes/g)).toHaveLength(5);
+		expect(md.split("_(to be filled)_").length - 1).toBe(5);
 	});
 
 	it("includes the Context section with cell counts and pre-analysis", () => {
@@ -600,6 +616,72 @@ describe("validateWorksheetSection", () => {
 		expect(result.errors[0]!.items).toEqual([
 			"units - input and output numbers have units (e.g., N, kJ, m/s, Hz)",
 			"units - were not provided when needed",
+		]);
+	});
+
+	it("flags the plotting axis-labels positive against its missing-labels negative", () => {
+		const section = [
+			"## Rubric: plotting_visualization — Plotting / Visualization",
+			"",
+			"### Positive",
+			"",
+			"- [x] axis labels",
+			"",
+			"### Negative",
+			"",
+			"- [x] Axis Labels: One or two axis lables are missing or incomplete",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "plotting_visualization", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"axis labels",
+			"Axis Labels: One or two axis lables are missing or incomplete",
+		]);
+	});
+
+	it("flags the plotting title positive against its missing-title negative", () => {
+		const section = [
+			"## Rubric: plotting_visualization — Plotting / Visualization",
+			"",
+			"### Positive",
+			"",
+			"- [x] title",
+			"",
+			"### Negative",
+			"",
+			"- [x] Title: Plot title is missing.",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "plotting_visualization", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual(["title", "Title: Plot title is missing."]);
+	});
+
+	it("flags the plotting units positive against its missing-units negative", () => {
+		const section = [
+			"## Rubric: plotting_visualization — Plotting / Visualization",
+			"",
+			"### Positive",
+			"",
+			"- [x] including units",
+			"",
+			"### Negative",
+			"",
+			"- [x] Units: Missing on axis labels or title.",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "plotting_visualization", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"including units",
+			"Units: Missing on axis labels or title.",
 		]);
 	});
 

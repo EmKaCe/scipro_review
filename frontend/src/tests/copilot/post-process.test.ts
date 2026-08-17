@@ -498,7 +498,8 @@ describe("postProcessSubmission", () => {
 		expect(data.rubricSelections).toContainEqual(
 			expect.objectContaining({
 				categoryKey: "code_formatting",
-				optionKey: "naming - object/variable (e.g., df, data, x, y) is not descriptive enough",
+				optionKey:
+					"naming - object/variable (e.g., df, data, x, y) is not descriptive enough",
 			}),
 		);
 		// "non-descriptive" must NOT trigger the descriptive positive.
@@ -577,8 +578,125 @@ describe("postProcessSubmission", () => {
 			}),
 		);
 
-		expect(data.additionalNotes["code_formatting"]).toContain(
-			"Imports are not alphabetized.",
-		);
+		expect(data.additionalNotes["code_formatting"]).toContain("Imports are not alphabetized.");
+	});
+
+	describe("general_feedback weighted-percentage bands (calibrated to emailed ground truth)", () => {
+		// Runs the full pipeline with an empty general_feedback category and the
+		// given dimensions; returns the rating checkbox Pass 1 (fill-empty) adds.
+		function generalRating(dimensions: Record<string, number>): string | undefined {
+			const { data } = postProcessSubmission(makeOptions({ dimensions }));
+			return data.rubricSelections.find((s) => s.categoryKey === "general_feedback")
+				?.optionKey;
+		}
+
+		function generalFixField(dimensions: Record<string, number>): string | undefined {
+			const { result } = postProcessSubmission(makeOptions({ dimensions }));
+			return result.fixes.find(
+				(f) => f.pass === "fill-empty" && f.field.startsWith("general-"),
+			)?.field;
+		}
+
+		it("rates 66.5% (2026SS_00 emailed dims) as the neutral 'okay'", () => {
+			const dims = {
+				code_quality_design: 3.5,
+				code_execution_results: 4,
+				assignment_requirements: 5,
+				scientific_programming: 3.5,
+				creativity: 2.5,
+			};
+			expect(generalRating(dims)).toBe("okay  - there is notable room for improvement");
+			expect(generalFixField(dims)).toBe(
+				"general-neutral:okay  - there is notable room for improvement",
+			);
+		});
+
+		it("rates 79% as 'okay' (2026SS_23: professor sent okay at 79% weighted)", () => {
+			const dims = {
+				code_quality_design: 5,
+				code_execution_results: 5,
+				assignment_requirements: 5,
+				scientific_programming: 4,
+				creativity: 3,
+			};
+			expect(generalRating(dims)).toBe("okay  - there is notable room for improvement");
+		});
+
+		it("rates 80% as positive 'good' (lower boundary of the good band)", () => {
+			const dims = {
+				code_quality_design: 5,
+				code_execution_results: 5,
+				assignment_requirements: 5,
+				scientific_programming: 5,
+				creativity: 0,
+			};
+			expect(generalRating(dims)).toBe("good");
+			expect(generalFixField(dims)).toBe("general-positive:good");
+		});
+
+		it("rates 86.5% as 'good' (2026SS_70: professor sent good at 86.5% weighted)", () => {
+			const dims = {
+				code_quality_design: 4.5,
+				code_execution_results: 5.5,
+				assignment_requirements: 5.5,
+				scientific_programming: 5.5,
+				creativity: 2.5,
+			};
+			expect(generalRating(dims)).toBe("good");
+		});
+
+		it("rates 87% as 'very good' (2026SS_17/43: professor sent very good at 87% weighted)", () => {
+			const dims = {
+				code_quality_design: 4.5,
+				code_execution_results: 5.5,
+				assignment_requirements: 5.5,
+				scientific_programming: 5.5,
+				creativity: 3,
+			};
+			expect(generalRating(dims)).toBe("very good");
+		});
+
+		it("rates 95% as 'excellent' (lower boundary of the excellent band)", () => {
+			const dims = {
+				code_quality_design: 6,
+				code_execution_results: 6,
+				assignment_requirements: 6,
+				scientific_programming: 5,
+				creativity: 3,
+			};
+			expect(generalRating(dims)).toBe("excellent");
+		});
+
+		it("uses the same bands in the generated general note (overallLabel)", () => {
+			const { data } = postProcessSubmission(
+				makeOptions({
+					dimensions: {
+						code_quality_design: 3.5,
+						code_execution_results: 4,
+						assignment_requirements: 5,
+						scientific_programming: 3.5,
+						creativity: 2.5,
+					},
+				}),
+			);
+			expect(data.additionalNotes["general_feedback"]).toBe(
+				"Overall the work is okay (66.5% weighted).",
+			);
+
+			const { data: vg } = postProcessSubmission(
+				makeOptions({
+					dimensions: {
+						code_quality_design: 4.5,
+						code_execution_results: 5.5,
+						assignment_requirements: 5.5,
+						scientific_programming: 5.5,
+						creativity: 3,
+					},
+				}),
+			);
+			expect(vg.additionalNotes["general_feedback"]).toBe(
+				"Overall the work is very good (87% weighted).",
+			);
+		});
 	});
 });

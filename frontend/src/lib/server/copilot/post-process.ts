@@ -125,19 +125,29 @@ const GENERAL_VERY_GOOD = "very good";
 const GENERAL_GOOD = "good";
 const GENERAL_OKAY = "okay  - there is notable room for improvement";
 
-/** Weighted-percentage bands for the general_feedback rating checkbox/note. */
+/**
+ * Weighted-percentage bands for the general_feedback rating checkbox/note.
+ *
+ * Calibrated 2026-08-17 against the emailed ground truth
+ * (grading-output/emailed-sources/2026SS_soil_contamination/): the professor
+ * rated 79.0% weighted as "okay" (2026SS_23) and 86.5% as "good"
+ * (2026SS_70), while 87.0% was "very good" (2026SS_17/43) — so "good" starts
+ * at 80 (matching data/grading_config.yaml grade 2.0/B+) and "very good" at
+ * 87. The old >=70/>=85 thresholds drifted into "good"/"very good" where the
+ * professor sent "okay"/"good".
+ */
 function generalOptionForPercentage(weighted: number): string {
 	if (weighted >= 95) return GENERAL_EXCELLENT;
-	if (weighted >= 85) return GENERAL_VERY_GOOD;
-	if (weighted >= 70) return GENERAL_GOOD;
+	if (weighted >= 87) return GENERAL_VERY_GOOD;
+	if (weighted >= 80) return GENERAL_GOOD;
 	return GENERAL_OKAY;
 }
 
 /** Human-readable label for a weighted percentage (for generated notes). */
 function overallLabel(weighted: number): string {
 	if (weighted >= 95) return "excellent";
-	if (weighted >= 85) return "very good";
-	if (weighted >= 70) return "good";
+	if (weighted >= 87) return "very good";
+	if (weighted >= 80) return "good";
 	return "okay";
 }
 

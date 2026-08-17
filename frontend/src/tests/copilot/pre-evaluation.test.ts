@@ -1111,6 +1111,50 @@ describe("worksheet pipeline and semantic validation", () => {
 		expect(systemPrompt).toContain("Preserve every un-checked item verbatim");
 		expect(systemPrompt).toContain("Do not invent new checkbox texts");
 	});
+
+	it("gives every category-turn prompt evidence-selectivity guidance against over-ticking", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		// Every per-category turn prompt carries the universal
+		// evidence-selectivity block — checked items must be visibly
+		// supported, detail lists must not be padded.
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls.filter((c) =>
+			String(c[0]).includes("filling ONE rubric category section"),
+		);
+		expect(turnCalls.length).toBeGreaterThan(0);
+		for (const call of turnCalls) {
+			const userPrompt = String(call[1]);
+			expect(userPrompt).toContain(
+				"EVIDENCE SELECTIVITY: check an item ONLY when the notebook clearly demonstrates it",
+			);
+			expect(userPrompt).toContain("do not pad the list");
+		}
+
+		// The plotting turn additionally demands internal consistency: a
+		// missing-element negative must not be checked alongside the
+		// corresponding positive.
+		const plottingTurn = turnCalls.find((c) =>
+			String(c[1]).includes("Fill ONLY the `## Rubric: plotting_visualization —"),
+		);
+		expect(plottingTurn).toBeDefined();
+		const plottingPrompt = String(plottingTurn![1]);
+		expect(plottingPrompt).toContain("INTERNAL CONSISTENCY");
+		expect(plottingPrompt).toContain("'Title: Plot title is missing'");
+		expect(plottingPrompt).toContain("must NOT be checked when the corresponding positive");
+	});
+
+	it("calibrates the general_feedback overall rating against the rest of the worksheet", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const feedbackTurn = kiConnectMock.chatCompletionText.mock.calls.find((c) =>
+			String(c[1]).includes("Fill ONLY the `## Rubric: general_feedback —"),
+		);
+		expect(feedbackTurn).toBeDefined();
+		const feedbackPrompt = String(feedbackTurn![1]);
+		expect(feedbackPrompt).toContain("RATING CALIBRATION");
+		expect(feedbackPrompt).toContain("'okay  - there is notable room for improvement'");
+		expect(feedbackPrompt).toContain("notable weaknesses are flagged elsewhere");
+	});
 });
 
 // ---------------------------------------------------------------------------

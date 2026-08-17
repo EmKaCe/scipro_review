@@ -317,6 +317,23 @@ export const MUTUAL_EXCLUSION_PAIRS: Readonly<Record<string, readonly MutualExcl
 			label: "sentence completeness",
 		},
 	],
+	plotting_visualization: [
+		{
+			a: "axis labels",
+			b: "Axis Labels: One or two axis lables are missing or incomplete",
+			label: "axis labels",
+		},
+		{
+			a: "title",
+			b: "Title: Plot title is missing.",
+			label: "plot title",
+		},
+		{
+			a: "including units",
+			b: "Units: Missing on axis labels or title.",
+			label: "units in plots",
+		},
+	],
 };
 
 /** Validation error kinds surfaced by {@link validateWorksheetSection}. */

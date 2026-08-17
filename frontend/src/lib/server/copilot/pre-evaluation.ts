@@ -571,12 +571,13 @@ PER-DIMENSION GUIDE — what each dimension measures:
 - code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution is the BASELINE (3-4/6). Above baseline: markdown interpretation of outputs, model-quality discussion (R², RMSE vs data scale), parameter reasonableness, limitations. RMSE computed but never discussed → cap at 4/6.
 - assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
 - scientific_programming: scientific methodology — library built-ins (sklearn r2_score, not a hand-rolled formula), physical bounds on parameters, unit awareness, assumption validation.
-- creativity: original thought beyond the reference — alternative approaches, extra analysis.
+- creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
 
 MANDATORY SELF-CHECK before finalizing:
 1. If you are giving max_points to 4+ dimensions, you are almost certainly wrong.
 2. The pre-analysis findings are FACTS — if pre-analysis found "df" is non-descriptive, the code quality score must reflect it.
 3. State exactly ONE strength and exactly ONE weakness in the justification. Every submission does SOMETHING right — if you cannot find a strength, you are being too harsh.
+4. If creativity <= 2, the submission must have NO original contributions — no extra analysis, no alternative approaches, no non-standard techniques. A submission that does anything beyond the reference deserves 2.5+.
 
 justification: 3-5 sentences citing specific cells and pre-analysis findings, with exactly ONE strength and exactly ONE weakness.
 
@@ -1781,6 +1782,23 @@ function buildCategoryUserPrompt(args: {
 			importFacts.push(`- Disallowed imports found: ${preAnalysis.disallowedImports.join(", ")}`);
 		}
 	}
+	// Category-specific selection guidance. The universal block fights
+	// over-ticking (checking every applicable-looking item instead of only
+	// the items the submission visibly demonstrates); the plotting block
+	// demands internal consistency between positives and their missing-
+	// element negatives; the general_feedback block calibrates the overall
+	// rating against the rest of the worksheet.
+	const categoryGuidance: string[] = [];
+	if (categoryKey === "plotting_visualization") {
+		categoryGuidance.push(
+			"- EVIDENCE SELECTIVITY: check a detail item ONLY when the notebook's plotting code or output visibly demonstrates it. Do not check every plot detail (color, line style, line thickness, point style, font size, ...) just because the submission contains plots — the professor checks only the details the plots actually get right, not the full list.",
+			"- INTERNAL CONSISTENCY: a negative like 'Axis Labels: One or two axis lables are missing or incomplete', 'Title: Plot title is missing', or 'Units: Missing on axis labels or title' must NOT be checked when the corresponding positive ('axis labels', 'title', 'including units') is checked — unless the source shows explicit, contradictory evidence (e.g. some plots labeled and others not). Pick the side the majority of plots support.",
+		);
+	} else if (categoryKey === "general_feedback") {
+		categoryGuidance.push(
+			"- RATING CALIBRATION: the overall rating must reflect the dimension scores and the other rubric selections. 'excellent'/'very good'/'good' are for submissions whose other categories are checked mostly positive; if notable weaknesses are flagged elsewhere in the worksheet (negative selections, low dimension scores), choose 'okay  - there is notable room for improvement' instead of 'good'. Do not inflate the overall rating.",
+		);
+	}
 	return [
 		worksheet,
 		"",
@@ -1797,6 +1815,9 @@ function buildCategoryUserPrompt(args: {
 		...formatCellSourcePreview(cells),
 		"",
 		"---",
+		"",
+		"EVIDENCE SELECTIVITY: check an item ONLY when the notebook clearly demonstrates it. Do not check every applicable-looking item — every checked item must be visibly supported by the code/markdown. For detail lists (built-in functions, data structures, plot details), check only the items the submission actually uses; do not pad the list.",
+		...(categoryGuidance.length > 0 ? ["", ...categoryGuidance] : []),
 		"",
 		`Fill ONLY the \`## Rubric: ${categoryKey} — ${categoryTitle}\` section. Return the complete edited section for this category only, from \`## Rubric:\` through \`### Additional Notes\`. Preserve all un-checked items verbatim — only change \`[ ]\` to \`[x]\`.`,
 	].join("\n");
