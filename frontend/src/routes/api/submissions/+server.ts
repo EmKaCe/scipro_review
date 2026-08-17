@@ -48,6 +48,11 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			// points the teacher at the original↔fixed toggle.
 			enriched.autofixAvailable =
 				stored?.autofix?.succeeded === 1 && (stored?.fixedCells?.length ?? 0) > 0;
+			// Confidence routing (Step 8): the deterministic confidence is
+			// part of the persisted pre-eval envelope — surface it on the
+			// list row so the dashboard can filter/prioritize reviews.
+			// Absent for rows pre-evaluation has not run on yet.
+			enriched.gradingConfidence = stored?.preEval?.gradingConfidence;
 			return enriched;
 		});
 

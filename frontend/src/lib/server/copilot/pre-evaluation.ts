@@ -5,12 +5,13 @@
  * draft, and a notebook summary.
  *
  * Pipeline: Phase 1 (cell markers) → Phase 2a (dimension scores) → optional
- * self-critique of 2a → Phase 2b (worksheet pipeline: generate the rubric
- * checklist worksheet, fill it in 3 category-batch calls — the markdown
- * worksheet stays the INPUT while the OUTPUT is JSON validated against a Zod
- * schema — then a 2b-verify pass on a second model prunes evidence-less
- * selections; parse the verified JSON into rubric selections + per-category
- * additional notes) → Phase 3 (feedback draft + summary). Each call has
+ * self-critique of 2a → Phase 2b (turn-based rubric selection: generate the
+ * rubric checklist worksheet, then fill it ONE category per LLM call — the
+ * model returns the EDITED markdown section for that category, which is
+ * validated against the rubric; on validation failure the section plus the
+ * exact errors are sent back to the same model, up to MAX_RETRIES per
+ * category, and only a section that parses cleanly is merged into the living
+ * worksheet) → Phase 3 (feedback draft + summary). Each call has
  * exactly ONE job.
  *
  * Contract (the {@link PreEvaluation} wire shape, Zod-validated):
@@ -53,7 +54,7 @@ import pdfParse from "pdf-parse/lib/pdf-parse.js";
 
 import { getAssignmentById } from "$lib/server/assignments";
 import { loadCriteriaFile, loadCriteriaForAssignment } from "$lib/server/criteria";
-import { getKiConnectClient, KiConnectClient } from "$lib/server/ki-connect";
+import { getKiConnectClient } from "$lib/server/ki-connect";
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
 import { readResults, writeResults, type StoredExecutionResult } from "$lib/server/results-store";
@@ -66,12 +67,20 @@ import {
 	type Sentiment,
 } from "$lib/types/criteria";
 import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-analysis";
-import { generateWorksheet } from "$lib/server/copilot/worksheet";
+// Re-exported for consumers that import pipeline types from pre-evaluation
+// (the type itself lives in the shared client-safe types module).
+export type { GradingConfidence } from "$lib/types/submissions";
+import type { GradingConfidence } from "$lib/types/submissions";
 import {
-	worksheetBatchSchema,
-	type WorksheetBatchOutput,
-	type WorksheetCategoryResult,
-} from "$lib/server/copilot/worksheet-json-schema";
+	generateWorksheet,
+	MUTUAL_EXCLUSION_PAIRS,
+	parseWorksheetSection,
+	sentimentOfOption,
+	validateWorksheetSection,
+	type MutualExclusionPair,
+	type WorksheetValidationError,
+	type WorksheetValidationResult,
+} from "$lib/server/copilot/worksheet";
 import {
 	postProcessSubmission,
 	type PostProcessData,
@@ -117,6 +126,14 @@ export interface PreEvaluation {
 	additionalNotes?: Record<string, string>;
 	feedbackDraft: string;
 	notebookSummary: string;
+	/**
+	 * Deterministic confidence level derived from pipeline signals (retry-loop
+	 * exhaustion, post-processing fix count, pre-analysis findings) — NOT an
+	 * LLM judgement. Always set on envelopes produced by
+	 * {@link preEvaluateSubmission} (computed after post-processing); absent
+	 * only on legacy persisted envelopes predating this field.
+	 */
+	gradingConfidence?: GradingConfidence;
 }
 
 export interface PreEvaluateInput {
@@ -126,7 +143,7 @@ export interface PreEvaluateInput {
 
 /**
  * The pre-evaluation envelope plus the POST-PROCESSED (corrected) grading
- * data. `postProcessed` is the output of postProcessSubmission's 6
+ * data. `postProcessed` is the output of postProcessSubmission's 7
  * deterministic correction passes (dimensions, rubric selections,
  * additional notes); `postProcessFixes` records every correction with its
  * reason so the teacher can diff raw vs corrected. The raw envelope fields
@@ -134,6 +151,12 @@ export interface PreEvaluateInput {
  * untouched — both views travel together.
  */
 export type PreEvaluationWithPostProcess = PreEvaluation & {
+	/**
+	 * Deterministic confidence level (always present on the pipeline return —
+	 * computed after post-processing from fix count, retry-loop flags, and
+	 * pre-analysis findings; see {@link derivedGradingConfidence}).
+	 */
+	gradingConfidence: GradingConfidence;
 	/** Corrected grading data from postProcessSubmission. */
 	postProcessed: PostProcessData;
 	/** Every post-processing correction applied (empty when nothing changed). */
@@ -408,6 +431,20 @@ const CHUNK_SIZE = 20;
  * the fallback when the setting is not configured.
  */
 const PRE_EVALUATION_LLM_TIMEOUT_MS = 120_000;
+/**
+ * Libraries disallowed for the soil_contamination assignment: a student
+ * notebook importing any of these is flagged by pre-analysis so the
+ * pipeline can call out the violation instead of hoping the model notices.
+ */
+const SOIL_CONTAMINATION_DISALLOWED_LIBRARIES = [
+	"scikit-learn",
+	"sklearn",
+	"tensorflow",
+	"torch",
+	"keras",
+	"xgboost",
+	"lightgbm",
+];
 const SOURCE_TRUNCATION_MARKER = `\n… [source truncated after ${SOURCE_PREVIEW_LINES} lines]`;
 const OUTPUT_TRUNCATION_MARKER = "… [output truncated]";
 
@@ -549,83 +586,13 @@ EXAMPLE — correct output:
 { "gradeSuggestion": { "dimensions": { "code_quality_design": 4.0, "code_execution_results": 4.0, "assignment_requirements": 5.0, "scientific_programming": 5.0, "creativity": 2.0 }, "justification": "The submission runs end-to-end and follows the reference structure (strength), but the pre-analysis found non-descriptive names like 'df' and the RMSE output is never interpreted in markdown (weakness)." } }`;
 
 /**
- * Phase 2b worksheet batch prompt: fill ONE batch of rubric category
- * sections (checkboxes + additional notes). The markdown worksheet stays the
- * INPUT — the visible un-checked negatives are context the model needs — but
- * the OUTPUT is JSON (one category-result object per category key) validated
- * against {@link worksheetBatchSchema}, so these calls go through the
- * client's JSON path (`chatCompletion`) instead of the raw-text path.
- */
-const WORKSHEET_BATCH_SYSTEM_PROMPT = `You are evaluating rubric categories for a student submission. Below are worksheet sections for 3-4 categories. Each section has checkboxes for EVERY sub-point. Your job:
-
-WORKFLOW for each category:
-1. Read the pre-analysis FACTS for this submission
-2. State your OVERALL assessment in 1 sentence: GOOD / OKAY / POOR / N/A
-3. THEN fill the checkboxes — matching items from the sentiment that aligns with your assessment
-4. Then write 1-3 sentences of additional notes grounded in evidence
-
-RULES:
-- FIRST, decide the OVERALL quality for each category: is this aspect GOOD, OKAY, or POOR in this submission? Then check items from the MATCHING sentiment. A submission with clean code formatting should have mostly POSITIVE items checked. A submission with serious formatting problems should have NEGATIVE items. Do NOT check items from all sentiments in the same category — that produces a contradictory, unusable rubric.
-- Check MULTIPLE items per section — these are checkboxes, not radio buttons — but ALL checked items should be consistent with your overall quality assessment.
-- CRITICAL — MUTUAL EXCLUSION: For criteria that are logical opposites (e.g., "imports alphabetized" vs "imports NOT alphabetized", "descriptive naming" vs "non-descriptive naming"), you MUST check ONLY ONE — the one that matches the actual submission. Checking both is a direct contradiction and makes the rubric unusable. If unsure, leave BOTH unchecked rather than creating a contradiction.
-- N/A OPTION — NOT APPLICABLE: Use N/A as the overall verdict for a category ONLY when the category has NO applicable sub-points AT ALL. N/A is appropriate for GenAI (when pre-analysis shows zero evidence of AI-generated content) and for plagiarism sub-points (when no similarity detected). For ALL OTHER categories, you MUST choose GOOD, OKAY, or POOR and check at least SOME items — a category with zero selections defeats the purpose of rubric grading. N/A on a non-GenAI, non-plagiarism category is only acceptable when the category truly has no relevance to this submission type.
-- The pre-analysis findings are FACTS. If pre-analysis says "imports not alphabetized", you MUST check the negative item and MUST NOT check the positive item.
-- DO NOT modify the item text — only change [ ] to [x]
-- Use the context summary (pre-analysis findings, cell markers, dimension scores) as FACTS
-- EVIDENCE: For each category where you check items, include a brief note in the notes field summarizing your reasoning — cite one or two specific facts from the pre-analysis. You do NOT need to cite evidence for every individual checked item. The evidence field within checked items is optional — set it to an empty string when you have many items to check. Focus on checking the RIGHT items rather than exhaustively citing evidence for each one.
-- ADDITIONAL NOTES: Only write what you can VERIFY from the provided context (cell sources, execution outputs, pre-analysis facts). If the execution record is truncated, do NOT assert the content of unseen cells — note the truncation instead. "The references section could not be fully verified due to execution record truncation" is acceptable; "proper library citations with DOIs" when you cannot see them is NOT.
-
-Return ONLY a JSON object matching this schema. Output format: a JSON object with a 'categories' field containing a record of category keys to category results. Each category result: { "overall": "GOOD" | "OKAY" | "POOR" | "N/A", "checked": [{ "item": "<exact rubric sub-point text>", "evidence": "<1-sentence citation of a pre-analysis fact>" }], "notes": "<1-3 sentences for the teacher>" }. When overall is "N/A", checked MUST be empty. No duplicate item texts. The worksheet sections above are your INPUT — do NOT return them.`;
-
-/**
- * The rubric categories are filled in 3 sequential batches of 3 categories
- * each (keeps each call within the token/time budget and lets a failed batch
- * be retried in isolation). Batches are filtered to the categories that
- * actually exist in the assignment's rubric, so a rubric with fewer
- * categories simply produces fewer calls.
- */
-const CATEGORY_BATCHES: readonly (readonly string[])[] = [
-	["code_formatting", "jupyter_notebooks", "academic_scholarship"],
-	["coding_concept", "following_instructions", "general_feedback"],
-	["pandas", "numpy", "scipy", "sklearn"],
-	["genai", "user_defined_functions", "function_calling", "plotting_visualization"],
-];
-
-/**
- * The model pinned for the Phase 2b-verify pass — deliberately the weak
- * qwen3-30b rather than the primary model (Wave 5 swaps the primary to
- * gpt-oss-120b): a DIFFERENT model with DIFFERENT instructions breaks
- * same-model bias reproduction.
- */
-const WORKSHEET_VERIFY_MODEL = "qwen3-30b-a3b-instruct-2507";
-
-/**
  * The model for the quality-critical scoring phases (Wave 5): Phase 2a
- * dimension scoring, the 2a self-critique, and the Phase 2b worksheet
- * primary pass all run on gpt-oss-120b — stronger instruction following
+ * dimension scoring, the 2a self-critique, and the Phase 2b turn-based
+ * rubric selection all run on gpt-oss-120b — stronger instruction following
  * than qwen3-30b on many-constraint conditional tasks (the rubric
- * filling failure mode). Phase 2b-verify stays pinned to qwen3-30b
- * (see {@link WORKSHEET_VERIFY_MODEL}).
+ * filling failure mode).
  */
 const PHASE_2_MODEL = "openai-gpt-oss-120b";
-
-/**
- * Phase 2b-verify prompt: a second model call AFTER the primary worksheet
- * pass. It receives the primary pass's JSON output and prunes every checked
- * item whose evidence does not cite a specific, verifiable pre-analysis
- * fact. Different instructions from the primary pass — and the call runs on
- * a different model (qwen3-30b) — so the verify pass is not just the
- * primary model re-affirming its own selections. Output is JSON with the
- * SAME schema as the primary pass.
- */
-const WORKSHEET_VERIFY_SYSTEM_PROMPT = `You are reviewing rubric selections for factual correctness. You receive the JSON output of a worksheet pass: rubric sub-points that were checked for a student submission, each with a one-sentence evidence citation.
-
-For EACH checked item:
-1. Does the evidence sentence cite a specific, verifiable fact from the pre-analysis?
-2. If NO → REMOVE the item from the checked array.
-3. If YES but the evidence is weak → flag it as LOW_CONFIDENCE: keep the item but append " (LOW_CONFIDENCE)" to its evidence sentence.
-
-Return the CORRECTED JSON with only evidence-supported items. Output format: a JSON object with a 'categories' field containing a record of category keys to category results.`;
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:
@@ -1028,7 +995,10 @@ function formatPreAnalysis(pa: PreAnalysis): string {
 	} else {
 		lines.push("- All variable names appear descriptive");
 	}
-	lines.push(`- Imports alphabetized: ${pa.importsNotAlphabetized ? "NO — out of order" : "yes"}`);
+	lines.push(`- Imports alphabetized (whole-list check): ${pa.importsAlphabetized ? "yes" : "NO"}`);
+	if (pa.disallowedImports.length > 0) {
+		lines.push(`- Disallowed imports found: ${pa.disallowedImports.join(", ")}`);
+	}
 	if (pa.unusedImports.length > 0) {
 		lines.push(`- Unused imports: ${pa.unusedImports.join(", ")}`);
 	} else {
@@ -1082,8 +1052,14 @@ export async function preEvaluateSubmission(
 	const key = await loadKeySummary(assignmentId);
 	const assignmentPdfText = await loadAssignmentPdfText(assignmentId);
 
-	// Deterministic pre-analysis — zero LLM, runs once per submission
-	const preAnalysis = analyzeSubmission(cells);
+	// Deterministic pre-analysis — zero LLM, runs once per submission.
+	// soil_contamination disallows ML libraries; the disallowed-import facts
+	// flow into the Phase prompts so violations are deterministic, not
+	// model-discovered.
+	const preAnalysis = analyzeSubmission(
+		cells,
+		assignmentId === "soil_contamination" ? SOIL_CONTAMINATION_DISALLOWED_LIBRARIES : [],
+	);
 
 	// Per-call LLM timeout: the teacher-adjustable llm.timeout_ms setting
 	// wins; pre-evaluation falls back to its own (larger) default when the
@@ -1227,83 +1203,55 @@ export async function preEvaluateSubmission(
 		}
 	}
 
-	// ── Phase 2b: Worksheet pipeline (rubric selections + additional notes) ──
+	// ── Phase 2b: Turn-based rubric selection (one category per LLM call) ──
 	// The rubric checklist worksheet is generated once (context summary up
-	// front, one checkbox section per category) and kept as the INPUT for 3
-	// sequential batch calls (3 categories each). Each batch returns JSON
-	// (validated against the worksheet Zod schema) instead of filled
-	// markdown, and a 2b-verify pass on a SECOND model (qwen3-30b, different
-	// instructions) prunes selections whose evidence does not cite a
-	// verifiable pre-analysis fact. The verified JSON is parsed back into
-	// selections + notes. When no rubric is configured the pipeline is
-	// skipped entirely — markers, scores, and feedback still work.
+	// front, one checkbox section per category) and filled category-by-
+	// category: each call returns the EDITED markdown section for ONE
+	// category, which is validated against the rubric; on validation
+	// failure the section plus the exact errors are sent back to the same
+	// model (up to MAX_RETRIES per category). Only a section that parses
+	// cleanly is merged into the living worksheet. When no rubric is
+	// configured the pipeline is skipped entirely — markers, scores, and
+	// feedback still work.
 	let rubricSelections: { categoryKey: string; optionKey: string }[] = [];
 	let additionalNotes: Record<string, string> = {};
 
 	if (rubric && rubric.categories.length > 0) {
-		const worksheet = generateWorksheet({
-			submissionId,
-			assignmentId,
-			cellCount: cells.length,
-			codeCellCount: preAnalysis.codeCellCount,
-			markdownCellCount: preAnalysis.markdownCellCount,
-			preAnalysisSummary: preAnalysis.issueSummary,
-			markerCounts: markers.markers
-				? {
-						same: markers.markers.filter((m) => m?.marker === "same").length,
-						different: markers.markers.filter((m) => m?.marker === "different").length,
-						questionable: markers.markers.filter((m) => m?.marker === "questionable").length,
-					}
-				: null,
-			dimensionScores: scoring.gradeSuggestion.dimensions,
-			rubric,
-		});
-
-		const batchOutput = await fillWorksheetInBatches({
-			worksheet,
+		const turnBased = await runTurnBasedRubricSelection({
+			worksheet: generateWorksheet({
+				submissionId,
+				assignmentId,
+				cellCount: cells.length,
+				codeCellCount: preAnalysis.codeCellCount,
+				markdownCellCount: preAnalysis.markdownCellCount,
+				preAnalysisSummary: preAnalysis.issueSummary,
+				markerCounts: markers.markers
+					? {
+							same: markers.markers.filter((m) => m?.marker === "same").length,
+							different: markers.markers.filter((m) => m?.marker === "different").length,
+							questionable: markers.markers.filter((m) => m?.marker === "questionable").length,
+						}
+					: null,
+				dimensionScores: scoring.gradeSuggestion.dimensions,
+				rubric,
+			}),
 			rubric,
 			submissionId,
 			assignmentId,
 			llmTimeoutMs,
+			preAnalysis,
+			cells,
 			model: PHASE_2_MODEL,
 			temperature: 0.2,
 		});
-
-		// Phase 2b-verify: a second model call with DIFFERENT instructions
-		// (and a different model — qwen3-30b) prunes checked items whose
-		// evidence does not cite a verifiable pre-analysis fact. Non-fatal:
-		// on failure the primary selections are kept, same policy as the
-		// Phase 2a self-critique.
-		let verifiedOutput = batchOutput;
-		try {
-			verifiedOutput = await verifyWorksheetSelections({
-				output: batchOutput,
-				submissionId,
-				assignmentId,
-				llmTimeoutMs,
-			});
-		} catch (err) {
-			console.warn(
-				`[pre-eval] Phase 2b-verify failed for "${submissionId}" (assignment "${assignmentId}") — keeping the primary worksheet selections.`,
-				err instanceof Error ? err.message : err,
-			);
-		}
-
-		// The PRUNED selections win — never the pre-verify originals.
-		const parseResult = parseWorksheetJson(verifiedOutput, rubric);
-		rubricSelections = parseResult.rubricSelections;
-		additionalNotes = parseResult.additionalNotes;
-		if (parseResult.unmatched.length > 0) {
-			console.warn(
-				`[pre-eval] worksheet parse left ${parseResult.unmatched.length} unmatched item(s) for "${submissionId}" (assignment "${assignmentId}") — dropped.`,
-			);
-		}
+		rubricSelections = turnBased.rubricSelections;
+		additionalNotes = turnBased.additionalNotes;
 
 		// Balanced-criteria diagnostics (9.1): mandatory categories
 		// (Jupyter Notebooks, Academic Scholarship, assignment-specific)
 		// should carry at least one selection per sentiment section that has
 		// options — and at least one selection overall. Gaps are WARNINGS
-		// only: the result is accepted, never retried (the worksheet
+		// only: the result is accepted, never retried (the turn-based
 		// pipeline is expensive and a retry may not fix the gap).
 		await logBalancedCriteriaWarnings({
 			submissionId,
@@ -1415,8 +1363,22 @@ export async function preEvaluateSubmission(
 		executionRecord: stored,
 	});
 
+	// ── Confidence routing (Step 8): deterministic grading-confidence ──
+	// Derived AFTER post-processing from pipeline signals only (fix count,
+	// retry-loop [needs review] flags, pre-analysis findings) — no LLM.
+	// Persisted with the envelope (setPreEvaluation stores it inside
+	// preEval.gradingConfidence) and surfaced on the dashboard list so
+	// instructors can prioritize reviews.
+	const gradingConfidence = derivedGradingConfidence({
+		postProcessFixes: postProcessResult.fixes,
+		additionalNotes: envelope.additionalNotes ?? {},
+		postProcessedNotes: postProcessed.additionalNotes ?? {},
+		preAnalysis,
+	});
+
 	return {
 		...envelope,
+		gradingConfidence,
 		postProcessed,
 		postProcessFixes: postProcessResult.fixes,
 	};
@@ -1464,6 +1426,68 @@ function applyScoreCaps(
 	if (pa.unusedImports.length > 0) {
 		cap("code_quality_design", 4);
 	}
+}
+
+/**
+ * Derive the deterministic grading-confidence level for a submission from
+ * pipeline signals — NO LLM involved. Instructors use this to prioritize
+ * reviews: `needs_review` rows should be checked first, `high_confidence`
+ * rows can be skimmed or trusted.
+ *
+ * Signals:
+ * - `postProcessFixes.length` — how many deterministic corrections the 7
+ *   post-processing passes had to apply (heavy correction = untrustworthy
+ *   LLM output).
+ * - `[needs review]` flags in the raw envelope's OR the corrected
+ *   additionalNotes (turn-based rubric-selection retry-loop exhaustion).
+ * - pre-analysis facts: execution `errorCount`, `nonDescriptiveNames`,
+ *   `unusedImports`, `importsAlphabetized`, `disallowedImports`.
+ *   (`citationCount === 0` and missing interpretation are also deterministic
+ *   signals the plan considered; they do not gate the thresholds below —
+ *   they are already enforced as score caps, so they never change the
+ *   confidence tier.)
+ *
+ * Thresholds (hard-coded after development, per the plan):
+ * - `needs_review` — any retry-loop flag, >= 5 post-process fixes, any
+ *   execution error, or any disallowed import.
+ * - `high_confidence` — zero fixes, no retry flags, clean execution, no
+ *   naming/ordering/ dead-code findings.
+ * - `review_optional` — everything in between.
+ */
+export function derivedGradingConfidence(input: {
+	postProcessFixes: PostProcessFix[];
+	/** Raw envelope additionalNotes (authoritative for retry-loop flags). */
+	additionalNotes: Record<string, string>;
+	/** Corrected additionalNotes from post-processing (same flag source). */
+	postProcessedNotes: Record<string, string>;
+	preAnalysis: PreAnalysis;
+}): GradingConfidence {
+	const { postProcessFixes, additionalNotes, postProcessedNotes, preAnalysis } = input;
+
+	const hasNeedsReviewFlag = [...Object.values(additionalNotes), ...Object.values(postProcessedNotes)]
+		.some((notes) => notes.includes("[needs review]"));
+
+	if (
+		hasNeedsReviewFlag ||
+		postProcessFixes.length >= 5 ||
+		preAnalysis.errorCount > 0 ||
+		preAnalysis.disallowedImports.length > 0
+	) {
+		return "needs_review";
+	}
+
+	if (
+		postProcessFixes.length === 0 &&
+		!hasNeedsReviewFlag &&
+		preAnalysis.errorCount === 0 &&
+		preAnalysis.nonDescriptiveNames.length === 0 &&
+		preAnalysis.importsAlphabetized === true &&
+		preAnalysis.unusedImports.length === 0
+	) {
+		return "high_confidence";
+	}
+
+	return "review_optional";
 }
 
 // ---------------------------------------------------------------------------
@@ -1632,7 +1656,7 @@ async function callPhase<T>(
 }
 
 // ---------------------------------------------------------------------------
-// Worksheet pipeline (Phase 2b)
+// Turn-based rubric selection (Phase 2b)
 // ---------------------------------------------------------------------------
 
 /** Escape a literal string for use inside a RegExp. */
@@ -1670,11 +1694,6 @@ function extractWorksheetRegion(markdown: string, headerPrefix: string): string 
 	return region.length > 0 ? region : null;
 }
 
-/** The `## Context` block (assignment, cell counts, markers, dimension scores). */
-function extractWorksheetContext(markdown: string): string {
-	return extractWorksheetRegion(markdown, "## Context") ?? "";
-}
-
 /** One rubric category's section (its `## Rubric: {key}` header + body). */
 function extractCategorySection(markdown: string, key: string): string | null {
 	const lines = markdown.split("\n");
@@ -1692,177 +1711,574 @@ function extractCategorySection(markdown: string, key: string): string | null {
 }
 
 /**
- * Resolve a checked item text to a rubric sub-point. Tries the stated
- * category first (exact match), then falls back to ALL categories — an LLM
- * filling the worksheet may place items under the wrong section. Returns
- * null when the text matches nowhere.
+ * Replace one category's section in the living worksheet with the edited
+ * section the model returned. The old section is located by its `## Rubric:
+ * {key}` header (the same boundary logic as {@link extractCategorySection})
+ * and swapped for the new one, so the rest of the worksheet — the `## Context`
+ * block and every other category's section — is preserved verbatim.
  */
-function resolveCheckedItem(
-	rubric: MergedRubric,
-	statedCategoryKey: string,
-	item: string,
-): { categoryKey: string; optionKey: string } | null {
-	const stated = rubric.categories.find((entry) => entry.key === statedCategoryKey);
-	if (stated && allSubPoints(stated.category).some((sp) => sp.text === item)) {
-		return { categoryKey: statedCategoryKey, optionKey: item };
-	}
-	for (const entry of rubric.categories) {
-		if (allSubPoints(entry.category).some((sp) => sp.text === item)) {
-			return { categoryKey: entry.key, optionKey: item };
+function replaceCategorySection(markdown: string, key: string, newSection: string): string {
+	const lines = markdown.split("\n");
+	const start = findRubricSectionStart(lines, key);
+	if (start === -1) return markdown;
+	let end = lines.length;
+	for (let i = start + 1; i < lines.length; i++) {
+		if (/^## /.test(lines[i]!)) {
+			end = i;
+			break;
 		}
 	}
-	return null;
+	const replacement = newSection.trimEnd();
+	const before = lines.slice(0, start).join("\n");
+	const after = lines.slice(end).join("\n");
+	// Keep exactly one blank line between the replaced section and the next
+	// section (the generator emits `section\n\n## ...`).
+	return `${before.trimEnd()}\n\n${replacement}\n\n${after.trimStart()}`;
 }
 
 /**
- * Checked items in a batch's JSON that match no rubric sub-point anywhere
- * (exact match after the schema's trim). Returns the unmatched items — the
- * caller retries the batch once with these listed (the old markdown parser
- * reported the same drift through `unmatched`).
+ * System prompt for ONE per-category rubric selection call. The model edits a
+ * single markdown section — the output is the edited worksheet section, not
+ * JSON — and every un-checked item must be preserved verbatim.
  */
-function findUnmatchedCheckedItems(
-	result: WorksheetBatchOutput,
-	batchKeys: readonly string[],
-	rubric: MergedRubric,
-): { categoryKey: string; item: string }[] {
-	const unmatched: { categoryKey: string; item: string }[] = [];
-	for (const key of batchKeys) {
-		const category = result.categories[key];
-		if (!category) continue;
-		for (const checked of category.checked) {
-			if (resolveCheckedItem(rubric, key, checked.item) === null) {
-				unmatched.push({ categoryKey: key, item: checked.item });
-			}
+const TURN_BASED_SYSTEM_PROMPT = `You are filling ONE rubric category section on a pre-evaluation worksheet. Return ONLY the complete \`## Rubric: ...\` through \`### Additional Notes\` section for the requested category. Preserve every un-checked item verbatim. Do not invent new checkbox texts.
+
+CHECKING RULES:
+- Check EVERY sub-point that applies to this submission — these are checkboxes, not radio buttons. Work through the section item by item and check each one the evidence supports. Do not stop at a minimal set.
+- MUTUAL EXCLUSION: for logical-opposite pairs within a category, check EXACTLY ONE — the side the notebook source supports. Never check both sides of a logical-opposite pair.
+- IMPORT ALPHABETIZATION: judge it over the ENTIRE import cell as ONE list (all \`import\` and \`from\` lines together, sorted case-insensitively by the full line text), NOT per group. The pre-analysis \`importsAlphabetized\` field is the ground truth — if it says \`false\`, the imports are NOT alphabetized; check the corresponding negative.
+- BLANK LINES: when the source contains a double blank line followed by indented code (PEP8 E303), this is an instance of TOO MANY blank lines. Do NOT check the blank-lines positive or PEP8 positive; instead report it in the Additional Notes as a minor defect.
+- PRE-ANALYSIS FACTS: the pre-analysis section in the user prompt provides \`importsAlphabetized\` (whole-list), \`nonDescriptiveNames\`, \`unusedImports\`, \`disallowedImports\`, \`importsNotAlphabetized\` (deprecated — ignore this), \`citationCount\`, and \`hasInterpretation\`. Use these as evidence but VERIFY against the notebook source — pre-analysis heuristics can be wrong.
+- Check a positive only when the sub-point genuinely holds for the WHOLE submission. A single clear counterexample disqualifies it.
+- Check a negative only when the defect is a clear, material pattern. A single minor instance is mentioned in the Additional Notes instead of being checked.
+- The notebook source in the user prompt is the EVIDENCE. The pre-analysis findings are heuristic hints — trust the source over the hints.
+
+ADDITIONAL NOTES: write 1-3 evidence-grounded sentences citing specific cells or patterns from the notebook source. Do NOT re-state the rubric text — describe what you observed in the student's notebook that supports your selections.`;
+
+/**
+ * Build the user prompt for one category turn: the full living worksheet as
+ * context (so the model sees adjacent decisions), the deterministic
+ * pre-analysis facts, a bounded preview of the notebook source (the
+ * EVIDENCE the model must verify sub-points against), and a highlighted
+ * instruction to fill ONLY the requested category's section.
+ */
+function buildCategoryUserPrompt(args: {
+	worksheet: string;
+	categoryKey: string;
+	categoryTitle: string;
+	preAnalysis: PreAnalysis;
+	cells: readonly ExecutedCell[];
+}): string {
+	const { worksheet, categoryKey, categoryTitle, preAnalysis, cells } = args;
+	// Deterministic import facts for code_formatting decisions: the whole-list
+	// alphabetization verdict and any disallowed libraries found. These are
+	// computed facts, not model guesses — the model must align its import
+	// sub-point checks with them.
+	const importFacts: string[] = [];
+	if (categoryKey === "code_formatting") {
+		importFacts.push(
+			`- Imports alphabetized (whole-list check): ${preAnalysis.importsAlphabetized ? "yes" : "NO"}`,
+		);
+		if (preAnalysis.disallowedImports.length > 0) {
+			importFacts.push(`- Disallowed imports found: ${preAnalysis.disallowedImports.join(", ")}`);
 		}
 	}
-	return unmatched;
+	return [
+		worksheet,
+		"",
+		"---",
+		"",
+		formatPreAnalysis(preAnalysis),
+		...(importFacts.length > 0
+			? ["", "Import facts (deterministic — verify against the source, do not contradict):", ...importFacts]
+			: []),
+		"",
+		"---",
+		"",
+		"Notebook source (EVIDENCE — verify every checkbox against this):",
+		...formatCellSourcePreview(cells),
+		"",
+		"---",
+		"",
+		`Fill ONLY the \`## Rubric: ${categoryKey} — ${categoryTitle}\` section. Return the complete edited section for this category only, from \`## Rubric:\` through \`### Additional Notes\`. Preserve all un-checked items verbatim — only change \`[ ]\` to \`[x]\`.`,
+	].join("\n");
 }
 
 /**
- * Fill the worksheet's rubric sections in 3 category batches. Each batch
- * call receives the `## Context` block plus the batch's EMPTY markdown
- * sections — the worksheet stays the INPUT (visible un-checked negatives) —
- * while the model returns JSON (one category-result object per category
- * key), validated against {@link worksheetBatchSchema}. A batch whose
- * returned items contain texts that match no rubric sub-point is retried
- * ONCE with the unmatched items listed; items that still do not match after
- * the retry are dropped (with a warning) rather than failing the pipeline.
+ * Format a bounded preview of the notebook source for the category-turn
+ * prompt: one `[Cell N] type` block per cell, source lines capped at
+ * {@link SOURCE_PREVIEW_LINES} per cell and {@link MAX_PREVIEW_CELLS} cells
+ * total (the same bounds as the Phase 1 prompt). Markdown cells are shown
+ * too — they carry the interpretation and citation evidence. Cells whose
+ * source is empty are skipped.
  */
-async function fillWorksheetInBatches(args: {
+function formatCellSourcePreview(cells: readonly ExecutedCell[]): string[] {
+	const lines: string[] = [];
+	for (const cell of cells.slice(0, MAX_PREVIEW_CELLS)) {
+		const source = cell.source ?? "";
+		if (source.trim().length === 0) continue;
+		const sourceLines = source.split("\n");
+		const preview =
+			sourceLines.length > SOURCE_PREVIEW_LINES
+				? `${sourceLines.slice(0, SOURCE_PREVIEW_LINES).join("\n")}${SOURCE_TRUNCATION_MARKER}`
+				: source;
+		lines.push(`[Cell ${cell.index}] ${cell.type}`);
+		lines.push("```python");
+		lines.push(preview);
+		lines.push("```");
+	}
+	return lines;
+}
+
+/**
+ * Build the retry prompt for a failed category turn: the returned section
+ * plus the exact validation error messages, with one concrete instruction
+ * per error.
+ */
+function buildRetryPrompt(args: {
+	returnedSection: string;
+	errors: WorksheetValidationError[];
+}): string {
+	const { returnedSection, errors } = args;
+	const mutualExclusionHints = errors
+		.filter((error) => error.type === "mutual_exclusion")
+		.map((error) => {
+			const [a, b] = error.items ?? [];
+			return `- ${error.message} Check the side the notebook source supports: if the imports are NOT alphabetized in the source, keep "${b}" and uncheck "${a}"; if they ARE alphabetized, keep "${a}" and uncheck "${b}".`;
+		});
+	return [
+		"The section you returned did not pass validation. Fix the issues below and return the COMPLETE corrected section (from `## Rubric:` through `### Additional Notes`), preserving every un-checked item verbatim.",
+		"",
+		"Your previous section:",
+		"```markdown",
+		returnedSection,
+		"```",
+		"",
+		"Validation errors:",
+		...errors.map((error, index) => `- ${index + 1}. ${error.message}`),
+		...(mutualExclusionHints.length > 0
+			? ["", "How to fix the mutual-exclusion error(s):", ...mutualExclusionHints]
+			: []),
+		"",
+		"Return ONLY the corrected markdown section.",
+	].join("\n");
+}
+
+/**
+ * Maximum validation retries per category. The retry loop IS the
+ * verification — there is no separate verify/critique pass on rubric
+ * selection.
+ */
+const MAX_RETRIES = 3;
+
+/**
+ * Whether the line is a real import statement (`import X` / `from X import
+ * Y`). Markdown prose like "from a cluster centre" must not count.
+ */
+function isImportLine(line: string): boolean {
+	return /^(import\s+\S|from\s+\S+\s+import\s+\S)/.test(line.trim());
+}
+
+/**
+ * Whether the notebook's imports are alphabetized as ONE list (all `import`
+ * and `from` lines together, case-insensitive). The pre-analysis heuristic
+ * sorts from- and import-blocks separately, which hides the real ordering —
+ * this is the ground-truth definition.
+ */
+function importsAreAlphabetized(cells: readonly ExecutedCell[]): boolean {
+	const importLines: string[] = [];
+	for (const cell of cells) {
+		if (cell.type !== "code") continue;
+		for (const line of (cell.source ?? "").split("\n")) {
+			if (isImportLine(line)) importLines.push(line.trim());
+		}
+	}
+	if (importLines.length <= 1) return true;
+	const sorted = [...importLines].sort((a, b) =>
+		a.toLowerCase().localeCompare(b.toLowerCase()),
+	);
+	return importLines.every((line, i) => line === sorted[i]);
+}
+
+/**
+ * Whether all import statements are confined to the notebook's top —
+ * specifically the first two code cells (the conventional import block).
+ * Imports scattered into later cells fail the check.
+ */
+function importsListedAtTop(cells: readonly ExecutedCell[]): boolean {
+	let codeCellRank = 0;
+	let lastImportCodeCellRank = 0;
+	let importCellCount = 0;
+	for (const cell of cells) {
+		if (cell.type !== "code") continue;
+		codeCellRank++;
+		const hasImport = (cell.source ?? "")
+			.split("\n")
+			.some((line) => isImportLine(line));
+		if (hasImport) {
+			importCellCount++;
+			lastImportCodeCellRank = codeCellRank;
+		}
+	}
+	if (importCellCount === 0) return true;
+	return lastImportCodeCellRank <= 2;
+}
+
+/**
+ * Whether any code cell contains a double blank line followed by indented
+ * code — PEP8 E303 ("too many blank lines within a function body"). The
+ * ground-truth note for 2026SS_00 cites exactly this defect in the plume
+ * function.
+ */
+function hasE303DoubleBlankLine(cells: readonly ExecutedCell[]): boolean {
+	const E303_RE = /\n\n\n[ \t]{4,}\S/;
+	return cells.some((cell) => E303_RE.test(cell.source ?? ""));
+}
+
+/**
+ * Decide which side of a mutual-exclusion pair the notebook evidence
+ * supports when the model left BOTH sides unchecked. Returns "a" (the
+ * positive side) or "b" (the negative side), or null when the evidence
+ * actively contradicts the positive without supporting that particular
+ * negative — in that case neither side is force-checked (the deterministic
+ * E303 uncheck already settled the aspect).
+ */
+function decideMutualExclusionSide(
+	pair: MutualExclusionPair,
+	cells: readonly ExecutedCell[],
+	preAnalysis: PreAnalysis,
+): "a" | "b" | null {
+	const { a, b } = pair;
+
+	// Import ordering — whole-list alphabetization (ground-truth definition).
+	if (
+		a === "imports - libraries were alphabetized" ||
+		b === "imports - libraries were alphabetized"
+	) {
+		return importsAreAlphabetized(cells) ? "a" : "b";
+	}
+
+	// Import placement — all imports in the first two code cells → positive.
+	if (
+		a === "imports - libraries were listed at the notebook's top" ||
+		b === "imports - libraries were listed at the notebook's top"
+	) {
+		return importsListedAtTop(cells) ? "a" : "b";
+	}
+
+	// Blank lines — an E303 double blank line is a concrete counterexample
+	// to the positive. It supports ONLY the "too many" negative; the other
+	// negatives (missing two blank lines, not enough separation) are not
+	// supported by that evidence, so those pairs stay undecided.
+	if (b.startsWith("blank lines -")) {
+		if (!hasE303DoubleBlankLine(cells)) return "a";
+		return b === "blank lines - too many used (i.e., not concise)" ? "b" : null;
+	}
+
+	// Naming — non-descriptive names found in the source → negative.
+	if (b.startsWith("naming -")) {
+		return preAnalysis.nonDescriptiveNames.length > 0 ? "b" : "a";
+	}
+
+	// PEP8 — an E303 violation contradicts the positive, but the E303 rule
+	// below already force-unchecks it and a single defect does not warrant
+	// "PEP8 - not well followed", so neither side is force-checked.
+	if (a === "PEP8 guidelines- followed") {
+		return hasE303DoubleBlankLine(cells) ? null : "a";
+	}
+
+	// No dedicated evidence — prefer the positive side.
+	return "a";
+}
+
+/**
+ * Deterministic post-validation correction for a category section, local to
+ * the turn-based protocol (the brief's allowed correction step). After the
+ * model's section validates cleanly, evidence-grounded rules fix the failure
+ * modes qwen3-30b repeatedly exhibits:
+ *
+ * 1. E303 double blank line in the source (code_formatting only) →
+ *    force-uncheck "blank lines - consistent and good usage" and "PEP8
+ *    guidelines- followed" (a single clear counterexample disqualifies the
+ *    positive).
+ * 2. Any mutual-exclusion pair with NEITHER side checked → force-check the
+ *    side the notebook evidence supports (imports ordering/placement,
+ *    blank lines, naming; the positive side by default). Categories with
+ *    no configured pairs are untouched.
+ *
+ * Only known rubric texts are touched; the section is re-validated by the
+ * caller after correction.
+ */
+function applyDeterministicSectionCorrections(
+	section: string,
+	categoryKey: string,
+	cells: readonly ExecutedCell[],
+	preAnalysis: PreAnalysis,
+): string {
+	const uncheck = new Set<string>();
+	const check = new Set<string>();
+
+	// E303 rule — code_formatting only. A double blank line inside a
+	// function body is a concrete PEP8 E303 violation: the blank-lines and
+	// PEP8 positives must never stay checked in its presence.
+	if (categoryKey === "code_formatting" && hasE303DoubleBlankLine(cells)) {
+		uncheck.add("blank lines - consistent and good usage");
+		uncheck.add("PEP8 guidelines- followed");
+	}
+
+	// Mutual-exclusion fallback — every configured pair of the category. A
+	// pair the model left fully unchecked gets the side the evidence
+	// supports.
+	const checkedTexts = new Set<string>();
+	for (const line of section.split("\n")) {
+		const match = line.match(/^-\s*\[[xX]\]\s*(.+)$/);
+		if (match) checkedTexts.add(match[1]!.trim());
+	}
+	for (const pair of MUTUAL_EXCLUSION_PAIRS[categoryKey] ?? []) {
+		if (checkedTexts.has(pair.a) || checkedTexts.has(pair.b)) continue;
+		const side = decideMutualExclusionSide(pair, cells, preAnalysis);
+		if (side === null) continue;
+		check.add(side === "a" ? pair.a : pair.b);
+	}
+
+	if (uncheck.size === 0 && check.size === 0) return section;
+
+	const lines = section.split("\n");
+	const corrected = lines.map((line) => {
+		const checkedMatch = line.match(/^(-\s*\[)[xX](\]\s*)(.+)$/);
+		if (checkedMatch && uncheck.has(checkedMatch[3]!.trim())) {
+			return `${checkedMatch[1]} ${checkedMatch[2]}${checkedMatch[3]}`;
+		}
+		const uncheckedMatch = line.match(/^(-\s*\[) (\]\s*)(.+)$/);
+		if (uncheckedMatch && check.has(uncheckedMatch[3]!.trim())) {
+			return `${uncheckedMatch[1]}x${uncheckedMatch[2]}${uncheckedMatch[3]}`;
+		}
+		return line;
+	});
+	const correctedSection = corrected.join("\n");
+	if (correctedSection === section) return section;
+
+	const details: string[] = [];
+	if (check.size > 0) details.push(`checked: ${[...check].join("; ")}`);
+	if (uncheck.size > 0) details.push(`unchecked: ${[...uncheck].join("; ")}`);
+	console.warn(
+		`[pre-eval] Rubric category "${categoryKey}" corrected deterministically (${details.join(", ")}).`,
+	);
+	return correctedSection;
+}
+
+/**
+ * Run the turn-based rubric selection protocol: one category per LLM call,
+ * each returning the EDITED markdown section for that category, validated
+ * against the rubric. On validation failure the returned section plus the
+ * exact errors are sent back to the same model (up to {@link MAX_RETRIES});
+ * only a section that parses cleanly is merged into the living worksheet.
+ *
+ * A category that still fails after all retries is flagged in
+ * `additionalNotes` with a "[needs review]" marker and the selections the
+ * last attempt produced that are valid are kept — the envelope is always
+ * assembled, never thrown.
+ */
+export async function runTurnBasedRubricSelection(args: {
 	worksheet: string;
 	rubric: MergedRubric;
 	submissionId: string;
 	assignmentId: string;
 	llmTimeoutMs: number;
+	preAnalysis: PreAnalysis;
+	cells: readonly ExecutedCell[];
 	model?: string;
 	temperature?: number;
-}): Promise<WorksheetBatchOutput> {
-	const { worksheet, rubric, submissionId, assignmentId, llmTimeoutMs, model, temperature } = args;
-	const rubricKeys = new Set<string>(rubric.categories.map((entry) => entry.key));
-	const contextSection = extractWorksheetContext(worksheet);
-	const systemPrompt = WORKSHEET_BATCH_SYSTEM_PROMPT + modelHintBlock(model);
+}): Promise<{
+	rubricSelections: { categoryKey: string; optionKey: string }[];
+	additionalNotes: Record<string, string>;
+}> {
+	const { rubricSelections, additionalNotes } = await runTurnBasedCategoryTurns(args);
+	return { rubricSelections, additionalNotes };
+}
 
-	const categories: Record<string, WorksheetCategoryResult> = {};
-	for (const batch of CATEGORY_BATCHES) {
-		// Only categories that actually exist in this assignment's rubric —
-		// a rubric with fewer categories produces fewer batch calls.
-		const batchKeys = batch.filter((key) => rubricKeys.has(key));
-		if (batchKeys.length === 0) continue;
+/**
+ * The per-category turn loop shared by {@link runTurnBasedRubricSelection}
+ * (all categories) and {@link runTurnBasedCategoryMilestone} (one category).
+ * Returns the LIVING worksheet (with every clean section merged) alongside
+ * the accumulated selections and notes, so the milestone can hand back the
+ * final section for its single category.
+ */
+async function runTurnBasedCategoryTurns(args: {
+	worksheet: string;
+	rubric: MergedRubric;
+	submissionId: string;
+	assignmentId: string;
+	llmTimeoutMs: number;
+	preAnalysis: PreAnalysis;
+	cells: readonly ExecutedCell[];
+	model?: string;
+	temperature?: number;
+	categoryKeys?: readonly string[];
+}): Promise<{
+	worksheet: string;
+	rubricSelections: { categoryKey: string; optionKey: string }[];
+	additionalNotes: Record<string, string>;
+}> {
+	const {
+		worksheet: initialWorksheet,
+		rubric,
+		submissionId,
+		assignmentId,
+		llmTimeoutMs,
+		preAnalysis,
+		cells,
+		model,
+		temperature = 0.2,
+		categoryKeys,
+	} = args;
 
-		const sections = batchKeys
-			.map((key) => extractCategorySection(worksheet, key))
-			.filter((section): section is string => section !== null);
-		if (sections.length === 0) continue;
+	const rubricSelections: { categoryKey: string; optionKey: string }[] = [];
+	const additionalNotes: Record<string, string> = {};
+	let worksheet = initialWorksheet;
 
-		const batchLabel = `Worksheet batch (${batchKeys.join(", ")})`;
-		const userPrompt = [contextSection, "", ...sections].join("\n");
+	const systemPrompt = TURN_BASED_SYSTEM_PROMPT + modelHintBlock(model);
 
-		let result = await callWorksheetBatch(
+	const keys = categoryKeys ?? rubric.categories.map((entry) => entry.key);
+	for (const categoryKey of keys) {
+		const entry = rubric.categories.find((candidate) => candidate.key === categoryKey);
+		if (!entry) continue;
+		const categoryTitle = entry.category.title;
+
+		const userPrompt = buildCategoryUserPrompt({
+			worksheet,
+			categoryKey,
+			categoryTitle,
+			preAnalysis,
+			cells,
+		});
+
+		let returnedSection = await callCategoryTurn({
 			systemPrompt,
 			userPrompt,
 			submissionId,
 			assignmentId,
-			batchLabel,
+			phaseLabel: `Rubric category "${categoryKey}"`,
 			llmTimeoutMs,
 			model,
 			temperature,
-		);
-		let unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
+		});
 
-		if (unmatched.length > 0) {
-			// One retry with the error details — the model usually invented a
-			// checkbox text; showing the offending lines fixes it.
-			const retryPrompt = [
-				userPrompt,
-				"",
-				"The previous attempt contained items that do not exist in the rubric. Fix them:",
-				...unmatched.map(
-					(item) => `- ${item.categoryKey}: "${item.item}" — not a rubric item, remove it`,
-				),
-				"",
-				"Return ONLY the corrected JSON object.",
-			].join("\n");
-			result = await callWorksheetBatch(
+		let validation = validateWorksheetSection(returnedSection, categoryKey, rubric);
+
+		let attempt = 0;
+		while (!validation.ok && attempt < MAX_RETRIES) {
+			attempt++;
+			console.warn(
+				`[pre-eval] Rubric category "${categoryKey}" failed validation (attempt ${attempt}/${MAX_RETRIES}) for "${submissionId}" — retrying with ${validation.errors.length} error(s).`,
+			);
+			returnedSection = await callCategoryTurn({
 				systemPrompt,
-				retryPrompt,
+				userPrompt: buildRetryPrompt({
+					returnedSection,
+					errors: validation.errors,
+				}),
 				submissionId,
 				assignmentId,
-				`${batchLabel} retry`,
+				phaseLabel: `Rubric category "${categoryKey}" retry ${attempt}`,
 				llmTimeoutMs,
 				model,
 				temperature,
-			);
-			unmatched = findUnmatchedCheckedItems(result, batchKeys, rubric);
-			if (unmatched.length > 0) {
-				console.warn(
-					`[pre-eval] ${batchLabel} still has unmatched items after retry for "${submissionId}" — dropping them.`,
-				);
-			}
+			});
+			validation = validateWorksheetSection(returnedSection, categoryKey, rubric);
 		}
 
-		// Merge the batch's categories into the aggregate — only keys this
-		// batch actually asked about (a stray category the model invented is
-		// dropped; it cannot resolve to rubric items anyway).
-		for (const key of batchKeys) {
-			const category = result.categories[key];
-			if (category) categories[key] = category;
+		if (!validation.ok) {
+			// Flag the category for the teacher and keep whatever the last
+			// attempt produced that IS valid. Never throw — the envelope must
+			// still be assembled.
+			const errorSummary = validation.errors.map((error) => error.message).join("; ");
+			additionalNotes[categoryKey] = `[needs review] validation failed: ${errorSummary}`;
+			console.warn(
+				`[pre-eval] Rubric category "${categoryKey}" still invalid after ${MAX_RETRIES} retries for "${submissionId}" (assignment "${assignmentId}") — flagged for review.`,
+			);
+		} else {
+			// Evidence-grounded deterministic correction (see
+			// applyDeterministicSectionCorrections): fixes the two failure
+			// modes qwen3-30b repeatedly exhibits even on clean sections —
+			// checking blank-lines/PEP8 positives despite an E303 double
+			// blank line, and leaving a mutual-exclusion pair unchecked.
+			// The corrected section is re-validated before merging; if the
+			// correction itself ever produced an invalid section (it
+			// cannot — it only toggles known rubric texts), the original
+			// clean section is kept.
+			const correctedSection = applyDeterministicSectionCorrections(
+				returnedSection,
+				categoryKey,
+				cells,
+				preAnalysis,
+			);
+			if (correctedSection !== returnedSection) {
+				const correctedValidation = validateWorksheetSection(
+					correctedSection,
+					categoryKey,
+					rubric,
+				);
+				if (correctedValidation.ok) {
+					returnedSection = correctedSection;
+					validation = correctedValidation;
+					console.warn(
+						`[pre-eval] Rubric category "${categoryKey}" corrected deterministically for "${submissionId}" (deterministic evidence).`,
+					);
+				}
+			}
+			// Merge the clean section into the living worksheet and accumulate.
+			worksheet = replaceCategorySection(worksheet, categoryKey, returnedSection);
+		}
+
+		// Accumulate whatever selections/notes the final attempt produced that
+		// are valid (empty on a fully failed category).
+		rubricSelections.push(...validation.selections);
+		if (validation.notes !== null && !(categoryKey in additionalNotes)) {
+			additionalNotes[categoryKey] = validation.notes;
 		}
 	}
-	return { categories };
+
+	return { worksheet, rubricSelections, additionalNotes };
 }
 
 /**
- * Call KI Connect for one worksheet batch. The response is JSON — one
- * category-result object per category key — so this helper uses the client's
- * JSON path (`chatCompletion`, which handles JSON extraction AND the
- * repair-retry ladder), passing {@link worksheetBatchSchema} so the client
- * validates before returning. The parsed JSON is re-validated here so the
- * pipeline's contract (validated worksheet output or a descriptive error)
- * holds regardless of the client. Shares the same timeout-retry semantics as
- * {@link callPhase}.
+ * Call KI Connect for ONE category turn. The response is free-form markdown
+ * (the edited worksheet section), so this helper uses the client's raw-text
+ * path (`chatCompletionText`) — the JSON path would mangle markdown. Shares
+ * the same timeout-retry semantics as {@link callPhase}.
  */
-async function callWorksheetBatch(
-	systemPrompt: string,
-	userPrompt: string,
-	submissionId: string,
-	assignmentId: string,
-	phaseLabel: string,
-	timeoutMs?: number,
-	model?: string,
-	temperature: number = 0.2,
-): Promise<WorksheetBatchOutput> {
+async function callCategoryTurn(args: {
+	systemPrompt: string;
+	userPrompt: string;
+	submissionId: string;
+	assignmentId: string;
+	phaseLabel: string;
+	llmTimeoutMs: number;
+	model?: string;
+	temperature?: number;
+}): Promise<string> {
+	const {
+		systemPrompt,
+		userPrompt,
+		submissionId,
+		assignmentId,
+		phaseLabel,
+		llmTimeoutMs,
+		model,
+		temperature = 0.2,
+	} = args;
+
 	const call = () =>
-		getKiConnectClient().chatCompletion(
+		getKiConnectClient().chatCompletionText(
 			systemPrompt,
 			userPrompt,
 			temperature,
-			{ type: "json_object" },
-			worksheetBatchSchema,
-			timeoutMs,
+			llmTimeoutMs,
 			model,
 		);
 
-	let raw: unknown;
+	let raw: string;
 	try {
 		raw = await call();
 	} catch (err) {
@@ -1872,6 +2288,9 @@ async function callWorksheetBatch(
 				`${phaseLabel} KI Connect call failed for "${submissionId}" (assignment "${assignmentId}"): ${detail}`,
 				{ cause: err },
 			);
+		// Timeouts are transient (60s HTTP budget) — one retry after 2s is
+		// cheap insurance. Non-timeout errors (auth, empty responses, ...)
+		// fail identically on retry, so they throw immediately.
 		if (detail.includes("timed out")) {
 			console.warn(
 				`[pre-eval] ${phaseLabel} timed out for "${submissionId}", retrying once...`,
@@ -1887,165 +2306,109 @@ async function callWorksheetBatch(
 			throw fail();
 		}
 	}
-	if (raw === null || raw === undefined) {
+	if (raw === null || raw === undefined || raw.trim() === "") {
 		throw new Error(
 			`${phaseLabel} returned nothing for "${submissionId}" (assignment "${assignmentId}")`,
 		);
 	}
-	// Simple duck-type validation — the Zod schema below does the real work.
-	if (typeof raw !== "object" || Array.isArray(raw)) {
-		throw new Error(
-			`${phaseLabel} returned non-object for "${submissionId}" (assignment "${assignmentId}"): ${typeof raw}`,
-		);
-	}
-	const parsed = worksheetBatchSchema.safeParse(raw);
-	if (!parsed.success) {
-		throw new Error(
-			`${phaseLabel} returned invalid worksheet JSON for "${submissionId}" (assignment "${assignmentId}"): ${parsed.error.issues
-				.map((issue) => issue.message)
-				.join("; ")}`,
-		);
-	}
-	return parsed.data;
+	return raw;
 }
 
 /**
- * The client used for the Phase 2b-verify pass — pinned to qwen3-30b
- * regardless of the configured primary model (a DIFFERENT model + different
- * instructions breaks same-model bias reproduction). Reuses the default
- * client when it already runs qwen3-30b.
+ * Run the turn-based rubric selection protocol for ONE category, standalone.
+ * Loads the stored execution result, runs pre-analysis, loads the rubric,
+ * generates the worksheet, and runs the per-category protocol for the single
+ * requested category. Returns the final worksheet section plus metadata —
+ * used by the standalone milestone runner (Wave 2).
  */
-function worksheetVerifyClient(): KiConnectClient {
-	const client = getKiConnectClient();
-	const model = (client as unknown as { model?: unknown }).model;
-	if (model === WORKSHEET_VERIFY_MODEL) return client;
-	return new KiConnectClient({ model: WORKSHEET_VERIFY_MODEL });
-}
-
-/**
- * Phase 2b-verify: send the primary worksheet pass's JSON output to a SECOND
- * model call with DIFFERENT instructions — evidence-based pruning — on a
- * client pinned to qwen3-30b. Returns the CORRECTED output (only
- * evidence-supported items), validated against the same Zod schema. Follows
- * the same timeout-retry semantics as {@link callWorksheetBatch}; callers
- * treat failure as non-fatal and keep the primary selections.
- */
-async function verifyWorksheetSelections(args: {
-	output: WorksheetBatchOutput;
+export async function runTurnBasedCategoryMilestone(args: {
 	submissionId: string;
 	assignmentId: string;
-	llmTimeoutMs: number;
-}): Promise<WorksheetBatchOutput> {
-	const { output, submissionId, assignmentId, llmTimeoutMs } = args;
-	const systemPrompt = WORKSHEET_VERIFY_SYSTEM_PROMPT + modelHintBlock(WORKSHEET_VERIFY_MODEL);
-	const userPrompt = `Worksheet selections to verify:\n${JSON.stringify(output, null, 2)}`;
-
-	const call = () =>
-		worksheetVerifyClient().chatCompletion(
-			systemPrompt,
-			userPrompt,
-			0.1,
-			{ type: "json_object" },
-			worksheetBatchSchema,
-			llmTimeoutMs,
-			WORKSHEET_VERIFY_MODEL,
-		);
-
-	let raw: unknown;
-	try {
-		raw = await call();
-	} catch (err) {
-		const detail = err instanceof Error ? err.message : String(err);
-		const fail = () =>
-			new Error(
-				`Worksheet verify KI Connect call failed for "${submissionId}" (assignment "${assignmentId}"): ${detail}`,
-				{ cause: err },
-			);
-		if (detail.includes("timed out")) {
-			console.warn(
-				`[pre-eval] worksheet verify timed out for "${submissionId}", retrying once...`,
-			);
-			await new Promise((resolve) => setTimeout(resolve, 2000));
-			try {
-				raw = await call();
-			} catch {
-				// Retry failed too — surface the ORIGINAL error, not the retry's.
-				throw fail();
-			}
-		} else {
-			throw fail();
-		}
-	}
-	if (raw === null || raw === undefined) {
-		throw new Error(
-			`Worksheet verify returned nothing for "${submissionId}" (assignment "${assignmentId}")`,
-		);
-	}
-	if (typeof raw !== "object" || Array.isArray(raw)) {
-		throw new Error(
-			`Worksheet verify returned non-object for "${submissionId}" (assignment "${assignmentId}"): ${typeof raw}`,
-		);
-	}
-	const parsed = worksheetBatchSchema.safeParse(raw);
-	if (!parsed.success) {
-		throw new Error(
-			`Worksheet verify returned invalid JSON for "${submissionId}" (assignment "${assignmentId}"): ${parsed.error.issues
-				.map((issue) => issue.message)
-				.join("; ")}`,
-		);
-	}
-	return parsed.data;
-}
-
-// ---------------------------------------------------------------------------
-// Worksheet JSON parsing (Phase 2b output → rubric selections)
-// ---------------------------------------------------------------------------
-
-/** Result of parsing a verified worksheet JSON output. */
-export interface WorksheetJsonParseResult {
+	categoryKey: string;
+	llmTimeoutMs?: number;
+	model?: string;
+	temperature?: number;
+}): Promise<{
+	worksheetSection: string;
 	rubricSelections: { categoryKey: string; optionKey: string }[];
-	/** categoryKey -> notes, for every category present in the output. */
 	additionalNotes: Record<string, string>;
-	/** Checked items that matched no rubric sub-point anywhere. */
-	unmatched: { categoryKey: string; item: string }[];
-}
+	preAnalysis: PreAnalysis;
+}> {
+	const { submissionId, assignmentId, categoryKey, llmTimeoutMs, model, temperature } = args;
+	assertSafeSegment(assignmentId, "assignmentId");
+	assertSafeSegment(submissionId, "submissionId");
 
-/**
- * Parse the verified worksheet JSON output into rubric selections + notes.
- * Iterates the rubric's category order (not the JSON's insertion order) so
- * the result is deterministic; each category's checked items are resolved to
- * rubric sub-points (stated category first, then a fallback across ALL
- * categories — the LLM may place items under the wrong category). Checked
- * texts that match nowhere land in `unmatched` (the batch retry loop already
- * warned) and are dropped. N/A categories carry no checked items
- * (schema-enforced) → zero selections for them, but their notes are kept.
- */
-export function parseWorksheetJson(
-	output: WorksheetBatchOutput,
-	rubric: MergedRubric,
-): WorksheetJsonParseResult {
-	const rubricSelections: { categoryKey: string; optionKey: string }[] = [];
-	const additionalNotes: Record<string, string> = {};
-	const unmatched: { categoryKey: string; item: string }[] = [];
-
-	for (const entry of rubric.categories) {
-		const category = output.categories[entry.key];
-		if (!category) continue;
-		for (const checked of category.checked) {
-			const resolved = resolveCheckedItem(rubric, entry.key, checked.item);
-			if (resolved) {
-				rubricSelections.push(resolved);
-			} else {
-				unmatched.push({ categoryKey: entry.key, item: checked.item });
-			}
-		}
-		additionalNotes[entry.key] = category.notes;
+	const results = await readResults(assignmentId);
+	const stored: StoredExecutionResult | undefined = results[submissionId];
+	if (!stored) {
+		throw new Error(
+			`No stored execution result for submission "${submissionId}" in assignment "${assignmentId}" — execute the notebook first`,
+		);
+	}
+	const cells = Array.isArray(stored.cells) ? stored.cells : [];
+	if (cells.length === 0) {
+		throw new Error(
+			`Submission "${submissionId}" in assignment "${assignmentId}" has no stored executed cell data — re-execute the notebook (single execution) before pre-evaluating`,
+		);
 	}
 
-	return { rubricSelections, additionalNotes, unmatched };
+	const assignment = await getAssignmentById(assignmentId);
+	const rubric = assignment ? await loadCriteriaForAssignment(assignment.criteria_files) : null;
+	if (!rubric || rubric.categories.length === 0) {
+		throw new Error(
+			`Assignment "${assignmentId}" has no rubric configured — cannot run the category milestone`,
+		);
+	}
+	const categoryEntry = rubric.categories.find((entry) => entry.key === categoryKey);
+	if (!categoryEntry) {
+		throw new Error(
+			`Category "${categoryKey}" does not exist in the rubric for assignment "${assignmentId}"`,
+		);
+	}
+
+	const preAnalysis = analyzeSubmission(cells);
+
+	const settings = await loadSettings();
+	const effectiveTimeoutMs =
+		llmTimeoutMs ?? (settings.llm.timeoutMs > 0 ? settings.llm.timeoutMs : PRE_EVALUATION_LLM_TIMEOUT_MS);
+
+	const worksheet = generateWorksheet({
+		submissionId,
+		assignmentId,
+		cellCount: cells.length,
+		codeCellCount: preAnalysis.codeCellCount,
+		markdownCellCount: preAnalysis.markdownCellCount,
+		preAnalysisSummary: preAnalysis.issueSummary,
+		markerCounts: null,
+		rubric,
+	});
+
+	const result = await runTurnBasedCategoryTurns({
+		worksheet,
+		rubric,
+		submissionId,
+		assignmentId,
+		llmTimeoutMs: effectiveTimeoutMs,
+		preAnalysis,
+		cells,
+		model,
+		temperature,
+		categoryKeys: [categoryKey],
+	});
+
+	// The FINAL worksheet section — the model's edited section merged into
+	// the living worksheet (or the untouched original when the category
+	// failed validation after all retries).
+	const worksheetSection = extractCategorySection(result.worksheet, categoryKey) ?? "";
+
+	return {
+		worksheetSection,
+		rubricSelections: result.rubricSelections,
+		additionalNotes: result.additionalNotes,
+		preAnalysis,
+	};
 }
 
-// ---------------------------------------------------------------------------
 // Balanced criteria diagnostics (9.1)
 // ---------------------------------------------------------------------------
 
@@ -2060,6 +2423,14 @@ const MANDATORY_GENERAL_CATEGORY_KEYS = new Set([
 	"jupyter_notebooks",
 	"academic_scholarship",
 ]);
+
+/**
+ * Categories where zero selections are ALWAYS legitimate — never warned about.
+ * `genai` has only neutral/negative items; a submission with no GenAI usage
+ * correctly selects nothing. `following_instructions` positive "Disallowed
+ * libraries were not used" is handled by post-processing Pass 3.
+ */
+const SILENT_EMPTY_CATEGORY_KEYS = new Set(["genai", "following_instructions"]);
 
 /** The three sentiment sections of the worksheet. */
 const SENTIMENT_SECTIONS = ["positive", "neutral", "negative"] as const;
@@ -2101,7 +2472,12 @@ async function mandatoryCategoryKeys(
 		const general = await loadCriteriaFile(generalPath);
 		if (general) {
 			for (const entry of rubric.categories) {
-				if (!(entry.key in general.categories)) keys.add(entry.key);
+				// Assignment-specific categories are NOT per-section mandatory —
+				// a clean submission legitimately has no negatives. Only warn
+				// about total-zero for these (and skip silent-empty categories).
+				if (!(entry.key in general.categories) && !SILENT_EMPTY_CATEGORY_KEYS.has(entry.key)) {
+					keys.add(entry.key);
+				}
 			}
 		}
 	} catch (err) {
@@ -2111,6 +2487,11 @@ async function mandatoryCategoryKeys(
 		);
 	}
 	return keys;
+}
+
+/** Whether a category is a general mandatory (per-section checks apply). */
+function isGeneralMandatory(key: string): boolean {
+	return MANDATORY_GENERAL_CATEGORY_KEYS.has(key);
 }
 
 /**
@@ -2164,15 +2545,19 @@ async function logBalancedCriteriaWarnings(opts: {
 		if (!mandatoryKeys.has(entry.key)) continue;
 		const title = entry.category.title;
 
-		// Per-section balance: a sentiment section with selectable options
-		// that came back with zero checked items. Sections without rubric
-		// options are skipped — nothing could have been selected there.
-		for (const sentiment of SENTIMENT_SECTIONS) {
-			if (!sentimentHasOptions(entry.category, sentiment)) continue;
-			if (!selectedSentiments.get(entry.key)?.has(sentiment)) {
-				warnings.push(
-					`Category '${title}' has no rubric selections in its ${sentiment} section — may need manual review`,
-				);
+		// Per-section balance: only for general-mandatory categories
+		// (jupyter_notebooks, academic_scholarship) where every sentiment
+		// section that HAS options should carry at least one selection.
+		// Assignment-specific categories legitimately vary — a clean
+		// submission has no negatives for pandas/numpy/scipy/sklearn.
+		if (isGeneralMandatory(entry.key)) {
+			for (const sentiment of SENTIMENT_SECTIONS) {
+				if (!sentimentHasOptions(entry.category, sentiment)) continue;
+				if (!selectedSentiments.get(entry.key)?.has(sentiment)) {
+					warnings.push(
+						`Category '${title}' has no rubric selections in its ${sentiment} section — may need manual review`,
+					);
+				}
 			}
 		}
 

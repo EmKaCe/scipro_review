@@ -158,6 +158,28 @@ describe("POST /api/plagiarism/check", () => {
 		expect(cached).toEqual(result);
 	});
 
+	it("writes the plagiarism-assessment.md deliverable alongside the JSON cache", async () => {
+		await seedSubmission("2026SS_01", [SHARED_CELL, UNRELATED_CELL]);
+		await seedSubmission("2026SS_02", [SHARED_CELL, UNRELATED_CELL]);
+
+		await checkPOST(asEvent(jsonRequest({ assignmentId: ASSIGNMENT })));
+
+		const md = await readFile(
+			path.join(dataDir, "plagiarism", "plagiarism-assessment.md"),
+			"utf-8",
+		);
+		// Header: assignment id + timestamp.
+		expect(md).toContain(`# Plagiarism Assessment — ${ASSIGNMENT}`);
+		expect(md).toContain("**Generated**:");
+		// Flagged pairs: student ids, similarity scores, severity, status.
+		expect(md).toContain("2026SS_01");
+		expect(md).toContain("2026SS_02");
+		expect(md).toContain("Cell overlap");
+		expect(md).toContain("100%");
+		expect(md).toContain("high");
+		expect(md).toContain("unreviewed");
+	});
+
 	it("merges semantic scores when semantic: true and the LLM is available", async () => {
 		await seedSubmission("2026SS_01", [SHARED_CELL]);
 		await seedSubmission("2026SS_02", [SHARED_CELL]);

@@ -23,8 +23,20 @@ import type { ExecutedCell } from "$lib/server/executor-client";
 export interface PreAnalysis {
 	/** Single/double-character variable names found in code cells. */
 	nonDescriptiveNames: string[];
-	/** True when imports are not alphabetically ordered within groups. */
+	/**
+	 * @deprecated Split-block import-ordering heuristic (from- vs import-
+	 * blocks sorted separately) — known to miss real ordering violations.
+	 * Use {@link importsAlphabetized} (whole-list check) instead.
+	 */
 	importsNotAlphabetized: boolean;
+	/**
+	 * True when ALL import lines across ALL code cells are alphabetized as
+	 * ONE list (case-insensitive sort of the full line text) — the
+	 * ground-truth check. Replaces the deprecated split-block heuristic.
+	 */
+	importsAlphabetized: boolean;
+	/** Libraries from the disallowed list that appear in import statements. */
+	disallowedImports: string[];
 	/** Imports that appear in import statements but are never used in code. */
 	unusedImports: string[];
 	/** Count of code cells. */
@@ -138,6 +150,65 @@ function checkImportOrder(codeSources: string[]): boolean {
 }
 
 /**
+ * Whether ALL import lines across ALL code cells are alphabetized as ONE
+ * list — `import` and `from` lines collected together, sorted
+ * case-insensitively by the full line text. This is the ground-truth
+ * definition (the deprecated split-block heuristic in
+ * {@link checkImportOrder} sorts from- and import-blocks separately, which
+ * hides real ordering violations).
+ */
+export function checkImportsAlphabetizedWholeList(cells: ExecutedCell[]): boolean {
+	const importLines: string[] = [];
+	for (const cell of cells) {
+		if (cell.type !== "code") continue;
+		for (const line of (cell.source ?? "").split("\n")) {
+			const trimmed = line.trim();
+			// Real import statements only — markdown prose like "from a
+			// cluster centre" must not count.
+			if (/^(import\s+\S|from\s+\S+\s+import\s+\S)/.test(trimmed)) {
+				importLines.push(trimmed);
+			}
+		}
+	}
+	if (importLines.length <= 1) return true;
+	const sorted = [...importLines].sort((a, b) =>
+		a.toLowerCase().localeCompare(b.toLowerCase()),
+	);
+	return importLines.every((line, i) => line === sorted[i]);
+}
+
+/**
+ * Find imports that match a list of disallowed libraries. Extracts the
+ * top-level module name from each import line across all code cells
+ * (`import sklearn` → `sklearn`, `from sklearn.cluster import KMeans` →
+ * `sklearn`) and returns the matching modules, deduplicated and sorted.
+ * Returns an empty list when the disallowed list is empty.
+ */
+export function detectDisallowedImports(
+	cells: ExecutedCell[],
+	disallowedLibraries: string[],
+): string[] {
+	if (disallowedLibraries.length === 0) return [];
+	const disallowed = new Set(disallowedLibraries);
+	const found = new Set<string>();
+	for (const cell of cells) {
+		if (cell.type !== "code") continue;
+		for (const line of (cell.source ?? "").split("\n")) {
+			const trimmed = line.trim();
+			const moduleName =
+				trimmed.match(/^from\s+([\w.]+)\s+import/)?.[1] ??
+				trimmed.match(/^import\s+([\w.]+)/)?.[1];
+			if (!moduleName) continue;
+			const topLevel = moduleName.split(".")[0]!;
+			if (disallowed.has(topLevel) || disallowed.has(moduleName)) {
+				found.add(topLevel);
+			}
+		}
+	}
+	return [...found].sort();
+}
+
+/**
  * Find imported symbols that are never used in the rest of the code.
  * Checks each imported name against the full source (all code cells).
  */
@@ -204,8 +275,14 @@ function analyzeMarkdown(mdSources: string[]): {
 /**
  * Analyze a submission's executed cells and produce deterministic findings.
  * Zero LLM calls — pure regex + string analysis.
+ *
+ * `disallowedLibraries` is optional (defaults to none): when provided, any
+ * import matching one of those libraries is recorded in `disallowedImports`.
  */
-export function analyzeSubmission(cells: ExecutedCell[]): PreAnalysis {
+export function analyzeSubmission(
+	cells: ExecutedCell[],
+	disallowedLibraries: string[] = [],
+): PreAnalysis {
 	const codeCells = cells.filter((c) => c.type === "code");
 	const mdCells = cells.filter((c) => c.type === "markdown");
 
@@ -222,6 +299,8 @@ export function analyzeSubmission(cells: ExecutedCell[]): PreAnalysis {
 
 	const nonDescriptiveNames = [...allNonDescriptive].sort();
 	const importsNotAlphabetized = !checkImportOrder(codeSources);
+	const importsAlphabetized = checkImportsAlphabetizedWholeList(cells);
+	const disallowedImports = detectDisallowedImports(cells, disallowedLibraries);
 	const unusedImports = findUnusedImports(codeSources);
 	const markdown = analyzeMarkdown(mdSources);
 	const errorCount = cells.filter((c) => c.error != null && c.error.length > 0).length;
@@ -233,6 +312,9 @@ export function analyzeSubmission(cells: ExecutedCell[]): PreAnalysis {
 	}
 	if (importsNotAlphabetized) {
 		issues.push("imports are not alphabetically ordered");
+	}
+	if (disallowedImports.length > 0) {
+		issues.push(`${disallowedImports.length} disallowed import(s): ${disallowedImports.join(", ")}`);
 	}
 	if (unusedImports.length > 0) {
 		issues.push(`${unusedImports.length} unused import(s): ${unusedImports.join(", ")}`);
@@ -250,6 +332,8 @@ export function analyzeSubmission(cells: ExecutedCell[]): PreAnalysis {
 	return {
 		nonDescriptiveNames,
 		importsNotAlphabetized,
+		importsAlphabetized,
+		disallowedImports,
 		unusedImports,
 		codeCellCount: codeCells.length,
 		markdownCellCount: mdCells.length,

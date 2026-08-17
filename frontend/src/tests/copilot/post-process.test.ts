@@ -1,11 +1,12 @@
 /**
  * @file Unit tests for the post-processing layer (post-process.ts).
  *
- * Covers all 6 deterministic correction passes via the 8 canonical cases:
+ * Covers all 7 deterministic correction passes via the canonical cases:
  * empty mandatory-category fill (GenAI), checkbox-textarea sync, the
  * disallowed-library scan in both directions, plagiarism stripping, filler
- * stripping, execution-evidence textarea fill (SciPy R^2/RMSE), and the
- * PostProcessResult contract. Pure logic — no mocks needed.
+ * stripping, execution-evidence textarea fill (SciPy R^2/RMSE), the
+ * evidence-grounded selection corrections, and the PostProcessResult
+ * contract. Pure logic — no mocks needed.
  */
 
 import { describe, expect, it } from "vitest";
@@ -32,6 +33,8 @@ function makePreAnalysis(overrides: Partial<PreAnalysis> = {}): PreAnalysis {
 	return {
 		nonDescriptiveNames: [],
 		importsNotAlphabetized: false,
+		importsAlphabetized: true,
+		disallowedImports: [],
 		unusedImports: [],
 		codeCellCount: 8,
 		markdownCellCount: 6,
@@ -109,6 +112,12 @@ describe("postProcessSubmission", () => {
 	it("adds checkbox when textarea claim matches existing rubric item", () => {
 		const { data, result } = postProcessSubmission(
 			makeOptions({
+				// Evidence must agree with the textarea claim, otherwise
+				// Pass 7 (evidence-grounded) flips the checkbox back.
+				preAnalysis: makePreAnalysis({
+					importsAlphabetized: false,
+					importsNotAlphabetized: true,
+				}),
 				rubricSelections: [
 					{
 						categoryKey: "code_formatting",
@@ -219,6 +228,28 @@ describe("postProcessSubmission", () => {
 		);
 	});
 
+	it("strips 'copied from' plagiarism language from a textarea", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				additionalNotes: {
+					academic_scholarship:
+						"The solution appears copied from the reference solution. Otherwise the analysis is solid and the discussion is well structured.",
+				},
+			}),
+		);
+
+		expect(data.additionalNotes["academic_scholarship"]).not.toContain("copied from");
+		expect(data.additionalNotes["academic_scholarship"]).toContain(
+			"Otherwise the analysis is solid",
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "strip-plagiarism",
+				field: "academicScholarship-textarea",
+			}),
+		);
+	});
+
 	it("strips 'ID at top of the notebook' filler from textarea", () => {
 		const { data, result } = postProcessSubmission(
 			makeOptions({
@@ -280,5 +311,274 @@ describe("postProcessSubmission", () => {
 			expect(typeof fix.newValue).toBe("string");
 			expect(typeof fix.reason).toBe("string");
 		}
+	});
+
+	it("flips the alphabetized positive to the not-alphabetized negative when evidence says imports are not alphabetized", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({
+					importsAlphabetized: false,
+					importsNotAlphabetized: true,
+				}),
+				rubricSelections: [
+					{
+						categoryKey: "code_formatting",
+						optionKey: "imports - libraries were alphabetized",
+					},
+				],
+			}),
+		);
+
+		expect(data.rubricSelections).not.toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "imports - libraries were alphabetized",
+			}),
+		);
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "imports - not alphabetized",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "codeFormatting-negative:imports - not alphabetized",
+				newValue: "checked",
+			}),
+		);
+	});
+
+	it("flips the not-alphabetized negative to the alphabetized positive when evidence says imports are alphabetized", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				// Default makePreAnalysis: importsAlphabetized: true.
+				rubricSelections: [
+					{
+						categoryKey: "code_formatting",
+						optionKey: "imports - not alphabetized",
+					},
+				],
+			}),
+		);
+
+		expect(data.rubricSelections).not.toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "imports - not alphabetized",
+			}),
+		);
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "imports - libraries were alphabetized",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "codeFormatting-positive:imports - libraries were alphabetized",
+				newValue: "checked",
+			}),
+		);
+	});
+
+	it("unchecks the descriptive-naming positive when non-descriptive names are detected", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({ nonDescriptiveNames: ["df", "x"] }),
+				rubricSelections: [
+					{
+						categoryKey: "code_formatting",
+						optionKey: "naming - descriptive objects/variables (i.e., human readable)",
+					},
+				],
+			}),
+		);
+
+		expect(data.rubricSelections).not.toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "naming - descriptive objects/variables (i.e., human readable)",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "codeFormatting-positive:naming - descriptive objects/variables (i.e., human readable)",
+				newValue: "(removed)",
+			}),
+		);
+	});
+
+	it("adds the unused-imports negative to coding_concept when unused imports are detected", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({ unusedImports: ["os"] }),
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "coding_concept",
+				optionKey: "imports - libraries were imported, but not used (not concise coding)",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "codingConcept-negative:imports - libraries were imported, but not used (not concise coding)",
+				newValue: "checked",
+			}),
+		);
+	});
+
+	it("adds the no-interpretation negative to general_feedback when markdown has no interpretation", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({
+					hasInterpretation: false,
+					markdownCellCount: 3,
+				}),
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "general_feedback",
+				optionKey:
+					"interpretation - there was no or little attempt to interpret or discuss the code's results",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "general-negative:interpretation - there was no or little attempt to interpret or discuss the code's results",
+				newValue: "checked",
+			}),
+		);
+	});
+
+	it("adds the no-citations negative to academic_scholarship when markdown has no citations", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({
+					citationCount: 0,
+					markdownCellCount: 3,
+				}),
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "academic_scholarship",
+				optionKey:
+					"As a university student, you should be citing sources of knowledge. This is something that you will need to do for your thesis.",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "evidence-grounded",
+				field: "academicScholarship-negative:As a university student, you should be citing sources of knowledge. This is something that you will need to do for your thesis.",
+				newValue: "checked",
+			}),
+		);
+	});
+
+	it("syncs textarea mention of non-descriptive names to the naming negative", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				additionalNotes: {
+					code_formatting: "Non-descriptive variable name(s): df, x.",
+				},
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "naming - object/variable (e.g., df, data, x, y) is not descriptive enough",
+			}),
+		);
+		// "non-descriptive" must NOT trigger the descriptive positive.
+		expect(data.rubricSelections).not.toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "naming - descriptive objects/variables (i.e., human readable)",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({
+				pass: "checkbox-textarea-sync",
+				field: "codeFormatting-negative:naming - object/variable (e.g., df, data, x, y) is not descriptive enough",
+			}),
+		);
+	});
+
+	it("syncs textarea mention of a double blank line to the too-many-blank-lines negative", () => {
+		const { data } = postProcessSubmission(
+			makeOptions({
+				additionalNotes: {
+					code_formatting: "The plume function body contains a double blank line.",
+				},
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "blank lines - too many used (i.e., not concise)",
+			}),
+		);
+	});
+
+	it("syncs textarea mention of imports not at the top to the imports-placement negative", () => {
+		const { data } = postProcessSubmission(
+			makeOptions({
+				additionalNotes: {
+					code_formatting: "Imports are not listed together at the notebook's top.",
+				},
+			}),
+		);
+
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "code_formatting",
+				optionKey: "imports - not listed together at the notebook's top",
+			}),
+		);
+	});
+
+	it("strips generic LLM filler sentences from textareas", () => {
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				additionalNotes: {
+					code_formatting:
+						"The notebook is well-structured. The solution is well organized. All required tasks were completed. The student clearly demonstrates understanding. The code generally follows best practices. The submission meets all requirements. Actual feedback here.",
+				},
+			}),
+		);
+
+		expect(data.additionalNotes["code_formatting"]).toBe("Actual feedback here.");
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({ pass: "strip-filler", field: "codeFormatting-textarea" }),
+		);
+	});
+
+	it("uses importsAlphabetized (whole-list) when generating the codeFormatting note", () => {
+		const { data } = postProcessSubmission(
+			makeOptions({
+				preAnalysis: makePreAnalysis({
+					// Split-block heuristic says sorted, whole-list check says NOT.
+					importsNotAlphabetized: false,
+					importsAlphabetized: false,
+				}),
+			}),
+		);
+
+		expect(data.additionalNotes["code_formatting"]).toContain(
+			"Imports are not alphabetized.",
+		);
 	});
 });

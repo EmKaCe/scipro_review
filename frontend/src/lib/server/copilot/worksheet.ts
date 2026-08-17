@@ -159,6 +159,301 @@ export function generateWorksheet(ctx: WorksheetContext): string {
 }
 
 // ---------------------------------------------------------------------------
+// Turn-based validation configuration
+// ---------------------------------------------------------------------------
+
+/** One mutual-exclusion pair within a single category. */
+export interface MutualExclusionPair {
+	/** Sub-point text of the first logical opposite. */
+	a: string;
+	/** Sub-point text of the second logical opposite. */
+	b: string;
+	/** Human-readable label for error messages. */
+	label?: string;
+}
+
+/**
+ * Hard-coded mutual-exclusion pairs per category. These are logical opposites:
+ * checking both makes the rubric contradictory. The retry loop uses this
+ * configuration to demand the model remove one side.
+ *
+ * Pairs are defined as sub-point texts (verbatim from the rubric). A category
+ * MAY contain both positive and negative selections as long as they are not
+ * logical opposites of the same aspect — only the pairs below are banned.
+ * Multi-way exclusion (e.g. the three blank-lines negatives) is expressed as
+ * one pair per negative against the shared positive.
+ */
+export const MUTUAL_EXCLUSION_PAIRS: Readonly<Record<string, readonly MutualExclusionPair[]>> = {
+	code_formatting: [
+		{
+			a: "imports - libraries were alphabetized",
+			b: "imports - not alphabetized",
+			label: "import ordering",
+		},
+		{
+			a: "imports - libraries were listed at the notebook's top",
+			b: "imports - not listed together at the notebook's top",
+			label: "import placement",
+		},
+		{
+			a: "blank lines - consistent and good usage",
+			b: "blank lines - missing the required two blank lines after imports and/or around user-defined functions (PEP8)",
+			label: "blank lines (PEP8)",
+		},
+		{
+			a: "blank lines - consistent and good usage",
+			b: "blank lines - not enough used (e.g., separating ideas and improving readability)",
+			label: "blank lines",
+		},
+		{
+			a: "blank lines - consistent and good usage",
+			b: "blank lines - too many used (i.e., not concise)",
+			label: "blank lines",
+		},
+		{
+			a: "naming - descriptive objects/variables (i.e., human readable)",
+			b: "naming - object/variable (e.g., df, data, x, y) is not descriptive enough",
+			label: "naming descriptiveness",
+		},
+		{
+			a: "PEP8 guidelines- followed",
+			b: "PEP8 - not well followed",
+			label: "PEP8 compliance",
+		},
+		{
+			a: "spacing - consistent and correct usage",
+			b: "spacing - inconsistent and/or improperly used",
+			label: "spacing",
+		},
+		{
+			a: "indentation - consistent and done with 4 spaces",
+			b: "indentation - improperly done (i.e., 4 spaces)",
+			label: "indentation",
+		},
+		{
+			a: "line length - properly done (e.g., no scrolling is needed)",
+			b: "line length - too long (i.e., requiring scrolling)",
+			label: "line length",
+		},
+		{
+			a: "commenting - appropriate amount provided (i.e., not excessive or insufficient)",
+			b: "commenting - excessive amounts done (e.g., for obvious points), or not relevant (i.e. significantly distracts from the solution's main focus)",
+			label: "commenting amount",
+		},
+		{
+			a: "f-string - properly used",
+			b: "f-string - not used (e.g., print statements)",
+			label: "f-string usage",
+		},
+	],
+	coding_concept: [
+		{
+			a: "set",
+			b: "using 'set' - unique elements",
+			label: "set usage",
+		},
+		{
+			a: "tuple",
+			b: "using 'tuple' - immutable elements",
+			label: "tuple usage",
+		},
+		{
+			a: "looping - 'zip' usage to iterate over two lists",
+			b: "looping - use 'zip' to loop over two lists of equal length",
+			label: "zip looping",
+		},
+	],
+	jupyter_notebooks: [
+		{
+			a: "cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)",
+			b: "cell structure - separatation of the tasks, subtasks, or ideas needs to be better",
+			label: "cell separation",
+		},
+		{
+			a: "cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)",
+			b: "cell structure - some additional separation of ideas (both code and markdown cells)",
+			label: "cell separation",
+		},
+		{
+			a: "code cells - good separation of encode ideas",
+			b: "code cells - some additional encoded ideas into separate cells would have been logical",
+			label: "code cell separation",
+		},
+		{
+			a: "markdown cells - good usage to communicate ideas, thoughts or workflow",
+			b: "markdown cells - are not used, or there is a significant lack of good, informative communication",
+			label: "markdown communication",
+		},
+		{
+			a: "markdown cells - good usage to communicate ideas, thoughts or workflow",
+			b: "markdown cells - some additional communication would have been more informative",
+			label: "markdown communication",
+		},
+	],
+	academic_scholarship: [
+		{
+			a: "citing - source of information and knowledge",
+			b: "citing - missing references for knowledge (e.g., datasets, equations, libraries)",
+			label: "citing sources",
+		},
+		{
+			a: "citing - proper ordering within the written text (e.g., ...[1-2]...[3] and not ...[3-4]...[1]...)",
+			b: "citing - done out-of-order (e.g., the first citation in your text is not to Reference 1)",
+			label: "citation ordering",
+		},
+		{
+			a: "units - input and output numbers have units (e.g., N, kJ, m/s, Hz)",
+			b: "units - were not provided when needed",
+			label: "units",
+		},
+		{
+			a: "sentences - clear, concise and provides good context (i.e., C^3)",
+			b: "sentences - not clean, concise and/or context provided (C^3)",
+			label: "sentence clarity",
+		},
+		{
+			a: "sentences - complete written when appropriate (e.g., within markdown cells, docstrings)",
+			b: "sentences - incomplete sentences (e.g., capitalization, subject, verb) when needed (including in f-strings)",
+			label: "sentence completeness",
+		},
+	],
+};
+
+/** Validation error kinds surfaced by {@link validateWorksheetSection}. */
+export type WorksheetValidationErrorType =
+	| "unknown"
+	| "mutual_exclusion"
+	| "empty"
+	| "header_mismatch";
+
+/** One validation failure for a worksheet section. */
+export interface WorksheetValidationError {
+	type: WorksheetValidationErrorType;
+	/** Human-readable message for the retry prompt. */
+	message: string;
+	/** Optional offending checked text(s). */
+	items?: string[];
+}
+
+/** Result of validating a single category section. */
+export interface WorksheetValidationResult {
+	/** True when no validation errors were found. */
+	ok: boolean;
+	/** Errors to send back to the model on a retry. */
+	errors: WorksheetValidationError[];
+	/** Resolved selections (only meaningful when ok). */
+	selections: WorksheetSelection[];
+	/** Additional notes text (null when absent or placeholder). */
+	notes: string | null;
+}
+
+/**
+ * Classify a rubric sub-point text by sentiment. Returns null when the text
+ * is not a sub-point of the given category.
+ */
+export function sentimentOfOption(
+	category: Category,
+	text: string,
+): "positive" | "negative" | "neutral" | null {
+	if (category.positive.some((mp) => mp.sub_points.some((sp) => sp.text === text))) {
+		return "positive";
+	}
+	if (category.negative.some((mp) => mp.sub_points.some((sp) => sp.text === text))) {
+		return "negative";
+	}
+	if (category.neutral.some((mp) => mp.sub_points.some((sp) => sp.text === text))) {
+		return "neutral";
+	}
+	return null;
+}
+
+/**
+ * Validate ONE category section of the worksheet — the markdown the model
+ * returns for a single category, from its `## Rubric:` header through
+ * `### Additional Notes`. The retry loop calls this after every model turn
+ * and sends the returned errors back verbatim for repair.
+ *
+ * Checks, in order:
+ *   - `header_mismatch` — the section does not start with `## Rubric: {categoryKey}`.
+ *   - `empty` — no checked items at all AND no non-empty additional note.
+ *   - `unknown` — a checked text matches no rubric sub-point anywhere.
+ *   - `mutual_exclusion` — both texts of a configured pair are checked.
+ *
+ * Mixed positive + negative selections are NOT an error: a category may
+ * contain both as long as the items are not logical opposites (a configured
+ * mutual-exclusion pair).
+ *
+ * The model returns the section WITH its header, while
+ * {@link parseWorksheetSection} expects the body only — the header is
+ * validated and stripped before delegating.
+ */
+export function validateWorksheetSection(
+	sectionMarkdown: string,
+	categoryKey: string,
+	rubric: MergedRubric,
+): WorksheetValidationResult {
+	const errors: WorksheetValidationError[] = [];
+
+	const lines = sectionMarkdown.split("\n");
+	const firstLine = lines[0] ?? "";
+	const headerMatch = firstLine.match(RUBRIC_SECTION_PATTERN);
+	const headerKey = headerMatch ? splitSectionHeader(headerMatch[1]!).key : null;
+	if (headerKey !== categoryKey) {
+		errors.push({
+			type: "header_mismatch",
+			message: `Section must start with "## Rubric: ${categoryKey}".`,
+		});
+	}
+	const body = headerMatch ? lines.slice(1).join("\n") : sectionMarkdown;
+
+	const parsed = parseWorksheetSection(body, categoryKey, rubric);
+
+	// b. empty — zero checked items (matched or not) and no non-empty note.
+	const checkedCount = parsed.selections.length + parsed.unmatched.length;
+	if (checkedCount === 0 && parsed.notes === null) {
+		errors.push({
+			type: "empty",
+			message: `No items are checked and no additional note is written for "${categoryKey}". Choose the single best-matching sub-point and explain why in the notes.`,
+		});
+	}
+
+	// c. unknown — a checked text matches no rubric sub-point anywhere.
+	for (const item of parsed.unmatched) {
+		errors.push({
+			type: "unknown",
+			message: `Checked text "${item.text}" matches no rubric sub-point. Use the exact rubric text.`,
+			items: [item.text],
+		});
+	}
+
+	// d. mutual_exclusion — both sides of a configured pair are checked.
+	const checkedTexts = new Set<string>([
+		...parsed.selections.map((s) => s.optionKey),
+		...parsed.unmatched.map((u) => u.text),
+	]);
+	for (const pair of MUTUAL_EXCLUSION_PAIRS[categoryKey] ?? []) {
+		if (checkedTexts.has(pair.a) && checkedTexts.has(pair.b)) {
+			errors.push({
+				type: "mutual_exclusion",
+				message: `Mutually exclusive items are both checked${pair.label ? ` (${pair.label})` : ""}: "${pair.a}" and "${pair.b}". Remove one.`,
+				items: [pair.a, pair.b],
+			});
+		}
+	}
+
+	// e. (removed) — mixed positive + negative sentiment is allowed as long as
+	// the items are not logical opposites (handled by the mutual-exclusion
+	// pairs above).
+
+	return {
+		ok: errors.length === 0,
+		errors,
+		selections: parsed.selections,
+		notes: parsed.notes,
+	};
+}
+
+// ---------------------------------------------------------------------------
 // Parser
 // ---------------------------------------------------------------------------
 

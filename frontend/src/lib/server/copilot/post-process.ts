@@ -1,5 +1,5 @@
 /**
- * @file Post-processing layer for pre-evaluation results — 6 deterministic
+ * @file Post-processing layer for pre-evaluation results — 7 deterministic
  * correction passes.
  *
  * Takes the pre-evaluation envelope (dimension scores + rubric selections +
@@ -23,6 +23,10 @@
  *                               from ALL textareas.
  *   Pass 6 — fill-textarea:     empty/short textareas are filled with 1-2
  *                               sentence notes citing execution-record facts.
+ *   Pass 7 — evidence-grounded: rubric selections that contradict the
+ *                               deterministic pre-analysis findings (import
+ *                               ordering, naming, unused imports,
+ *                               interpretation, citations) are corrected.
  *
  * The whole module is DETERMINISTIC — no model calls, no randomness. Every
  * change is recorded as a {@link PostProcessFix} in the returned
@@ -101,6 +105,17 @@ const FOLLOWING_INSTRUCTIONS_NO_DISALLOWED = "Disallowed libraries were not used
 const CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED = "imports - not alphabetized";
 const CODE_FORMATTING_NAMING_DESCRIPTIVE =
 	"naming - descriptive objects/variables (i.e., human readable)";
+const CODE_FORMATTING_IMPORTS_ALPHABETIZED = "imports - libraries were alphabetized";
+const CODE_FORMATTING_NAMING_NOT_DESCRIPTIVE =
+	"naming - object/variable (e.g., df, data, x, y) is not descriptive enough";
+const CODE_FORMATTING_BLANK_LINES_TOO_MANY = "blank lines - too many used (i.e., not concise)";
+const CODE_FORMATTING_IMPORTS_NOT_AT_TOP = "imports - not listed together at the notebook's top";
+const CODING_CONCEPT_IMPORTS_NOT_USED =
+	"imports - libraries were imported, but not used (not concise coding)";
+const GENERAL_FEEDBACK_NO_INTERPRETATION =
+	"interpretation - there was no or little attempt to interpret or discuss the code's results";
+const ACADEMIC_SCHOLARSHIP_NO_CITATIONS =
+	"As a university student, you should be citing sources of knowledge. This is something that you will need to do for your thesis.";
 const CALLING_FUNCTION_KEYWORD_ARGS =
 	"keyword arguments calls - include the parameter that are being assigned the argument to (e.g., 'my_function(param1=arg1, param2=arg2)'. Doing so ensure that the arguments are passed correctly.";
 const CALLING_FUNCTION_MULTILINE_FORMATTING =
@@ -406,8 +421,27 @@ const TEXTAREA_SYNC_RULES: readonly {
 		categoryKey: "code_formatting",
 		sentiment: "positive",
 		pattern:
-			/naming\s+is\s+descriptive|names?\s+(?:are\s+)?descriptive|descriptive\s+(?:object|variable|name)/i,
+			/naming\s+is\s+descriptive|names?\s+(?:are\s+)?descriptive|(?<!non[- ])descriptive\s+(?:object|variable|name)/i,
 		optionKey: CODE_FORMATTING_NAMING_DESCRIPTIVE,
+	},
+	{
+		categoryKey: "code_formatting",
+		sentiment: "negative",
+		pattern: /non[- ]descriptive|not\s+descriptive/i,
+		optionKey: CODE_FORMATTING_NAMING_NOT_DESCRIPTIVE,
+	},
+	{
+		categoryKey: "code_formatting",
+		sentiment: "negative",
+		pattern: /double\s+blank\s+line/i,
+		optionKey: CODE_FORMATTING_BLANK_LINES_TOO_MANY,
+	},
+	{
+		categoryKey: "code_formatting",
+		sentiment: "negative",
+		pattern:
+			/imports?\s+(?:are\s+)?not\s+(?:listed\s+(?:together\s+)?)?at\s+(?:the\s+)?(?:notebook'?s\s+)?top/i,
+		optionKey: CODE_FORMATTING_IMPORTS_NOT_AT_TOP,
 	},
 ];
 
@@ -551,6 +585,7 @@ const PLAGIARISM_PATTERNS: readonly RegExp[] = [
 	/shared (template|code|pattern)/i,
 	/classmate/i,
 	/identical\s+(?:to|with)\s+[^\s.]*\d{4}\s*SS/i,
+	/copied\s+(?:from|code|solution)/i,
 ];
 
 function passStripPlagiarism(state: WorkingState, fixes: PostProcessFix[]): void {
@@ -580,6 +615,12 @@ const FILLER_PATTERNS: readonly RegExp[] = [
 	/all five tasks are addressed in order/i,
 	/only allowed libraries were imported/i,
 	/the submission is a jupyter notebook/i,
+	/the notebook is (well[- ])?structured/i,
+	/the solution is (well[- ])?organized/i,
+	/all (required |)tasks (were|are) (completed|attempted)/i,
+	/the student( clearly)? demonstrates understanding/i,
+	/the (code|solution|notebook) (generally |)follows/i,
+	/the submission meets (the |)(all |)requirements/i,
 ];
 
 function passStripFiller(state: WorkingState, fixes: PostProcessFix[]): void {
@@ -748,7 +789,7 @@ function generatePlottingNote(ev: EvidenceFacts): string {
 function generateCodeFormattingNote(ev: EvidenceFacts): string {
 	const sentences: string[] = [];
 	sentences.push(
-		ev.pre.importsNotAlphabetized
+		!ev.pre.importsAlphabetized
 			? "Imports are not alphabetized."
 			: "Imports are alphabetized.",
 	);
@@ -881,11 +922,214 @@ function passFillTextareas(
 }
 
 // ---------------------------------------------------------------------------
+// Pass 7 — Evidence-grounded selection corrections
+// ---------------------------------------------------------------------------
+
+/**
+ * Correct rubric selections that contradict the deterministic pre-analysis.
+ * Runs AFTER all other passes so hard evidence is the final authority: a
+ * checkbox added by Pass 2's textarea sync or Pass 6's note generation cannot
+ * override a direct finding from pre-analysis.
+ *
+ * Corrections applied:
+ *   - import ordering: the alphabetized positive / not-alphabetized negative
+ *     is flipped to match {@link PreAnalysis#importsAlphabetized}
+ *   - naming: the descriptive-naming positive is unchecked when
+ *     non-descriptive names were detected
+ *   - unused imports: the coding_concept "imported, but not used" negative is
+ *     added when unused imports were detected
+ *   - interpretation: the general_feedback no-interpretation negative is
+ *     added when markdown cells exist but contain no interpretation language
+ *   - citations: the academic_scholarship no-citations negative is added when
+ *     markdown cells exist but contain no citations
+ */
+function passEvidenceGroundedCorrections(
+	state: WorkingState,
+	fixes: PostProcessFix[],
+): void {
+	const pre = state.preAnalysis;
+
+	// (a) Import alphabetization — flip the mutual-exclusion pair to the side
+	// the whole-list check supports.
+	const codeFormatting = resolveCategory("code_formatting");
+	if (codeFormatting && !pre.importsAlphabetized) {
+		if (
+			hasOption(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_ALPHABETIZED,
+			)
+		) {
+			state.selections = withSelectionRemoved(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_ALPHABETIZED,
+			);
+			state.selections = withSelectionAdded(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED,
+			);
+			fixes.push(
+				{
+					pass: "evidence-grounded",
+					field: `codeFormatting-positive:${CODE_FORMATTING_IMPORTS_ALPHABETIZED}`,
+					oldValue: "checked",
+					newValue: "(removed)",
+					reason: "preAnalysis.importsAlphabetized is false (whole-list check); the alphabetized positive contradicts the execution evidence.",
+				},
+				{
+					pass: "evidence-grounded",
+					field: `codeFormatting-negative:${CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED}`,
+					oldValue: null,
+					newValue: "checked",
+					reason: "preAnalysis.importsAlphabetized is false; checked the not-alphabetized negative instead.",
+				},
+			);
+		}
+	} else if (codeFormatting && pre.importsAlphabetized) {
+		if (
+			hasOption(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED,
+			)
+		) {
+			state.selections = withSelectionRemoved(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED,
+			);
+			state.selections = withSelectionAdded(
+				state.selections,
+				codeFormatting.key,
+				CODE_FORMATTING_IMPORTS_ALPHABETIZED,
+			);
+			fixes.push(
+				{
+					pass: "evidence-grounded",
+					field: `codeFormatting-negative:${CODE_FORMATTING_IMPORTS_NOT_ALPHABETIZED}`,
+					oldValue: "checked",
+					newValue: "(removed)",
+					reason: "preAnalysis.importsAlphabetized is true (whole-list check); the not-alphabetized negative contradicts the execution evidence.",
+				},
+				{
+					pass: "evidence-grounded",
+					field: `codeFormatting-positive:${CODE_FORMATTING_IMPORTS_ALPHABETIZED}`,
+					oldValue: null,
+					newValue: "checked",
+					reason: "preAnalysis.importsAlphabetized is true; checked the alphabetized positive instead.",
+				},
+			);
+		}
+	}
+
+	// (b) Non-descriptive names — uncheck the descriptive-naming positive.
+	if (
+		codeFormatting &&
+		pre.nonDescriptiveNames.length > 0 &&
+		hasOption(
+			state.selections,
+			codeFormatting.key,
+			CODE_FORMATTING_NAMING_DESCRIPTIVE,
+		)
+	) {
+		state.selections = withSelectionRemoved(
+			state.selections,
+			codeFormatting.key,
+			CODE_FORMATTING_NAMING_DESCRIPTIVE,
+		);
+		fixes.push({
+			pass: "evidence-grounded",
+			field: `codeFormatting-positive:${CODE_FORMATTING_NAMING_DESCRIPTIVE}`,
+			oldValue: "checked",
+			newValue: "(removed)",
+			reason: `preAnalysis found non-descriptive name(s): ${pre.nonDescriptiveNames.join(", ")}; the descriptive-naming positive contradicts the execution evidence.`,
+		});
+	}
+
+	// (c) Unused imports — add the coding_concept negative.
+	const codingConcept = resolveCategory("coding_concept");
+	if (
+		codingConcept &&
+		pre.unusedImports.length > 0 &&
+		!hasOption(
+			state.selections,
+			codingConcept.key,
+			CODING_CONCEPT_IMPORTS_NOT_USED,
+		)
+	) {
+		state.selections = withSelectionAdded(
+			state.selections,
+			codingConcept.key,
+			CODING_CONCEPT_IMPORTS_NOT_USED,
+		);
+		fixes.push({
+			pass: "evidence-grounded",
+			field: `codingConcept-negative:${CODING_CONCEPT_IMPORTS_NOT_USED}`,
+			oldValue: null,
+			newValue: "checked",
+			reason: `preAnalysis found unused import(s): ${pre.unusedImports.join(", ")}; checked the imports-not-used negative.`,
+		});
+	}
+
+	// (d) No interpretation — add the general_feedback negative when markdown
+	// cells exist but contain no interpretation language.
+	const general = resolveCategory("general_feedback");
+	if (
+		general &&
+		!pre.hasInterpretation &&
+		pre.markdownCellCount > 0 &&
+		!hasOption(state.selections, general.key, GENERAL_FEEDBACK_NO_INTERPRETATION)
+	) {
+		state.selections = withSelectionAdded(
+			state.selections,
+			general.key,
+			GENERAL_FEEDBACK_NO_INTERPRETATION,
+		);
+		fixes.push({
+			pass: "evidence-grounded",
+			field: `general-negative:${GENERAL_FEEDBACK_NO_INTERPRETATION}`,
+			oldValue: null,
+			newValue: "checked",
+			reason: "preAnalysis found no interpretation language in the markdown cells; checked the no-interpretation negative.",
+		});
+	}
+
+	// (e) No citations — add the academic_scholarship negative when markdown
+	// cells exist but contain no citations.
+	const academic = resolveCategory("academic_scholarship");
+	if (
+		academic &&
+		pre.citationCount === 0 &&
+		pre.markdownCellCount > 0 &&
+		!hasOption(
+			state.selections,
+			academic.key,
+			ACADEMIC_SCHOLARSHIP_NO_CITATIONS,
+		)
+	) {
+		state.selections = withSelectionAdded(
+			state.selections,
+			academic.key,
+			ACADEMIC_SCHOLARSHIP_NO_CITATIONS,
+		);
+		fixes.push({
+			pass: "evidence-grounded",
+			field: `academicScholarship-negative:${ACADEMIC_SCHOLARSHIP_NO_CITATIONS}`,
+			oldValue: null,
+			newValue: "checked",
+			reason: "preAnalysis found no citations in the markdown cells; checked the no-citations negative.",
+		});
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 /**
- * Apply the 6 deterministic correction passes to a pre-evaluation result.
+ * Apply the 7 deterministic correction passes to a pre-evaluation result.
  *
  * Pure logic — no model calls, no randomness. The input is not mutated; the
  * returned data is a corrected copy, and every change is recorded in the
@@ -913,6 +1157,7 @@ export function postProcessSubmission(opts: PostProcessOptions): {
 	passStripPlagiarism(state, fixes); // Pass 4
 	passStripFiller(state, fixes); // Pass 5
 	passFillTextareas(state, opts.dimensions, fixes); // Pass 6
+	passEvidenceGroundedCorrections(state, fixes); // Pass 7
 
 	return {
 		data: {

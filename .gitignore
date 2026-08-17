@@ -16,6 +16,9 @@ data/materials/
 !data/grading_config.yaml
 !data/criteria/
 
+# Grading analysis artifacts (student grades) — never committed
+grading-output/
+
 # Hermes agent config (keep local)
 .hermes/*
 !.hermes/plans/

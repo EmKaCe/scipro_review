@@ -5,10 +5,10 @@
  * real temp DATA_DIR fixture: assignments.yaml + criteria YAML +
  * grading_config.yaml + input_data files + materials key notebook + a stored
  * execution result (results.json). Covers the phased pipeline (markers,
- * scoring, worksheet rubric batches, feedback), the grounded prompts, the
- * never-fabricate-markers rule, the worksheet batch retry on unmatched
- * items, post-Zod semantic validation, and KI Connect failure / invalid
- * output surfacing.
+ * scoring, turn-based rubric selection, feedback), the grounded prompts, the
+ * never-fabricate-markers rule, the per-category markdown retry loop (up to
+ * MAX_RETRIES, then "[needs review]" flagging), post-Zod semantic
+ * validation, and KI Connect failure / invalid output surfacing.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,23 +18,22 @@ import path from "node:path";
 import * as yaml from "js-yaml";
 
 import {
+	derivedGradingConfidence,
 	preEvaluateSubmission,
-	parseWorksheetJson,
 	modelHintBlock,
 	runCohortCalibration,
+	type GradingConfidence,
 	type PreEvaluation,
 } from "$lib/server/copilot/pre-evaluation";
 import type { ExecutionResult } from "$lib/server/executor-client";
+import type { PreAnalysis } from "$lib/server/copilot/pre-analysis";
+import type { PostProcessFix } from "$lib/server/copilot/post-process";
 import {
 	readResults,
 	setPreEvaluation,
 	writeResults,
 } from "$lib/server/results-store";
 import { parseCategoryKey, type Category, type MergedRubric } from "$lib/types/criteria";
-import {
-	worksheetBatchSchema,
-	type WorksheetBatchOutput,
-} from "$lib/server/copilot/worksheet-json-schema";
 
 // ---------------------------------------------------------------------------
 // KI Connect mock
@@ -49,9 +48,9 @@ const kiConnectMock = vi.hoisted(() => ({
 	model: "qwen3-30b-a3b-instruct-2507",
 }));
 
-/** Models passed to `new KiConnectClient(...)` — the 2b-verify pass must
- * build a dedicated client pinned to qwen3-30b when the primary model
- * differs (Wave 5 swaps the primary to gpt-oss-120b). */
+/** Models passed to `new KiConnectClient(...)` — the turn-based rubric
+ * selection runs on the primary model (gpt-oss-120b via per-phase routing),
+ * so no dedicated verify client is built anymore. */
 const constructedClientModels = vi.hoisted(() => ({ models: [] as string[] }));
 
 vi.mock("$lib/server/ki-connect", () => {
@@ -367,12 +366,6 @@ function makeRubric(): MergedRubric {
 
 const RUBRIC = makeRubric();
 
-/** The 4 worksheet category batches (mirror of the module's CATEGORY_BATCHES). */
-const BATCH_1 = ["code_formatting", "jupyter_notebooks", "academic_scholarship"];
-const BATCH_2 = ["coding_concept", "following_instructions", "general_feedback"];
-const BATCH_3 = ["pandas", "numpy", "scipy", "sklearn"];
-const BATCH_4 = ["genai", "user_defined_functions", "function_calling", "plotting_visualization"];
-
 /** First positive sub-point text of a category — the default checked item. */
 function firstPositiveSubPoint(key: string): string {
 	const entry = RUBRIC.categories.find((c) => c.key === key)!;
@@ -380,56 +373,45 @@ function firstPositiveSubPoint(key: string): string {
 }
 
 /**
- * A filled worksheet batch response for `batchKeys` in the JSON OUTPUT
- * format: each category gets an overall verdict, its checked sub-points (by
- * default exactly the first positive sub-point of each category) with a
- * one-sentence evidence citation, and a short additional note. `checkAll`
- * checks every sub-point instead (used to overflow the 200-item safety cap).
+ * A filled worksheet section for ONE category in the turn-based markdown
+ * OUTPUT format: the `## Rubric: {key} — {title}` header, `### Positive` /
+ * `### Negative` / `### Neutral` subsections (neutral only when the category
+ * has neutral sub-points), the checked items marked `[x]`, and `### Additional
+ * Notes` with a short note.
  */
-function filledBatchJson(
-	batchKeys: string[],
-	checkAll = false,
-): Record<string, WorksheetBatchOutput["categories"][string]> {
-	const categories: Record<string, WorksheetBatchOutput["categories"][string]> = {};
-	for (const key of batchKeys) {
-		const entry = RUBRIC.categories.find((c) => c.key === key);
-		if (!entry) continue;
-		const category = entry.category;
-		const checked: WorksheetBatchOutput["categories"][string]["checked"] = [];
-		for (const sentiment of ["positive", "negative", "neutral"] as const) {
-			for (const mp of category[sentiment]) {
-				for (const sp of mp.sub_points) {
-					if (
-						checkAll ||
-						(sentiment === "positive" && sp.text === firstPositiveSubPoint(key))
-					) {
-						checked.push({
-							item: sp.text,
-							evidence: `Pre-analysis confirms "${sp.text}" for this submission.`,
-						});
-					}
-				}
-			}
+function filledSectionMarkdown(
+	categoryKey: string,
+	checked: string[],
+	notes: string,
+): string {
+	const entry = RUBRIC.categories.find((c) => c.key === categoryKey)!;
+	const category = entry.category;
+	const lines: string[] = [];
+	lines.push(`## Rubric: ${categoryKey} — ${category.title}`);
+	lines.push("");
+	for (const sentiment of ["positive", "negative", "neutral"] as const) {
+		const subPoints = category[sentiment].flatMap((mp) => mp.sub_points);
+		if (subPoints.length === 0) continue;
+		lines.push(`### ${sentiment[0]!.toUpperCase()}${sentiment.slice(1)}`);
+		lines.push("");
+		for (const sp of subPoints) {
+			lines.push(`- [${checked.includes(sp.text) ? "x" : " "}] ${sp.text}`);
 		}
-		categories[key] = {
-			overall: checkAll ? "POOR" : "GOOD",
-			checked,
-			notes: `Notes for ${key}.`,
-		};
+		lines.push("");
 	}
-	return categories;
+	lines.push("### Additional Notes");
+	lines.push("");
+	lines.push(notes);
+	return lines.join("\n");
 }
 
-/** The aggregate JSON across all 4 batches — the default primary-pass output. */
-function defaultWorksheetJson(): WorksheetBatchOutput {
-	return {
-		categories: {
-			...filledBatchJson(BATCH_1),
-			...filledBatchJson(BATCH_2),
-			...filledBatchJson(BATCH_3),
-			...filledBatchJson(BATCH_4),
-		},
-	};
+/** The default filled section for one category (first positive sub-point checked). */
+function defaultCategoryTurnResponse(categoryKey: string): string {
+	return filledSectionMarkdown(
+		categoryKey,
+		[firstPositiveSubPoint(categoryKey)],
+		`Notes for ${categoryKey}.`,
+	);
 }
 
 // Full envelope — the test expects this shape back from the assembled pipeline
@@ -452,8 +434,8 @@ const ENVELOPE = {
 		},
 		justification: "Clean structure and correct results, with minor inefficiencies.",
 	},
-	// The default filled batches check the first positive sub-point of every
-	// category and write one note per category — parsed back verbatim.
+	// The default per-category turns check the first positive sub-point of
+	// every category and write one note per category — parsed back verbatim.
 	rubricSelections: RUBRIC.categories.map((c) => ({
 		categoryKey: c.key,
 		optionKey: firstPositiveSubPoint(c.key),
@@ -466,7 +448,7 @@ const ENVELOPE = {
 };
 
 // Split into the phase responses (Phase 2 is now 2a scoring + 2a critique +
-// worksheet batches).
+// the per-category rubric turns).
 const PHASE3_FEEDBACK = {
 	feedbackDraft: ENVELOPE.feedbackDraft,
 	notebookSummary: ENVELOPE.notebookSummary,
@@ -564,10 +546,10 @@ function makeExecutionResultWithCellCount(n: number): ExecutionResult {
 
 /**
  * Set up the mock to return the default phase responses (routed by system
- * prompt). ALL pipeline calls go through `chatCompletion` now: the JSON
- * phases (markers, scoring, critique, feedback) AND the worksheet batches +
- * the 2b-verify pass (the worksheet OUTPUT is JSON, not markdown — the
- * raw-text path is never used).
+ * prompt). The JSON phases (markers, scoring, critique, feedback) go through
+ * `chatCompletion`; the per-category rubric turns go through
+ * `chatCompletionText` and return the EDITED markdown section for ONE
+ * category (routed by the category key in the user prompt).
  */
 function setupDefaultMock(): void {
 	kiConnectMock.chatCompletion.mockImplementation(
@@ -585,28 +567,24 @@ function setupDefaultMock(): void {
 				// Self-critique: same scoring object unchanged.
 				return scoringResponse();
 			}
-			if (systemPrompt.includes("evaluating rubric categories")) {
-				if (userPrompt.includes("code_formatting")) return { categories: filledBatchJson(BATCH_1) };
-				if (userPrompt.includes("coding_concept")) return { categories: filledBatchJson(BATCH_2) };
-				if (userPrompt.includes("pandas")) return { categories: filledBatchJson(BATCH_3) };
-				if (userPrompt.includes("genai")) return { categories: filledBatchJson(BATCH_4) };
-				throw new Error(`Unexpected worksheet user prompt: ${userPrompt.slice(0, 100)}`);
-			}
-			if (systemPrompt.includes("reviewing rubric selections for factual correctness")) {
-				// 2b-verify pass: return the primary output unchanged
-				// (nothing to prune — the fixture evidence is grounded).
-				const body = userPrompt.slice(userPrompt.indexOf("\n") + 1);
-				return JSON.parse(body);
-			}
 			if (systemPrompt.includes("writing constructive feedback for ONE student")) {
 				return PHASE3_FEEDBACK;
 			}
 			throw new Error(`Unexpected system prompt: ${systemPrompt.slice(0, 100)}`);
 		},
 	);
-	kiConnectMock.chatCompletionText.mockImplementation(async () => {
-		throw new Error("Unexpected chatCompletionText call — worksheet output is JSON now");
-	});
+	kiConnectMock.chatCompletionText.mockImplementation(
+		async (systemPrompt: string, userPrompt: string) => {
+			if (systemPrompt.includes("filling ONE rubric category section")) {
+				// One category per call — route by the "Fill ONLY the" line
+				// (the living worksheet in the prompt carries EVERY category's
+				// header, so the first `## Rubric:` match would always be
+				// code_formatting).
+				return turnResponseFor(userPrompt);
+			}
+			throw new Error(`Unexpected chatCompletionText system prompt: ${systemPrompt.slice(0, 100)}`);
+		},
+	);
 }
 
 let dataDir: string;
@@ -663,18 +641,33 @@ function phasePrompt(phase: 1 | 2 | 3): string {
 	return "";
 }
 
-/** User prompt of the worksheet batch call whose sections include `categoryKey`. */
-function worksheetBatchPrompt(categoryKey: string): string {
-	const calls = kiConnectMock.chatCompletion.mock.calls;
+/** User prompt of the per-category turn call for `categoryKey`. */
+function categoryTurnPrompt(categoryKey: string): string {
+	const calls = kiConnectMock.chatCompletionText.mock.calls;
 	for (const call of calls) {
 		if (
-			String(call[0]).includes("evaluating rubric categories") &&
-			String(call[1]).includes(categoryKey)
+			String(call[0]).includes("filling ONE rubric category section") &&
+			String(call[1]).includes(`Fill ONLY the \`## Rubric: ${categoryKey} —`)
 		) {
 			return String(call[1]);
 		}
 	}
 	return "";
+}
+
+/**
+ * Route a category-turn call to its default response. Initial turns carry
+ * the "Fill ONLY the `## Rubric: {key} —" instruction; retry prompts carry
+ * the returned section (with its `## Rubric:` header) inside a code fence
+ * and no "Fill ONLY" line — fall back to the first rubric header.
+ */
+function turnResponseFor(userPrompt: string): string {
+	const fillMatch = userPrompt.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/);
+	const key = fillMatch?.[1] ?? userPrompt.match(/## Rubric: ([a-z_]+) —/)?.[1];
+	if (!key) {
+		throw new Error(`Unexpected category turn user prompt: ${userPrompt.slice(0, 100)}`);
+	}
+	return defaultCategoryTurnResponse(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -712,18 +705,25 @@ describe("preEvaluateSubmission", () => {
 		expect(p2a).toContain("Cell comparison markers");
 		expect(p2a).not.toContain("Code follows PEP 8");
 
-		// Worksheet batches: the generated worksheet's context summary and
-		// the batch's EMPTY category sections (sub-point texts verbatim).
-		const wb1 = worksheetBatchPrompt("code_formatting");
-		expect(wb1).toContain("## Context");
-		expect(wb1).toContain("- Cells: 2 (2 code, 0 markdown)");
-		expect(wb1).toContain("Cell markers: 1 same, 1 different, 0 questionable");
-		expect(wb1).toContain("Dimension scores: code_quality_design: 5");
-		expect(wb1).toContain("## Rubric: code_formatting — Code Formatting");
-		expect(wb1).toContain("- [ ] Readable variable names");
-		expect(wb1).not.toContain("[x]");
-		// Only this batch's categories are disclosed.
-		expect(wb1).not.toContain("Correct use of loops");
+		// Per-category turns: the user prompt carries the generated
+		// worksheet's context summary and the requested category's EMPTY
+		// section (sub-point texts verbatim, all unchecked).
+		const turn1 = categoryTurnPrompt("code_formatting");
+		expect(turn1).toContain("## Context");
+		expect(turn1).toContain("- Cells: 2 (2 code, 0 markdown)");
+		expect(turn1).toContain("Cell markers: 1 same, 1 different, 0 questionable");
+		expect(turn1).toContain("Dimension scores: code_quality_design: 5");
+		expect(turn1).toContain("## Rubric: code_formatting — Code Formatting");
+		expect(turn1).toContain("- [ ] Readable variable names");
+		// The worksheet in the prompt is still empty — no checkbox is
+		// checked yet (the instruction line's literal "[x]" example is the
+		// only occurrence, never a "- [x]" checkbox line).
+		expect(turn1).not.toMatch(/- \[x\]/);
+		// The turn prompt highlights the ONE category to fill.
+		expect(turn1).toContain("Fill ONLY the `## Rubric: code_formatting — Code Formatting` section");
+		// The living worksheet carries every category, but the turn prompt
+		// still only asks for the requested one.
+		expect(turn1).toContain("Correct use of loops");
 
 		// Phase 3: feedback — receives the parsed selections AND the notes.
 		const p3 = phasePrompt(3);
@@ -732,13 +732,19 @@ describe("preEvaluateSubmission", () => {
 		expect(p3).toContain("Additional notes per category:");
 		expect(p3).toContain("code_formatting: Notes for code_formatting.");
 
-		// 9 calls per submission: P1, 2a, 2a critique, 4 worksheet batches,
-		// the 2b-verify pass, P3 — ALL through the JSON path (the worksheet
-		// output is JSON now); the raw-text path is never used.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(9);
-		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
+		// 18 calls per submission: P1, 2a, 2a critique, 14 per-category
+		// turns (one per rubric category), P3. The JSON phases go through
+		// `chatCompletion` (4 calls); the category turns go through
+		// `chatCompletionText` (14 calls).
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(14);
 		for (const call of kiConnectMock.chatCompletion.mock.calls) {
 			expect(call[3]).toEqual({ type: "json_object" });
+		}
+		// Every category turn is a raw-text call (markdown, not JSON) — the
+		// 4th argument is the per-call timeout, never a json_object format.
+		for (const call of kiConnectMock.chatCompletionText.mock.calls) {
+			expect(call[3]).not.toEqual({ type: "json_object" });
 		}
 
 		// Self-critique: called after Phase 2a, fed the 2a output as JSON
@@ -849,44 +855,36 @@ describe("markers are never fabricated", () => {
 // ---------------------------------------------------------------------------
 
 describe("worksheet pipeline and semantic validation", () => {
-	it("parses the worksheet JSON output into rubricSelections and additionalNotes", async () => {
-		// The default mock already returns valid JSON batches.
+	it("parses the per-category markdown sections into rubricSelections and additionalNotes", async () => {
+		// The default mock already returns valid markdown sections for every
+		// category (one chatCompletionText call per category).
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		expect(result.rubricSelections).toEqual(ENVELOPE.rubricSelections);
 		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
 	});
 
-	it("retries a batch once when a checked item does not match the rubric, then accepts the fixed response", async () => {
-		// Batch 1 first returns JSON with a trailing period ("Readable
-		// variable names.") — an exact-match miss the resolver reports as
-		// unmatched. The pipeline retries the batch; the retry returns the
-		// exact rubric text, which lands in the envelope.
-		const drifted: WorksheetBatchOutput = {
-			categories: {
-				...filledBatchJson(BATCH_1),
-				code_formatting: {
-					...filledBatchJson(BATCH_1).code_formatting!,
-					checked: filledBatchJson(BATCH_1).code_formatting!.checked.map((c) =>
-						c.item === "Readable variable names"
-							? { ...c, item: "Readable variable names." }
-							: c,
-					),
-				},
-			},
-		};
+	it("retries a category turn when a checked item does not match the rubric, then accepts the corrected section", async () => {
+		// The code_formatting turn first returns a section with a trailing
+		// period ("Readable variable names.") — an exact-match miss the
+		// validator reports as unknown. The retry loop sends the section +
+		// the exact errors back; the retry returns the exact rubric text,
+		// which lands in the envelope.
+		const driftedSection = defaultCategoryTurnResponse("code_formatting").replace(
+			"- [x] Readable variable names",
+			"- [x] Readable variable names.",
+		);
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(drifted); // batch 1 — bad
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: filledBatchJson(BATCH_1), // batch 1 retry — good
-		});
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify — nothing to prune
+		// First category turn (code_formatting) is the drifted section; every
+		// later turn — including the retry — returns the clean default.
+		kiConnectMock.chatCompletionText
+			.mockResolvedValueOnce(driftedSection)
+			.mockImplementation(async (system: string, user: string) => {
+				return turnResponseFor(user);
+			});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
@@ -904,56 +902,42 @@ describe("worksheet pipeline and semantic validation", () => {
 		expect(result.rubricSelections).toHaveLength(14);
 		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
 
-		// The retry call carried the unmatched-item details.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(10);
-		const retryPrompt = String(kiConnectMock.chatCompletion.mock.calls[4]![1]);
-		expect(retryPrompt).toContain("not a rubric item");
+		// 14 categories + 1 retry = 15 text calls; the retry call carried the
+		// returned section and the exact validation error.
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(15);
+		const retryPrompt = String(kiConnectMock.chatCompletionText.mock.calls[1]![1]);
+		expect(retryPrompt).toContain("Your previous section:");
 		expect(retryPrompt).toContain("Readable variable names.");
+		expect(retryPrompt).toContain("matches no rubric sub-point");
 	});
 
-	it("drops fabricated checkbox texts after one retry instead of failing the pipeline", async () => {
+	it("flags a category that never validates as [needs review] instead of failing the pipeline", async () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 		try {
-			// Batch 1 invents a checkbox text that exists nowhere in the
-			// rubric — on BOTH attempts. The pipeline retries once, then
-			// drops the item; the rest of the envelope survives.
-			const fabricated: WorksheetBatchOutput = {
-				categories: {
-					...filledBatchJson(BATCH_1),
-					code_formatting: {
-						...filledBatchJson(BATCH_1).code_formatting!,
-						checked: [
-							{
-								item: "Totally fabricated praise that was never in the rubric",
-								evidence: "Pre-analysis confirms this praise.",
-							},
-						],
-					},
-				},
-			};
+			// The code_formatting turn invents a checkbox text that exists
+			// nowhere in the rubric — on EVERY attempt. The retry loop runs
+			// MAX_RETRIES times, then flags the category for the teacher;
+			// the rest of the envelope survives.
+			const fabricatedSection = defaultCategoryTurnResponse("code_formatting").replace(
+				"- [x] Readable variable names",
+				"- [x] Totally fabricated praise that was never in the rubric",
+			);
 			kiConnectMock.chatCompletion.mockReset();
 			kiConnectMock.chatCompletionText.mockReset();
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-			kiConnectMock.chatCompletion.mockResolvedValueOnce(fabricated); // batch 1
-			kiConnectMock.chatCompletion.mockResolvedValueOnce(fabricated); // batch 1 retry — still bad
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-			// The verify pass prunes the fabricated item (no verifiable
-			// evidence) — the remaining 13 selections survive.
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({
-				categories: {
-					...filledBatchJson(BATCH_1),
-					code_formatting: {
-						...filledBatchJson(BATCH_1).code_formatting!,
-						checked: [],
-					},
-					...filledBatchJson(BATCH_2),
-					...filledBatchJson(BATCH_3),
-					...filledBatchJson(BATCH_4),
-				},
+			kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+				// Initial turns carry the "Fill ONLY" line; retry prompts
+				// carry the returned section inside a code fence — both
+				// name code_formatting, and BOTH must get the fabricated
+				// section so the retry loop never sees a clean response.
+				const key =
+					user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1] ??
+					user.match(/## Rubric: ([a-z_]+) —/)?.[1];
+				return key === "code_formatting"
+					? fabricatedSection
+					: turnResponseFor(user);
 			});
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
@@ -962,26 +946,26 @@ describe("worksheet pipeline and semantic validation", () => {
 				assignmentId: ASSIGNMENT,
 			});
 
-			// The fabricated item is gone; every grounded selection survives.
+			// The fabricated item never becomes a selection; the category is
+			// flagged in the notes so the teacher can review it.
 			expect(
 				result.rubricSelections!.some((s) => s.optionKey.includes("Totally fabricated")),
 			).toBe(false);
 			expect(result.rubricSelections).toHaveLength(13);
-			expect(result.rubricSelections).toEqual(
-				expect.arrayContaining([
-					{
-						categoryKey: "jupyter_notebooks",
-						optionKey: "Notebook cells organized logically",
-					},
-				]),
-			);
-			expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
+			expect(result.additionalNotes!.code_formatting).toContain("[needs review]");
+			expect(result.additionalNotes!.code_formatting).toContain("matches no rubric sub-point");
+			// The retry-loop exhaustion flag forces the confidence tier down:
+			// the teacher must review this submission's rubric selections.
+			expect(result.gradingConfidence).toBe("needs_review");
+			// The other 13 categories keep their notes.
+			expect(result.additionalNotes!.jupyter_notebooks).toBe("Notes for jupyter_notebooks.");
 			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
 
-			// One retry per batch, then the unmatched item is dropped with a warning.
-			expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(10);
+			// 1 initial turn + 3 retries for code_formatting, 1 each for the
+			// other 13 categories = 17 text calls.
+			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(17);
 			expect(warnSpy).toHaveBeenCalledWith(
-				expect.stringContaining("still has unmatched items after retry"),
+				expect.stringContaining("still invalid after 3 retries"),
 			);
 		} finally {
 			warnSpy.mockRestore();
@@ -999,7 +983,7 @@ describe("worksheet pipeline and semantic validation", () => {
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
-		// No rubric → no worksheet calls; selections and notes stay empty and
+		// No rubric → no worksheet turns; selections and notes stay empty and
 		// the rest of the envelope still flows.
 		expect(result.rubricSelections).toEqual([]);
 		expect(result.additionalNotes).toEqual({});
@@ -1024,11 +1008,9 @@ describe("worksheet pipeline and semantic validation", () => {
 		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
@@ -1053,11 +1035,9 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
 		// Critique returns the same invalid scores — validation must still reject.
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		await expect(
@@ -1078,11 +1058,9 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
 		// Critique returns the same invalid scores — validation must still reject.
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		await expect(
@@ -1090,40 +1068,29 @@ describe("worksheet pipeline and semantic validation", () => {
 		).rejects.toThrow(/score 7 for dimension "assignment_requirements" is outside 0\.\.4/);
 	});
 
-	it("truncates rubricSelections with more than 30 items to the first 30", async () => {
-		// Every sub-point checked across all 14 categories = 36 selections;
-		// the semantic validation truncates to the first 30.
+	it("keeps more than 30 grounded selections when many sub-points are checked", async () => {
+		// Every positive + neutral sub-point checked across all 14 categories
+		// = 32 selections (positive + neutral is not a mixed-sentiment
+		// violation); the semantic validation keeps them all (the 200-item
+		// safety cap is far above this fixture).
+		const allPositiveAndNeutral = (key: string): string[] => {
+			const entry = RUBRIC.categories.find((c) => c.key === key)!;
+			return [...entry.category.positive, ...entry.category.neutral]
+				.flatMap((mp) => mp.sub_points)
+				.map((sp) => sp.text);
+		};
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: filledBatchJson(BATCH_1, true),
-		});
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: filledBatchJson(BATCH_2, true),
-		});
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: filledBatchJson(BATCH_3, true),
-		});
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: filledBatchJson(BATCH_4, true),
-		});
-		// Verify returns the full output unpruned.
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({
-			categories: {
-				...filledBatchJson(BATCH_1, true),
-				...filledBatchJson(BATCH_2, true),
-				...filledBatchJson(BATCH_3, true),
-				...filledBatchJson(BATCH_4, true),
-			},
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			const key = user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1]!;
+			return filledSectionMarkdown(key, allPositiveAndNeutral(key), `Notes for ${key}.`);
 		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		// Every sub-point checked across all 14 categories generates many
-		// selections — the 200-item safety cap is far above this fixture.
 		expect(result.rubricSelections!.length).toBeGreaterThan(30);
 		// Every kept entry is an exact rubric sub-point text.
 		for (const sel of result.rubricSelections!) {
@@ -1132,269 +1099,17 @@ describe("worksheet pipeline and semantic validation", () => {
 		}
 	});
 
-	it("keeps N/A verdicts on the GenAI category when pre-analysis shows no GenAI markers", async () => {
-		// The deterministic pre-analysis finds ZERO GenAI markers in this
-		// fixture — so the model emits an N/A verdict for GenAI (empty
-		// checked array) instead of fabricating selections. The rest of the
-		// batch fills normally.
-		const naGenai: WorksheetBatchOutput = {
-			categories: {
-				...filledBatchJson(BATCH_4),
-				genai: {
-					overall: "N/A",
-					checked: [],
-					notes: `Notes for genai.`,
-				},
-			},
-		};
-		kiConnectMock.chatCompletion.mockReset();
-		kiConnectMock.chatCompletionText.mockReset();
-		// Capture the returned GenAI JSON — mock.calls only records the
-		// arguments, so the N/A-carrying response is captured here.
-		let returnedGenaiJson: unknown = null;
-		kiConnectMock.chatCompletion.mockImplementation(async (system: string, user: string) => {
-			if (system.includes("mark each cell")) return markersResponse();
-			if (system.includes("assign RAW POINT scores")) return scoringResponse();
-			if (system.includes("reviewing dimension scores")) return scoringResponse();
-			if (system.includes("evaluating rubric categories")) {
-				if (user.includes("genai")) {
-					returnedGenaiJson = naGenai;
-					return naGenai;
-				}
-				if (user.includes("pandas")) return { categories: filledBatchJson(BATCH_3) };
-				if (user.includes("coding_concept")) return { categories: filledBatchJson(BATCH_2) };
-				return { categories: filledBatchJson(BATCH_1) };
-			}
-			if (system.includes("reviewing rubric selections for factual correctness")) {
-				return JSON.parse(user.slice(user.indexOf("\n") + 1));
-			}
-			if (system.includes("writing constructive feedback")) return PHASE3_FEEDBACK;
-			throw new Error(`Unexpected system prompt: ${system.slice(0, 100)}`);
-		});
-
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-
-		// The N/A verdict produced NO fabricated selections: the genai
-		// category has zero rubric selections, while the batch's other
-		// categories keep theirs (14 categories − genai = 13 selections).
-		expect(result.rubricSelections!.some((s) => s.categoryKey === "genai")).toBe(false);
-		expect(result.rubricSelections).toHaveLength(13);
-		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
-
-		// The JSON the model returned carries the N/A verdict with an empty
-		// checked array on the GenAI category, and the system prompt told it
-		// about the N/A option.
-		expect(returnedGenaiJson).toEqual(naGenai);
-		expect((returnedGenaiJson as WorksheetBatchOutput).categories.genai.overall).toBe("N/A");
-		expect((returnedGenaiJson as WorksheetBatchOutput).categories.genai.checked).toEqual([]);
-		const genaiCall = kiConnectMock.chatCompletion.mock.calls.find(
-			(c) =>
-				String(c[0]).includes("evaluating rubric categories") &&
-				String(c[1]).includes("genai"),
-		);
-		expect(genaiCall).toBeDefined();
-		expect(String(genaiCall![0])).toContain("N/A OPTION");
-	});
-
-	it("requires cited evidence for every checked sub-point in the worksheet system prompt", async () => {
+	it("demands verbatim preservation and no invented checkbox texts in the turn-based system prompt", async () => {
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
-		const worksheetCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
+		const turnCall = kiConnectMock.chatCompletionText.mock.calls.find((c) =>
+			String(c[0]).includes("filling ONE rubric category section"),
 		);
-		expect(worksheetCall).toBeDefined();
-		const systemPrompt = String(worksheetCall![0]);
-		expect(systemPrompt).toContain("EVIDENCE");
-		expect(systemPrompt).toContain("Focus on checking the RIGHT items");
-	});
-
-	it("places the WORKFLOW section before the RULES section in the worksheet system prompt", async () => {
-		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-
-		const worksheetCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
-		);
-		expect(worksheetCall).toBeDefined();
-		const systemPrompt = String(worksheetCall![0]);
-		const workflowIndex = systemPrompt.indexOf("WORKFLOW for each category");
-		const rulesIndex = systemPrompt.indexOf("RULES:");
-		expect(workflowIndex).toBeGreaterThanOrEqual(0);
-		expect(rulesIndex).toBeGreaterThan(workflowIndex);
-	});
-});
-
-// ---------------------------------------------------------------------------
-// Worksheet JSON output: Zod validation + evidence-based verification pass
-// ---------------------------------------------------------------------------
-
-describe("worksheet JSON output (Zod) + evidence-based verification pass", () => {
-	it("validates worksheet JSON with the Zod schema — valid passes, invalid throws", () => {
-		const valid: WorksheetBatchOutput = {
-			categories: {
-				code_formatting: {
-					overall: "GOOD",
-					checked: [
-						{
-							item: "Readable variable names",
-							evidence: "Pre-analysis found descriptive names.",
-						},
-					],
-					notes: "Solid formatting.",
-				},
-			},
-		};
-		expect(worksheetBatchSchema.safeParse(valid).success).toBe(true);
-
-		const invalid = {
-			categories: {
-				code_formatting: {
-					overall: "GOOD",
-					checked: [{ item: "", evidence: "Pre-analysis fact." }],
-					notes: "Notes.",
-				},
-			},
-		};
-		expect(() => worksheetBatchSchema.parse(invalid)).toThrow();
-	});
-
-	it("rejects an N/A category with a non-empty checked array", () => {
-		const naWithItems = {
-			categories: {
-				genai: {
-					overall: "N/A",
-					checked: [
-						{ item: "GenAI usage documented", evidence: "Pre-analysis found documentation." },
-					],
-					notes: "Notes.",
-				},
-			},
-		};
-		expect(() => worksheetBatchSchema.parse(naWithItems)).toThrow();
-	});
-
-	it("accepts an N/A category with an empty checked array", () => {
-		const naEmpty = {
-			categories: {
-				genai: {
-					overall: "N/A",
-					checked: [],
-					notes: "No GenAI evidence in the pre-analysis.",
-				},
-			},
-		};
-		expect(worksheetBatchSchema.safeParse(naEmpty).success).toBe(true);
-	});
-
-	it("accepts a checked item missing its evidence field (evidence is optional)", () => {
-		const noEvidence = {
-			categories: {
-				code_formatting: {
-					overall: "GOOD",
-					checked: [{ item: "Readable variable names" }],
-					notes: "Notes.",
-				},
-			},
-		};
-		expect(() => worksheetBatchSchema.parse(noEvidence)).not.toThrow();
-	});
-
-	it("parses worksheet JSON output into rubric selections", () => {
-		const output: WorksheetBatchOutput = {
-			categories: {
-				code_formatting: {
-					overall: "GOOD",
-					checked: [
-						{
-							item: "Readable variable names",
-							evidence: "Pre-analysis found descriptive names.",
-						},
-					],
-					notes: "Notes for code_formatting.",
-				},
-				jupyter_notebooks: {
-					overall: "GOOD",
-					checked: [
-						{
-							item: "Notebook cells organized logically",
-							evidence: "Cells follow a clear order.",
-						},
-					],
-					notes: "Notes for jupyter_notebooks.",
-				},
-			},
-		};
-		const parsed = parseWorksheetJson(output, RUBRIC);
-		expect(parsed.rubricSelections).toEqual([
-			{ categoryKey: "code_formatting", optionKey: "Readable variable names" },
-			{ categoryKey: "jupyter_notebooks", optionKey: "Notebook cells organized logically" },
-		]);
-		expect(parsed.additionalNotes).toEqual({
-			code_formatting: "Notes for code_formatting.",
-			jupyter_notebooks: "Notes for jupyter_notebooks.",
-		});
-		expect(parsed.unmatched).toEqual([]);
-	});
-
-	it("routes N/A categories to zero rubric selections", () => {
-		const output: WorksheetBatchOutput = {
-			categories: {
-				genai: {
-					overall: "N/A",
-					checked: [],
-					notes: "No GenAI evidence in the pre-analysis.",
-				},
-				pandas: {
-					overall: "GOOD",
-					checked: [
-						{ item: "Correct use of pd.read_csv", evidence: "Cell 1 calls pd.read_csv." },
-					],
-					notes: "Notes for pandas.",
-				},
-			},
-		};
-		const parsed = parseWorksheetJson(output, RUBRIC);
-		expect(parsed.rubricSelections).toEqual([
-			{ categoryKey: "pandas", optionKey: "Correct use of pd.read_csv" },
-		]);
-		// The N/A category's notes are still captured for the teacher.
-		expect(parsed.additionalNotes.genai).toBe("No GenAI evidence in the pre-analysis.");
-	});
-
-	it("gives the verification pass different instructions AND a different model (qwen3-30b) than the primary pass", async () => {
-		// Wave 5 swaps the primary model to gpt-oss-120b; the verify pass
-		// must stay pinned to qwen3-30b (a different model + different
-		// instructions breaks same-model bias reproduction).
-		kiConnectMock.model = "openai-gpt-oss-120b";
-		setupDefaultMock();
-
-		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-
-		const calls = kiConnectMock.chatCompletion.mock.calls;
-		const worksheetCall = calls.find((c) => String(c[0]).includes("evaluating rubric categories"));
-		const verifyCall = calls.find((c) =>
-			String(c[0]).includes("reviewing rubric selections for factual correctness"),
-		);
-		expect(worksheetCall).toBeDefined();
-		expect(verifyCall).toBeDefined();
-
-		// Different instructions: the verify prompt demands evidence-based
-		// pruning; the primary prompt fills checkboxes.
-		const worksheetSystem = String(worksheetCall![0]);
-		const verifySystem = String(verifyCall![0]);
-		expect(verifySystem).not.toBe(worksheetSystem);
-		expect(verifySystem).toContain("factual correctness");
-		expect(verifySystem).toContain("REMOVE the item");
-		expect(verifySystem).toContain("LOW_CONFIDENCE");
-		expect(verifySystem).not.toContain("fill the checkboxes");
-
-		// The verify pass receives the primary pass's JSON output.
-		const verifyUser = String(verifyCall![1]);
-		expect(verifyUser).toContain("Worksheet selections to verify:");
-		expect(verifyUser).toContain('"categories"');
-
-		// Different model: a dedicated client pinned to qwen3-30b was built
-		// for the verify call (the primary model is gpt-oss-120b here).
-		expect(constructedClientModels.models).toContain("qwen3-30b-a3b-instruct-2507");
+		expect(turnCall).toBeDefined();
+		const systemPrompt = String(turnCall![0]);
+		expect(systemPrompt).toContain("Return ONLY the complete");
+		expect(systemPrompt).toContain("Preserve every un-checked item verbatim");
+		expect(systemPrompt).toContain("Do not invent new checkbox texts");
 	});
 });
 
@@ -1529,21 +1244,19 @@ describe("KI Connect failure handling", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce({
 			feedbackDraft: ENVELOPE.feedbackDraft,
 			notebookSummary: ENVELOPE.notebookSummary,
 		});
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-		// Phase 1 attempted twice (timeout + retry), then 2a, critique, 4
-		// batches, verify, 3 → 10 JSON calls; the raw-text path is unused.
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(10);
-		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
+		// Phase 1 attempted twice (timeout + retry), then 2a, critique, 3 →
+		// 5 JSON calls; the 14 category turns go through the raw-text path.
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(14);
 		expect(result).toMatchObject(ENVELOPE);
 	});
 
@@ -1575,7 +1288,7 @@ describe("KI Connect failure handling", () => {
 // ---------------------------------------------------------------------------
 
 describe("phase split, progressive disclosure, self-critique and model hints", () => {
-	it("uses the compact rubric summary in Phase 1 and Phase 3, and full sub-point texts only in the worksheet batches", async () => {
+	it("uses the compact rubric summary in Phase 1 and Phase 3, and full sub-point texts only in the worksheet turns", async () => {
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
 		// Phase 1: summary line with per-sentiment sub-point counts, but NO
@@ -1599,15 +1312,16 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		expect(p3).not.toContain("Code follows PEP 8");
 		expect(p3).not.toContain("    • ");
 
-		// Worksheet batches: EXACT sub-point texts of their own categories —
-		// progressive disclosure per batch.
-		const wb1 = worksheetBatchPrompt("code_formatting");
-		expect(wb1).toContain("- [ ] Readable variable names");
-		expect(wb1).toContain("- [ ] Inconsistent indentation");
-		expect(wb1).not.toContain("Correct use of loops");
-		const wb2 = worksheetBatchPrompt("coding_concept");
-		expect(wb2).toContain("- [ ] Correct use of loops");
-		expect(wb2).not.toContain("Readable variable names");
+		// Worksheet turns: EXACT sub-point texts of the requested category —
+		// the living worksheet carries every category, but the turn prompt
+		// only asks the model to fill the requested one.
+		const turn1 = categoryTurnPrompt("code_formatting");
+		expect(turn1).toContain("- [ ] Readable variable names");
+		expect(turn1).toContain("- [ ] Inconsistent indentation");
+		expect(turn1).toContain("Correct use of loops");
+		const turn2 = categoryTurnPrompt("coding_concept");
+		expect(turn2).toContain("- [ ] Correct use of loops");
+		expect(turn2).toContain("Readable variable names");
 	});
 
 	it("uses the self-critique's corrected scores when they differ from Phase 2a", async () => {
@@ -1627,18 +1341,16 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 				justification: "corrected scores",
 			},
 		});
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		// The corrected scores flow into the envelope and the worksheet context.
 		expect(result.gradeSuggestion.dimensions.code_quality_design).toBe(3);
 		expect(result.gradeSuggestion.justification).toBe("corrected scores");
-		expect(worksheetBatchPrompt("code_formatting")).toContain("code_quality_design: 3");
+		expect(categoryTurnPrompt("code_formatting")).toContain("code_quality_design: 3");
 	});
 
 	it("keeps the original Phase 2a scores when the critique call fails", async () => {
@@ -1649,11 +1361,9 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 			kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("critique boom"));
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-			kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+			kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+				return turnResponseFor(user);
+			});
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 			const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
@@ -1661,8 +1371,8 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 			// original Phase 2a output and a warning is logged.
 			expect(result.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
 			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
-			expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(9);
-			expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
+			expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
+			expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(14);
 			expect(warnSpy).toHaveBeenCalledWith(
 				expect.stringContaining("self-critique failed"),
 				expect.any(String),
@@ -1674,17 +1384,15 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 
 	it("injects the CRITICAL REMINDER hint for weak/default-model phases", async () => {
 		// The default mock model is qwen3-30b-a3b-instruct-2507 — a weak
-		// variant. Phases WITHOUT a model override (Phase 1 markers, the
-		// 2b-verify pass pinned to qwen3-30b, Phase 3 feedback) carry the
-		// validation reminder; phases routed to gpt-oss-120b (2a, 2a
-		// critique, worksheet batches) carry the reasoning-effort hint
-		// instead.
+		// variant. Phases WITHOUT a model override (Phase 1 markers, Phase 3
+		// feedback) carry the validation reminder; phases routed to
+		// gpt-oss-120b (2a, 2a critique, the per-category rubric turns) carry
+		// the reasoning-effort hint instead.
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		const calls = kiConnectMock.chatCompletion.mock.calls;
 		const weakModelCalls = calls.filter(
 			(c) =>
 				String(c[0]).includes("mark each cell") ||
-				String(c[0]).includes("reviewing rubric selections for factual correctness") ||
 				String(c[0]).includes("writing constructive feedback"),
 		);
 		expect(weakModelCalls.length).toBeGreaterThan(0);
@@ -1698,19 +1406,21 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		const gptRoutedCalls = calls.filter(
 			(c) =>
 				String(c[0]).includes("assign RAW POINT scores") ||
-				String(c[0]).includes("reviewing dimension scores") ||
-				String(c[0]).includes("evaluating rubric categories"),
+				String(c[0]).includes("reviewing dimension scores"),
 		);
 		expect(gptRoutedCalls.length).toBeGreaterThan(0);
 		for (const call of gptRoutedCalls) {
 			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
 		}
-		// The worksheet batch system prompt is the rubric-selection step now.
-		const worksheetCall = calls.find((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
-		);
-		expect(worksheetCall).toBeDefined();
-		expect(String(worksheetCall![0])).toContain("evaluating rubric categories");
+		// The per-category turns run on gpt-oss-120b (PHASE_2_MODEL) — the
+		// turn system prompt carries the reasoning-effort hint, not the
+		// weak-model reminder.
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls;
+		expect(turnCalls.length).toBeGreaterThan(0);
+		for (const call of turnCalls) {
+			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
+		}
 	});
 
 	it("omits the model hints for phases on a stronger default model", async () => {
@@ -1731,13 +1441,15 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 				expect(String(call[0])).not.toContain("reasoning_effort");
 			}
 		}
-		// The 2b-verify pass is pinned to qwen3-30b regardless of the
-		// global model — it carries the weak-model reminder.
-		const verifyCall = calls.find((c) =>
-			String(c[0]).includes("reviewing rubric selections for factual correctness"),
-		);
-		expect(verifyCall).toBeDefined();
-		expect(String(verifyCall![0])).toContain("CRITICAL REMINDER");
+		// The per-category turns are routed to gpt-oss-120b regardless of the
+		// global model — they carry the reasoning-effort hint, not the
+		// weak-model reminder.
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls;
+		expect(turnCalls.length).toBeGreaterThan(0);
+		for (const call of turnCalls) {
+			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
+		}
 	});
 
 	it("appends the gpt-oss-120b reasoning_effort hint to every gpt-oss-120b-routed system prompt", async () => {
@@ -1748,23 +1460,20 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 		const calls = kiConnectMock.chatCompletion.mock.calls;
-		// Everything except the 2b-verify pass runs on gpt-oss-120b (either
-		// by per-phase routing or via the global model) → GPT hint present.
-		const gptRoutedCalls = calls.filter(
-			(c) => !String(c[0]).includes("reviewing rubric selections for factual correctness"),
-		);
-		expect(gptRoutedCalls.length).toBeGreaterThan(0);
-		for (const call of gptRoutedCalls) {
+		// Every JSON phase runs on gpt-oss-120b (either by per-phase routing
+		// or via the global model) → GPT hint present.
+		expect(calls.length).toBeGreaterThan(0);
+		for (const call of calls) {
 			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
 			expect(String(call[0])).toContain("The model supports configurable reasoning effort levels");
 		}
-		// The verify pass is pinned to qwen3-30b → weak-model hint, no GPT hint.
-		const verifyCall = calls.find((c) =>
-			String(c[0]).includes("reviewing rubric selections for factual correctness"),
-		);
-		expect(verifyCall).toBeDefined();
-		expect(String(verifyCall![0])).toContain("CRITICAL REMINDER");
-		expect(String(verifyCall![0])).not.toContain("reasoning_effort");
+		// The per-category turns are routed to gpt-oss-120b too → GPT hint.
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls;
+		expect(turnCalls.length).toBeGreaterThan(0);
+		for (const call of turnCalls) {
+			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
+			expect(String(call[0])).not.toContain("CRITICAL REMINDER");
+		}
 	});
 });
 
@@ -1823,21 +1532,11 @@ describe("Phase 1 chunking", () => {
 				if (system.includes("writing constructive feedback")) {
 					return PHASE3_FEEDBACK;
 				}
-				if (system.includes("evaluating rubric categories")) {
-					if (user.includes("code_formatting")) return { categories: filledBatchJson(BATCH_1) };
-					if (user.includes("coding_concept")) return { categories: filledBatchJson(BATCH_2) };
-					if (user.includes("pandas")) return { categories: filledBatchJson(BATCH_3) };
-					if (user.includes("genai")) return { categories: filledBatchJson(BATCH_4) };
-					throw new Error(`Unexpected worksheet user prompt: ${user.slice(0, 120)}`);
-				}
-				if (system.includes("reviewing rubric selections for factual correctness")) {
-					return JSON.parse(user.slice(user.indexOf("\n") + 1));
-				}
 				throw new Error(`Unexpected system prompt: ${system.slice(0, 100)}`);
 			},
 		);
-		kiConnectMock.chatCompletionText.mockImplementation(async () => {
-			throw new Error("Unexpected chatCompletionText call — worksheet output is JSON now");
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
 		});
 	}
 
@@ -1856,11 +1555,11 @@ describe("Phase 1 chunking", () => {
 		const calls = kiConnectMock.chatCompletion.mock.calls;
 		const phase1Calls = calls.filter((c) => String(c[0]).includes("mark each cell"));
 
-		// Phase 1 ran once per chunk: 2 chunk calls + 2a + critique + 4
-		// batches + verify + 3 = 10 JSON calls; the raw-text path is unused.
+		// Phase 1 ran once per chunk: 2 chunk calls + 2a + critique + 3 =
+		// 5 JSON calls; the 14 category turns go through the raw-text path.
 		expect(phase1Calls).toHaveLength(2);
-		expect(calls).toHaveLength(10);
-		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
+		expect(calls).toHaveLength(5);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(14);
 
 		// Chunk 1 prompt carries only cells 0..19; chunk 2 only cells 20..24
 		expect(String(phase1Calls[0]![1])).toContain("[Cell 0] code");
@@ -1896,13 +1595,11 @@ describe("Phase 1 chunking", () => {
 			expect(t as number).toBeGreaterThan(0);
 		}
 		expect(new Set(timeouts).size).toBe(1);
-		// The worksheet batch calls carry the same timeout (6th argument —
-		// they share the JSON path with the other phases now).
-		const worksheetCalls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
-		);
-		const batchTimeouts = worksheetCalls.map((c) => c[5]);
-		for (const t of batchTimeouts) {
+		// The per-category turn calls carry the same timeout (4th argument —
+		// the raw-text path shares the per-call timeout with the JSON phases).
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls;
+		const turnTimeouts = turnCalls.map((c) => c[3]);
+		for (const t of turnTimeouts) {
 			expect(typeof t).toBe("number");
 			expect(t as number).toBeGreaterThan(0);
 		}
@@ -1919,11 +1616,9 @@ describe("Phase 1 chunking", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_1) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_2) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_3) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce({ categories: filledBatchJson(BATCH_4) });
-		kiConnectMock.chatCompletion.mockResolvedValueOnce(defaultWorksheetJson()); // verify
+		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
+			return turnResponseFor(user);
+		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({
@@ -1934,10 +1629,11 @@ describe("Phase 1 chunking", () => {
 		const phase1Calls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
 			String(c[0]).includes("mark each cell"),
 		);
-		// 1 Phase 1 call + 2a + critique + 4 batches + verify + 3 = 9 JSON calls.
+		// 1 Phase 1 call + 2a + critique + 3 = 4 JSON calls; the 14 category
+		// turns go through the raw-text path.
 		expect(phase1Calls).toHaveLength(1);
-		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(9);
-		expect(kiConnectMock.chatCompletionText).not.toHaveBeenCalled();
+		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(4);
+		expect(kiConnectMock.chatCompletionText).toHaveBeenCalledTimes(14);
 		// No chunk banner; the prompt still shows the full 15-cell submission
 		expect(String(phase1Calls[0]![1])).not.toContain("chunk");
 		expect(String(phase1Calls[0]![1])).toContain("15 cells");
@@ -1979,37 +1675,18 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		expect(String(call![0])).toContain('set reasoning_effort to "medium"');
 	});
 
-	it("routes Phase 2b primary to openai-gpt-oss-120b with T=0.2", async () => {
+	it("routes the per-category rubric turns to openai-gpt-oss-120b with T=0.2", async () => {
 		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
 
-		const calls = kiConnectMock.chatCompletion.mock.calls.filter((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
+		const calls = kiConnectMock.chatCompletionText.mock.calls.filter((c) =>
+			String(c[0]).includes("filling ONE rubric category section"),
 		);
-		// Every worksheet batch (primary pass) runs on openai-gpt-oss-120b at 0.2.
-		expect(calls.length).toBeGreaterThan(0);
+		// Every category turn runs on openai-gpt-oss-120b at 0.2.
+		expect(calls.length).toBe(14);
 		for (const call of calls) {
 			expect(call[2]).toBe(0.2);
-			expect(call[6]).toBe("openai-gpt-oss-120b");
+			expect(call[4]).toBe("openai-gpt-oss-120b");
 		}
-	});
-
-	it("routes Phase 2b-verify to qwen3-30b-a3b-instruct-2507 with T=0.1", async () => {
-		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
-
-		const verifyCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
-			String(c[0]).includes("reviewing rubric selections for factual correctness"),
-		);
-		expect(verifyCall).toBeDefined();
-		expect(verifyCall![2]).toBe(0.1);
-		expect(verifyCall![6]).toBe("qwen3-30b-a3b-instruct-2507");
-
-		// The verify pass deliberately uses a DIFFERENT model than the
-		// primary worksheet pass (breaks same-model bias reproduction).
-		const worksheetCall = kiConnectMock.chatCompletion.mock.calls.find((c) =>
-			String(c[0]).includes("evaluating rubric categories"),
-		);
-		expect(worksheetCall).toBeDefined();
-		expect(verifyCall![6]).not.toBe(worksheetCall![6]);
 	});
 
 	it("modelHintBlock returns GPT hint when passed gpt-oss-120b", () => {
@@ -2032,6 +1709,129 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 	});
 
 	// ---------------------------------------------------------------------------
+	// Confidence routing (Step 8) — derivedGradingConfidence thresholds
+	// ---------------------------------------------------------------------------
+
+	/** Minimal clean pre-analysis; override the signal fields under test. */
+	function makePreAnalysis(overrides: Partial<PreAnalysis> = {}): PreAnalysis {
+		return {
+			nonDescriptiveNames: [],
+			importsNotAlphabetized: false,
+			importsAlphabetized: true,
+			disallowedImports: [],
+			unusedImports: [],
+			codeCellCount: 2,
+			markdownCellCount: 2,
+			citationCount: 1,
+			hasInterpretation: true,
+			errorCount: 0,
+			issueSummary: "0 issues found",
+			...overrides,
+		};
+	}
+
+	describe("derivedGradingConfidence", () => {
+		const clean = {
+			postProcessFixes: [] as PostProcessFix[],
+			additionalNotes: {},
+			postProcessedNotes: {},
+			preAnalysis: makePreAnalysis(),
+		};
+
+		function fix(pass: string, field: string): PostProcessFix {
+			return { pass, field, oldValue: null, newValue: "fixed", reason: "test fixture" };
+		}
+
+		it("returns high_confidence for a clean run (no fixes, no flags, clean pre-analysis)", () => {
+			expect(derivedGradingConfidence(clean)).toBe("high_confidence");
+		});
+
+		it("returns needs_review when any category carries a [needs review] flag in the raw notes", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					additionalNotes: { code_formatting: "Matches no rubric sub-point [needs review]" },
+				}),
+			).toBe("needs_review");
+		});
+
+		it("returns needs_review when the corrected (post-processed) notes carry the flag", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					postProcessedNotes: { jupyter_notebooks: "[needs review] — could not parse section" },
+				}),
+			).toBe("needs_review");
+		});
+
+		it("returns needs_review when post-processing applied 5+ fixes", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					postProcessFixes: [0, 1, 2, 3, 4].map((n) => fix("fill-empty", `cat-${n}`)),
+				}),
+			).toBe("needs_review");
+		});
+
+		it("returns needs_review when the notebook has execution errors", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ errorCount: 1 }),
+				}),
+			).toBe("needs_review");
+		});
+
+		it("returns needs_review when a disallowed library is imported", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ disallowedImports: ["sklearn"] }),
+				}),
+			).toBe("needs_review");
+		});
+
+		it("returns review_optional for minor findings (non-descriptive names, unordered imports, unused imports)", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ nonDescriptiveNames: ["x"] }),
+				}),
+			).toBe("review_optional");
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ importsAlphabetized: false }),
+				}),
+			).toBe("review_optional");
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ unusedImports: ["np"] }),
+				}),
+			).toBe("review_optional");
+		});
+
+		it("returns review_optional for a handful of post-process fixes (below the needs_review threshold)", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					postProcessFixes: [fix("disallowed-library-scan", "following_instructions-positive")],
+				}),
+			).toBe("review_optional");
+		});
+
+		it("returns high_confidence even when citations are missing or interpretation is absent (not gating signals)", () => {
+			expect(
+				derivedGradingConfidence({
+					...clean,
+					preAnalysis: makePreAnalysis({ citationCount: 0, hasInterpretation: false }),
+				}),
+			).toBe("high_confidence");
+		});
+	});
+
+	// ---------------------------------------------------------------------------
 	// Wave 8 — post-processing, cohort calibration, Karl export wiring
 	// ---------------------------------------------------------------------------
 
@@ -2051,6 +1851,11 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			expect(result.postProcessed).toBeDefined();
 			expect(result.postProcessed.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
 			expect(Array.isArray(result.postProcessFixes)).toBe(true);
+
+			// Confidence routing (Step 8): the deterministic confidence rides
+			// on the return. The fixture notebook has an execution error
+			// (FileNotFoundError in cell 2), so the tier is needs_review.
+			expect(result.gradingConfidence).toBe("needs_review");
 
 			// Deterministic pass 3 (disallowed-library-scan): the fixture imports
 			// only numpy (allowed), so the no-disallowed-libraries positive is
@@ -2085,6 +1890,10 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			// preEval stays the RAW LLM envelope — no post-processed data nested inside.
 			expect(stored.preEval!.markers).toEqual(ENVELOPE.markers);
 			expect(stored.preEval!.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
+			// Confidence routing: the deterministic confidence is persisted
+			// with the raw envelope (Step 8) — the dashboard list reads it
+			// from stored.preEval.gradingConfidence.
+			expect(stored.preEval!.gradingConfidence).toBe("needs_review");
 			expect(
 				(stored.preEval as PreEvaluation & { postProcessed?: unknown }).postProcessed,
 			).toBeUndefined();

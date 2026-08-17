@@ -47,7 +47,7 @@ export type StoredPreEvaluation = PreEvaluation & { evaluatedAt: string };
 export type StoredExecutionResult = ExecutionResult & {
 	error?: string | null;
 	preEval?: StoredPreEvaluation;
-	/** Corrected grading data from postProcessSubmission (6 deterministic passes). */
+	/** Corrected grading data from postProcessSubmission (7 deterministic passes). */
 	postProcessed?: PostProcessData;
 	/** Every post-processing correction applied, with reasons (empty when nothing changed). */
 	postProcessFixes?: PostProcessFix[];

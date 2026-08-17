@@ -24,6 +24,13 @@
  * the app's own grade display; the export deliberately uses the simpler
  * Karl-form scale above.
  *
+ * Plagiarism language: this module has NO strip pass of its own — the
+ * plagiarism-stripping pass (Pass 4 "strip-plagiarism" in post-process.ts)
+ * runs before export and removes plagiarism sentences from every textarea,
+ * so the notes reaching generateKarlJson are already clean. Plagiarism is
+ * a separate instructor-only deliverable (data/plagiarism/plagiarism-assessment.md)
+ * and must never appear in a grading JSON.
+ *
  * This module runs only on the SvelteKit server (`$lib/server/`).
  */
 

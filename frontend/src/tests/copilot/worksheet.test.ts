@@ -15,6 +15,8 @@ import {
 	generateWorksheet,
 	parseWorksheet,
 	parseWorksheetSection,
+	sentimentOfOption,
+	validateWorksheetSection,
 	type WorksheetContext,
 } from "$lib/server/copilot/worksheet";
 import type { Category, MergedRubric } from "$lib/types/criteria";
@@ -40,6 +42,8 @@ const CRITERIA_YAML = `categories:
           - text: Readable variable names
             comment: false
             point_deduction: false
+          - text: imports - libraries were alphabetized
+          - text: blank lines - consistent and good usage
     neutral: []
     negative:
       - main_point: Formatting issues
@@ -47,6 +51,9 @@ const CRITERIA_YAML = `categories:
           - text: Inconsistent indentation
             comment: false
             point_deduction: false
+          - text: imports - not alphabetized
+          - text: blank lines - not enough used (e.g., separating ideas and improving readability)
+          - text: blank lines - too many used (i.e., not concise)
   coding_concept:
     title: Coding Concept
     additional_notes: true
@@ -55,6 +62,9 @@ const CRITERIA_YAML = `categories:
         sub_points:
           - text: Correct use of loops
           - text: Correct use of functions
+          - text: set
+          - text: tuple
+          - text: looping - 'zip' usage to iterate over two lists
     neutral:
       - main_point: Minor remarks
         sub_points:
@@ -63,6 +73,48 @@ const CRITERIA_YAML = `categories:
       - main_point: Concept issues
         sub_points:
           - text: Missing boundary checks
+          - text: using 'set' - unique elements
+          - text: using 'tuple' - immutable elements
+          - text: looping - use 'zip' to loop over two lists of equal length
+  jupyter_notebooks:
+    title: Jupyter Notebooks
+    additional_notes: true
+    positive:
+      - main_point: Notebook is done well
+        sub_points:
+          - text: cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)
+          - text: code cells - good separation of encode ideas
+          - text: markdown cells - good usage to communicate ideas, thoughts or workflow
+    neutral:
+      - main_point: Notebook could be slightly improved
+        sub_points:
+          - text: cell structure - some additional separation of ideas (both code and markdown cells)
+          - text: markdown cells - some additional communication would have been more informative
+    negative:
+      - main_point: Notebook was poorly done
+        sub_points:
+          - text: cell structure - separatation of the tasks, subtasks, or ideas needs to be better
+          - text: markdown cells - are not used, or there is a significant lack of good, informative communication
+  academic_scholarship:
+    title: Academic Scholarship (Citations and Writing)
+    additional_notes: true
+    positive:
+      - main_point: Scholarship done well
+        sub_points:
+          - text: citing - source of information and knowledge
+          - text: citing - proper ordering within the written text (e.g., ...[1-2]...[3] and not ...[3-4]...[1]...)
+          - text: units - input and output numbers have units (e.g., N, kJ, m/s, Hz)
+          - text: sentences - clear, concise and provides good context (i.e., C^3)
+          - text: sentences - complete written when appropriate (e.g., within markdown cells, docstrings)
+    neutral: []
+    negative:
+      - main_point: Scholarship done poorly
+        sub_points:
+          - text: citing - missing references for knowledge (e.g., datasets, equations, libraries)
+          - text: citing - done out-of-order (e.g., the first citation in your text is not to Reference 1)
+          - text: units - were not provided when needed
+          - text: sentences - not clean, concise and/or context provided (C^3)
+          - text: sentences - incomplete sentences (e.g., capitalization, subject, verb) when needed (including in f-strings)
 `;
 
 /** Build the MergedRubric from the fixture YAML (same shape as loadCriteriaForAssignment). */
@@ -104,6 +156,8 @@ describe("generateWorksheet", () => {
 		expect(md).toContain("# Pre-Evaluation Worksheet: 2026SS_38");
 		expect(md).toContain("## Rubric: code_formatting — Code Formatting");
 		expect(md).toContain("## Rubric: coding_concept — Coding Concept");
+		expect(md).toContain("## Rubric: jupyter_notebooks — Jupyter Notebooks");
+		expect(md).toContain("## Rubric: academic_scholarship — Academic Scholarship (Citations and Writing)");
 	});
 
 	it("includes every sub-point from every category as an unchecked checkbox", () => {
@@ -127,13 +181,14 @@ describe("generateWorksheet", () => {
 	it("emits the Neutral heading only for categories that have neutral sub-points", () => {
 		const md = generateWorksheet(makeContext());
 
-		// coding_concept has one neutral sub-point; code_formatting has none.
+		// coding_concept and jupyter_notebooks have neutral sub-points;
+		// code_formatting and academic_scholarship have none.
 		expect(md).toMatch(/### Neutral\n- \[ \] Could simplify conditionals/);
-		expect(md.match(/### Neutral/g)).toHaveLength(1);
+		expect(md.match(/### Neutral/g)).toHaveLength(2);
 
 		// Every category gets an Additional Notes slot with the placeholder.
-		expect(md.match(/### Additional Notes/g)).toHaveLength(2);
-		expect(md.split("_(to be filled)_").length - 1).toBe(2);
+		expect(md.match(/### Additional Notes/g)).toHaveLength(4);
+		expect(md.split("_(to be filled)_").length - 1).toBe(4);
 	});
 
 	it("includes the Context section with cell counts and pre-analysis", () => {
@@ -360,5 +415,311 @@ describe("parseWorksheet", () => {
 		]);
 		expect(result.unmatched).toEqual([]);
 		expect(result.additionalNotes).toEqual({});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// validateWorksheetSection
+// ---------------------------------------------------------------------------
+
+describe("validateWorksheetSection", () => {
+	it("accepts a clean section (header + checked item + notes)", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [x] Readable variable names",
+			"",
+			"### Additional Notes",
+			"",
+			"Names are descriptive throughout.",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(true);
+		expect(result.errors).toEqual([]);
+		expect(result.selections).toEqual([
+			{ categoryKey: "code_formatting", optionKey: "Readable variable names" },
+		]);
+		expect(result.notes).toBe("Names are descriptive throughout.");
+	});
+
+	it("flags a header that does not start with the expected category key", () => {
+		const section = [
+			"## Rubric: coding_concept — Coding Concept",
+			"",
+			"### Positive",
+			"",
+			"- [x] Readable variable names",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["header_mismatch"]);
+		expect(result.errors[0]!.message).toContain("## Rubric: code_formatting");
+	});
+
+	it("flags a section with no checked items and no notes as empty", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [ ] Readable variable names",
+			"",
+			"### Additional Notes",
+			"",
+			"_(to be filled)_",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["empty"]);
+	});
+
+	it("does not flag a section that is empty of checks but has a real note", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Additional Notes",
+			"",
+			"Everything is fine; nothing to mark.",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(true);
+		expect(result.errors).toEqual([]);
+		expect(result.selections).toEqual([]);
+		expect(result.notes).toBe("Everything is fine; nothing to mark.");
+	});
+
+	it("flags checked text that matches no rubric sub-point anywhere", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [x] Invented criterion that does not exist",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["unknown"]);
+		expect(result.errors[0]!.items).toEqual(["Invented criterion that does not exist"]);
+	});
+
+	it("flags both sides of a mutual-exclusion pair being checked", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [x] imports - libraries were alphabetized",
+			"",
+			"### Negative",
+			"",
+			"- [x] imports - not alphabetized",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"imports - libraries were alphabetized",
+			"imports - not alphabetized",
+		]);
+	});
+
+	it("flags mutual-exclusion pairs for coding_concept", () => {
+		const section = [
+			"## Rubric: coding_concept — Coding Concept",
+			"",
+			"### Positive",
+			"",
+			"- [x] set",
+			"",
+			"### Negative",
+			"",
+			"- [x] using 'set' - unique elements",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "coding_concept", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual(["set", "using 'set' - unique elements"]);
+	});
+
+	it("flags mutual-exclusion pairs for jupyter_notebooks", () => {
+		const section = [
+			"## Rubric: jupyter_notebooks — Jupyter Notebooks",
+			"",
+			"### Positive",
+			"",
+			"- [x] cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)",
+			"",
+			"### Negative",
+			"",
+			"- [x] cell structure - separatation of the tasks, subtasks, or ideas needs to be better",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "jupyter_notebooks", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)",
+			"cell structure - separatation of the tasks, subtasks, or ideas needs to be better",
+		]);
+	});
+
+	it("flags mutual-exclusion pairs for academic_scholarship", () => {
+		const section = [
+			"## Rubric: academic_scholarship — Academic Scholarship (Citations and Writing)",
+			"",
+			"### Positive",
+			"",
+			"- [x] units - input and output numbers have units (e.g., N, kJ, m/s, Hz)",
+			"",
+			"### Negative",
+			"",
+			"- [x] units - were not provided when needed",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "academic_scholarship", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"units - input and output numbers have units (e.g., N, kJ, m/s, Hz)",
+			"units - were not provided when needed",
+		]);
+	});
+
+	it("flags every negative blank-lines variant against the shared positive (multi-way)", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [x] blank lines - consistent and good usage",
+			"",
+			"### Negative",
+			"",
+			"- [x] blank lines - too many used (i.e., not concise)",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["mutual_exclusion"]);
+		expect(result.errors[0]!.items).toEqual([
+			"blank lines - consistent and good usage",
+			"blank lines - too many used (i.e., not concise)",
+		]);
+	});
+
+	it("allows mixed positive + negative sentiment when the items are not a mutual-exclusion pair", () => {
+		const section = [
+			"## Rubric: code_formatting — Code Formatting",
+			"",
+			"### Positive",
+			"",
+			"- [x] imports - libraries were alphabetized",
+			"",
+			"### Negative",
+			"",
+			"- [x] Inconsistent indentation",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "code_formatting", RUBRIC);
+
+		expect(result.ok).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("allows mixed sentiment in any category when no mutual-exclusion pair is co-checked", () => {
+		const section = [
+			"## Rubric: coding_concept — Coding Concept",
+			"",
+			"### Positive",
+			"",
+			"- [x] Correct use of loops",
+			"",
+			"### Negative",
+			"",
+			"- [x] Missing boundary checks",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "coding_concept", RUBRIC);
+
+		expect(result.ok).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("does not flag neutral + one other sentiment as mixed", () => {
+		const section = [
+			"## Rubric: coding_concept — Coding Concept",
+			"",
+			"### Neutral",
+			"",
+			"- [x] Could simplify conditionals",
+			"",
+			"### Negative",
+			"",
+			"- [x] Missing boundary checks",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "coding_concept", RUBRIC);
+
+		expect(result.ok).toBe(true);
+		expect(result.errors).toEqual([]);
+	});
+
+	it("flags unknown items even when other checked items are valid", () => {
+		const section = [
+			"## Rubric: coding_concept — Coding Concept",
+			"",
+			"### Positive",
+			"",
+			"- [x] Correct use of loops",
+			"",
+			"### Negative",
+			"",
+			"- [x] Missing boundary checks",
+			"- [x] Totally fabricated item",
+		].join("\n");
+
+		const result = validateWorksheetSection(section, "coding_concept", RUBRIC);
+
+		expect(result.ok).toBe(false);
+		expect(result.errors.map((e) => e.type)).toEqual(["unknown"]);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// sentimentOfOption
+// ---------------------------------------------------------------------------
+
+describe("sentimentOfOption", () => {
+	const codeFormatting = RUBRIC.categories.find((e) => e.key === "code_formatting")!.category;
+	const codingConcept = RUBRIC.categories.find((e) => e.key === "coding_concept")!.category;
+
+	it("classifies sub-points by sentiment", () => {
+		expect(sentimentOfOption(codeFormatting, "Readable variable names")).toBe("positive");
+		expect(sentimentOfOption(codeFormatting, "Inconsistent indentation")).toBe("negative");
+		expect(sentimentOfOption(codingConcept, "Could simplify conditionals")).toBe("neutral");
+	});
+
+	it("returns null for text that is not a sub-point of the category", () => {
+		expect(sentimentOfOption(codeFormatting, "Correct use of loops")).toBeNull();
+		expect(sentimentOfOption(codeFormatting, "Totally fabricated item")).toBeNull();
 	});
 });

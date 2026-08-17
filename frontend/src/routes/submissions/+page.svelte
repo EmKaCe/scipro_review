@@ -92,6 +92,8 @@
 	let configError = $state<string | null>(null);
 	let searchQuery = $state("");
 	let statusFilter = $state("all");
+	/** Confidence filter: "all" | "needs_review" | "review_optional" | "high_confidence". */
+	let confidenceFilter = $state("all");
 	let uploadPanelOpen = $state(false);
 	/** Materials manager panel visibility (dashboard). */
 	let materialsOpen = $state(false);
@@ -172,12 +174,14 @@
 			: `All ${submissions.length} submissions`,
 	);
 
-	/** Ids visible under the current search/status filter (bar "Select all in view"). */
+	/** Ids visible under the current search/status/confidence filter (bar "Select all in view"). */
 	let visibleIds = $derived(
 		submissions
 			.filter((s) => {
 				if (s.status === "archived" && statusFilter !== "archived") return false;
 				if (statusFilter !== "all" && s.status !== statusFilter) return false;
+				if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter)
+					return false;
 				if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
 					return false;
 				return true;
@@ -589,6 +593,10 @@
 		void loadSubmissions();
 	}
 
+	function handleConfidenceFilterChange(f: string) {
+		confidenceFilter = f;
+	}
+
 	function handleToggleUploadPanel() {
 		uploadPanelOpen = !uploadPanelOpen;
 	}
@@ -979,6 +987,7 @@
 			{submissions}
 			{searchQuery}
 			{statusFilter}
+			{confidenceFilter}
 			assignmentId={selectedAssignment}
 			{selectedIds}
 			onToggleSelect={handleToggleSelect}
@@ -988,6 +997,7 @@
 			onClearSelection={handleClearSelection}
 			onSearchChange={handleSearchChange}
 			onStatusFilterChange={handleStatusFilterChange}
+			onConfidenceFilterChange={handleConfidenceFilterChange}
 		>
 			{#snippet toolbarActions()}
 				<a

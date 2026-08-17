@@ -137,10 +137,12 @@ function renderDashboard(submissions: SubmissionMeta[] = SUBMISSIONS) {
 			submissions,
 			searchQuery: "",
 			statusFilter: "all",
+			confidenceFilter: "all",
 			assignmentId: "soil_contamination",
 			selectedIds: new Set<string>(),
 			onSearchChange: vi.fn(),
 			onStatusFilterChange: vi.fn(),
+			onConfidenceFilterChange: vi.fn(),
 			...callbacks,
 		},
 	});

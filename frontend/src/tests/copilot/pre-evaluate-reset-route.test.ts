@@ -52,6 +52,8 @@ const PRE_EVAL: StoredPreEvaluation = {
 	},
 	feedbackDraft: "**Nice job** — keep it up.",
 	notebookSummary: "The notebook computes a soil quality index.",
+	// Fixture only — the value is not asserted by these tests.
+	gradingConfidence: "review_optional",
 	evaluatedAt: "2026-08-10T12:00:00.000Z",
 };
 

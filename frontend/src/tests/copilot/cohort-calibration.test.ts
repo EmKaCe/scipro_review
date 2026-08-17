@@ -49,6 +49,8 @@ function preEval(dimensions: Record<string, number>): StoredPreEvaluation {
 		gradeSuggestion: { dimensions, justification: "test fixture" },
 		feedbackDraft: "",
 		notebookSummary: "",
+		// Fixture only — the value is not asserted by these tests.
+		gradingConfidence: "review_optional",
 		evaluatedAt: "2026-08-11T00:00:00.000Z",
 	};
 }

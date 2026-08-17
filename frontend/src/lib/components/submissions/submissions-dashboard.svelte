@@ -23,10 +23,13 @@
 		submissions: readonly SubmissionMeta[];
 		searchQuery: string;
 		statusFilter: string;
+		/** Confidence filter: "all" | "needs_review" | "review_optional" | "high_confidence". */
+		confidenceFilter: string;
 		/** Active assignment — plagiarism results are scoped to it. */
 		assignmentId: string;
 		onSearchChange: (q: string) => void;
 		onStatusFilterChange: (f: string) => void;
+		onConfidenceFilterChange: (f: string) => void;
 		/** Set of currently selected submission ids (bulk bar drives actions). */
 		selectedIds: ReadonlySet<string>;
 		/** Toggle a single row's selection. */
@@ -47,9 +50,11 @@
 		submissions,
 		searchQuery,
 		statusFilter,
+		confidenceFilter,
 		assignmentId,
 		onSearchChange,
 		onStatusFilterChange,
+		onConfidenceFilterChange,
 		selectedIds,
 		onToggleSelect,
 		onSelectRange,
@@ -80,6 +85,10 @@
 			// Archived rows are hidden unless the "Archived" filter is active.
 			if (s.status === "archived" && statusFilter !== "archived") return false;
 			if (statusFilter !== "all" && s.status !== statusFilter) return false;
+			// Confidence routing: rows without a stored confidence (pre-eval
+			// not run, or a legacy envelope) only match the "All" filter.
+			if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter)
+				return false;
 			if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
 				return false;
 			return true;
@@ -346,6 +355,17 @@
 			<option value="pre-evaluated">Pre-evaluated</option>
 			<option value="graded">Graded</option>
 			<option value="archived">Archived</option>
+		</select>
+		<select
+			class="filter-select"
+			aria-label="Filter by confidence"
+			value={confidenceFilter}
+			onchange={(e) => onConfidenceFilterChange(e.currentTarget.value)}
+		>
+			<option value="all">Confidence: All</option>
+			<option value="needs_review">Needs Review</option>
+			<option value="review_optional">Review Optional</option>
+			<option value="high_confidence">High Confidence</option>
 		</select>
 		<div class="toolbar-actions">
 			<button

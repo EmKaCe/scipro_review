@@ -24,6 +24,19 @@ export type SubmissionStatus =
 	| "archived";
 
 // ---------------------------------------------------------------------------
+// Grading confidence
+// ---------------------------------------------------------------------------
+
+/**
+ * Deterministic confidence level of a pre-evaluation, computed server-side
+ * from pipeline signals (retry-loop exhaustion, post-processing fix count,
+ * pre-analysis findings) — NOT an LLM judgement. Instructors use it to
+ * prioritize reviews: `needs_review` rows first, `high_confidence` rows can
+ * be skimmed or trusted.
+ */
+export type GradingConfidence = "needs_review" | "review_optional" | "high_confidence";
+
+// ---------------------------------------------------------------------------
 // Cell info
 // ---------------------------------------------------------------------------
 
@@ -98,6 +111,12 @@ export interface PreEvalData {
 	feedbackDraft: string;
 	/** Prose summary of the notebook for the teacher. */
 	notebookSummary: string;
+	/**
+	 * Deterministic confidence level of the pre-evaluation (see
+	 * {@link GradingConfidence}). Absent on legacy stored envelopes that
+	 * predate the field.
+	 */
+	gradingConfidence?: GradingConfidence;
 	/** ISO timestamp of the pre-evaluation run. */
 	evaluatedAt: string;
 }
@@ -133,6 +152,13 @@ export interface SubmissionMeta {
 	preEvalGrade?: number;
 	/** Teacher's final grade. */
 	teacherGrade?: number;
+	/**
+	 * Deterministic pre-evaluation confidence (see {@link GradingConfidence}),
+	 * enriched from the stored pre-eval envelope by GET /api/submissions.
+	 * Absent when pre-evaluation has not run (or the envelope predates the
+	 * field) — such rows only match the "All" confidence filter.
+	 */
+	gradingConfidence?: GradingConfidence;
 	/** ISO timestamp of upload. */
 	createdAt: string;
 	/** ISO timestamp of last status change. */

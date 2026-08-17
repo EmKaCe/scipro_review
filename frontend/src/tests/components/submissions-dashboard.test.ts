@@ -66,12 +66,14 @@ function renderDashboard(selected: ReadonlySet<string> = new Set()) {
 		onDeselectRange: vi.fn(),
 		onSelectAllVisible: vi.fn(),
 		onClearSelection: vi.fn(),
+		onConfidenceFilterChange: vi.fn(),
 	};
 	const utils = render(SubmissionsDashboard, {
 		props: {
 			submissions: SUBMISSIONS,
 			searchQuery: "",
 			statusFilter: "all",
+			confidenceFilter: "all",
 			assignmentId: "soil_contamination",
 			selectedIds: selected,
 			onSearchChange: vi.fn(),
@@ -169,10 +171,12 @@ describe("submissions-dashboard selection", () => {
 				submissions: withFix,
 				searchQuery: "",
 				statusFilter: "all",
+				confidenceFilter: "all",
 				assignmentId: "soil_contamination",
 				selectedIds: new Set<string>(),
 				onSearchChange: vi.fn(),
 				onStatusFilterChange: vi.fn(),
+				onConfidenceFilterChange: vi.fn(),
 				onToggleSelect: vi.fn(),
 				onSelectRange: vi.fn(),
 				onDeselectRange: vi.fn(),
@@ -185,5 +189,90 @@ describe("submissions-dashboard selection", () => {
 		expect(screen.getAllByText("Auto-fix available")).toHaveLength(1);
 		const row = screen.getByText("Auto-fix available").closest("tr")!;
 		expect(row.textContent).toContain("2026SS_02");
+	});
+});
+
+describe("submissions-dashboard confidence filter (Step 8)", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		api.fetchPlagiarismResults.mockRejectedValue(new ApiError(404, "No plagiarism check yet"));
+	});
+
+	/** SUBMISSIONS + a deterministic gradingConfidence per row. */
+	const CONFIDENCE_SUBMISSIONS: SubmissionMeta[] = SUBMISSIONS.map((s, i) => ({
+		...s,
+		gradingConfidence: (["needs_review", "review_optional", "high_confidence"] as const)[i]!,
+	}));
+
+	it("renders the Confidence select next to the status filter", () => {
+		renderDashboard();
+		const select = screen.getByLabelText("Filter by confidence") as HTMLSelectElement;
+		expect(select).not.toBeNull();
+		expect([...select.options].map((o) => o.value)).toEqual([
+			"all",
+			"needs_review",
+			"review_optional",
+			"high_confidence",
+		]);
+	});
+
+	it("emits onConfidenceFilterChange when a confidence option is picked", () => {
+		const { callbacks } = renderDashboard();
+		const select = screen.getByLabelText("Filter by confidence") as HTMLSelectElement;
+		fireEvent.change(select, { target: { value: "needs_review" } });
+		expect(callbacks.onConfidenceFilterChange).toHaveBeenCalledWith("needs_review");
+	});
+
+	it("shows only rows matching the active confidence filter", () => {
+		render(SubmissionsDashboard, {
+			props: {
+				submissions: CONFIDENCE_SUBMISSIONS,
+				searchQuery: "",
+				statusFilter: "all",
+				confidenceFilter: "needs_review",
+				assignmentId: "soil_contamination",
+				selectedIds: new Set<string>(),
+				onSearchChange: vi.fn(),
+				onStatusFilterChange: vi.fn(),
+				onConfidenceFilterChange: vi.fn(),
+				onToggleSelect: vi.fn(),
+				onSelectRange: vi.fn(),
+				onDeselectRange: vi.fn(),
+				onSelectAllVisible: vi.fn(),
+				onClearSelection: vi.fn(),
+			},
+		});
+		// Only 2026SS_01 (needs_review) stays visible.
+		expect(screen.getByLabelText("Select 2026SS_01")).not.toBeNull();
+		expect(screen.queryByLabelText("Select 2026SS_02")).toBeNull();
+		expect(screen.queryByLabelText("Select 2026SS_03")).toBeNull();
+	});
+
+	it("treats rows without a stored confidence as matching only the All filter", () => {
+		// 2026SS_01 has no gradingConfidence (pre-eval never ran / legacy).
+		const noConfidence = SUBMISSIONS.map((s, i) =>
+			i === 0 ? s : { ...s, gradingConfidence: "high_confidence" as const },
+		);
+		render(SubmissionsDashboard, {
+			props: {
+				submissions: noConfidence,
+				searchQuery: "",
+				statusFilter: "all",
+				confidenceFilter: "high_confidence",
+				assignmentId: "soil_contamination",
+				selectedIds: new Set<string>(),
+				onSearchChange: vi.fn(),
+				onStatusFilterChange: vi.fn(),
+				onConfidenceFilterChange: vi.fn(),
+				onToggleSelect: vi.fn(),
+				onSelectRange: vi.fn(),
+				onDeselectRange: vi.fn(),
+				onSelectAllVisible: vi.fn(),
+				onClearSelection: vi.fn(),
+			},
+		});
+		expect(screen.queryByLabelText("Select 2026SS_01")).toBeNull();
+		expect(screen.getByLabelText("Select 2026SS_02")).not.toBeNull();
+		expect(screen.getByLabelText("Select 2026SS_03")).not.toBeNull();
 	});
 });
