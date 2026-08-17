@@ -87,7 +87,9 @@ import {
 	type PostProcessFix,
 } from "$lib/server/copilot/post-process";
 import {
+	applyCalibrationAdjustments,
 	calibrateCohortFromResults,
+	extractFitMetricsFromResults,
 	type CalibrationAdjustment,
 } from "$lib/server/copilot/cohort-calibration";
 import { generateKarlJson } from "$lib/server/copilot/legacy-export";
@@ -1561,9 +1563,18 @@ export function derivedGradingConfidence(input: {
  * Run cross-submission cohort calibration for an assignment AFTER every
  * submission has been pre-evaluated. Reads the stored pre-evaluation
  * envelopes (the raw `preEval.gradeSuggestion.dimensions` — the canonical
- * Phase 2a input), derives deterministic score adjustments (hard caps,
+ * Phase 2a input) plus the fit metrics extracted from the stored executed
+ * cell outputs, derives deterministic score adjustments (hard caps,
  * bounded-fit CER cap, per-cluster outliers), and writes them back to each
  * submission's stored result as `calibrationAdjustments`.
+ *
+ * The adjustments are APPLIED, not just recorded: for every submission with
+ * adjustments, the calibrated dimensions replace the stored
+ * `preEval.gradeSuggestion.dimensions` AND `postProcessed.dimensions` (the
+ * gate and the dashboard read the post-processed copy), so the calibrated
+ * scores are what grading and the UI see. The raw envelope is intentionally
+ * overwritten here — calibration is the final authority after the batch;
+ * `calibrationAdjustments` keeps the per-cell old→new audit trail.
  *
  * Deterministic — no LLM calls. Returns the adjustments sorted by
  * submissionId (empty when every score was already consistent; in that case
@@ -1576,18 +1587,19 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 	calibratedCount: number;
 }> {
 	const results = await readResults(assignmentId);
-	// Fit metrics (R²/RMSE/bounds) are not persisted by the results store, so
-	// no `outcomes` map is passed — calibrateCohortFromResults derives the
-	// error flags from the stored execution results and treats everything
-	// else as `no_metrics`. Callers that extract fit metrics from executed
-	// cell outputs can pass them via calibrateCohortScores directly.
-	const adjustments = calibrateCohortFromResults(results);
+	// Fit metrics (R²/RMSE/bounds) are parsed from the stored executed-cell
+	// output so clustering can actually classify reference_fit / bounded_fit
+	// submissions instead of dumping everything into no_metrics.
+	const outcomes = extractFitMetricsFromResults(results);
+	const adjustments = calibrateCohortFromResults(results, outcomes);
 	if (adjustments.length === 0) {
 		return { assignmentId, adjustments: [], calibratedCount: 0 };
 	}
 
 	// Write the adjustments back, grouped per submission (one write for the
-	// whole file keeps the store consistent).
+	// whole file keeps the store consistent), and APPLY them to the stored
+	// dimension scores — both the raw preEval envelope and the
+	// postProcessed copy the gate reads.
 	const bySubmission = new Map<string, CalibrationAdjustment[]>();
 	for (const adjustment of adjustments) {
 		const list = bySubmission.get(adjustment.submissionId) ?? [];
@@ -1596,8 +1608,28 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 	}
 	for (const [studentId, list] of bySubmission) {
 		const stored = results[studentId];
-		if (!stored) continue;
-		results[studentId] = { ...stored, calibrationAdjustments: list };
+		if (!stored?.preEval) continue;
+		const originalDims = stored.preEval.gradeSuggestion.dimensions;
+		const adjustedDims = applyCalibrationAdjustments(
+			{ [studentId]: originalDims },
+			list,
+		)[studentId]!;
+		results[studentId] = {
+			...stored,
+			preEval: {
+				...stored.preEval,
+				gradeSuggestion: {
+					...stored.preEval.gradeSuggestion,
+					dimensions: adjustedDims,
+				},
+			},
+			// The gate (and Karl export) reads postProcessed first — keep the
+			// calibrated scores visible there too.
+			postProcessed: stored.postProcessed
+				? { ...stored.postProcessed, dimensions: adjustedDims }
+				: stored.postProcessed,
+			calibrationAdjustments: list,
+		};
 	}
 	await writeResults(assignmentId, results);
 

@@ -12,13 +12,17 @@
 import { describe, expect, it } from "vitest";
 
 import {
+	applyCalibrationAdjustments,
 	calibrateCohortFromResults,
 	calibrateCohortScores,
 	classifyExecutionCluster,
 	ExecutionCluster,
+	extractFitMetricsFromResults,
 	SOIL_CONTAMINATION_ANCHORS,
+	type CalibrationAdjustment,
 	type SubmissionExecutionOutcome,
 } from "$lib/server/copilot/cohort-calibration";
+import type { ExecutedCell } from "$lib/server/executor-client";
 import type {
 	ResultsFile,
 	StoredExecutionResult,
@@ -60,11 +64,12 @@ function storedResult(overrides: {
 	error?: string | null;
 	success?: boolean;
 	preEval?: StoredPreEvaluation;
+	cells?: ExecutedCell[];
 }): StoredExecutionResult {
 	return {
 		success: overrides.success ?? true,
 		notebookPath: "/tmp/notebook.ipynb",
-		cells: [],
+		cells: overrides.cells ?? [],
 		fixedCells: null,
 		totalCells: 0,
 		executedCells: 0,
@@ -81,6 +86,26 @@ function storedResult(overrides: {
 		autofix: { attempts: 0, succeeded: 0 },
 		error: overrides.error ?? null,
 		preEval: overrides.preEval,
+	};
+}
+
+/** Executed-cell fixture: type, source, output (marker default "different"). */
+function cell(overrides: {
+	index?: number;
+	type?: "code" | "markdown";
+	source?: string;
+	output?: string;
+}): ExecutedCell {
+	return {
+		index: overrides.index ?? 0,
+		type: overrides.type ?? "code",
+		source: overrides.source ?? "",
+		original_source: overrides.source ?? "",
+		output: overrides.output ?? "",
+		error: null,
+		traceback: null,
+		execution_count: 1,
+		marker: "different",
 	};
 }
 
@@ -239,5 +264,144 @@ describe("calibrateCohortScores", () => {
 			expect(adjustment.newScore).toBe(5.0);
 			expect(adjustment.reason).toContain("execution");
 		}
+	});
+});
+
+describe("extractFitMetricsFromResults", () => {
+	it("parses R2, RMSE and bounds from executed-cell output and source", () => {
+		const results: ResultsFile = {
+			// R^2 = and RMSE = forms (post-process.ts canonical), explicit bounds.
+			s1: storedResult({
+				cells: [
+					cell({
+						index: 0,
+						type: "markdown",
+						source: "# Fit — ignore me",
+						output: "R^2 = 0.1234",
+					}),
+					cell({
+						index: 1,
+						source:
+							"popt, pcov = curve_fit(model, x, y, p0=[1000, 0], bounds=(0, np.inf))",
+						output: "R^2 = 0.98\nRMSE = 20.5",
+					}),
+				],
+			}),
+			// R2: and RMSE ( forms, no bounds in source.
+			s2: storedResult({
+				cells: [
+					cell({ index: 0, source: "x = 1", output: "R2: 0.941" }),
+					cell({ index: 1, source: "print(fit)", output: "RMSE (42.58 mg/kg)" }),
+				],
+			}),
+			// ² variant, bounds split across the source line.
+			s3: storedResult({
+				cells: [
+					cell({
+						index: 0,
+						source: "res = curve_fit(model, x, y, bounds = [0, None])",
+						output: "R²=0.8795",
+					}),
+				],
+			}),
+			// No metrics, no bounds — outcome present but empty.
+			s4: storedResult({ cells: [cell({ index: 0, source: "print('hello')", output: "hello" })] }),
+		};
+
+		const outcomes = extractFitMetricsFromResults(results);
+
+		// Only keys present in the results file are returned.
+		expect([...outcomes.keys()]).toEqual(["s1", "s2", "s3", "s4"]);
+		expect(outcomes.get("s1")).toEqual({ rSquared: 0.98, rmse: 20.5, bounded: true });
+		expect(outcomes.get("s2")).toEqual({ rSquared: 0.941, rmse: 42.58 });
+		expect(outcomes.get("s3")).toEqual({ rSquared: 0.8795, bounded: true });
+		expect(outcomes.get("s4")).toEqual({});
+	});
+
+	it("only reads output of code cells and does not mutate the results file", () => {
+		const output = "R^2 = 0.9";
+		const results: ResultsFile = {
+			s1: storedResult({
+				cells: [
+					cell({ index: 0, type: "markdown", source: "bounds=(0, 1)", output }),
+					cell({ index: 1, source: "x = 1", output: "no metrics here" }),
+				],
+			}),
+		};
+		const before = JSON.stringify(results);
+
+		const outcomes = extractFitMetricsFromResults(results);
+
+		// Markdown cell output/source is ignored: no R², no bounds flag.
+		expect(outcomes.get("s1")).toEqual({});
+		expect(JSON.stringify(results)).toBe(before);
+	});
+});
+
+describe("applyCalibrationAdjustments", () => {
+	it("applies multiple adjustments across submissions without mutating the input", () => {
+		const input: Record<string, Record<string, number>> = {
+			s1: { [CER]: 5.5, code_quality_design: 4.0 },
+			s2: { [CER]: 5.5, creativity: 3.0 },
+		};
+		const adjustments: CalibrationAdjustment[] = [
+			{
+				submissionId: "s1",
+				dimension: CER,
+				oldScore: 5.5,
+				newScore: 5.0,
+				reason: "bounded-fit CER cap",
+			},
+			{
+				submissionId: "s2",
+				dimension: CER,
+				oldScore: 5.5,
+				newScore: 5.0,
+				reason: "bounded-fit CER cap",
+			},
+			{
+				submissionId: "s2",
+				dimension: "creativity",
+				oldScore: 3.0,
+				newScore: 3.5,
+				reason: "outlier correction",
+			},
+		];
+
+		const adjusted = applyCalibrationAdjustments(input, adjustments);
+
+		// Adjusted copy carries every change…
+		expect(adjusted).toEqual({
+			s1: { [CER]: 5.0, code_quality_design: 4.0 },
+			s2: { [CER]: 5.0, creativity: 3.5 },
+		});
+		// …while the input is untouched.
+		expect(input).toEqual({
+			s1: { [CER]: 5.5, code_quality_design: 4.0 },
+			s2: { [CER]: 5.5, creativity: 3.0 },
+		});
+		// The returned map is a distinct object (copy, not same reference).
+		expect(adjusted).not.toBe(input);
+		expect(adjusted.s1).not.toBe(input.s1);
+	});
+
+	it("skips adjustments for submissions absent from the scores map", () => {
+		const input: Record<string, Record<string, number>> = { s1: { [CER]: 5.5 } };
+		const adjustments: CalibrationAdjustment[] = [
+			{
+				submissionId: "missing",
+				dimension: CER,
+				oldScore: 5.5,
+				newScore: 5.0,
+				reason: "no such submission",
+			},
+		];
+
+		expect(applyCalibrationAdjustments(input, adjustments)).toEqual({ s1: { [CER]: 5.5 } });
+		expect(input).toEqual({ s1: { [CER]: 5.5 } });
+	});
+
+	it("returns an empty map for empty input", () => {
+		expect(applyCalibrationAdjustments({}, [])).toEqual({});
 	});
 });

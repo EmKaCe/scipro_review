@@ -31,6 +31,7 @@
  */
 
 import type { ResultsFile } from "$lib/server/results-store";
+import type { ExecutedCell } from "$lib/server/executor-client";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -128,6 +129,18 @@ const ERROR_CER_CAP = 5.0;
  * form a homogeneous cluster and is skipped, not crashed.
  */
 export const MIN_OUTLIER_CONSENSUS = 4;
+
+/**
+ * Fit-metric patterns — canonical forms mirror post-process.ts `matchR2` /
+ * `matchRmse` so cohort clustering and evidence notes read the same output.
+ * R²: "R^2 = 0.941", "R2: 0.94", "R²=0.941" (first capture group is the value).
+ */
+export const FIT_R2_PATTERN = /\bR\s*(?:\^2|²|2)\s*[=:]\s*([\d.]+)/i;
+/** RMSE: "RMSE = 42.58" or "RMSE (42.58 mg/kg)" (first capture group is the value). */
+export const FIT_RMSE_PATTERN = /\bRMSE\s*[=:]\s*([\d.]+)/i;
+export const FIT_RMSE_PAREN_PATTERN = /\bRMSE\s*\(\s*([\d.]+)/i;
+/** Explicit parameter bounds in a curve_fit call, e.g. `bounds=(0, np.inf)`. */
+export const BOUNDS_CODE_PATTERN = /bounds\s*=/i;
 
 // ---------------------------------------------------------------------------
 // Clustering
@@ -307,6 +320,62 @@ export function calibrateCohortFromResults(
 	return calibrateCohortScores(scores, SOIL_CONTAMINATION_ANCHORS, mergedOutcomes);
 }
 
+/**
+ * Extract per-submission fit metrics from stored executed-cell output.
+ *
+ * Reads each stored submission's executed cells (`results[sid].cells`, each
+ * `{ type, source, output, ... }`), joins the output text of code cells, and
+ * parses R²/RMSE with the same canonical patterns post-process.ts uses
+ * (see {@link FIT_R2_PATTERN} / {@link FIT_RMSE_PATTERN}). A submission is
+ * flagged `bounded` when any code cell source contains explicit parameter
+ * bounds (e.g. `bounds=` in a `curve_fit` call).
+ *
+ * Pure: never mutates `results`. Keys are only present for submissions that
+ * exist in the results file; metric fields are absent when not computed.
+ *
+ * @param results results.json contents — a map keyed by studentId.
+ * @returns submissionId → {@link SubmissionExecutionOutcome} for every
+ *   stored submission (empty outcome objects for metric-less ones).
+ */
+export function extractFitMetricsFromResults(
+	results: ResultsFile,
+): Map<string, SubmissionExecutionOutcome> {
+	const outcomes = new Map<string, SubmissionExecutionOutcome>();
+	for (const [submissionId, stored] of Object.entries(results)) {
+		outcomes.set(submissionId, extractFitMetricsFromCells(stored.cells ?? []));
+	}
+	return outcomes;
+}
+
+/**
+ * Pure: apply {@link CalibrationAdjustment}s to a scores map by setting
+ * `scores[submissionId][dimension] = newScore` for each adjustment, starting
+ * from a copy of the input. The input map is never mutated; a new map is
+ * returned. Adjustments for submissions absent from `scores` are skipped.
+ *
+ * @param scores submissionId → dimension scores (the input is NOT mutated).
+ * @param adjustments suggested corrections; applied in order, so later
+ *   adjustments for the same (submissionId, dimension) pair win.
+ * @returns a new map with the adjusted scores applied.
+ */
+export function applyCalibrationAdjustments(
+	scores: Record<string, Record<string, number>>,
+	adjustments: CalibrationAdjustment[],
+): Record<string, Record<string, number>> {
+	const next: Record<string, Record<string, number>> = {};
+	for (const [submissionId, dimensions] of Object.entries(scores)) {
+		next[submissionId] = { ...dimensions };
+	}
+	for (const { submissionId, dimension, newScore } of adjustments) {
+		const dimensions = next[submissionId];
+		if (!dimensions) {
+			continue;
+		}
+		dimensions[dimension] = newScore;
+	}
+	return next;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -314,6 +383,36 @@ export function calibrateCohortFromResults(
 /** `${submissionId}\0${dimension}` — stable dedupe key for one score cell. */
 function adjustKey(submissionId: string, dimension: string): string {
 	return `${submissionId}\u0000${dimension}`;
+}
+
+/**
+ * Parse one stored submission's executed cells into an
+ * {@link SubmissionExecutionOutcome}: R²/RMSE come from the joined output
+ * text of code cells (same patterns as post-process.ts); `bounded` is true
+ * when any code cell source contains explicit parameter bounds (e.g.
+ * `bounds=` in a `curve_fit` call). Pure — never mutates `cells`.
+ */
+function extractFitMetricsFromCells(
+	cells: readonly ExecutedCell[],
+): SubmissionExecutionOutcome {
+	const codeCells = cells.filter((cell) => cell.type === "code");
+	const outputText = codeCells.map((cell) => cell.output ?? "").join("\n");
+	const codeSource = codeCells.map((cell) => cell.source ?? "").join("\n");
+
+	const outcome: SubmissionExecutionOutcome = {};
+	const r2 = outputText.match(FIT_R2_PATTERN)?.[1];
+	const rmse =
+		outputText.match(FIT_RMSE_PATTERN)?.[1] ?? outputText.match(FIT_RMSE_PAREN_PATTERN)?.[1];
+	if (r2 !== undefined) {
+		outcome.rSquared = Number.parseFloat(r2);
+	}
+	if (rmse !== undefined) {
+		outcome.rmse = Number.parseFloat(rmse);
+	}
+	if (BOUNDS_CODE_PATTERN.test(codeSource)) {
+		outcome.bounded = true;
+	}
+	return outcome;
 }
 
 /**

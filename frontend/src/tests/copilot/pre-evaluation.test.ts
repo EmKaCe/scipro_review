@@ -33,6 +33,7 @@ import {
 	readResults,
 	setPreEvaluation,
 	writeResults,
+	type ResultsFile,
 } from "$lib/server/results-store";
 import { parseCategoryKey, type Category, type MergedRubric } from "$lib/types/criteria";
 
@@ -1949,7 +1950,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			expect(stored.calibrationAdjustments).toBeUndefined();
 		});
 
-		it("runs cohort calibration over the batch and writes adjustments back to each submission", async () => {
+		it("runs cohort calibration over the batch and applies adjustments to the stored preEval AND postProcessed dimensions", async () => {
 			// Two pre-evaluated submissions: STUDENT (already consistent) and a
 			// second one whose CER score of 6.0 is impossible (top of the scale
 			// is 5.5 — the hard cap fires deterministically).
@@ -1974,6 +1975,12 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 						},
 						evaluatedAt: "2026-08-11T00:00:00.000Z",
 					},
+					// The post-processed copy (what the gate reads) exists and
+					// mirrors the raw 6.0 before calibration runs.
+					postProcessed: {
+						...base.postProcessed,
+						dimensions: { ...base.postProcessed.dimensions, code_execution_results: 6 },
+					},
 				},
 			});
 
@@ -1986,9 +1993,9 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			expect(cerAdjustment).toBeDefined();
 			expect(cerAdjustment!.oldScore).toBe(6);
 			expect(cerAdjustment!.newScore).toBe(5.5);
-			expect(calibration.calibratedCount).toBeGreaterThan(0);
+			expect(calibration.calibratedCount).toBe(1);
 
-			// The adjustments are written back into the stored results.
+			// The audit trail is kept…
 			const storedOther = (await readResults(ASSIGNMENT))[other]!;
 			expect(storedOther.calibrationAdjustments).toBeDefined();
 			expect(
@@ -1996,8 +2003,99 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 					(adj) => adj.dimension === "code_execution_results" && adj.newScore === 5.5,
 				),
 			).toBe(true);
-			// The raw envelope itself is NOT mutated by calibration.
-			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(6);
+			// …and the calibrated score REPLACES the raw envelope's dimension
+			// (calibration is the final authority after the batch)…
+			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.5);
+			// …while untouched dimensions are preserved.
+			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_quality_design).toBe(4);
+			// The gate-visible post-processed copy receives the SAME calibrated
+			// score — the stored postProcessed.dimensions are rewritten too.
+			expect(storedOther.postProcessed!.dimensions.code_execution_results).toBe(5.5);
+			// STUDENT stays untouched (no adjustments for it).
+			const storedStudent = (await readResults(ASSIGNMENT))[STUDENT]!;
+			expect(storedStudent.calibrationAdjustments).toBeUndefined();
+			expect(storedStudent.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(4);
+		});
+
+		it("passes fit metrics to the calibrator so reference-fit/bounded-fit clustering fires (not all no_metrics)", async () => {
+			const base = await preEvaluateSubmission({
+				submissionId: STUDENT,
+				assignmentId: ASSIGNMENT,
+			});
+			// Four reference-fit submissions (R²/RMSE in executed-cell output,
+			// inside the anchor band) with CER 5.0, plus one bounded-fit
+			// submission (bounds= in the source) with CER 5.5. The bounded-fit
+			// CER cap fires ONLY when the outcomes map reaches the calibrator —
+			// without it every submission would cluster as no_metrics, no
+			// reference-fit median would exist, and nothing would be adjusted.
+			const cell = (over: Partial<ExecutionResult["cells"][number]>) => ({
+				index: 0,
+				type: "code" as const,
+				source: "",
+				original_source: "",
+				output: "",
+				error: null,
+				traceback: null,
+				execution_count: 1,
+				marker: "pending" as const,
+				...over,
+			});
+			const preEval = (cer: number) => ({
+				...base,
+				gradeSuggestion: {
+					...base.gradeSuggestion,
+					dimensions: { code_execution_results: cer },
+				},
+				evaluatedAt: "2026-08-11T00:00:00.000Z",
+			});
+			const results: ResultsFile = {};
+			for (const id of ["r1", "r2", "r3", "r4"]) {
+				results[id] = {
+					...makeExecutionResult(),
+					cells: [cell({ source: "x = 1", output: "R^2 = 0.98\nRMSE = 20" })],
+					preEval: preEval(5.0),
+				};
+			}
+			results["b1"] = {
+				...makeExecutionResult(),
+				cells: [
+					cell({
+						source: "popt, pcov = curve_fit(model, x, y, bounds=(0, np.inf))",
+						output: "R^2 = 0.8\nRMSE = 60",
+					}),
+				],
+				preEval: preEval(5.5),
+				postProcessed: {
+					...base.postProcessed,
+					dimensions: { code_execution_results: 5.5 },
+				},
+			};
+			await writeResults(ASSIGNMENT, results);
+
+			const calibration = await runCohortCalibration(ASSIGNMENT);
+
+			// Exactly one adjustment: b1's bounded-fit CER 5.5 capped to the
+			// reference-fit median 5.0 — proof the extracted fit metrics reached
+			// the calibrator (the reason text only exists on that code path).
+			expect(calibration.adjustments).toHaveLength(1);
+			expect(calibration.adjustments[0]).toMatchObject({
+				submissionId: "b1",
+				dimension: "code_execution_results",
+				oldScore: 5.5,
+				newScore: 5.0,
+			});
+			expect(calibration.adjustments[0].reason).toContain("reference-fit median");
+			expect(calibration.calibratedCount).toBe(1);
+
+			// The calibrated score is applied to BOTH stored dimension maps.
+			const storedB1 = (await readResults(ASSIGNMENT))["b1"]!;
+			expect(storedB1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
+			expect(storedB1.postProcessed!.dimensions.code_execution_results).toBe(5.0);
+			// Reference-fit members were already consistent — untouched.
+			expect(storedB1.calibrationAdjustments).toHaveLength(1);
+			const storedR1 = (await readResults(ASSIGNMENT))["r1"]!;
+			expect(storedR1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
+			expect(storedR1.calibrationAdjustments).toBeUndefined();
 		});
 	});
 
