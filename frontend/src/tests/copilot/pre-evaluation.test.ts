@@ -1143,6 +1143,55 @@ describe("worksheet pipeline and semantic validation", () => {
 		expect(plottingPrompt).toContain("INTERNAL CONSISTENCY");
 		expect(plottingPrompt).toContain("'Title: Plot title is missing'");
 		expect(plottingPrompt).toContain("must NOT be checked when the corresponding positive");
+		// The plotting turn checks OVERALL quality items first (General
+		// choices, Color palette, matplotlib usage) and only then adds
+		// detail items — it must not pad color/line style/line thickness.
+		expect(plottingPrompt).toContain("OVERALL-FIRST");
+		expect(plottingPrompt).toContain("Color palette: well chosen");
+		expect(plottingPrompt).toContain("Do not check color/line style/line thickness/point style");
+	});
+
+	it("gives the coding_concept turn builtin-selectivity guidance against over-ticking builtins", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const codingTurn = kiConnectMock.chatCompletionText.mock.calls.find((c) =>
+			String(c[1]).includes("Fill ONLY the `## Rubric: coding_concept —"),
+		);
+		expect(codingTurn).toBeDefined();
+		const codingPrompt = String(codingTurn![1]);
+		expect(codingPrompt).toContain("BUILTIN SELECTIVITY");
+		expect(codingPrompt).toContain("sorted() with a key");
+		expect(codingPrompt).toContain("Do not check every builtin that appears once");
+	});
+
+	it("gives the assignment-specific library turns core-usage guidance against skipping core positives", async () => {
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		// Every NumPy/Pandas/SciPy/sklearn turn must carry the CORE USAGE
+		// block — core positives (abbreviation, vectorization, functions,
+		// types, data loading) get checked when demonstrated, even for
+		// average submissions.
+		const turnCalls = kiConnectMock.chatCompletionText.mock.calls.filter((c) =>
+			String(c[0]).includes("filling ONE rubric category section"),
+		);
+		const libraryTurns = turnCalls.filter((c) =>
+			/`## Rubric: (numpy|pandas|scipy|sklearn) —/.test(String(c[1])),
+		);
+		expect(libraryTurns.length).toBeGreaterThan(0);
+		for (const call of libraryTurns) {
+			const userPrompt = String(call[1]);
+			expect(userPrompt).toContain("CORE USAGE");
+			expect(userPrompt).toContain("abbreviation, vectorization, functions, types, data loading");
+			expect(userPrompt).toContain("do NOT skip them just because the submission is 'average'");
+		}
+
+		// The universal CORE-FIRST block applies to every turn.
+		for (const call of turnCalls) {
+			const userPrompt = String(call[1]);
+			expect(userPrompt).toContain("CORE-FIRST");
+			expect(userPrompt).toContain("abbreviation `np`, vectorization, `np.exp` usage");
+			expect(userPrompt).toContain("A submission that uses the library at all deserves its core positives checked");
+		}
 	});
 
 	it("calibrates the general_feedback overall rating against the rest of the worksheet", async () => {

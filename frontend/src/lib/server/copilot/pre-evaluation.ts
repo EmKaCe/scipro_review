@@ -572,9 +572,9 @@ SCORING (RAW POINTS, NOT percentages — a 6-point dimension at 60% is ~4, never
 
 PER-DIMENSION GUIDE — what each dimension measures:
 - code_quality_design: readability and structure — descriptive names, no dead code, no magic numbers.
-- code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution is the BASELINE (3-4/6). Above baseline: markdown interpretation of outputs, model-quality discussion (R², RMSE vs data scale), parameter reasonableness, limitations. RMSE computed but never discussed → cap at 4/6.
+- code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution with basic output is the BASELINE = 4/6 (a working submission that runs end-to-end and prints its results deserves 4, not 3). +1 (→ 5/6) for markdown interpretation of the outputs (results explained in context, not just printed). +1 (→ 5.5/6) for model-quality discussion: R²/RMSE interpreted against the data scale, parameter reasonableness, limitations. Cap at 5.5/6 — 6 is reserved for flawless execution AND interpretation. RMSE computed but never discussed → cap at 4/6.
 - assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
-- scientific_programming: scientific methodology — library built-ins (sklearn r2_score, not a hand-rolled formula), physical bounds on parameters, unit awareness, assumption validation.
+- scientific_programming: scientific methodology. Anchor scale (6-point dimension): 5-5.5 = uses library built-ins (sklearn r2_score / mean_squared_error, NOT hand-rolled formulas) AND reports parameter standard errors from the covariance matrix AND discusses R²/RMSE in context (vs data scale, physical plausibility); 4-4.5 = uses built-ins, computes the metrics, some discussion of results; 3 = hand-rolled formulas or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission that uses sklearn built-ins and reports covariance-matrix standard errors deserves 5+ — do not anchor it at 3.
 - creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
 
 MANDATORY SELF-CHECK before finalizing:
@@ -582,6 +582,7 @@ MANDATORY SELF-CHECK before finalizing:
 2. The pre-analysis findings are FACTS — if pre-analysis found "df" is non-descriptive, the code quality score must reflect it.
 3. State exactly ONE strength and exactly ONE weakness in the justification. Every submission does SOMETHING right — if you cannot find a strength, you are being too harsh.
 4. If creativity <= 2, the submission must have NO original contributions — no extra analysis, no alternative approaches, no non-standard techniques. A submission that does anything beyond the reference deserves 2.5+.
+5. If scientific_programming or code_execution_results <= 3, the submission must have major methodology gaps — missing built-ins, no metric discussion, or execution failure. A working submission that uses the assigned libraries and discusses its results deserves 4+.
 
 justification: 3-5 sentences citing specific cells and pre-analysis findings, with exactly ONE strength and exactly ONE weakness.
 
@@ -1888,7 +1889,16 @@ function buildCategoryUserPrompt(args: {
 	if (categoryKey === "plotting_visualization") {
 		categoryGuidance.push(
 			"- EVIDENCE SELECTIVITY: check a detail item ONLY when the notebook's plotting code or output visibly demonstrates it. Do not check every plot detail (color, line style, line thickness, point style, font size, ...) just because the submission contains plots — the professor checks only the details the plots actually get right, not the full list.",
+			"- OVERALL-FIRST: check the OVERALL quality items first (General: choices behind the plot(s) were well done, Color palette: well chosen, matplotlib: good usage) when the plots are well-made; only then add detail items (axis labels, legend, title, units) with explicit evidence. Do not check color/line style/line thickness/point style unless the submission clearly varies them meaningfully.",
 			"- INTERNAL CONSISTENCY: a negative like 'Axis Labels: One or two axis lables are missing or incomplete', 'Title: Plot title is missing', or 'Units: Missing on axis labels or title' must NOT be checked when the corresponding positive ('axis labels', 'title', 'including units') is checked — unless the source shows explicit, contradictory evidence (e.g. some plots labeled and others not). Pick the side the majority of plots support.",
+		);
+	} else if (categoryKey === "coding_concept") {
+		categoryGuidance.push(
+			"- BUILTIN SELECTIVITY: check a built-in function or data structure ONLY when it is used in a non-trivial way (e.g. sorted() with a key, zip() to iterate two lists). Do not check every builtin that appears once — a single passing mention or a trivial one-off use is not enough.",
+		);
+	} else if (["numpy", "pandas", "scipy", "sklearn"].includes(categoryKey)) {
+		categoryGuidance.push(
+			"- CORE USAGE: for this assignment-specific category, check the positive core items (abbreviation, vectorization, functions, types, data loading) when the code demonstrates them — do NOT skip them just because the submission is 'average'. A submission that uses the library at all deserves its core positives checked; the professor checks NumPy abbreviation/vectorization on most submissions that use NumPy.",
 		);
 	} else if (categoryKey === "general_feedback") {
 		categoryGuidance.push(
@@ -1913,6 +1923,7 @@ function buildCategoryUserPrompt(args: {
 		"---",
 		"",
 		"EVIDENCE SELECTIVITY: check an item ONLY when the notebook clearly demonstrates it. Do not check every applicable-looking item — every checked item must be visibly supported by the code/markdown. For detail lists (built-in functions, data structures, plot details), check only the items the submission actually uses; do not pad the list.",
+		"CORE-FIRST: for each category, FIRST identify the 2-4 CORE items the submission clearly demonstrates (e.g. for NumPy: abbreviation `np`, vectorization, `np.exp` usage; for plotting: overall quality, axis labels, legend, title) and check those, THEN only add detail items with explicit evidence. A submission that clearly demonstrates a core item must have that core positive checked — never skip the core positives and pad the details instead. For assignment-specific categories (NumPy, Pandas, SciPy, sklearn), check the core usage items first — abbreviation, vectorization, built-in function usage, data loading — before any detail items. A submission that uses the library at all deserves its core positives checked.",
 		...(categoryGuidance.length > 0 ? ["", ...categoryGuidance] : []),
 		"",
 		`Fill ONLY the \`## Rubric: ${categoryKey} — ${categoryTitle}\` section. Return the complete edited section for this category only, from \`## Rubric:\` through \`### Additional Notes\`. Preserve all un-checked items verbatim — only change \`[ ]\` to \`[x]\`.`,
