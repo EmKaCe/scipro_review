@@ -60,9 +60,6 @@ export interface PreAnalysis {
 /** Names that are acceptable as single letters in specific contexts. */
 const CONTEXT_OK_SINGLE_LETTERS = new Set(["i", "j", "k", "n", "m", "p"]);
 
-/** Regex matching a Python variable assignment: name = ... */
-const ASSIGN_RE = /(?:^|\n)\s*([a-zA-Z_]\w*)\s*=/g;
-
 /** Regex matching a Python import statement: import X or from X import Y */
 const IMPORT_STMT_RE = /(?:^|\n)(?:import\s+([\w.]+(?:\s*,\s*[\w.]+)*)|from\s+([\w.]+)\s+import\s+(.+))/g;
 
@@ -72,17 +69,43 @@ const INTERPRETATION_WORDS = /\b(mean|median|std|standard deviation|correlation|
 /** Citation patterns: [1], [1-3], (Author, 2020) */
 const CITATION_RE = /\[[\d,\-\s]+\]|\(\w+,\s*\d{4}\)/g;
 
+/** Regex matching a Python variable assignment: name = ... (line-start only). */
+const ASSIGN_RE = /^([a-zA-Z_]\w*)\s*=(?!=)/g;
+
 /**
  * Extract variable names from Python assignment statements.
  * Flags single/double-character names (except loop counters i, j, k, n, m, p).
+ *
+ * Keyword arguments inside multi-line function calls (e.g. `f=plume_model`,
+ * `s=28` on their own line) are NOT variable declarations — a line whose
+ * preceding non-empty line ended with `(` or `,` is a call-argument
+ * continuation, so its `name=value` pairs are skipped.
  */
 function extractNonDescriptiveNames(source: string): string[] {
 	const found = new Set<string>();
-	for (const match of source.matchAll(ASSIGN_RE)) {
-		const name = match[1]!;
-		if (name.length <= 2 && !CONTEXT_OK_SINGLE_LETTERS.has(name)) {
-			found.add(name);
+	const lines = source.split("\n");
+	let inCallContinuation = false;
+	for (const line of lines) {
+		const trimmed = line.trim();
+		if (inCallContinuation && trimmed.length > 0) {
+			// Inside a multi-line call argument list — these are kwargs, not
+			// declarations. Still update continuation state below.
+		} else {
+			for (const match of trimmed.matchAll(ASSIGN_RE)) {
+				const name = match[1]!;
+				if (name.length <= 2 && !CONTEXT_OK_SINGLE_LETTERS.has(name)) {
+					found.add(name);
+				}
+			}
 		}
+		// A line ending with `(`, `,`, or `\` continues a call/expression on
+		// the next line. `def`/`class`/`if`/`for`/`while` headers ending in
+		// `(` are blocks, not calls — but their params are declarations, so
+		// treat the first line after as a call-continuation too (the params
+		// are never assignments anyway, and skipping them is safe).
+		inCallContinuation =
+			/[,(]\s*(?:#.*)?$/.test(trimmed) ||
+			(/\\\s*$/.test(trimmed) && !/^\s*(?:def|class|if|for|while|with)\b/.test(line));
 	}
 	return [...found].sort();
 }

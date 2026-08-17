@@ -26,6 +26,7 @@ import {
 	type PreEvaluation,
 } from "$lib/server/copilot/pre-evaluation";
 import type { ExecutionResult } from "$lib/server/executor-client";
+import { analyzeSubmission } from "$lib/server/copilot/pre-analysis";
 import type { PreAnalysis } from "$lib/server/copilot/pre-analysis";
 import type { PostProcessFix } from "$lib/server/copilot/post-process";
 import {
@@ -1999,3 +2000,54 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(6);
 		});
 	});
+
+describe("analyzeSubmission kwarg guard (regression: 2026SS_09 false positives)", () => {
+	function codeCell(source: string) {
+		return {
+			index: 0,
+			type: "code" as const,
+			source,
+			original_source: source,
+			output: "",
+			error: null,
+			traceback: null,
+			execution_count: 1,
+			marker: "different" as const,
+		};
+	}
+
+	it("does not flag keyword arguments inside multi-line function calls", () => {
+		const source = [
+			"optimised_parameters, covariance = curve_fit(",
+			"    f=plume_model,",
+			"    xdata=(x_data, y_data),",
+			"    p0=[1000, 0, 500, 0, 1000],",
+			")",
+			"plt.scatter(x_data, y_data,",
+			"    s=28, alpha=0.75,",
+			")",
+		].join("\n");
+		const pa = analyzeSubmission([codeCell(source)]);
+		expect(pa.nonDescriptiveNames).not.toContain("f");
+		expect(pa.nonDescriptiveNames).not.toContain("s");
+		expect(pa.nonDescriptiveNames).not.toContain("p0");
+	});
+
+	it("still flags standalone short variable names", () => {
+		const source = ["df = pd.read_csv('x.csv')", "x = np.linspace(0, 1)", "y = 5"].join("\n");
+		const pa = analyzeSubmission([codeCell(source)]);
+		expect(pa.nonDescriptiveNames).toContain("df");
+		expect(pa.nonDescriptiveNames).toContain("x");
+		expect(pa.nonDescriptiveNames).toContain("y");
+	});
+
+	it("flags short names but not kwarg usages in a mixed notebook", () => {
+		const source = [
+			"df = pd.read_csv('x.csv')",
+			"plt.scatter(df['a'], df['b'], s=28)",
+			"df = df.dropna()",
+		].join("\n");
+		const pa = analyzeSubmission([codeCell(source)]);
+		expect(pa.nonDescriptiveNames).toEqual(["df"]);
+	});
+});

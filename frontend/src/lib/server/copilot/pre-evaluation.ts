@@ -538,6 +538,8 @@ Marker meanings:
 
 Mark EVERY cell. When there is no reference key, markers MUST be null.
 
+The EXAMPLE below is illustrative ONLY. Never repeat its text verbatim — always describe the actual notebook cells in your own words, even when a cell resembles the example. Copying example wording is a correctness failure.
+
 EXAMPLE — correct output:
 { "markers": [
   { "cell_index": 0, "marker": "different", "reason": "Same task as the key's first cell, but imports are out of order and 'df' is a non-descriptive variable name (pre-analysis)" },
@@ -571,7 +573,7 @@ PER-DIMENSION GUIDE — what each dimension measures:
 - code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution is the BASELINE (3-4/6). Above baseline: markdown interpretation of outputs, model-quality discussion (R², RMSE vs data scale), parameter reasonableness, limitations. RMSE computed but never discussed → cap at 4/6.
 - assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
 - scientific_programming: scientific methodology — library built-ins (sklearn r2_score, not a hand-rolled formula), physical bounds on parameters, unit awareness, assumption validation.
-- creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
+- creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
 
 MANDATORY SELF-CHECK before finalizing:
 1. If you are giving max_points to 4+ dimensions, you are almost certainly wrong.
@@ -1011,6 +1013,66 @@ function formatPreAnalysis(pa: PreAnalysis): string {
 }
 
 /**
+ * Deterministic originality evidence for the Phase 2a scorer (no LLM).
+ *
+ * The dimension scorer previously received ONLY pre-analysis facts + Phase 1
+ * markers — never the notebook cells — so genuine original contributions
+ * (covariance-matrix standard errors, R²/RMSE computed and interpreted,
+ * extra visualizations) could not influence the creativity score. This
+ * builder extracts those signals with regexes and formats them as a short
+ * bullet list the prompt can act on. It is deliberately conservative: only
+ * report what the patterns actually find.
+ */
+function buildExtraAnalysisEvidence(cells: readonly { type: string; source: string; output?: string | null }[]): string {
+	const codeSource = cells
+		.filter((c) => c.type === "code")
+		.map((c) => c.source)
+		.join("\n");
+	const markdownSource = cells
+		.filter((c) => c.type === "markdown")
+		.map((c) => c.source)
+		.join("\n");
+	const outputText = cells
+		.filter((c) => c.type === "code")
+		.map((c) => c.output ?? "")
+		.join("\n");
+
+	const bullets: string[] = [];
+
+	// (a) Parameter standard errors derived from the covariance matrix.
+	const stdErr = /np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error/i.test(
+		codeSource + outputText,
+	);
+	bullets.push(`- parameter standard errors from covariance matrix: ${stdErr ? "yes" : "no"}`);
+
+	// (b) R²/RMSE computed AND interpreted (value present in output and the
+	// same metric discussed in markdown).
+	const r2Computed = /\bR\s*(?:\^2|²|2)\s*[=:]\s*[\d.]+|\bRMSE\s*[=:]\s*[\d.]+/i.test(outputText);
+	const r2Discussed =
+		/\bR\s*(?:\^2|²|2)\b/i.test(markdownSource) || /\bRMSE\b/i.test(markdownSource);
+	bullets.push(`- R²/RMSE computed and interpreted: ${r2Computed && r2Discussed ? "yes" : "no"}`);
+
+	// (c) Extra visualizations — count distinct plot-call families (both the
+	// plt.* and ax.* idioms); more than 2 distinct families is a signal of
+	// extra presentation work.
+	const plotFamilies = new Set<string>();
+	for (const m of codeSource.matchAll(/(?:plt|ax)\.(\w+)\s*\(/g)) {
+		plotFamilies.add(m[1]!);
+	}
+	bullets.push(`- distinct plot types used: ${plotFamilies.size}`);
+
+	// (d) Physical-insight language — discussing WHY a fitted parameter is
+	// non-physical / meaningless, correlation between parameters, etc.
+	const physicalInsight =
+		/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i.test(
+			markdownSource + codeSource,
+		);
+	bullets.push(`- physical-insight discussion (e.g. why a parameter is non-physical): ${physicalInsight ? "yes" : "no"}`);
+
+	return `EXTRA ANALYSIS EVIDENCE (deterministic, from the executed notebook):\n${bullets.join("\n")}`;
+}
+
+/**
  * Pre-evaluate one submission via a phased LLM pipeline:
  *   Phase 1  — Cell markers (comparison against reference key)
  *   Phase 2a — Dimension scores (raw points) + optional self-critique pass
@@ -1137,6 +1199,8 @@ export async function preEvaluateSubmission(
 		`Assignment: ${assignmentId}${assignment?.title ? ` (${assignment.title})` : ""}`,
 		"",
 		formatPreAnalysis(preAnalysis),
+		"",
+		buildExtraAnalysisEvidence(cells),
 		"",
 		"Cell comparison markers (from Phase 1):",
 		markers.markers && markers.markers.length > 0
