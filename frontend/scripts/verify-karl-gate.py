@@ -163,8 +163,8 @@ def main():
         report[sid] = {
             'dimension_diffs': dim_diffs,
             'dimension_pass': dim_pass,
-            'extra_checked': extra[:8],
-            'missing_checked': missing[:8],
+            'extra_checked': extra,
+            'missing_checked': missing,
             'category_diffs': cat_diffs,
             'category_pass': cat_pass,
             'mandatory_missing': mandatory_missing,
