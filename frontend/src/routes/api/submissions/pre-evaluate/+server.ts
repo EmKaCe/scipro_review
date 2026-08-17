@@ -20,13 +20,27 @@
  * flight (409) — one global run at a time, mirroring the batch-process
  * route's single-run model. Progress is written to pre-eval-progress.ts and
  * polled by the dashboard via GET /api/submissions/pre-evaluate/status.
+ *
+ * Wave 8: after the batch settles, cohort calibration runs for the
+ * assignment when at least MIN_OUTLIER_CONSENSUS rows succeeded — it reads
+ * the stored envelopes, derives deterministic cross-submission score
+ * adjustments, and persists them (calibrationAdjustments on the stored
+ * results). Smaller runs and calibration failures never fail the batch:
+ * the response's `calibration` field reports ok/skipped/error.
  */
 
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
-import { preEvaluateSubmission } from "$lib/server/copilot/pre-evaluation";
+import {
+	preEvaluateSubmission,
+	runCohortCalibration,
+} from "$lib/server/copilot/pre-evaluation";
+import {
+	MIN_OUTLIER_CONSENSUS,
+	type CalibrationAdjustment,
+} from "$lib/server/copilot/cohort-calibration";
 import { listSubmissions, updateStatus } from "$lib/server/metadata";
 import { withPersistLock } from "$lib/server/persist-lock";
 import { appendPreEvalLog } from "$lib/server/pre-eval-logs";
@@ -179,13 +193,90 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	// by studentId so the API shape is stable.
 	results.sort((a, b) => a.studentId.localeCompare(b.studentId));
 
+	// ── Wave 8: cohort calibration after the batch settles ─────────────
+	// Deterministic (no LLM calls): reads the stored envelopes the loop
+	// just persisted, derives cross-submission score adjustments, and
+	// writes them back so the dashboard/store reflect them. Requires a
+	// cohort of MIN_OUTLIER_CONSENSUS+ successfully pre-evaluated rows
+	// (outlier detection needs a homogeneous cluster to compare against) —
+	// smaller runs are skipped with a log line, not crashed. A calibration
+	// failure must NOT fail the batch: it is reported ok:false under
+	// `calibration` and the per-row results stand.
+	let calibration: {
+		ok: boolean;
+		skipped: boolean;
+		error: string | null;
+		adjustments: CalibrationAdjustment[];
+		calibratedCount: number;
+	} = {
+		ok: false,
+		skipped: true,
+		error: null,
+		adjustments: [],
+		calibratedCount: 0,
+	};
+	const succeededCount = results.filter((r) => r.ok).length;
+	if (succeededCount >= MIN_OUTLIER_CONSENSUS) {
+		try {
+			const outcome = await runCohortCalibration(assignmentId);
+			calibration = {
+				ok: true,
+				skipped: false,
+				error: null,
+				adjustments: outcome.adjustments,
+				calibratedCount: outcome.calibratedCount,
+			};
+			appendPreEvalLog({
+				level: "info",
+				logger: "pre-eval",
+				submissionId: assignmentId,
+				message: `Cohort calibration: ${outcome.adjustments.length} score adjustment(s) across ${outcome.calibratedCount} submission(s)`,
+				grades: {},
+				markerCount: 0,
+				selectionCount: 0,
+				ok: true,
+			});
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			// Calibration is advisory — the batch response stays a success;
+			// only the calibration step reports ok:false (server log records
+			// why; retrying the batch re-runs calibration).
+			console.error(
+				`[pre-evaluate] cohort calibration failed for assignment "${assignmentId}": ${message}`,
+				err,
+			);
+			calibration = {
+				ok: false,
+				skipped: false,
+				error: message,
+				adjustments: [],
+				calibratedCount: 0,
+			};
+			appendPreEvalLog({
+				level: "error",
+				logger: "pre-eval",
+				submissionId: assignmentId,
+				message: `Cohort calibration failed for "${assignmentId}": ${message}`,
+				grades: {},
+				markerCount: 0,
+				selectionCount: 0,
+				ok: false,
+			});
+		}
+	} else {
+		console.log(
+			`[pre-evaluate] cohort calibration skipped for assignment "${assignmentId}": ${succeededCount} successful submission(s) < MIN_OUTLIER_CONSENSUS (${MIN_OUTLIER_CONSENSUS})`,
+		);
+	}
+
 	return json({
 		assignmentId,
 		submitted: targets.length,
-		succeeded: results.filter((r) => r.ok).length,
+		succeeded: succeededCount,
 		failed: results.filter((r) => !r.ok).length,
 		totalDurationSeconds,
 		results,
+		calibration,
 	});
 }
 

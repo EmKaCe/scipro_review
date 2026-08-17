@@ -121,8 +121,13 @@ const MAX_VALID_SCORE = 5.5;
 /** Submissions that failed execution are capped at 5.0 on CER. */
 const ERROR_CER_CAP = 5.0;
 
-/** Outlier detection needs 4+ submissions sharing one value to call a cluster homogeneous. */
-const MIN_OUTLIER_CONSENSUS = 4;
+/**
+ * Outlier detection needs 4+ submissions sharing one value to call a
+ * cluster homogeneous. Also the minimum successful cohort for the batch
+ * pre-evaluate route's post-run calibration step — a smaller run cannot
+ * form a homogeneous cluster and is skipped, not crashed.
+ */
+export const MIN_OUTLIER_CONSENSUS = 4;
 
 // ---------------------------------------------------------------------------
 // Clustering

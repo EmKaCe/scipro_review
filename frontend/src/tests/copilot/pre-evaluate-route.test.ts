@@ -8,8 +8,10 @@
  * Real temp DATA_DIR + real Request/Response objects; the pre-evaluation
  * service is vi.mocked (no KI Connect calls). Covers the happy path
  * (preEval persisted per submission + summary), per-row failure isolation,
- * the 409 already-running guard, and the status endpoint retaining final
- * tallies after completion.
+ * the 409 already-running guard, the status endpoint retaining final
+ * tallies after completion, and Wave 8 cohort calibration: it runs after
+ * the batch when >= MIN_OUTLIER_CONSENSUS rows succeed, is skipped (not
+ * crashed) for smaller runs, and its failure never fails the batch.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -40,10 +42,12 @@ import { GET as preEvaluateStatusGET } from "../../routes/api/submissions/pre-ev
 
 const preEvalService = vi.hoisted(() => ({
 	preEvaluateSubmission: vi.fn(),
+	runCohortCalibration: vi.fn(),
 }));
 
 vi.mock("$lib/server/copilot/pre-evaluation", () => ({
 	preEvaluateSubmission: preEvalService.preEvaluateSubmission,
+	runCohortCalibration: preEvalService.runCohortCalibration,
 }));
 
 // ---------------------------------------------------------------------------
@@ -148,6 +152,14 @@ beforeEach(async () => {
 
 	preEvalService.preEvaluateSubmission.mockReset();
 	preEvalService.preEvaluateSubmission.mockResolvedValue(ENVELOPE);
+	// Default: a clean calibration outcome (no adjustments). Individual
+	// tests override this to exercise the adjustment-persist path.
+	preEvalService.runCohortCalibration.mockReset();
+	preEvalService.runCohortCalibration.mockResolvedValue({
+		assignmentId: ASSIGNMENT,
+		adjustments: [],
+		calibratedCount: 0,
+	});
 	resetPreEvalRun();
 	resetPreEvalLogs();
 });
@@ -305,6 +317,112 @@ describe("POST /api/submissions/pre-evaluate", () => {
 		expect(failedEntry.markerCount).toBe(0);
 		expect(failedEntry.selectionCount).toBe(0);
 		expect(failedEntry.message).toContain("upstream timeout");
+	});
+
+	it("runs cohort calibration after the batch when >= MIN_OUTLIER_CONSENSUS rows succeed", async () => {
+		// Four runnable rows (A, B, C, D) all succeed — the threshold is 4.
+		await upsertSubmission(ASSIGNMENT, STUDENT_C, {
+			status: "executed",
+			semester: "2026SS",
+			fileName: `${STUDENT_C}.ipynb`,
+			notebookPath: `submissions/${ASSIGNMENT}/${STUDENT_C}.ipynb`,
+		});
+		await upsertSubmission(ASSIGNMENT, "2026SS_04", {
+			status: "executed",
+			semester: "2026SS",
+			fileName: "2026SS_04.ipynb",
+			notebookPath: `submissions/${ASSIGNMENT}/2026SS_04.ipynb`,
+		});
+		const stored = await readResults(ASSIGNMENT);
+		stored[STUDENT_C] = makeExecutionResult(STUDENT_C);
+		stored["2026SS_04"] = makeExecutionResult("2026SS_04");
+		await writeResults(ASSIGNMENT, stored);
+
+		const adjustment = {
+			submissionId: STUDENT_A,
+			dimension: "code_quality_design",
+			oldScore: 4,
+			newScore: 3.5,
+			reason: "score 4 deviates from the homogeneous cluster value 3.5 — corrected to the cluster median 3.5",
+		};
+		preEvalService.runCohortCalibration.mockResolvedValue({
+			assignmentId: ASSIGNMENT,
+			adjustments: [adjustment],
+			calibratedCount: 1,
+		});
+
+		const resp = await preEvaluatePOST(postEvent());
+		const body = await readJson(resp);
+
+		// The batch summary is unchanged — calibration runs after it settles.
+		expect(body.succeeded).toBe(4);
+		expect(body.calibration).toEqual({
+			ok: true,
+			skipped: false,
+			error: null,
+			adjustments: [adjustment],
+			calibratedCount: 1,
+		});
+
+		// Calibration runs AFTER every row was pre-evaluated and persisted.
+		expect(preEvalService.runCohortCalibration).toHaveBeenCalledTimes(1);
+		expect(preEvalService.runCohortCalibration).toHaveBeenCalledWith(ASSIGNMENT);
+		const callOrder = preEvalService.preEvaluateSubmission.mock.invocationCallOrder;
+		const calibrationOrder = preEvalService.runCohortCalibration.mock.invocationCallOrder;
+		expect(calibrationOrder[0]).toBeGreaterThan(Math.max(...callOrder));
+	});
+
+	it("skips cohort calibration for a batch under MIN_OUTLIER_CONSENSUS (2 rows)", async () => {
+		const resp = await preEvaluatePOST(postEvent());
+		const body = await readJson(resp);
+
+		expect(body.succeeded).toBe(2);
+		expect(body.calibration).toEqual({
+			ok: false,
+			skipped: true,
+			error: null,
+			adjustments: [],
+			calibratedCount: 0,
+		});
+		// The calibration service was never reached (and never mocked into
+		// a no-op) — no LLM calls, no cohort math on a 2-submission run.
+		expect(preEvalService.runCohortCalibration).not.toHaveBeenCalled();
+	});
+
+	it("reports calibration failure as ok:false without failing the batch", async () => {
+		// Calibration only runs on a >= MIN_OUTLIER_CONSENSUS cohort — seed
+		// the same 4-row batch as the success test so the rejection fires.
+		await upsertSubmission(ASSIGNMENT, STUDENT_C, {
+			status: "executed",
+			semester: "2026SS",
+			fileName: `${STUDENT_C}.ipynb`,
+			notebookPath: `submissions/${ASSIGNMENT}/${STUDENT_C}.ipynb`,
+		});
+		await upsertSubmission(ASSIGNMENT, "2026SS_04", {
+			status: "executed",
+			semester: "2026SS",
+			fileName: "2026SS_04.ipynb",
+			notebookPath: `submissions/${ASSIGNMENT}/2026SS_04.ipynb`,
+		});
+		const stored = await readResults(ASSIGNMENT);
+		stored[STUDENT_C] = makeExecutionResult(STUDENT_C);
+		stored["2026SS_04"] = makeExecutionResult("2026SS_04");
+		await writeResults(ASSIGNMENT, stored);
+
+		preEvalService.runCohortCalibration.mockRejectedValue(new Error("boom"));
+
+		const resp = await preEvaluatePOST(postEvent());
+		const body = await readJson(resp);
+
+		// The batch itself still succeeded — calibration is advisory.
+		expect(body.succeeded).toBe(4);
+		expect(body.calibration).toEqual({
+			ok: false,
+			skipped: false,
+			error: "boom",
+			adjustments: [],
+			calibratedCount: 0,
+		});
 	});
 
 	it("refuses with 409 while a pre-evaluation run is already in flight", async () => {
