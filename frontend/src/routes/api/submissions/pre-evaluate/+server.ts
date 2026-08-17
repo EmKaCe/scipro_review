@@ -52,8 +52,8 @@ import {
 } from "$lib/server/pre-eval-progress";
 import { setPreEvaluation } from "$lib/server/results-store";
 
-/** Bounded concurrency for the KI Connect calls (4 in flight max — KI Connect quota is effectively unlimited; the route already handles per-row failures). */
-const CONCURRENCY = 4;
+/** Bounded concurrency for the KI Connect calls (2 in flight max — empirically measured 2026-08-17: 4 workers triggered sustained 429 rate-limits on 16/19 submissions; 2 is the safe ceiling). */
+const CONCURRENCY = 2;
 
 /** One per-submission outcome row in the response. */
 interface PreEvaluateRow {
