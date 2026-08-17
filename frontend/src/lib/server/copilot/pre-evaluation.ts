@@ -456,8 +456,11 @@ const OUTPUT_TRUNCATION_MARKER = "… [output truncated]";
  * When true, Phase 2a's scores get a second self-critique pass before they
  * are used. The critique can never lose the original scores — on failure the
  * Phase 2a output is kept (see the try/catch in preEvaluateSubmission).
+ *
+ * Overridable via PRE_EVAL_CRITIQUE=0 to A/B the cost/quality tradeoff
+ * (the critique is one extra LLM call per submission).
  */
-const CRITIQUE_ENABLED = true;
+const CRITIQUE_ENABLED = process.env.PRE_EVAL_CRITIQUE !== "0";
 
 /** Extra validation block appended to every phase system prompt for weak models. */
 const MODEL_HINT_BLOCK = `CRITICAL REMINDER: Double-check your output before returning. Common mistakes: using dimension keys as rubric categoryKeys, emitting percentages instead of raw points, selecting sub-points that do not exist in the rubric.`;
