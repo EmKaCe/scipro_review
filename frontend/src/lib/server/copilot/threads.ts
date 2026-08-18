@@ -22,6 +22,7 @@
  */
 
 import { FileMemoryStore } from "./file-memory";
+import { deleteThreadCheckpoints } from "./checkpoint-store";
 import type { MastraDBMessage } from "@mastra/core/memory";
 import { loadSettings } from "../settings";
 
@@ -229,6 +230,16 @@ export async function deleteThread(
 	const thread = await store.getThreadById({ threadId });
 	if (!thread || thread.resourceId !== scopeResourceId(scope)) return false;
 	await store.deleteThread({ threadId });
+	// P3 housekeeping: the thread's persisted turn checkpoints are orphaned
+	// once the thread is gone. Best-effort — a failed checkpoint cleanup
+	// must never fail the thread deletion (the checkpoints are an audit
+	// trail, not the source of truth).
+	try {
+		await deleteThreadCheckpoints(threadId);
+	} catch {
+		// Swallow — the thread is already deleted; leftover checkpoint
+		// files are inert.
+	}
 	return true;
 }
 

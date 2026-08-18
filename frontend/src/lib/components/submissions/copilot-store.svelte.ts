@@ -19,6 +19,7 @@
 
 import { base } from "$app/paths";
 import { saveGrading, type GradingPatch } from "$lib/services/submissions-api.js";
+import type { CategoryFeedback } from "$lib/types/evaluation.js";
 
 // ---------------------------------------------------------------------------
 // Stream lifecycle
@@ -99,6 +100,23 @@ export interface CopilotChange {
 	newValue: unknown;
 	submissionId?: string;
 	status: "pending" | "accepted" | "rejected";
+}
+
+/**
+ * A turn's pre-write grading snapshot (P3) — the state the Revert turn
+ * button restores via the save API. Mirrors the server's GradingSnapshot.
+ */
+export interface CopilotCheckpoint {
+	/** Id of the turn this checkpoint belongs to (one per run). */
+	turnId: string;
+	/** Rubric selections: criterion key -> selected option key. */
+	rubric: Record<string, string>;
+	/** Dimension scores: dimension id -> slider value (points deducted). */
+	dimensions: Record<string, number>;
+	/** Free-form teacher notes (null when the submission has no notes). */
+	notes: string | null;
+	/** Per-category feedback (v2 CategoryFeedback shape, keyed by category key). */
+	feedback: Record<string, CategoryFeedback>;
 }
 
 export interface PendingSuggestion {
@@ -184,6 +202,7 @@ const SSE_EVENT_NAMES: readonly string[] = [
 	"thinking",
 	"plan",
 	"change",
+	"checkpoint",
 	"tool-call",
 	"tool-result",
 	"approval-request",
@@ -309,6 +328,10 @@ export function createCopilotStore(options?: {
 	// Harness surface (W2a/W2d): the plan checklist + the change ledger.
 	let planSteps = $state<CopilotPlanStep[]>([]);
 	let changes = $state<CopilotChange[]>([]);
+	// P3 turn checkpoints: the current turn's pre-write grading snapshot
+	// (populated from the checkpoint stream event) — drives the Revert turn
+	// button in the change ledger.
+	let checkpoint = $state<CopilotCheckpoint | null>(null);
 	// Steering surface (W3b): queued messages + graceful-stop flag.
 	let queuedMessages = $state<string[]>([]);
 	let stopRequested = $state(false);
@@ -394,6 +417,7 @@ export function createCopilotStore(options?: {
 	function resetHarness(): void {
 		planSteps = [];
 		changes = [];
+		checkpoint = null;
 		queuedMessages = [];
 		stopRequested = false;
 	}
@@ -473,6 +497,41 @@ export function createCopilotStore(options?: {
 			}
 			await saveGrading(targetId, patch, assignmentId || undefined);
 			changes = changes.map((c) => (c.id === changeId ? { ...c, status: "rejected" } : c));
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	/**
+	 * Revert the WHOLE current turn (P3): restore the submission's grading
+	 * state to the pre-turn snapshot via the same save API the teacher's
+	 * Save action uses, then clear the turn's change-ledger entries. Returns
+	 * false when there is no checkpoint for the current turn, while the
+	 * turn is still streaming (the checkpoint is set mid-stream — reverting
+	 * then would let the agent's remaining writes land on top of the
+	 * restored state), outside per-submission scope, or when the restore
+	 * fails.
+	 */
+	async function revertTurn(): Promise<boolean> {
+		if (isStreaming) return false;
+		const snap = checkpoint;
+		if (!snap) return false;
+		const targetId = submissionId;
+		if (!targetId) return false;
+		try {
+			const patch: GradingPatch = {};
+			// Only include fields present in the snapshot (the save API
+			// merges — absent fields are left untouched).
+			if (snap.rubric !== undefined) patch.rubric = snap.rubric;
+			if (snap.dimensions !== undefined) patch.dimensions = snap.dimensions;
+			if (snap.notes !== undefined) patch.notes = snap.notes ?? "";
+			if (snap.feedback !== undefined) patch.feedback = snap.feedback;
+			await saveGrading(targetId, patch, assignmentId || undefined);
+			// The turn's writes are undone — clear the ledger for this turn
+			// (the entries' old/new values no longer describe the state).
+			changes = [];
+			checkpoint = null;
 			return true;
 		} catch {
 			return false;
@@ -589,6 +648,29 @@ export function createCopilotStore(options?: {
 						status: "pending" as const,
 					}));
 				if (ledger.length > 0) changes = [...changes, ...ledger];
+				break;
+			}
+			case "checkpoint": {
+				// P3: the current turn's pre-write grading snapshot — drives
+				// the Revert turn button in the change ledger.
+				const payload = (data ?? {}) as {
+					turnId?: string;
+					snapshot?: {
+						rubric?: Record<string, string>;
+						dimensions?: Record<string, number>;
+						notes?: string | null;
+						feedback?: Record<string, CategoryFeedback>;
+					};
+				};
+				const snap = payload.snapshot;
+				if (typeof payload.turnId !== "string" || !snap) break;
+				checkpoint = {
+					turnId: payload.turnId,
+					rubric: snap.rubric ?? {},
+					dimensions: snap.dimensions ?? {},
+					notes: snap.notes ?? null,
+					feedback: snap.feedback ?? {},
+				};
 				break;
 			}
 			case "tool-call": {
@@ -1095,6 +1177,21 @@ export function createCopilotStore(options?: {
 		get changes() {
 			return changes;
 		},
+		get checkpoint() {
+			return checkpoint;
+		},
+		/**
+		 * True when the Revert turn button should be live: a checkpoint
+		 * exists for the current turn AND the store is in per-submission
+		 * scope (revert restores one submission's grading state — an
+		 * assignment-scoped chat has no target) AND the turn is not still
+		 * streaming (the checkpoint is set mid-stream; reverting then would
+		 * let the agent's remaining writes land on top of the restored
+		 * state).
+		 */
+		get canRevertTurn() {
+			return checkpoint !== null && submissionId !== "" && !isStreaming;
+		},
 		get queuedMessages() {
 			return queuedMessages;
 		},
@@ -1124,6 +1221,7 @@ export function createCopilotStore(options?: {
 		acceptChange,
 		acceptAllChanges,
 		rejectChange,
+		revertTurn,
 		queueMessage,
 		steerMessage,
 		stopStream,

@@ -74,6 +74,7 @@ import { Memory } from "@mastra/memory";
 
 import { FileMemoryStore } from "./file-memory";
 import { maybeCompactThread } from "./compaction";
+import { saveCheckpoint, type GradingSnapshot } from "./checkpoint-store";
 import { Tool, type ToolHooks } from "@mastra/core/tools";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
@@ -82,7 +83,7 @@ import { resolveApprovalPolicy, type ApprovalDecision } from "./permission";
 import { registerCopilotTools } from "./tools/index";
 import { createRubricFidelityScorer } from "./rubric-fidelity";
 import { getEnabledAssignments } from "$lib/server/assignments";
-import { readMetadata } from "$lib/server/metadata";
+import { getSubmission, readMetadata } from "$lib/server/metadata";
 import {
 	createRegistry,
 	type CopilotRegistry,
@@ -179,6 +180,13 @@ export type CopilotStreamEvent =
 	| { type: "thinking" }
 	| { type: "plan"; steps: CopilotPlanStep[] }
 	| { type: "change"; changes: CopilotChange[] }
+	| {
+			type: "checkpoint";
+			/** Id of the turn this checkpoint belongs to (one per run). */
+			turnId: string;
+			/** The submission's grading state BEFORE the turn's first grading write. */
+			snapshot: GradingSnapshot;
+	  }
 	| { type: "tool-call"; tool: string; args: unknown }
 	| { type: "tool-result"; tool: string; ok: boolean; summary?: string }
 	| {
@@ -349,6 +357,46 @@ export function extractChangesFromToolResult(
 		return changes;
 	}
 	return [];
+}
+
+/**
+ * The grading WRITE tools — the first tool-call of one of these in a turn
+ * triggers the P3 turn checkpoint (snapshot the submission's grading state
+ * BEFORE the write lands, so the teacher can revert the whole turn).
+ */
+const GRADING_WRITE_TOOLS: ReadonlySet<string> = new Set([
+	"set-rubric-item",
+	"update-grade-dimension",
+	"write-notes",
+	"save-grading",
+]);
+
+/**
+ * Snapshot a submission's grading state for the P3 turn checkpoint — the
+ * same fields getSubmission returns (rubric / dimensions / notes /
+ * feedback). Never throws: a missing submission or absent grading state
+ * yields the empty snapshot (reverting a no-op turn is a no-op), and any
+ * read failure degrades the same way — a checkpoint must never break the
+ * chat loop.
+ */
+export async function snapshotGradingState(
+	assignmentId: string | undefined,
+	submissionId: string | undefined,
+): Promise<GradingSnapshot> {
+	const empty: GradingSnapshot = { rubric: {}, dimensions: {}, notes: null, feedback: {} };
+	if (!assignmentId || !submissionId) return empty;
+	try {
+		const record = await getSubmission(assignmentId, submissionId);
+		if (!record?.grading) return empty;
+		return {
+			rubric: record.grading.rubric ?? {},
+			dimensions: record.grading.dimensions ?? {},
+			notes: record.grading.notes ?? null,
+			feedback: record.grading.feedback ?? {},
+		};
+	} catch {
+		return empty;
+	}
 }
 
 /**
@@ -743,6 +791,10 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	// The client owns a threadId when it has one (copilot-store A.2);
 	// otherwise the server generates one so persistence always has a thread.
 	const effectiveThreadId = input.threadId ?? crypto.randomUUID();
+	// P3 turn checkpoints: one turnId per run, emitted with the checkpoint
+	// event so the client can correlate the snapshot with the turn's
+	// change-ledger entries (and revert the whole turn with one button).
+	const turnId = crypto.randomUUID();
 	const requestContext = new Map<string, unknown>();
 	requestContext.set(COPILOT_CTX_KEY, reqState);
 	// Mastra 1.54 resolves the memory resource from the requestContext key
@@ -850,6 +902,10 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	yield { type: "plan", steps: derivePlanSteps(registry.list().map((tool) => tool.name)) };
 
 	let text = "";
+	// P3 turn checkpoints: snapshot the submission's grading state on the
+	// FIRST grading write tool-call of the turn (before the write lands),
+	// then never again for this run.
+	let checkpointed = false;
 
 	outer: while (true) {
 		if (aborted()) return;
@@ -867,6 +923,33 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 						break;
 					}
 					case "tool-call":
+						// P3 turn checkpoint: on the FIRST grading write tool-call
+						// of the turn, snapshot the submission's grading state
+						// BEFORE the write lands, persist it under the turn id,
+						// and emit the checkpoint event. Best-effort — a failed
+						// snapshot still emits the event with the empty snapshot
+						// (reverting a no-op turn is a no-op) and never throws.
+						// Per-submission scope only: an assignment-scoped chat
+						// has no submission to revert, so no checkpoint is
+						// emitted (the client's Revert button stays hidden).
+						if (
+							!checkpointed &&
+							reqState.submissionId &&
+							GRADING_WRITE_TOOLS.has(chunk.payload.toolName)
+						) {
+							checkpointed = true;
+							const snapshot = await snapshotGradingState(
+								reqState.assignmentId,
+								reqState.submissionId,
+							);
+							try {
+								await saveCheckpoint(effectiveThreadId, turnId, snapshot);
+							} catch {
+								// Persistence failure is invisible to the teacher —
+								// the in-stream snapshot still enables the revert.
+							}
+							yield { type: "checkpoint", turnId, snapshot };
+						}
 						yield {
 							type: "tool-call",
 							tool: chunk.payload.toolName,

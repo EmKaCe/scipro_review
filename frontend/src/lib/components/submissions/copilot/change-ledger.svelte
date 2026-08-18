@@ -12,9 +12,14 @@
 		onAccept: (changeId: string) => void;
 		onReject: (changeId: string) => void;
 		onAcceptAll: () => void;
+		/** Revert the whole turn to its pre-write snapshot (P3). */
+		onRevertTurn: () => void;
+		/** True when a checkpoint exists for the current turn (button visible). */
+		canRevertTurn: boolean;
 	};
 
-	let { changes, onAccept, onReject, onAcceptAll }: Props = $props();
+	let { changes, onAccept, onReject, onAcceptAll, onRevertTurn, canRevertTurn }: Props =
+		$props();
 
 	/** Human-readable label for a change kind. */
 	function kindLabel(kind: CopilotChange["kind"]): string {
@@ -48,47 +53,57 @@
 	}
 </script>
 
-{#if changes.length > 0}
+{#if changes.length > 0 || canRevertTurn}
 	<div class="ledger" role="region" aria-label="Proposed changes">
 		<div class="ledger-header">
 			<span class="ledger-title">Proposed changes</span>
-			{#if changes.some((c) => c.status === "pending")}
-				<button class="accept-all" onclick={onAcceptAll}>
-					<CheckCheck size={13} />
-					Accept all
-				</button>
-			{/if}
+			<div class="ledger-actions">
+				{#if canRevertTurn}
+					<button class="revert-turn" title="Restore the grading state from before this turn" onclick={onRevertTurn}>
+						<RotateCcw size={13} />
+						Revert turn
+					</button>
+				{/if}
+				{#if changes.length > 0 && changes.some((c) => c.status === "pending")}
+					<button class="accept-all" onclick={onAcceptAll}>
+						<CheckCheck size={13} />
+						Accept all
+					</button>
+				{/if}
+			</div>
 		</div>
-		<ul class="ledger-list">
-			{#each changes as change (change.id)}
-				{@const Icon = kindIcon(change.kind)}
-				<li class="ledger-item" class:item-accepted={change.status === "accepted"} class:item-rejected={change.status === "rejected"}>
-					<span class="item-icon"><Icon size={13} /></span>
-					<div class="item-body">
-						<div class="item-kind">{kindLabel(change.kind)} · {change.field}</div>
-						<div class="item-diff">
-							<span class="old-value">{displayValue(change.oldValue)}</span>
-							<span class="arrow">→</span>
-							<span class="new-value">{displayValue(change.newValue)}</span>
+		{#if changes.length > 0}
+			<ul class="ledger-list">
+				{#each changes as change (change.id)}
+					{@const Icon = kindIcon(change.kind)}
+					<li class="ledger-item" class:item-accepted={change.status === "accepted"} class:item-rejected={change.status === "rejected"}>
+						<span class="item-icon"><Icon size={13} /></span>
+						<div class="item-body">
+							<div class="item-kind">{kindLabel(change.kind)} · {change.field}</div>
+							<div class="item-diff">
+								<span class="old-value">{displayValue(change.oldValue)}</span>
+								<span class="arrow">→</span>
+								<span class="new-value">{displayValue(change.newValue)}</span>
+							</div>
 						</div>
-					</div>
-					{#if change.status === "pending"}
-						<div class="item-actions">
-							<button class="btn-accept" title="Accept this change" onclick={() => onAccept(change.id)}>
-								<Check size={13} />
-							</button>
-							<button class="btn-reject" title="Reject and revert" onclick={() => onReject(change.id)}>
-								<RotateCcw size={13} />
-							</button>
-						</div>
-					{:else if change.status === "accepted"}
-						<span class="status-badge status-accepted">Accepted</span>
-					{:else}
-						<span class="status-badge status-rejected">Rejected</span>
-					{/if}
-				</li>
-			{/each}
-		</ul>
+						{#if change.status === "pending"}
+							<div class="item-actions">
+								<button class="btn-accept" title="Accept this change" onclick={() => onAccept(change.id)}>
+									<Check size={13} />
+								</button>
+								<button class="btn-reject" title="Reject and revert" onclick={() => onReject(change.id)}>
+									<RotateCcw size={13} />
+								</button>
+							</div>
+						{:else if change.status === "accepted"}
+							<span class="status-badge status-accepted">Accepted</span>
+						{:else}
+							<span class="status-badge status-rejected">Rejected</span>
+						{/if}
+					</li>
+				{/each}
+			</ul>
+		{/if}
 	</div>
 {/if}
 
@@ -112,21 +127,35 @@
 		letter-spacing: 0.04em;
 		color: var(--color-muted, #64748b);
 	}
-	.accept-all {
+	.ledger-actions {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.accept-all,
+	.revert-turn {
 		display: inline-flex;
 		align-items: center;
 		gap: 4px;
 		font-size: 12px;
 		font-weight: 500;
-		color: var(--color-primary, #2563eb);
 		background: none;
 		border: none;
 		cursor: pointer;
 		padding: 2px 4px;
 		border-radius: 4px;
 	}
+	.accept-all {
+		color: var(--color-primary, #2563eb);
+	}
 	.accept-all:hover {
 		background: var(--color-primary-soft, #eff6ff);
+	}
+	.revert-turn {
+		color: var(--color-danger, #dc2626);
+	}
+	.revert-turn:hover {
+		background: var(--color-danger-soft, #fef2f2);
 	}
 	.ledger-list {
 		list-style: none;

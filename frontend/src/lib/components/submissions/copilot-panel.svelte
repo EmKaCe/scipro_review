@@ -214,6 +214,8 @@
 			onAcceptChange={(changeId) => copilot.acceptChange(changeId)}
 			onRejectChange={(changeId) => void copilot.rejectChange(changeId)}
 			onAcceptAllChanges={() => copilot.acceptAllChanges()}
+			onRevertTurn={() => void copilot.revertTurn()}
+			canRevertTurn={copilot.canRevertTurn}
 			onSelectHint={selectHint}
 			onSelectCommand={selectCommand}
 		/>

@@ -50,6 +50,10 @@
 		onRejectChange: (changeId: string) => void;
 		/** Accept every pending change-ledger entry. */
 		onAcceptAllChanges: () => void;
+		/** Revert the whole turn to its pre-write snapshot (P3). */
+		onRevertTurn: () => void;
+		/** True when a checkpoint exists for the current turn (P3). */
+		canRevertTurn: boolean;
 		/** Fill the input with an assignment-scope prompt hint (no send). */
 		onSelectHint: (hint: string) => void;
 		/** Fill the input with a slash command + trailing space (no send). */
@@ -72,6 +76,8 @@
 		onAcceptChange,
 		onRejectChange,
 		onAcceptAllChanges,
+		onRevertTurn,
+		canRevertTurn,
 		onSelectHint,
 		onSelectCommand,
 	}: Props = $props();
@@ -243,6 +249,8 @@
 			onAccept={onAcceptChange}
 			onReject={onRejectChange}
 			onAcceptAll={onAcceptAllChanges}
+			onRevertTurn={onRevertTurn}
+			{canRevertTurn}
 		/>
 	{/if}
 

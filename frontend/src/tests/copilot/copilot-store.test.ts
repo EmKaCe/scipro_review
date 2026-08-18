@@ -1159,6 +1159,217 @@ describe("thread management (T.3)", () => {
 
 			expect(store.changes).toHaveLength(0);
 		});
+
+		it("captures the turn checkpoint from the checkpoint event (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("checkpoint", {
+					turnId: "turn-1",
+					snapshot: {
+						rubric: { clarity: "ok" },
+						dimensions: { code_quality_design: 3 },
+						notes: "before",
+						feedback: {},
+					},
+				}),
+				sseFrame("change", {
+					changes: [
+						{
+							kind: "rubric",
+							field: "clarity",
+							oldValue: "ok",
+							newValue: "good",
+							submissionId: "sub-42",
+						},
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Grade it");
+
+			expect(store.checkpoint).toEqual({
+				turnId: "turn-1",
+				rubric: { clarity: "ok" },
+				dimensions: { code_quality_design: 3 },
+				notes: "before",
+				feedback: {},
+			});
+		});
+
+		it("revertTurn restores the pre-turn snapshot via the save API and clears the ledger (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("checkpoint", {
+					turnId: "turn-1",
+					snapshot: {
+						rubric: { clarity: "ok" },
+						dimensions: { code_quality_design: 3 },
+						notes: "before",
+						feedback: {
+							clarity: {
+								checked: ["Uses readable variable names"],
+								comments: {},
+								deductions: {},
+								notes: "",
+							},
+						},
+					},
+				}),
+				sseFrame("change", {
+					changes: [
+						{
+							kind: "rubric",
+							field: "clarity",
+							oldValue: "ok",
+							newValue: "good",
+							submissionId: "sub-42",
+						},
+						{
+							kind: "dimension",
+							field: "code_quality_design",
+							oldValue: 3,
+							newValue: 4,
+							submissionId: "sub-42",
+						},
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Grade it");
+			expect(store.changes).toHaveLength(2);
+
+			// The revert triggers a save POST with the full snapshot patch.
+			fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
+			const ok = await store.revertTurn();
+			expect(ok).toBe(true);
+
+			const saveCall = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+			expect(String(saveCall[0])).toContain("/api/submissions/sub-42/save");
+			expect(JSON.parse((saveCall[1]?.body as string) ?? "{}")).toEqual({
+				rubric: { clarity: "ok" },
+				dimensions: { code_quality_design: 3 },
+				notes: "before",
+				feedback: {
+					clarity: {
+						checked: ["Uses readable variable names"],
+						comments: {},
+						deductions: {},
+						notes: "",
+					},
+				},
+			});
+
+			// The turn's ledger is cleared and the checkpoint consumed.
+			expect(store.changes).toHaveLength(0);
+			expect(store.checkpoint).toBeNull();
+		});
+
+		it("revertTurn returns false without a checkpoint (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(sseFrame("done", {}));
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Hi");
+
+			expect(store.checkpoint).toBeNull();
+			expect(await store.revertTurn()).toBe(false);
+			// No save POST was attempted.
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		it("revertTurn returns false when the save fails and keeps the ledger (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("checkpoint", {
+					turnId: "turn-1",
+					snapshot: { rubric: {}, dimensions: {}, notes: null, feedback: {} },
+				}),
+				sseFrame("change", {
+					changes: [
+						{
+							kind: "notes",
+							field: "notes",
+							oldValue: null,
+							newValue: "hi",
+							submissionId: "sub-42",
+						},
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Grade it");
+
+			fetchMock.mockResolvedValueOnce(new Response("boom", { status: 500 }));
+			const ok = await store.revertTurn();
+			expect(ok).toBe(false);
+			expect(store.changes).toHaveLength(1);
+			expect(store.checkpoint).not.toBeNull();
+		});
+
+		it("revertTurn returns false in assignment scope even with a checkpoint (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("checkpoint", {
+					turnId: "turn-1",
+					snapshot: { rubric: {}, dimensions: {}, notes: null, feedback: {} },
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ assignmentId: "assign-1" });
+			await store.sendMessage("Summarize");
+
+			// The checkpoint event still populated the snapshot, but there is
+			// no submission to restore — the revert must refuse and the
+			// button must stay hidden.
+			expect(store.checkpoint).not.toBeNull();
+			expect(store.canRevertTurn).toBe(false);
+			expect(await store.revertTurn()).toBe(false);
+			// No save POST was attempted (only the chat fetch).
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+		});
+
+		it("revertTurn returns false while the turn is still streaming (P3)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("checkpoint", {
+					turnId: "turn-1",
+					snapshot: { rubric: {}, dimensions: {}, notes: null, feedback: {} },
+				}),
+				// The stream stays OPEN — the checkpoint is set mid-stream.
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			const sendPromise = store.sendMessage("Grade it");
+			await vi.waitFor(() => expect(store.checkpoint).not.toBeNull());
+			expect(store.isStreaming).toBe(true);
+
+			// Mid-stream revert is refused — the agent's remaining writes
+			// would land on top of the restored state.
+			expect(store.canRevertTurn).toBe(false);
+			expect(await store.revertTurn()).toBe(false);
+			// No save POST was attempted (only the chat fetch).
+			expect(fetchMock).toHaveBeenCalledTimes(1);
+
+			// Settle the still-reading chat stream.
+			chat.push(sseFrame("done", {}));
+			await sendPromise;
+			expect(store.isStreaming).toBe(false);
+			// Once the turn ends, the revert is live again.
+			expect(store.canRevertTurn).toBe(true);
+		});
 		});
 
 		describe("steering (W3b) — queue / steer-at-boundary / stop", () => {
