@@ -22,7 +22,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
 	buildEvidenceHaystacks,
@@ -35,6 +35,8 @@ import {
 } from "$lib/server/copilot/scoring-config";
 import { buildExtraAnalysisEvidence } from "$lib/server/copilot/pipeline/context";
 import { buildPhase2aDimensionGuidance, PHASE2A_SCORING_PROMPT } from "$lib/server/copilot/pipeline/prompts";
+import * as docsRag from "$lib/server/copilot/docs-rag";
+import { buildDocsFactsBlock, extractApiReferences } from "$lib/server/copilot/pre-evaluation";
 
 const FIXTURE_DIR = path.join(import.meta.dirname, "fixtures");
 
@@ -190,16 +192,140 @@ describe("Phase 2a prompt byte-equality golden", () => {
 		const guidance = Object.fromEntries(
 			Object.entries(config.dimensionGuidance).map(([k, v]) => [k, substituteAnchors(v, config.anchors)]),
 		);
+		// The {DOCS_FACTS} placeholder (P2-4d, docs grounding) is substituted
+		// with "" here — the golden fixture proves the prompt is byte-identical
+		// to the pre-grounding version when the docs block is empty (index
+		// absent / no hits / any failure). The template gained the token
+		// IMMEDIATELY AFTER {DIMENSION_GUIDE} on the same line, so an empty
+		// substitution contributes zero bytes and the fixture did NOT change.
 		const assembled = PHASE2A_SCORING_PROMPT.replace(
 			"{DIMENSION_GUIDE}",
 			buildPhase2aDimensionGuidance(guidance),
-		);
+		).replace("{DOCS_FACTS}", "");
 
 		expect(assembled).toBe(golden);
 	});
 
 	it("the template still carries the {DIMENSION_GUIDE} placeholder", () => {
 		expect(PHASE2A_SCORING_PROMPT).toContain("{DIMENSION_GUIDE}");
+	});
+
+	it("the template carries the {DOCS_FACTS} placeholder immediately after {DIMENSION_GUIDE}", () => {
+		expect(PHASE2A_SCORING_PROMPT).toContain("{DIMENSION_GUIDE}{DOCS_FACTS}");
+	});
+});
+
+describe("Phase 2a docs grounding (P2-4d)", () => {
+	const CODE_CELLS = [
+		{ type: "code", source: "import numpy as np\nimport pandas as pd\npopt, pcov = scipy.optimize.curve_fit(model, x, y)" },
+		{ type: "code", source: "df = pd.read_csv(\"soil.csv\")\nkm = sklearn.cluster.KMeans(n_clusters=3)" },
+		{ type: "markdown", source: "The fit reproduces the reference." },
+	];
+
+	afterEach(() => {
+		vi.restoreAllMocks();
+	});
+
+	it("extracts distinct dotted API references from code cells, capped at 3", () => {
+		// First three distinct dotted refs in source order: scipy.optimize.curve_fit,
+		// pd.read_csv, sklearn.cluster.KMeans. Bare imports (np, pd) have no dot;
+		// the string literal "soil.csv" is excluded by the quote lookbehind.
+		const apis = extractApiReferences(CODE_CELLS);
+		expect(apis).toEqual(["scipy.optimize.curve_fit", "pd.read_csv", "sklearn.cluster.KMeans"]);
+		expect(apis.length).toBeLessThanOrEqual(3);
+	});
+
+	it("assembles a docs-facts block with a docs URL when searchDocs returns hits", async () => {
+		vi.spyOn(docsRag, "searchDocs").mockImplementation(async (query: string) => {
+			if (query === "scipy.optimize.curve_fit") {
+				return [
+					{
+						title: "scipy.optimize.curve_fit",
+						url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html",
+						library: "scipy",
+						version: "1.18.0",
+						snippet:
+							"## scipy.optimize.curve_fit (scipy 1.18.0)\nSignature: curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False, check_finite=None, bounds=(-inf, inf), method=None)\nUse non-linear least squares to fit a function, f, to data.",
+						score: 8.2,
+					},
+				];
+			}
+			return [];
+		});
+
+		const block = await buildDocsFactsBlock(CODE_CELLS);
+
+		expect(block).toContain("<docs_facts>");
+		expect(block).toContain("API: scipy.optimize.curve_fit (scipy 1.18.0)");
+		expect(block).toContain("Signature: curve_fit(f, xdata, ydata, p0=None, sigma=None");
+		expect(block).toContain("Source: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html");
+		expect(block).toContain("</docs_facts>");
+	});
+
+	it("degrades to an empty block when searchDocs returns no hits", async () => {
+		vi.spyOn(docsRag, "searchDocs").mockResolvedValue([]);
+		expect(await buildDocsFactsBlock(CODE_CELLS)).toBe("");
+	});
+
+	it("degrades to an empty block when searchDocs throws", async () => {
+		vi.spyOn(docsRag, "searchDocs").mockRejectedValue(new Error("index corrupt"));
+		expect(await buildDocsFactsBlock(CODE_CELLS)).toBe("");
+	});
+
+	it("degrades to an empty block when the assembled block exceeds the 3000-char cap", async () => {
+		// A hit whose signature line alone is longer than DOCS_FACTS_MAX_CHARS
+		// (3000) → the assembled block is over cap → "" (spec: over-cap → empty).
+		vi.spyOn(docsRag, "searchDocs").mockResolvedValue([
+			{
+				title: "scipy.optimize.curve_fit",
+				url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html",
+				library: "scipy",
+				version: "1.18.0",
+				snippet: "Signature: " + "x".repeat(4000),
+				score: 8.2,
+			},
+		]);
+		expect(await buildDocsFactsBlock(CODE_CELLS)).toBe("");
+	});
+
+	it("degrades to an empty block when the docs index is absent (real searchDocs, no index file)", async () => {
+		// Pin a temp DATA_DIR so the test never sees the live volume index
+		// (with DATA_DIR=/var/lib/docker/volumes/svelte-review-data/_data the
+		// real index loads and searchDocs returns hits → the test would fail).
+		// Mirrors the docs-rag.test.ts convention (beforeEach → mkdtemp).
+		const dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-noindex-"));
+		const oldDataDir = process.env.DATA_DIR;
+		process.env.DATA_DIR = dataDir;
+		try {
+			// Clear any lazily-cached index load so the temp (empty) dir is read.
+			docsRag.__resetDocsIndexForTests();
+			expect(await buildDocsFactsBlock(CODE_CELLS)).toBe("");
+		} finally {
+			if (oldDataDir === undefined) delete process.env.DATA_DIR;
+			else process.env.DATA_DIR = oldDataDir;
+			await rm(dataDir, { recursive: true, force: true });
+		}
+	});
+
+	it("substituting the empty block yields the byte-identical pre-grounding prompt", async () => {
+		const config = compileScoringConfig("soil_contamination", soilScoringRaw());
+		const guidance = Object.fromEntries(
+			Object.entries(config.dimensionGuidance).map(([k, v]) => [k, substituteAnchors(v, config.anchors)]),
+		);
+		// Reference: the pre-grounding prompt = the combined token replaced by
+		// the guide alone (as if {DOCS_FACTS} never existed).
+		const preGrounding = PHASE2A_SCORING_PROMPT.replace(
+			"{DIMENSION_GUIDE}{DOCS_FACTS}",
+			buildPhase2aDimensionGuidance(guidance),
+		);
+		// Production path: guide substituted, then the docs block (empty here).
+		const withEmptyDocs = PHASE2A_SCORING_PROMPT.replace(
+			"{DIMENSION_GUIDE}",
+			buildPhase2aDimensionGuidance(guidance),
+		).replace("{DOCS_FACTS}", "");
+
+		expect(withEmptyDocs).toBe(preGrounding);
+		expect(withEmptyDocs).not.toContain("{DOCS_FACTS}");
 	});
 });
 

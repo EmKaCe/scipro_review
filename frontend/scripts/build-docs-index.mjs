@@ -9,8 +9,8 @@
  * (signature block + parameter list + first 1-2 examples; multi-object pages
  * like sklearn classes split per `dt.sig` object), embeds each chunk via the
  * KI Connect embeddings endpoint (e5-mistral-7b-instruct, 4096-dim), and
- * writes `docs-index.json` (chunks + vectors + per-library manifest) to a
- * configurable output dir.
+ * writes `docs-index.json` (chunks + per-library manifest) plus
+ * `docs-vectors.bin` (float32 LE vectors) to a configurable output dir.
  *
  * The full corpus is ~5.6M tokens / ~13,100 pages — a one-shot deploy
  * operation (~10 min). For smoke tests use `--limit N` and/or `--skip-embed`.
@@ -27,17 +27,24 @@
  *   DATA_DIR            — default output root (out dir = <DATA_DIR>/docs-index)
  *   DOCS_INDEX_DIR      — explicit output dir override (wins over DATA_DIR)
  *
- * Output shape (docs-index.json):
- *   {
- *     format: "svelte-review-copilot-docs-index",
- *     formatVersion: 1,
- *     builtAt: ISO string,
- *     embeddingModel: "e5-mistral-7b-instruct" | null,
- *     embeddingDim: 4096 | null,
- *     libraries: [{ library, version, pinnedVersion, sourceUrl, sha256, builtAt }],
- *     chunks: [{ id, library, version, title, url, text }],
- *     vectors: [number[]]  // parallel to chunks; absent when --skip-embed
- *   }
+ * Output shape:
+ *   docs-index.json:
+ *     {
+ *       format: "svelte-review-copilot-docs-index",
+ *       formatVersion: 1,
+ *       builtAt: ISO string,
+ *       embeddingModel: "e5-mistral-7b-instruct" | null,
+ *       embeddingDim: 4096 | null,
+ *       libraries: [{ library, version, pinnedVersion, sourceUrl, sha256, builtAt }],
+ *       chunks: [{ id, library, version, title, url, text }],
+ *       vectorsFile: "docs-vectors.bin",  // present only when vectors were embedded
+ *       vectorCount: <number>             // present only when vectors were embedded
+ *     }
+ *   docs-vectors.bin:  // present only when vectors were embedded
+ *     float32 little-endian, row-major; chunk i's vector at byte offset
+ *     i * embeddingDim * 4. Byte length = chunks.length * embeddingDim * 4.
+ *     (Split out of the JSON because JSON.stringify of ~3000 x 4096-dim
+ *     vectors exceeds Node's ~512MB string cap.)
  */
 
 import { createHash } from "node:crypto";
@@ -464,6 +471,14 @@ async function embedAll(model, texts, onProgress) {
 			if (start >= texts.length) return;
 			const batch = texts.slice(start, start + EMBED_BATCH);
 			const result = await model.doEmbed({ values: batch });
+			// A partial response would leave undefined holes in `vectors`
+			// that reach the write loop as a TypeError — fail loudly so the
+			// outer try/catch writes the index WITHOUT vectors instead.
+			if (result.embeddings.length !== batch.length) {
+				throw new Error(
+					`embedding API returned ${result.embeddings.length} vectors for a ${batch.length}-text batch`,
+				);
+			}
 			for (let i = 0; i < result.embeddings.length; i++) {
 				vectors[start + i] = result.embeddings[i];
 			}
@@ -592,10 +607,33 @@ const index = {
 	libraries: manifestLibraries,
 	chunks: allChunks,
 };
-if (allVectors.length > 0) index.vectors = allVectors;
+if (allVectors.length > 0) {
+	index.vectorsFile = "docs-vectors.bin";
+	index.vectorCount = allVectors.length;
+}
 
 const outPath = path.join(outDir, "docs-index.json");
 await writeFile(outPath, JSON.stringify(index), "utf-8");
+
+if (allVectors.length > 0) {
+	// float32 little-endian, row-major: chunk i's vector at byte offset
+	// i * embeddingDim * 4. writeFloatLE explicitly (do NOT rely on
+	// Buffer.from(Float32Array) platform endianness).
+	const buf = Buffer.allocUnsafe(allVectors.length * embeddingDim * 4);
+	for (let i = 0; i < allVectors.length; i++) {
+		const vec = allVectors[i];
+		const offset = i * embeddingDim * 4;
+		for (let j = 0; j < embeddingDim; j++) {
+			buf.writeFloatLE(vec[j], offset + j * 4);
+		}
+	}
+	const vectorsPath = path.join(outDir, "docs-vectors.bin");
+	await writeFile(vectorsPath, buf);
+	console.log(
+		`[build-docs-index] wrote ${vectorsPath}: ${allVectors.length} vectors x ${embeddingDim} dims (${buf.length} bytes)`,
+	);
+}
+
 console.log(
 	`[build-docs-index] wrote ${outPath}: ${allChunks.length} chunks, ${allVectors.length} vectors, ${manifestLibraries.length} libraries`,
 );

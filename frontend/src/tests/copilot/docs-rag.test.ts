@@ -21,6 +21,7 @@ import { createRegistry, type ToolContext } from "$lib/server/copilot/registry";
 import { registerDocsTools } from "$lib/server/copilot/tools/docs-tools";
 import {
 	__resetDocsIndexForTests,
+	getDocsIndexStatus,
 	searchDocs,
 	type DocsChunk,
 } from "$lib/server/copilot/docs-rag";
@@ -120,26 +121,67 @@ const FIXTURE_VECTORS: number[][] = [
 	[0, 0, 0, 1], // sklearn.cluster.KMeans
 ];
 
-/** Write the fixture docs-index.json into the temp DATA_DIR. */
-async function writeFixtureIndex(dataDir: string, withVectors: boolean): Promise<void> {
+/**
+ * Write the fixture docs-index.json + docs-vectors.bin into the temp DATA_DIR.
+ *
+ * `withVectors` writes the manifest vectorsFile/vectorCount fields AND the
+ * .bin (4 chunks x 4 dims = 64 bytes). `options` lets degrade-branch tests
+ * corrupt one piece of the vector contract:
+ *   - vectorsFile: override the .bin filename (e.g. point at a missing file)
+ *   - vectorCount: override the manifest count (defaults to 4 when withVectors)
+ *   - embeddingDim: override the manifest dim (defaults to 4 when withVectors)
+ *   - vectorsBytes: override the .bin byte length (defaults to 64)
+ *   - duplicateIds: duplicate every chunk id so buildMiniSearch throws
+ */
+async function writeFixtureIndex(
+	dataDir: string,
+	withVectors: boolean,
+	options: {
+		vectorsFile?: string;
+		vectorCount?: number;
+		embeddingDim?: number | null;
+		vectorsBytes?: number;
+		duplicateIds?: boolean;
+	} = {},
+): Promise<void> {
 	const dir = path.join(dataDir, "docs-index");
 	await mkdir(dir, { recursive: true });
+	const chunks = options.duplicateIds
+		? FIXTURE_CHUNKS.map((c) => ({ ...c, id: "duplicate:id" }))
+		: FIXTURE_CHUNKS;
 	const index: Record<string, unknown> = {
 		format: "svelte-review-copilot-docs-index",
 		formatVersion: 1,
 		builtAt: "2026-08-18T00:00:00.000Z",
 		embeddingModel: withVectors ? "e5-mistral-7b-instruct" : null,
-		embeddingDim: withVectors ? 4 : null,
+		embeddingDim: withVectors ? (options.embeddingDim ?? 4) : null,
 		libraries: [
 			{ library: "numpy", version: "2.5.1", pinnedVersion: "2.5.1", sourceUrl: "https://numpy.org/doc/stable/numpy-html.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
 			{ library: "pandas", version: "3.0.5", pinnedVersion: "3.0.5", sourceUrl: "https://pandas.pydata.org/docs/pandas.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
 			{ library: "scipy", version: "1.18.0", pinnedVersion: "1.18.0", sourceUrl: "https://docs.scipy.org/doc/scipy-1.18.0/scipy-html-1.18.0.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
 			{ library: "sklearn", version: "1.9.0", pinnedVersion: "1.9.0", sourceUrl: "https://scikit-learn.org/stable/_downloads/scikit-learn-docs.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
 		],
-		chunks: FIXTURE_CHUNKS,
+		chunks,
 	};
-	if (withVectors) index.vectors = FIXTURE_VECTORS;
+	if (withVectors) {
+		index.vectorsFile = options.vectorsFile ?? "docs-vectors.bin";
+		index.vectorCount = options.vectorCount ?? FIXTURE_VECTORS.length;
+	}
 	await writeFile(path.join(dir, "docs-index.json"), JSON.stringify(index), "utf-8");
+	if (withVectors) {
+		// float32 little-endian, row-major: 4 chunks x 4 dims = 16 floats = 64 bytes.
+		// Only write vectors that fit in the (possibly truncated) buffer.
+		const buf = Buffer.allocUnsafe(options.vectorsBytes ?? FIXTURE_VECTORS.length * 4 * 4);
+		const writeCount = Math.min(FIXTURE_VECTORS.length, Math.floor(buf.length / 16));
+		for (let i = 0; i < writeCount; i++) {
+			const vec = FIXTURE_VECTORS[i]!;
+			const offset = i * 4 * 4;
+			for (let j = 0; j < 4; j++) {
+				buf.writeFloatLE(vec[j]!, offset + j * 4);
+			}
+		}
+		await writeFile(path.join(dir, options.vectorsFile ?? "docs-vectors.bin"), buf);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -309,6 +351,92 @@ describe("searchDocs — degrade path (BM25-only)", () => {
 		});
 
 		expect(hits).toEqual([]);
+	});
+
+	it("degrades to BM25-only when the query vector has the wrong dimension", async () => {
+		await writeFixtureIndex(dataDir, true);
+
+		// Manifest says 4 dims; the embedder returns a 3-dim vector. cosine()
+		// would silently compute a partial dot product — the embedding leg
+		// must be skipped instead.
+		const embedQuery = vi.fn(async () => [0, 0, 0]);
+		const hits = await searchDocs("partition observations into homogeneous groups", {
+			embedQuery,
+		});
+
+		expect(embedQuery).toHaveBeenCalledOnce();
+		// BM25-only: no lexical overlap → empty, but NO throw.
+		expect(hits).toEqual([]);
+	});
+
+	it("degrades to BM25-only when the vectors .bin has the wrong byte length", async () => {
+		// Manifest promises 4 chunks x 4 dims = 64 bytes; write only 32.
+		await writeFixtureIndex(dataDir, true, { vectorsBytes: 32 });
+
+		const hits = await searchDocs("curve_fit", {
+			embedQuery: vi.fn(async () => {
+				throw new Error("should never be called");
+			}),
+		});
+
+		expect(hits[0]!.title).toBe("scipy.optimize.curve_fit");
+	});
+
+	it("degrades to BM25-only when the manifest embeddingDim is null", async () => {
+		// vectorsFile present but embeddingDim null → expected byte count is
+		// 0, so the .bin can never match → vectors treated as absent.
+		await writeFixtureIndex(dataDir, true, { embeddingDim: null });
+
+		const hits = await searchDocs("curve_fit", {
+			embedQuery: vi.fn(async () => {
+				throw new Error("should never be called");
+			}),
+		});
+
+		expect(hits[0]!.title).toBe("scipy.optimize.curve_fit");
+	});
+
+	it("degrades to BM25-only when the vectors .bin is missing entirely", async () => {
+		// vectorsFile points at a file that was never written.
+		await writeFixtureIndex(dataDir, true, { vectorsFile: "docs-vectors-missing.bin" });
+
+		const hits = await searchDocs("curve_fit", {
+			embedQuery: vi.fn(async () => {
+				throw new Error("should never be called");
+			}),
+		});
+
+		expect(hits[0]!.title).toBe("scipy.optimize.curve_fit");
+	});
+
+	it("degrades to BM25-only when vectorCount disagrees with the chunk count", async () => {
+		// Manifest honesty check: 4 chunks but vectorCount 3 → stale vectors;
+		// the whole index is rejected (load fails → no results, note set).
+		await writeFixtureIndex(dataDir, true, { vectorCount: 3 });
+
+		const hits = await searchDocs("curve_fit", {
+			embedQuery: vi.fn(async () => {
+				throw new Error("should never be called");
+			}),
+		});
+
+		expect(hits).toEqual([]);
+		expect(getDocsIndexStatus().note).toContain("declares 3 vectors for 4 chunks");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// (f) malformed index — never-throw envelope
+// ---------------------------------------------------------------------------
+
+describe("loadDocsIndex — malformed index never throws", () => {
+	it("returns null with a note when chunk ids are duplicated (buildMiniSearch throws)", async () => {
+		await writeFixtureIndex(dataDir, false, { duplicateIds: true });
+
+		const hits = await searchDocs("curve_fit");
+
+		expect(hits).toEqual([]);
+		expect(getDocsIndexStatus().note).toContain("could not be indexed");
 	});
 });
 

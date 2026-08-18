@@ -484,6 +484,11 @@ const AGENT_INSTRUCTIONS = [
 	"Use the provided tools to inspect submissions, run notebooks, and prepare evaluations.",
 	"Never fabricate tool results: if a tool fails or returns nothing, say so plainly and ask",
 	"for clarification instead of inventing data.",
+	"",
+	"Before flagging a student's API usage as wrong, call search-docs to verify the actual",
+	"signature, parameters, and return values against the pinned offline library docs, and",
+	"cite the docs version in your reasoning. If search-docs returns nothing, say the fact",
+	"is unverified rather than guessing from memory.",
 ].join(" ");
 
 /**

@@ -70,8 +70,10 @@ export interface DocsIndexFile {
 	embeddingDim: number | null;
 	libraries: DocsLibraryManifest[];
 	chunks: DocsChunk[];
-	/** Parallel to chunks; absent when the build ran with --skip-embed. */
-	vectors?: number[][];
+	/** Name of the float32 LE vectors file, relative to this JSON's dir. */
+	vectorsFile?: string;
+	/** Number of vectors in the .bin (must equal chunks.length). */
+	vectorCount?: number;
 }
 
 export interface DocHit {
@@ -130,7 +132,9 @@ const EMBEDDING_TIMEOUT_MS = 30_000;
 
 interface LoadedIndex {
 	chunks: DocsChunk[];
-	vectors: number[][] | null;
+	vectors: Float32Array | null;
+	/** Embedding dimension from the manifest (null when the index has no vectors). */
+	embeddingDim: number | null;
 	manifest: DocsLibraryManifest[];
 	miniSearch: MiniSearch<DocsChunk>;
 }
@@ -168,41 +172,71 @@ export async function loadDocsIndex(): Promise<LoadedIndex | null> {
 	if (loadPromise) return loadPromise;
 
 	loadPromise = (async () => {
+		const indexPath = getIndexPath();
 		let raw: string;
 		try {
-			raw = await readFile(getIndexPath(), "utf-8");
+			raw = await readFile(indexPath, "utf-8");
 		} catch (err) {
-			loadNote = `Offline docs index not found at ${getIndexPath()} — run \`node scripts/build-docs-index.mjs\` to build it (${err instanceof Error ? err.message : String(err)})`;
+			loadNote = `Offline docs index not found at ${indexPath} — run \`node scripts/build-docs-index.mjs\` to build it (${err instanceof Error ? err.message : String(err)})`;
 			return null;
 		}
 		let parsed: unknown;
 		try {
 			parsed = JSON.parse(raw);
 		} catch (err) {
-			loadNote = `Offline docs index at ${getIndexPath()} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`;
+			loadNote = `Offline docs index at ${indexPath} is not valid JSON: ${err instanceof Error ? err.message : String(err)}`;
 			return null;
 		}
 		const file = parsed as Partial<DocsIndexFile>;
 		if (file.format !== INDEX_FORMAT || file.formatVersion !== INDEX_FORMAT_VERSION) {
-			loadNote = `Offline docs index at ${getIndexPath()} has unsupported format (${file.format ?? "?"} v${file.formatVersion ?? "?"}) — rebuild with scripts/build-docs-index.mjs`;
+			loadNote = `Offline docs index at ${indexPath} has unsupported format (${file.format ?? "?"} v${file.formatVersion ?? "?"}) — rebuild with scripts/build-docs-index.mjs`;
 			return null;
 		}
 		if (!Array.isArray(file.chunks) || file.chunks.length === 0) {
-			loadNote = `Offline docs index at ${getIndexPath()} contains no chunks — rebuild with scripts/build-docs-index.mjs`;
+			loadNote = `Offline docs index at ${indexPath} contains no chunks — rebuild with scripts/build-docs-index.mjs`;
 			return null;
 		}
 		const chunks = file.chunks as DocsChunk[];
-		// Vectors must be parallel to chunks; a partial/mismatched vector set
-		// is treated as absent (BM25-only) rather than risking wrong pairing.
-		const vectors =
-			Array.isArray(file.vectors) && file.vectors.length === chunks.length
-				? (file.vectors as number[][])
-				: null;
+		// Cheap manifest honesty check: vectorCount (written by the build
+		// script) must agree with the chunk count, or the vectors are stale.
+		if (file.vectorCount !== undefined && file.vectorCount !== chunks.length) {
+			loadNote = `Offline docs index at ${indexPath} declares ${file.vectorCount} vectors for ${chunks.length} chunks — treating as BM25-only; rebuild with scripts/build-docs-index.mjs`;
+			return null;
+		}
+		// Vectors live in a separate float32 LE .bin (docs-vectors.bin) named by
+		// the manifest. Missing file / wrong byte length / wrong dims → treated
+		// as absent (BM25-only) rather than risking wrong pairing. Never throws.
+		let vectors: Float32Array | null = null;
+		if (file.vectorsFile && typeof file.vectorsFile === "string") {
+			const dim = typeof file.embeddingDim === "number" ? file.embeddingDim : 0;
+			const expectedBytes = chunks.length * dim * 4;
+			try {
+				const binPath = path.join(path.dirname(indexPath), file.vectorsFile);
+				const buf = await readFile(binPath);
+				if (buf.byteLength === expectedBytes && expectedBytes > 0) {
+					vectors = new Float32Array(buf.buffer, buf.byteOffset, buf.byteLength / 4);
+				} else {
+					loadNote = `Offline docs vectors at ${binPath} have ${buf.byteLength} bytes, expected ${expectedBytes} (${chunks.length} chunks x ${dim} dims) — treating as BM25-only; rebuild with scripts/build-docs-index.mjs`;
+				}
+			} catch (err) {
+				loadNote = `Offline docs vectors file ${file.vectorsFile} not found next to ${indexPath} — treating as BM25-only (${err instanceof Error ? err.message : String(err)})`;
+			}
+		}
+		// buildMiniSearch THROWS on parseable-but-malformed indexes (duplicate
+		// chunk ids, missing id field) — keep it inside the never-throw envelope.
+		let miniSearch: MiniSearch<DocsChunk>;
+		try {
+			miniSearch = buildMiniSearch(chunks);
+		} catch (err) {
+			loadNote = `Offline docs index at ${indexPath} could not be indexed (${err instanceof Error ? err.message : String(err)}) — rebuild with scripts/build-docs-index.mjs`;
+			return null;
+		}
 		loadedIndex = {
 			chunks,
 			vectors,
+			embeddingDim: typeof file.embeddingDim === "number" ? file.embeddingDim : null,
 			manifest: Array.isArray(file.libraries) ? (file.libraries as DocsLibraryManifest[]) : [],
-			miniSearch: buildMiniSearch(chunks),
+			miniSearch,
 		};
 		return loadedIndex;
 	})();
@@ -256,7 +290,7 @@ async function defaultEmbedQuery(query: string): Promise<number[]> {
 }
 
 /** Cosine similarity between two equal-length vectors. */
-function cosine(a: number[], b: number[]): number {
+function cosine(a: ArrayLike<number>, b: ArrayLike<number>): number {
 	let dot = 0;
 	let na = 0;
 	let nb = 0;
@@ -273,15 +307,19 @@ function cosine(a: number[], b: number[]): number {
 /** Top-N chunks by cosine similarity to the query vector (library-filtered). */
 function embeddingTopN(
 	chunks: DocsChunk[],
-	vectors: number[][],
-	queryVector: number[],
+	vectors: Float32Array,
+	queryVector: ArrayLike<number>,
 	library: DocsLibrary | undefined,
 	n: number,
 ): Array<{ chunk: DocsChunk; score: number }> {
+	// Flat row-major layout: chunk i's vector is the subarray
+	// [i * dim, (i + 1) * dim). subarray is a zero-copy view — no
+	// conversion to number[][] (avoids ~2x memory).
+	const dim = vectors.length / chunks.length;
 	const scored: Array<{ chunk: DocsChunk; score: number }> = [];
 	for (let i = 0; i < chunks.length; i++) {
 		if (library && chunks[i]!.library !== library) continue;
-		scored.push({ chunk: chunks[i]!, score: cosine(vectors[i]!, queryVector) });
+		scored.push({ chunk: chunks[i]!, score: cosine(vectors.subarray(i * dim, (i + 1) * dim), queryVector) });
 	}
 	scored.sort((a, b) => b.score - a.score);
 	return scored.slice(0, n);
@@ -368,12 +406,18 @@ export async function searchDocs(
 	}
 
 	// Embedding leg — degrade to BM25-only on ANY failure (endpoint down,
-	// no key, no vectors, embedder throws).
+	// no key, no vectors, embedder throws, wrong vector dimension).
 	if (index.vectors) {
 		try {
 			const embedQuery = options.embedQuery ?? defaultEmbedQuery;
 			const queryVector = await embedQuery(query);
-			if (Array.isArray(queryVector) && queryVector.length > 0) {
+			// The query vector must match the corpus dimension — cosine()
+			// would otherwise silently compute a partial dot product.
+			if (
+				Array.isArray(queryVector) &&
+				queryVector.length > 0 &&
+				queryVector.length === index.embeddingDim
+			) {
 				const embedTop = embeddingTopN(index.chunks, index.vectors, queryVector, library, RRF_CANDIDATES);
 				const fused = rrfFuse(bm25Top, embedTop, topK);
 				return fused.map((r) => toHit(r.chunk, r.score));

@@ -116,6 +116,14 @@ EXAMPLE — correct output:
  * (scientific_programming / creativity) come from the scoring config
  * (data/scoring/<id>.yaml, signed off 2026-08-18) so each assignment's
  * anchor scale is data-driven instead of hardcoded.
+ *
+ * The template also carries a `{DOCS_FACTS}` placeholder immediately after
+ * `{DIMENSION_GUIDE}` (same position family — both are grounding/context
+ * blocks). Callers substitute the docs-facts block (P2-4d: signatures +
+ * docs URLs for the APIs the student actually used) or "" when the docs
+ * index is absent. The token sits on the SAME line as {DIMENSION_GUIDE}
+ * so an empty substitution contributes zero bytes — the prompt stays
+ * byte-identical to the pre-grounding version (golden test).
  */
 export const PHASE2A_SCORING_PROMPT = `You are an expert teaching assistant for a Scientific Programming with Python course. You score ONE student submission using pre-computed cell markers and deterministic code analysis.
 
@@ -131,7 +139,7 @@ SCORING (RAW POINTS, NOT percentages — a 6-point dimension at 60% is ~4, never
 - 80-90%: solid — correct, good structure, minor issues only
 - max_points: EXCEPTIONAL — flawless. Less than 10% of submissions.
 
-{DIMENSION_GUIDE}
+{DIMENSION_GUIDE}{DOCS_FACTS}
 
 MANDATORY SELF-CHECK before finalizing:
 1. If you are giving max_points to 4+ dimensions, you are almost certainly wrong.
