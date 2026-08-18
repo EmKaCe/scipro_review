@@ -82,6 +82,23 @@ services:
       - "8766"
     volumes:
       - data:/app/data
+    # P1 executor hardening (2026-08-18): student notebooks are untrusted
+    # code. The executor runs with NO Linux capabilities, no new privileges,
+    # a pids cap (fork bombs), and a read-only rootfs (only /tmp and the
+    # data volume are writable). Student code needs no network — the only
+    # outbound call in the executor's own code is the KI Connect auto-fix
+    # path (executor/ki_connect.py), which is a server-side feature, not a
+    # student-notebook capability. Residual vector (documented): the
+    # executor still shares the app-net bridge, so a malicious notebook
+    # could reach the frontend container. Acceptable for the localhost-only
+    # deployment model (user confirmed); revisit if the app is ever shared.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
     environment:
       - PORT=8766
       - EXECUTOR_LOG_LEVEL=info
@@ -99,6 +116,7 @@ services:
         limits:
           cpus: "2.0"
           memory: 1G
+          pids: 256
         reservations:
           cpus: "0.5"
           memory: 256M
