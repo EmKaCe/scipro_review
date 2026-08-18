@@ -142,6 +142,33 @@ export const FIT_RMSE_PAREN_PATTERN = /\bRMSE\s*\(\s*([\d.]+)/i;
 /** Explicit parameter bounds in a curve_fit call, e.g. `bounds=(0, np.inf)`. */
 export const BOUNDS_CODE_PATTERN = /bounds\s*=/i;
 
+/** Compiled fit-metric pattern set (config-preferred, code-fallback). */
+export interface FitMetricPatterns {
+	r2: RegExp;
+	rmse: RegExp;
+	rmseParen: RegExp;
+	bounds: RegExp;
+}
+
+/**
+ * Build the fit-metric pattern set from a scoring config (evidence_patterns
+ * `fit_metrics_r2` / `fit_metrics_rmse` / `fit_metrics_rmse_paren` /
+ * `bounds_assignment`). Falls back to the code constants when the config or
+ * a pattern is absent.
+ */
+export function fitMetricPatternsFromConfig(
+	config: { evidencePatterns: ReadonlyMap<string, { regexes: RegExp[] }> } | null | undefined,
+): FitMetricPatterns {
+	return {
+		r2: config?.evidencePatterns.get("fit_metrics_r2")?.regexes[0] ?? FIT_R2_PATTERN,
+		rmse: config?.evidencePatterns.get("fit_metrics_rmse")?.regexes[0] ?? FIT_RMSE_PATTERN,
+		rmseParen:
+			config?.evidencePatterns.get("fit_metrics_rmse_paren")?.regexes[0] ??
+			FIT_RMSE_PAREN_PATTERN,
+		bounds: config?.evidencePatterns.get("bounds_assignment")?.regexes[0] ?? BOUNDS_CODE_PATTERN,
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Clustering
 // ---------------------------------------------------------------------------
@@ -165,7 +192,7 @@ function referenceFitMaxRmse(anchors: ReferenceAnchors): number {
  */
 export function classifyExecutionCluster(
 	outcome: SubmissionExecutionOutcome | undefined,
-	anchors: ReferenceAnchors = SOIL_CONTAMINATION_ANCHORS,
+	anchors: ReferenceAnchors,
 ): ExecutionCluster {
 	if (!outcome) {
 		return ExecutionCluster.no_metrics;
@@ -207,7 +234,7 @@ export function classifyExecutionCluster(
  */
 export function calibrateCohortScores(
 	scoresBySubmission: ReadonlyMap<string, Readonly<Record<string, number>>>,
-	anchors: ReferenceAnchors = SOIL_CONTAMINATION_ANCHORS,
+	anchors: ReferenceAnchors,
 	outcomes: ReadonlyMap<string, SubmissionExecutionOutcome> = new Map(),
 ): CalibrationAdjustment[] {
 	const adjustments: CalibrationAdjustment[] = [];
@@ -299,11 +326,27 @@ export function calibrateCohortScores(
  * the stored execution result (`error` set or `success === false`). Fit
  * metrics (R²/RMSE/bounds) are NOT persisted by the store — pass them via
  * `outcomes` when available.
+ *
+ * @param anchors reference solution facts. REQUIRED (no default): the caller
+ *   resolves them from the assignment's scoring config
+ *   (data/scoring/<id>.yaml). `null`/undefined → the core receives no anchors
+ *   and runs uncalibrated clustering (nothing is flagged without a
+ *   reference-fit band). This is deliberate: an assignment without a scoring
+ *   config must NEVER inherit another assignment's anchor facts.
  */
 export function calibrateCohortFromResults(
 	results: ResultsFile,
 	outcomes: ReadonlyMap<string, SubmissionExecutionOutcome> = new Map(),
+	anchors: ReferenceAnchors | null | undefined = null,
 ): CalibrationAdjustment[] {
+	// No anchors → no reference-fit band → nothing to calibrate against.
+	// The caller (runCohortCalibration) skips before reaching here when the
+	// scoring config has no anchors; this guard keeps the pure adapter safe
+	// for direct callers too (design: an assignment without anchors must
+	// never inherit another assignment's facts).
+	if (!anchors) {
+		return [];
+	}
 	const scores = new Map<string, Record<string, number>>();
 	const mergedOutcomes = new Map(outcomes);
 	for (const [studentId, stored] of Object.entries(results)) {
@@ -317,7 +360,7 @@ export function calibrateCohortFromResults(
 			});
 		}
 	}
-	return calibrateCohortScores(scores, SOIL_CONTAMINATION_ANCHORS, mergedOutcomes);
+	return calibrateCohortScores(scores, anchors, mergedOutcomes);
 }
 
 /**
@@ -330,19 +373,26 @@ export function calibrateCohortFromResults(
  * flagged `bounded` when any code cell source contains explicit parameter
  * bounds (e.g. `bounds=` in a `curve_fit` call).
  *
+ * When a scoring config is passed, its compiled `fit_metrics_*` /
+ * `bounds_assignment` evidence patterns are used instead of the code
+ * constants (single source for the canonical forms, design row 2k).
+ *
  * Pure: never mutates `results`. Keys are only present for submissions that
  * exist in the results file; metric fields are absent when not computed.
  *
  * @param results results.json contents — a map keyed by studentId.
+ * @param scoringConfig optional scoring config for fit-metric patterns.
  * @returns submissionId → {@link SubmissionExecutionOutcome} for every
  *   stored submission (empty outcome objects for metric-less ones).
  */
 export function extractFitMetricsFromResults(
 	results: ResultsFile,
+	scoringConfig?: { evidencePatterns: ReadonlyMap<string, { regexes: RegExp[] }> } | null,
 ): Map<string, SubmissionExecutionOutcome> {
+	const patterns = fitMetricPatternsFromConfig(scoringConfig);
 	const outcomes = new Map<string, SubmissionExecutionOutcome>();
 	for (const [submissionId, stored] of Object.entries(results)) {
-		outcomes.set(submissionId, extractFitMetricsFromCells(stored.cells ?? []));
+		outcomes.set(submissionId, extractFitMetricsFromCells(stored.cells ?? [], patterns));
 	}
 	return outcomes;
 }
@@ -394,22 +444,28 @@ function adjustKey(submissionId: string, dimension: string): string {
  */
 function extractFitMetricsFromCells(
 	cells: readonly ExecutedCell[],
+	patterns: FitMetricPatterns = {
+		r2: FIT_R2_PATTERN,
+		rmse: FIT_RMSE_PATTERN,
+		rmseParen: FIT_RMSE_PAREN_PATTERN,
+		bounds: BOUNDS_CODE_PATTERN,
+	},
 ): SubmissionExecutionOutcome {
 	const codeCells = cells.filter((cell) => cell.type === "code");
 	const outputText = codeCells.map((cell) => cell.output ?? "").join("\n");
 	const codeSource = codeCells.map((cell) => cell.source ?? "").join("\n");
 
 	const outcome: SubmissionExecutionOutcome = {};
-	const r2 = outputText.match(FIT_R2_PATTERN)?.[1];
+	const r2 = outputText.match(patterns.r2)?.[1];
 	const rmse =
-		outputText.match(FIT_RMSE_PATTERN)?.[1] ?? outputText.match(FIT_RMSE_PAREN_PATTERN)?.[1];
+		outputText.match(patterns.rmse)?.[1] ?? outputText.match(patterns.rmseParen)?.[1];
 	if (r2 !== undefined) {
 		outcome.rSquared = Number.parseFloat(r2);
 	}
 	if (rmse !== undefined) {
 		outcome.rmse = Number.parseFloat(rmse);
 	}
-	if (BOUNDS_CODE_PATTERN.test(codeSource)) {
+	if (patterns.bounds.test(codeSource)) {
 		outcome.bounded = true;
 	}
 	return outcome;

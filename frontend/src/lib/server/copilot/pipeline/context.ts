@@ -21,6 +21,14 @@ import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 import type { ExecutedCell } from "$lib/server/executor-client";
 import type { MergedRubric } from "$lib/types/criteria";
 import type { PreAnalysis } from "$lib/server/copilot/pre-analysis";
+import {
+	buildEvidenceHaystacks,
+	haystackFor,
+	measureEvidencePattern,
+	testEvidencePattern,
+	type Haystack,
+	type ScoringConfig,
+} from "../scoring-config";
 
 // ---------------------------------------------------------------------------
 // Prompt bounds (mirror tools/context-tools.ts preview limits)
@@ -405,51 +413,82 @@ export function formatPreAnalysis(pa: PreAnalysis): string {
  * builder extracts those signals with regexes and formats them as a short
  * bullet list the prompt can act on. It is deliberately conservative: only
  * report what the patterns actually find.
+ *
+ * Patterns come from the assignment's scoring config
+ * (data/scoring/<id>.yaml, `evidence_patterns`) when present; when config
+ * is absent (or the `extraAnalysisEvidence` param is omitted) the built-in
+ * soil-grade patterns below are used — the fallback output is byte-identical
+ * to the pre-config implementation.
  */
-export function buildExtraAnalysisEvidence(cells: readonly { type: string; source: string; output?: string | null }[]): string {
-	const codeSource = cells
-		.filter((c) => c.type === "code")
-		.map((c) => c.source)
-		.join("\n");
-	const markdownSource = cells
-		.filter((c) => c.type === "markdown")
-		.map((c) => c.source)
-		.join("\n");
-	const outputText = cells
-		.filter((c) => c.type === "code")
-		.map((c) => c.output ?? "")
-		.join("\n");
+export function buildExtraAnalysisEvidence(
+	cells: readonly { type: string; source: string; output?: string | null }[],
+	config?: ScoringConfig | null,
+): string {
+	const haystacks = buildEvidenceHaystacks(cells);
+
+	// Helper: run a config pattern if present; else the built-in regex.
+	const testBuiltin = (key: string, builtin: RegExp, kind: Haystack): boolean => {
+		const compiled = config?.evidencePatterns.get(key);
+		if (compiled) return testEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks));
+		return builtin.test(haystackFor(kind, haystacks));
+	};
+	const countBuiltin = (
+		key: string,
+		builtin: RegExp,
+		kind: Haystack,
+		group: number,
+	): number => {
+		const compiled = config?.evidencePatterns.get(key);
+		if (compiled) return measureEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks)) as number;
+		const seen = new Set<string>();
+		for (const m of haystackFor(kind, haystacks).matchAll(builtin)) {
+			seen.add(m[group] ?? "");
+		}
+		return seen.size;
+	};
 
 	const bullets: string[] = [];
 
 	// (a) Parameter standard errors derived from the covariance matrix.
-	const stdErr = /np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error/i.test(
-		codeSource + outputText,
+	const stdErr = testBuiltin(
+		"std_err_from_covariance",
+		/np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error/i,
+		"output+code",
 	);
 	bullets.push(`- parameter standard errors from covariance matrix: ${stdErr ? "yes" : "no"}`);
 
 	// (b) R²/RMSE computed AND interpreted (value present in output and the
 	// same metric discussed in markdown).
-	const r2Computed = /\bR\s*(?:\^2|²|2)\s*[=:]\s*[\d.]+|\bRMSE\s*[=:]\s*[\d.]+/i.test(outputText);
-	const r2Discussed =
-		/\bR\s*(?:\^2|²|2)\b/i.test(markdownSource) || /\bRMSE\b/i.test(markdownSource);
+	const r2Computed = testBuiltin(
+		"r2_or_rmse_computed",
+		/\bR\s*(?:\^2|²|2)\s*[=:]\s*[\d.]+|\bRMSE\s*[=:]\s*[\d.]+/i,
+		"output",
+	);
+	const r2Discussed = testBuiltin(
+		"r2_or_rmse_discussed",
+		/\bR\s*(?:\^2|²|2)\b/i,
+		"markdown",
+	) || testBuiltin("r2_or_rmse_discussed", /\bRMSE\b/i, "markdown");
 	bullets.push(`- R²/RMSE computed and interpreted: ${r2Computed && r2Discussed ? "yes" : "no"}`);
 
 	// (c) Extra visualizations — count distinct plot-call families (both the
 	// plt.* and ax.* idioms); more than 2 distinct families is a signal of
 	// extra presentation work.
-	const plotFamilies = new Set<string>();
-	for (const m of codeSource.matchAll(/(?:plt|ax)\.(\w+)\s*\(/g)) {
-		plotFamilies.add(m[1]!);
-	}
-	bullets.push(`- distinct plot types used: ${plotFamilies.size}`);
+	const plotFamilies = countBuiltin(
+		"plot_family_counter",
+		/(?:plt|ax)\.(\w+)\s*\(/g,
+		"code",
+		1,
+	);
+	bullets.push(`- distinct plot types used: ${plotFamilies}`);
 
 	// (d) Physical-insight language — discussing WHY a fitted parameter is
 	// non-physical / meaningless, correlation between parameters, etc.
-	const physicalInsight =
-		/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i.test(
-			markdownSource + codeSource,
-		);
+	const physicalInsight = testBuiltin(
+		"physical_insight",
+		/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i,
+		"markdown+code",
+	);
 	bullets.push(`- physical-insight discussion (e.g. why a parameter is non-physical): ${physicalInsight ? "yes" : "no"}`);
 
 	// (e) Scientific-methodology signals the professor rewarded (scientific_programming).
@@ -459,21 +498,49 @@ export function buildExtraAnalysisEvidence(cells: readonly { type: string; sourc
 	// error = 3.5. Built-in metrics are a suggestion, not a requirement (the
 	// professor gave 4.5 to submissions computing RMSE by hand or missing
 	// built-ins entirely). So the strongest signal is FIT REPRODUCTION.
-	const fitReproducesReference =
-		/\bA\b[^\n]{0,60}?1210\.9\d*/i.test(outputText) &&
-		/\bB\b[^\n]{0,60}?-?484\.9\d*/i.test(outputText) &&
-		/\bL\b[^\n]{0,60}?684\.4\d*/i.test(outputText);
+	const fitReproducesReference = (() => {
+		const compiled = config?.evidencePatterns.get("fit_reproduces_reference");
+		if (compiled) {
+			return testEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks));
+		}
+		return (
+			/\bA\b[^\n]{0,60}?1210\.9\d*/i.test(haystacks.output) &&
+			/\bB\b[^\n]{0,60}?-?484\.9\d*/i.test(haystacks.output) &&
+			/\bL\b[^\n]{0,60}?684\.4\d*/i.test(haystacks.output)
+		);
+	})();
 	const stdErrReported =
-		(/(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i.test(outputText) &&
-			/\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/.test(outputText)) ||
-		(/\bstandard error\b/i.test(outputText) && fitReproducesReference);
-	const usesBuiltinMetrics =
-		/\b(?:r2_score|mean_squared_error|mean_absolute_error)\s*\(/i.test(codeSource);
-	const usesBounds = /\bbounds\s*=/i.test(codeSource);
-	const unitAware =
-		/\b(?:mg\/kg|kg|g|m|km|cm|mm|s|min|h|°C|K|N|J|kJ|Pa|bar|%)\b/i.test(markdownSource);
+		(testBuiltin(
+			"std_err_signal",
+			/(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i,
+			"output",
+		) &&
+			testBuiltin(
+				"std_err_signal_with_param",
+				/\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/,
+				"output",
+			)) ||
+		(/\bstandard error\b/i.test(haystacks.output) && fitReproducesReference);
+	const usesBuiltinMetrics = testBuiltin(
+		"builtin_metrics_call",
+		/\b(?:r2_score|mean_squared_error|mean_absolute_error)\s*\(/i,
+		"code",
+	);
+	const usesBounds = testBuiltin("bounds_assignment", /\bbounds\s*=/i, "code");
+	const unitAware = testBuiltin(
+		"unit_aware",
+		/\b(?:mg\/kg|kg|g|m|km|cm|mm|s|min|h|°C|K|N|J|kJ|Pa|bar|%)\b/i,
+		"markdown",
+	);
+
+	// The evidence bullet embeds the reference anchor numbers — pull them
+	// from the config anchors (or the built-in soil values) so the bullet
+	// and the config never diverge.
+	const anchorText = config?.anchors
+		? `A=${config.anchors.A}, B=${config.anchors.B}, L=${config.anchors.L}`
+		: "A=1210.91, B=-484.95, L=684.48";
 	bullets.push(
-		`- fit reproduces reference values (A=1210.91, B=-484.95, L=684.48): ${fitReproducesReference ? "yes" : "no"}`,
+		`- fit reproduces reference values (${anchorText}): ${fitReproducesReference ? "yes" : "no"}`,
 		`- parameter standard errors reported with ±: ${stdErrReported ? "yes" : "no"}`,
 		`- sklearn built-in metrics (r2_score/mean_squared_error): ${usesBuiltinMetrics ? "yes" : "no"}`,
 		`- explicit parameter bounds (bounds=): ${usesBounds ? "yes" : "no"}`,

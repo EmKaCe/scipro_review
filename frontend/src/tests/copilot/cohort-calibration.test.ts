@@ -123,23 +123,25 @@ describe("calibrateCohortScores", () => {
 			rmse: 25.18,
 		});
 
-		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 20 })).toBe(
+		// Since the config design (2026-08-18) anchors are REQUIRED — no
+		// silent soil default. The fixtures pass the soil anchors explicitly.
+		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 20 }, SOIL_CONTAMINATION_ANCHORS)).toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Boundary values of the band are still reference-fit.
-		expect(classifyExecutionCluster({ rSquared: 0.97, rmse: 30 })).toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.97, rmse: 30 }, SOIL_CONTAMINATION_ANCHORS)).toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Below the floor or above the ceiling — not reference-fit.
-		expect(classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 })).not.toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 }, SOIL_CONTAMINATION_ANCHORS)).not.toBe(
 			ExecutionCluster.reference_fit,
 		);
-		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 31 })).not.toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 31 }, SOIL_CONTAMINATION_ANCHORS)).not.toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Bounded fits and metric-less submissions land elsewhere.
-		expect(classifyExecutionCluster({ bounded: true })).toBe(ExecutionCluster.bounded_fit);
-		expect(classifyExecutionCluster({})).toBe(ExecutionCluster.no_metrics);
+		expect(classifyExecutionCluster({ bounded: true }, SOIL_CONTAMINATION_ANCHORS)).toBe(ExecutionCluster.bounded_fit);
+		expect(classifyExecutionCluster({}, SOIL_CONTAMINATION_ANCHORS)).toBe(ExecutionCluster.no_metrics);
 	});
 
 	it("caps 6.0 to 5.5 across all submissions", () => {
@@ -148,6 +150,7 @@ describe("calibrateCohortScores", () => {
 				["s1", { [CER]: 6.0, code_quality_design: 6.0 }],
 				["s2", { [CER]: 5.5, creativity: 6.0 }],
 			]),
+			SOIL_CONTAMINATION_ANCHORS,
 		);
 
 		expect(adjustments).toHaveLength(3);
@@ -274,7 +277,11 @@ describe("calibrateCohortScores", () => {
 			s5: storedResult({ error: "boom", preEval: preEval({ code_quality_design: 5.5 }) }),
 		};
 
-		const adjustments = calibrateCohortFromResults(results);
+		const adjustments = calibrateCohortFromResults(
+			results,
+			new Map(),
+			SOIL_CONTAMINATION_ANCHORS,
+		);
 
 		// s1 and s2 failed execution → capped at 5.0; s3 (clean), s4 (already
 		// at or below 5.0) and s5 (non-CER dimension) stay untouched.

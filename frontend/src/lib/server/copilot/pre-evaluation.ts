@@ -67,6 +67,7 @@ import {
 import { generateKarlJson } from "$lib/server/copilot/legacy-export";
 
 import {
+	buildPhase2aDimensionGuidance,
 	CRITIQUE_SYSTEM_PROMPT,
 	PHASE2A_SCORING_PROMPT,
 	PHASE3_FEEDBACK_PROMPT,
@@ -103,6 +104,15 @@ import {
 	validateEnvelopeAgainstContext,
 	type ValidatedPreEvaluation,
 } from "./pipeline/validate";
+import {
+	buildEvidenceHaystacks,
+	haystackFor,
+	loadScoringConfig,
+	measureEvidencePattern,
+	substituteAnchors,
+	testEvidencePattern,
+	type ScoringConfig,
+} from "./scoring-config";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -177,17 +187,18 @@ export type PreEvaluationWithPostProcess = PreEvaluation & {
 
 
 /**
- * Libraries disallowed for the soil_contamination assignment: a student
- * notebook importing any of these is flagged by pre-analysis so the
- * pipeline can call out the violation instead of hoping the model notices.
+ * Libraries disallowed per assignment come from the scoring config
+ * (data/scoring/<id>.yaml, `disallowed_libraries`). A student notebook
+ * importing any of these is flagged by pre-analysis so the pipeline can
+ * call out the violation instead of hoping the model notices.
+ *
+ * Absent config → `[]` (no assignment-specific disallowed libraries),
+ * matching the pre-config non-soil behavior exactly.
  */
-const SOIL_CONTAMINATION_DISALLOWED_LIBRARIES = [
-	"tensorflow",
-	"torch",
-	"keras",
-	"xgboost",
-	"lightgbm",
-];
+async function resolveDisallowedLibraries(assignmentId: string): Promise<string[]> {
+	const config = await loadScoringConfig(assignmentId);
+	return config?.disallowedLibraries ?? [];
+}
 
 // ---------------------------------------------------------------------------
 // Pipeline toggles & model-aware prompt hints
@@ -262,13 +273,11 @@ export async function preEvaluateSubmission(
 	const assignmentPdfText = await loadAssignmentPdfText(assignmentId);
 
 	// Deterministic pre-analysis — zero LLM, runs once per submission.
-	// soil_contamination disallows ML libraries; the disallowed-import facts
-	// flow into the Phase prompts so violations are deterministic, not
-	// model-discovered.
-	const preAnalysis = analyzeSubmission(
-		cells,
-		assignmentId === "soil_contamination" ? SOIL_CONTAMINATION_DISALLOWED_LIBRARIES : [],
-	);
+	// The assignment's scoring config (data/scoring/<id>.yaml) declares
+	// disallowed ML libraries; the disallowed-import facts flow into the
+	// Phase prompts so violations are deterministic, not model-discovered.
+	const disallowedLibraries = await resolveDisallowedLibraries(assignmentId);
+	const preAnalysis = analyzeSubmission(cells, disallowedLibraries);
 
 	// Per-call LLM timeout: the teacher-adjustable llm.timeout_ms setting
 	// wins; pre-evaluation falls back to its own (larger) default when the
@@ -305,12 +314,13 @@ export async function preEvaluateSubmission(
 	}
 
 	// ── Phase 2a: Dimension scores (raw points) ──
+	const scoringConfig = await loadScoringConfig(assignmentId);
 	const phase2aUserPrompt = [
 		`Assignment: ${assignmentId}${assignment?.title ? ` (${assignment.title})` : ""}`,
 		"",
 		formatPreAnalysis(preAnalysis),
 		"",
-		buildExtraAnalysisEvidence(cells),
+		buildExtraAnalysisEvidence(cells, scoringConfig),
 		"",
 		"Cell comparison markers (from Phase 1):",
 		markers.markers && markers.markers.length > 0
@@ -329,7 +339,19 @@ export async function preEvaluateSubmission(
 	].join("\n");
 
 	let scoring = await callPhase<ScoringResult>(
-		PHASE2A_SCORING_PROMPT + modelHintBlock(PHASE_2_MODEL),
+		PHASE2A_SCORING_PROMPT.replace(
+			"{DIMENSION_GUIDE}",
+			buildPhase2aDimensionGuidance(
+				scoringConfig?.dimensionGuidance
+					? Object.fromEntries(
+							Object.entries(scoringConfig.dimensionGuidance).map(([k, v]) => [
+								k,
+								substituteAnchors(v, scoringConfig?.anchors ?? null),
+							]),
+						)
+					: null,
+			),
+		) + modelHintBlock(PHASE_2_MODEL),
 		phase2aUserPrompt,
 		submissionId,
 		assignmentId,
@@ -676,6 +698,14 @@ export function derivedGradingConfidence(input: {
  * bounded-fit CER cap, per-cluster outliers), and writes them back to each
  * submission's stored result as `calibrationAdjustments`.
  *
+ * Calibration anchors resolve from the assignment's scoring config
+ * (data/scoring/<id>.yaml, `reference_anchors`). An assignment WITHOUT
+ * anchors (no scoring file, or no anchors block) is SKIPPED — 0 adjustments,
+ * nothing written. This is the deliberate no-soil-leakage contract: an
+ * assignment with no reference fit to reproduce must never inherit another
+ * assignment's anchor facts (this is exactly the atom_interaction bug this
+ * config fixes).
+ *
  * The adjustments are APPLIED, not just recorded: for every submission with
  * adjustments, the calibrated dimensions replace the stored
  * `preEval.gradeSuggestion.dimensions` AND `postProcessed.dimensions` (the
@@ -694,12 +724,20 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 	/** Number of submissions that received at least one adjustment. */
 	calibratedCount: number;
 }> {
+	const scoringConfig = await loadScoringConfig(assignmentId);
+	if (!scoringConfig?.anchors) {
+		console.log(
+			`[pre-eval] cohort calibration skipped for assignment "${assignmentId}": no reference_anchors in scoring config (data/scoring/${assignmentId}.yaml absent or anchor-less)`,
+		);
+		return { assignmentId, adjustments: [], calibratedCount: 0 };
+	}
+
 	const results = await readResults(assignmentId);
 	// Fit metrics (R²/RMSE/bounds) are parsed from the stored executed-cell
 	// output so clustering can actually classify reference_fit / bounded_fit
 	// submissions instead of dumping everything into no_metrics.
-	const outcomes = extractFitMetricsFromResults(results);
-	const adjustments = calibrateCohortFromResults(results, outcomes);
+	const outcomes = extractFitMetricsFromResults(results, scoringConfig);
+	const adjustments = calibrateCohortFromResults(results, outcomes, scoringConfig.anchors);
 	if (adjustments.length === 0) {
 		return { assignmentId, adjustments: [], calibratedCount: 0 };
 	}

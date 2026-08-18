@@ -2,6 +2,7 @@ assignments:
   - id: soil_contamination
     title: Soil Contamination by Factories (NumPy, Pandas, SciPy, sklearn)
     enabled: true
+    scoring_file: data/scoring/soil_contamination.yaml
     criteria_files:
       - data/criteria/general.yaml
       - data/criteria/following_instructions.yaml

@@ -23,6 +23,13 @@ export interface Assignment {
 	readonly enabled: boolean;
 	/** Ordered list of criteria YAML files (relative to data/criteria/). */
 	readonly criteria_files: readonly string[];
+	/**
+	 * Optional per-assignment scoring config (data/scoring/<id>.yaml).
+	 * Absent → generic fallback semantics: no calibration anchors
+	 * (calibration skipped), no disallowed libraries, generic dimension
+	 * guidance. (Signed off 2026-08-18.)
+	 */
+	readonly scoring_file?: string;
 	/** Dimension keys that apply to this assignment. */
 	readonly dimensions: readonly DimensionKey[];
 }

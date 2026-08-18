@@ -109,6 +109,13 @@ EXAMPLE — correct output:
  * Phase 2a: Dimension scores ONLY (raw points). Rubric selection is a
  * separate call (Phase 2b) so each call has exactly one job — the model
  * cannot lose focus by juggling scores AND rubric picks at once.
+ *
+ * The PER-DIMENSION GUIDE block is assembled at call time by
+ * {@link buildPhase2aDimensionGuidance} — generic lines live in
+ * DEFAULT_DIMENSION_GUIDANCE below, assignment-specific lines
+ * (scientific_programming / creativity) come from the scoring config
+ * (data/scoring/<id>.yaml, signed off 2026-08-18) so each assignment's
+ * anchor scale is data-driven instead of hardcoded.
  */
 export const PHASE2A_SCORING_PROMPT = `You are an expert teaching assistant for a Scientific Programming with Python course. You score ONE student submission using pre-computed cell markers and deterministic code analysis.
 
@@ -124,12 +131,7 @@ SCORING (RAW POINTS, NOT percentages — a 6-point dimension at 60% is ~4, never
 - 80-90%: solid — correct, good structure, minor issues only
 - max_points: EXCEPTIONAL — flawless. Less than 10% of submissions.
 
-PER-DIMENSION GUIDE — what each dimension measures:
-- code_quality_design: readability and structure — descriptive names, no dead code, no magic numbers.
-- code_execution_results: the RESULTS and their interpretation, not just that code ran. Error-free execution with basic output is the BASELINE = 4/6 (a working submission that runs end-to-end and prints its results deserves 4, not 3). +1 (→ 5/6) for markdown interpretation of the outputs (results explained in context, not just printed). +1 (→ 5.5/6) for model-quality discussion: R²/RMSE interpreted against the data scale, parameter reasonableness, limitations. Cap at 5.5/6 — 6 is reserved for flawless execution AND interpretation. RMSE computed but never discussed → cap at 4/6.
-- assignment_requirements: completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.
-- scientific_programming: scientific methodology. Anchor scale (6-point dimension, FIT-QUALITY driven — the professor's actual grading pattern): 5-5.5 = the fit reproduces the reference solution (A≈1210.91, B≈-484.95, L≈684.48) AND parameter standard errors are reported from the covariance matrix AND results are discussed in context; 4-4.5 = correct fit reproducing the reference, metrics computed, some discussion (built-in metrics are a suggestion, NOT a requirement — hand-rolled RMSE still earns 4.5), OR a constrained/bounded fit that is sub-reference (e.g. RMSE 42.58 vs 25.18) but whose metrics are computed AND discussed in context — the professor awards 4.5 to correct methodology with computed+discussed metrics even when the constrained fit is worse than the reference; 3 = correct fit but covariance never used, or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission whose fit reproduces the reference values deserves 4+ — do not anchor it at 3.
-- creativity (0-4): original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.
+{DIMENSION_GUIDE}
 
 MANDATORY SELF-CHECK before finalizing:
 1. If you are giving max_points to 4+ dimensions, you are almost certainly wrong.
@@ -142,6 +144,63 @@ justification: 3-5 sentences citing specific cells and pre-analysis findings, wi
 
 EXAMPLE — correct output:
 { "gradeSuggestion": { "dimensions": { "code_quality_design": 4.0, "code_execution_results": 4.0, "assignment_requirements": 5.0, "scientific_programming": 5.0, "creativity": 2.0 }, "justification": "The submission runs end-to-end and follows the reference structure (strength), but the pre-analysis found non-descriptive names like 'df' and the RMSE output is never interpreted in markdown (weakness)." } }`;
+
+/**
+ * Generic per-dimension guide lines (same for every assignment). These stay
+ * in code — they carry no assignment-specific facts. The scoring config
+ * (data/scoring/<id>.yaml) may OVERRIDE scientific_programming and
+ * creativity; unlisted dimensions always use these defaults.
+ */
+export const DEFAULT_DIMENSION_GUIDANCE: Record<string, string> = {
+	code_quality_design:
+		"readability and structure — descriptive names, no dead code, no magic numbers.",
+	code_execution_results:
+		"the RESULTS and their interpretation, not just that code ran. Error-free execution with basic output is the BASELINE = 4/6 (a working submission that runs end-to-end and prints its results deserves 4, not 3). +1 (→ 5/6) for markdown interpretation of the outputs (results explained in context, not just printed). +1 (→ 5.5/6) for model-quality discussion: R²/RMSE interpreted against the data scale, parameter reasonableness, limitations. Cap at 5.5/6 — 6 is reserved for flawless execution AND interpretation. RMSE computed but never discussed → cap at 4/6.",
+	assignment_requirements:
+		'completeness of responses, not just tasks attempted. "All tasks attempted" is 60-70%. Full points require every sub-question addressed, clear task labeling, thorough responses.',
+	scientific_programming:
+		"scientific methodology. Score by the quality of the scientific work: a correct, reproducible analysis with computed metrics and discussion of results in context earns 4+; major methodology gaps (no metrics, no physical bounds, no unit awareness) cap at 3; execution failure or a fundamentally wrong approach caps at 2. A working analysis that uses the assigned libraries and discusses its results deserves 4+.",
+	creativity:
+		"original thought beyond the reference. 4 = genuinely novel approach; 3 = clear original contributions (extra meaningful analysis, alternative techniques, insightful interpretation of surprising results); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. A submission that does anything beyond the reference deserves 2.5+.",
+};
+
+/**
+ * Assemble the PER-DIMENSION GUIDE block for the Phase 2a prompt from the
+ * generic defaults plus the assignment's scoring-config overrides.
+ *
+ * The block is byte-compatible with the pre-config hardcoded prompt: the
+ * `- <key>: ` prefix, ordering (cqd, CER, AR, scientific, creativity), and
+ * the `PER-DIMENSION GUIDE — what each dimension measures:` header are
+ * fixed here; only the per-dimension suffix text is data-driven.
+ *
+ * The PHASE2A_SCORING_PROMPT template carries a `{DIMENSION_GUIDE}`
+ * placeholder in the exact position the hardcoded guide block used to sit
+ * (between SCORING and MANDATORY SELF-CHECK); callers substitute this
+ * function's return value there. Substituted text is byte-identical to the
+ * pre-config prompt for soil_contamination (golden test).
+ *
+ * @param guidance assignment-specific guidance (scoring config
+ *   dimension_guidance); keys override the defaults.
+ */
+export function buildPhase2aDimensionGuidance(
+	guidance: Record<string, string> | null | undefined,
+): string {
+	const effective: Record<string, string> = { ...DEFAULT_DIMENSION_GUIDANCE, ...(guidance ?? {}) };
+	const order = [
+		"code_quality_design",
+		"code_execution_results",
+		"assignment_requirements",
+		"scientific_programming",
+		"creativity",
+	];
+	const lines = order.map((key) => {
+		// The creativity dimension is the only 0-4 scale — keep the historic
+		// "(0-4)" annotation for it (matches the pre-config prompt text).
+		const label = key === "creativity" ? `${key} (0-4)` : key;
+		return `- ${label}: ${effective[key] ?? DEFAULT_DIMENSION_GUIDANCE[key] ?? ""}`;
+	});
+	return `PER-DIMENSION GUIDE — what each dimension measures:\n${lines.join("\n")}`;
+}
 
 /**
  * The model for the quality-critical scoring phases (Wave 5): Phase 2a

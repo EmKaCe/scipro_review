@@ -600,6 +600,25 @@ beforeEach(async () => {
 	await writeFile(path.join(dataDir, "criteria", "soil_contamination.yaml"), CRITERIA_YAML);
 	await writeFile(path.join(dataDir, "grading_config.yaml"), GRADING_YAML);
 
+	// Scoring config fixture (design signed off 2026-08-18): anchors +
+	// evidence patterns for soil_contamination. The calibration tests
+	// (Wave 8) resolve anchors from this file — without it runCohortCalibration
+	// skips (0 adjustments) and the calibration assertions fail.
+	await mkdir(path.join(dataDir, "scoring"), { recursive: true });
+	await writeFile(
+		path.join(dataDir, "scoring", "soil_contamination.yaml"),
+		`scoring:
+  reference_anchors:
+    A: 1210.91
+    B: -484.95
+    x0: -4.8
+    y0: 986.98
+    L: 684.48
+    r_squared: 0.9794
+    rmse: 25.18
+`,
+	);
+
 	await mkdir(path.join(dataDir, "submissions", ASSIGNMENT), { recursive: true });
 	await writeResults(ASSIGNMENT, { [STUDENT]: makeExecutionResult() });
 

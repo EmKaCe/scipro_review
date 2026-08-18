@@ -21,6 +21,7 @@ assignments:
   - id: <string>              # snake_case identifier
     title: <string>           # Display name
     enabled: <boolean>        # Whether the assignment is active
+    scoring_file: <string>    # Optional: data/scoring/<id>.yaml (scoring semantics)
     criteria_files:           # Ordered list of criteria YAML files to load
       - <string>              # Relative path from data/criteria/
     dimensions:               # Which grading dimensions apply
@@ -36,6 +37,7 @@ assignments:
 | `id` | string | ✅ | `snake_case` identifier used in URLs, file names, and exports |
 | `title` | string | ✅ | Human-readable display name |
 | `enabled` | boolean | ✅ | Whether the assignment appears in the assignment selector |
+| `scoring_file` | string | ⭕ | Optional path to the per-assignment scoring config (see [Scoring Config Schema](scoring-config-schema.md)). Absent → generic fallback semantics (no calibration anchors → calibration skipped; no disallowed libraries; generic dimension guidance). Added 2026-08-18 (design signed off). |
 | `criteria_files` | string[] | ✅ | Ordered list of criteria YAML files (relative to `data/criteria/`) |
 | `dimensions` | string[] | ✅ | Keys from `grading_config.yaml` dimensions that apply |
 
@@ -156,6 +158,7 @@ Improvements in v2:
 
 ```
 assignments.yaml ──► criteria_files ──► criteria/*.yaml (Criteria Schema)
+                 ──► scoring_file ──► scoring/*.yaml (Scoring Config Schema)
                  ──► dimensions ──► grading_config.yaml (Grading Config Schema)
                  ──► id ──► evaluations/*.yaml (Evaluation Output Schema)
 ```
