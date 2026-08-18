@@ -9,8 +9,9 @@
  * execution clusters.
  *
  * Everything here is DETERMINISTIC — no LLM calls, no prompts, no score
- * targets. The reference anchor values (see {@link SOIL_CONTAMINATION_ANCHORS})
- * are FACTS used only to identify the reference-fit cluster; they are never
+ * targets. The reference anchor values (resolved from the assignment's
+ * scoring config — `data/scoring/<id>.yaml` `reference_anchors`) are FACTS
+ * used only to identify the reference-fit cluster; they are never
  * injected into prompts and never used as score suggestions.
  *
  * Score sources: the persisted pre-evaluation envelope
@@ -81,17 +82,6 @@ export interface ReferenceAnchors {
 	/** Reference fit RMSE (mg/kg). */
 	rmse: number;
 }
-
-/** Hardcoded assignment-key facts for soil_contamination (see brief). */
-export const SOIL_CONTAMINATION_ANCHORS: ReferenceAnchors = {
-	A: 1210.91,
-	B: -484.95,
-	x0: -4.8,
-	y0: 986.98,
-	L: 684.48,
-	rSquared: 0.9794,
-	rmse: 25.18,
-};
 
 /**
  * Per-submission execution outcome used for clustering. `bounded` is true
@@ -223,8 +213,9 @@ export function classifyExecutionCluster(
  *
  * @param scoresBySubmission submission id → Phase 2a dimension scores
  *   (`preEval.gradeSuggestion.dimensions` from the results store).
- * @param anchors reference solution facts; defaults to
- *   {@link SOIL_CONTAMINATION_ANCHORS}. Facts only — used for clustering,
+ * @param anchors reference solution facts; defaults to the assignment's
+ *   scoring config (`data/scoring/<id>.yaml` `reference_anchors`, compiled
+ *   by scoring-config.ts). Facts only — used for clustering,
  *   never as score targets.
  * @param outcomes per-submission execution outcomes (R², RMSE, bounds,
  *   error flag) extracted from executed cell outputs; absent outcomes are

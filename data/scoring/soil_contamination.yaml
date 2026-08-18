@@ -112,6 +112,19 @@ scoring:
     - xgboost
     - lightgbm
 
+  # ── 3b. Allowed libraries (post-process Pass 3 import allow-list) ───────
+  # Exactly the seven default libraries — an explicit data copy of the
+  # hardcoded default so the allow-list is per-assignment data, not a code
+  # constant. Soil behavior is byte-identical to the default.
+  allowed_libraries:
+    - numpy
+    - pandas
+    - scipy
+    - sklearn
+    - matplotlib
+    - pathlib
+    - typing
+
   # ── 4. Prompt anchor text (Phase 2a per-dimension guide) ────────────────
   # The PHASE2A_SCORING_PROMPT template owns the generic raw-points scale,
   # the `- <key>: <text>` prefix, the self-check list, and the example. The

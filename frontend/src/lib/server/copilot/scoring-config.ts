@@ -67,6 +67,12 @@ export interface ScoringConfig {
 	/** Compiled evidence patterns keyed by name. */
 	evidencePatterns: Map<string, CompiledEvidencePattern>;
 	disallowedLibraries: string[];
+	/**
+	 * Optional Pass 3 import allow-list (top-level module names, lowercased).
+	 * Absent → callers fall back to the default list (soil_contamination's
+	 * seven default libraries). Not part of any prompt.
+	 */
+	allowedLibraries?: string[];
 	/** Per-dimension Phase 2a guidance suffix text (key → suffix after `- <key>: `). */
 	dimensionGuidance: Record<string, string>;
 }
@@ -174,6 +180,16 @@ export function compileScoringConfig(
 		disallowedLibraries = rawDisallowed as string[];
 	}
 
+	// ── allowed_libraries (optional Pass 3 import allow-list) ──
+	let allowedLibraries: string[] | undefined;
+	const rawAllowed = scoring.allowed_libraries;
+	if (rawAllowed !== undefined) {
+		if (!Array.isArray(rawAllowed) || rawAllowed.some((v) => typeof v !== "string")) {
+			throw new Error(`scoring config ${assignmentId}: allowed_libraries must be a string array`);
+		}
+		allowedLibraries = rawAllowed as string[];
+	}
+
 	// ── prompt_anchor_text.dimension_guidance ──
 	let dimensionGuidance: Record<string, string> = {};
 	const rawPrompt = scoring.prompt_anchor_text;
@@ -200,6 +216,7 @@ export function compileScoringConfig(
 		anchors,
 		evidencePatterns,
 		disallowedLibraries,
+		allowedLibraries,
 		dimensionGuidance,
 	};
 }

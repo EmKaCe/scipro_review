@@ -206,6 +206,68 @@ describe("postProcessSubmission", () => {
 		);
 	});
 
+	it("keeps 'Disallowed libraries not used' when allowedImports permits seaborn", () => {
+		// Per-assignment override (scoring config `allowed_libraries`): seaborn
+		// is NOT flagged when the assignment explicitly allows it.
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				executionRecord: makeExecutionRecord({
+					cells: [
+						makeCell(0, "import numpy as np"),
+						makeCell(1, "import seaborn as sns"),
+					],
+				}),
+				rubricSelections: [
+					{
+						categoryKey: "following_instructions",
+						optionKey: "Disallowed libraries were not used.",
+					},
+				],
+				allowedImports: ["numpy", "pandas", "scipy", "sklearn", "matplotlib", "pathlib", "typing", "seaborn"],
+			}),
+		);
+
+		// The positive stays checked and no removal fix is recorded.
+		expect(data.rubricSelections).toContainEqual(
+			expect.objectContaining({
+				categoryKey: "following_instructions",
+				optionKey: "Disallowed libraries were not used.",
+			}),
+		);
+		expect(result.fixes.filter((f) => f.pass === "disallowed-library-scan")).toHaveLength(0);
+	});
+
+	it("still flags seaborn under the DEFAULT allow-list (no allowedImports)", () => {
+		// Default fallback: seaborn is NOT in the default list, so the
+		// positive is removed — behavior unchanged when the option is absent.
+		const { data, result } = postProcessSubmission(
+			makeOptions({
+				executionRecord: makeExecutionRecord({
+					cells: [
+						makeCell(0, "import numpy as np"),
+						makeCell(1, "import seaborn as sns"),
+					],
+				}),
+				rubricSelections: [
+					{
+						categoryKey: "following_instructions",
+						optionKey: "Disallowed libraries were not used.",
+					},
+				],
+			}),
+		);
+
+		expect(data.rubricSelections).not.toContainEqual(
+			expect.objectContaining({
+				categoryKey: "following_instructions",
+				optionKey: "Disallowed libraries were not used.",
+			}),
+		);
+		expect(result.fixes).toContainEqual(
+			expect.objectContaining({ pass: "disallowed-library-scan", newValue: "(removed)" }),
+		);
+	});
+
 	it("strips plagiarism sentences from academicScholarship textarea", () => {
 		const { data, result } = postProcessSubmission(
 			makeOptions({

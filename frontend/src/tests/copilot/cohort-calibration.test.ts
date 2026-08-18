@@ -18,8 +18,8 @@ import {
 	classifyExecutionCluster,
 	ExecutionCluster,
 	extractFitMetricsFromResults,
-	SOIL_CONTAMINATION_ANCHORS,
 	type CalibrationAdjustment,
+	type ReferenceAnchors,
 	type SubmissionExecutionOutcome,
 } from "$lib/server/copilot/cohort-calibration";
 import type { ExecutedCell } from "$lib/server/executor-client";
@@ -30,6 +30,21 @@ import type {
 } from "$lib/server/results-store";
 
 const CER = "code_execution_results";
+
+/**
+ * Local fixture copy of the soil_contamination reference anchors — the
+ * production constant was removed when anchors moved to the assignment's
+ * scoring config (data/scoring/soil_contamination.yaml `reference_anchors`).
+ */
+const SOIL_ANCHORS_FIXTURE: ReferenceAnchors = {
+	A: 1210.91,
+	B: -484.95,
+	x0: -4.8,
+	y0: 986.98,
+	L: 684.48,
+	rSquared: 0.9794,
+	rmse: 25.18,
+};
 
 /** Scores map helper: submissionId -> dimension scores. */
 function scores(
@@ -113,7 +128,7 @@ describe("calibrateCohortScores", () => {
 	it("groups submissions into reference-fit cluster when R squared at least 0.97", () => {
 		// Reference-fit band is derived from the anchor facts:
 		// R² 0.9794 → floor 0.97, RMSE 25.18 → ceil 30.
-		expect(SOIL_CONTAMINATION_ANCHORS).toEqual({
+		expect(SOIL_ANCHORS_FIXTURE).toEqual({
 			A: 1210.91,
 			B: -484.95,
 			x0: -4.8,
@@ -125,23 +140,23 @@ describe("calibrateCohortScores", () => {
 
 		// Since the config design (2026-08-18) anchors are REQUIRED — no
 		// silent soil default. The fixtures pass the soil anchors explicitly.
-		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 20 }, SOIL_CONTAMINATION_ANCHORS)).toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 20 }, SOIL_ANCHORS_FIXTURE)).toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Boundary values of the band are still reference-fit.
-		expect(classifyExecutionCluster({ rSquared: 0.97, rmse: 30 }, SOIL_CONTAMINATION_ANCHORS)).toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.97, rmse: 30 }, SOIL_ANCHORS_FIXTURE)).toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Below the floor or above the ceiling — not reference-fit.
-		expect(classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 }, SOIL_CONTAMINATION_ANCHORS)).not.toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 }, SOIL_ANCHORS_FIXTURE)).not.toBe(
 			ExecutionCluster.reference_fit,
 		);
-		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 31 }, SOIL_CONTAMINATION_ANCHORS)).not.toBe(
+		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 31 }, SOIL_ANCHORS_FIXTURE)).not.toBe(
 			ExecutionCluster.reference_fit,
 		);
 		// Bounded fits and metric-less submissions land elsewhere.
-		expect(classifyExecutionCluster({ bounded: true }, SOIL_CONTAMINATION_ANCHORS)).toBe(ExecutionCluster.bounded_fit);
-		expect(classifyExecutionCluster({}, SOIL_CONTAMINATION_ANCHORS)).toBe(ExecutionCluster.no_metrics);
+		expect(classifyExecutionCluster({ bounded: true }, SOIL_ANCHORS_FIXTURE)).toBe(ExecutionCluster.bounded_fit);
+		expect(classifyExecutionCluster({}, SOIL_ANCHORS_FIXTURE)).toBe(ExecutionCluster.no_metrics);
 	});
 
 	it("caps 6.0 to 5.5 across all submissions", () => {
@@ -150,7 +165,7 @@ describe("calibrateCohortScores", () => {
 				["s1", { [CER]: 6.0, code_quality_design: 6.0 }],
 				["s2", { [CER]: 5.5, creativity: 6.0 }],
 			]),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 		);
 
 		expect(adjustments).toHaveLength(3);
@@ -180,7 +195,7 @@ describe("calibrateCohortScores", () => {
 				["b1", { [CER]: 5.5 }],
 				["b2", { [CER]: 4.5 }],
 			]),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 			new Map<string, SubmissionExecutionOutcome>([
 				// Reference-fit cluster.
 				["r1", { rSquared: 0.98, rmse: 20 }],
@@ -216,7 +231,7 @@ describe("calibrateCohortScores", () => {
 				["s5", { [CER]: 4.0 }],
 				["s6", { [CER]: 5.5 }],
 			]),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 			outcomes(["s1", "s2", "s3", "s4", "s5", "s6"], { rSquared: 0.98, rmse: 20 }),
 		);
 
@@ -243,7 +258,7 @@ describe("calibrateCohortScores", () => {
 				["s4", { [CER]: 5.5 }],
 				["s5", { [CER]: 4.0 }],
 			]),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 			outcomes(["s1", "s2", "s3", "s4", "s5"], { rSquared: 0.98, rmse: 20 }),
 		);
 
@@ -259,7 +274,7 @@ describe("calibrateCohortScores", () => {
 				["s4", { [CER]: 5.5, code_quality_design: 5.0 }],
 				["s5", { [CER]: 5.5, code_quality_design: 5.0 }],
 			]),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 			outcomes(["s1", "s2", "s3", "s4", "s5"], { rSquared: 0.98, rmse: 20 }),
 		);
 
@@ -280,7 +295,7 @@ describe("calibrateCohortScores", () => {
 		const adjustments = calibrateCohortFromResults(
 			results,
 			new Map(),
-			SOIL_CONTAMINATION_ANCHORS,
+			SOIL_ANCHORS_FIXTURE,
 		);
 
 		// s1 and s2 failed execution → capped at 5.0; s3 (clean), s4 (already

@@ -656,6 +656,10 @@ export async function preEvaluateSubmission(
 		additionalNotes: envelope.additionalNotes ?? {},
 		preAnalysis,
 		executionRecord: stored,
+		// Per-assignment Pass 3 import allow-list (data/scoring/<id>.yaml
+		// `allowed_libraries`); absent → post-process falls back to the
+		// default list (soil_contamination's config lists exactly the defaults).
+		allowedImports: scoringConfig?.allowedLibraries ?? undefined,
 	});
 
 	// ── Confidence routing (Step 8): deterministic grading-confidence ──

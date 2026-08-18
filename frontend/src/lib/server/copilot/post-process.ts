@@ -67,6 +67,12 @@ export interface PostProcessOptions {
 	preAnalysis: PreAnalysis;
 	/** Stored execution result whose cells carry the source/output evidence. */
 	executionRecord: ExecutionResult;
+	/**
+	 * Optional Pass 3 import allow-list (top-level module names, lowercased).
+	 * Absent → {@link DEFAULT_ALLOWED_IMPORTS} (per-assignment data override,
+	 * e.g. an assignment that permits seaborn).
+	 */
+	allowedImports?: readonly string[];
 }
 
 /** The corrected pre-evaluation data, same shape as the input. */
@@ -479,11 +485,14 @@ function passCheckboxTextareaSync(state: WorkingState, fixes: PostProcessFix[]):
 // ---------------------------------------------------------------------------
 
 /**
- * Libraries allowed for the soil_contamination assignment (top-level module
- * names, lowercased). Anything else imported in a code cell is disallowed
- * (seaborn, plotly, tensorflow, torch, ...).
+ * Default libraries allowed by the Pass 1 disallowed-library scan (top-level
+ * module names, lowercased). Anything else imported in a code cell is
+ * disallowed (seaborn, plotly, tensorflow, torch, ...). Assignments may
+ * override this via `PostProcessOptions.allowedImports` (resolved from the
+ * scoring config's `allowed_libraries`) — absent an override this default
+ * applies (soil_contamination's committed config lists exactly these values).
  */
-const ALLOWED_IMPORTS: ReadonlySet<string> = new Set([
+const DEFAULT_ALLOWED_IMPORTS: readonly string[] = [
 	"numpy",
 	"pandas",
 	"scipy",
@@ -491,7 +500,7 @@ const ALLOWED_IMPORTS: ReadonlySet<string> = new Set([
 	"matplotlib",
 	"pathlib",
 	"typing",
-]);
+];
 
 /** Extract the top-level module names imported by code cells. */
 function extractImports(cells: readonly ExecutedCell[]): string[] {
@@ -514,9 +523,14 @@ function extractImports(cells: readonly ExecutedCell[]): string[] {
 	return [...modules].sort();
 }
 
-function passDisallowedLibraryScan(state: WorkingState, fixes: PostProcessFix[]): void {
+function passDisallowedLibraryScan(
+	state: WorkingState,
+	fixes: PostProcessFix[],
+	allowedImports: readonly string[],
+): void {
 	const imports = extractImports(state.executionRecord.cells);
-	const disallowed = imports.filter((module) => !ALLOWED_IMPORTS.has(module));
+	const allowed = new Set(allowedImports);
+	const disallowed = imports.filter((module) => !allowed.has(module));
 	const cat = resolveCategory("following_instructions");
 	if (!cat) return;
 	const field = `${cat.legacy}-positive:${FOLLOWING_INSTRUCTIONS_NO_DISALLOWED}`;
@@ -1160,10 +1174,11 @@ export function postProcessSubmission(opts: PostProcessOptions): {
 		preAnalysis: opts.preAnalysis,
 	};
 	const fixes: PostProcessFix[] = [];
+	const allowedImports = opts.allowedImports ?? DEFAULT_ALLOWED_IMPORTS;
 
 	passFillEmpty(state, fixes); // Pass 1
 	passCheckboxTextareaSync(state, fixes); // Pass 2
-	passDisallowedLibraryScan(state, fixes); // Pass 3
+	passDisallowedLibraryScan(state, fixes, allowedImports); // Pass 3
 	passStripPlagiarism(state, fixes); // Pass 4
 	passStripFiller(state, fixes); // Pass 5
 	passFillTextareas(state, opts.dimensions, fixes); // Pass 6
