@@ -34,6 +34,7 @@ const ASSIGNMENTS_YAML = `assignments:
     criteria_files:
       - data/criteria/general.yaml
       - data/criteria/soil_contamination.yaml
+    scoring_file: data/scoring/soil_contamination.yaml
   - id: atom_interaction
     title: Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)
     enabled: true
@@ -135,6 +136,7 @@ describe("GET /api/assignments", () => {
 				title: string;
 				enabled: boolean;
 				criteria_files: string[];
+				scoring_file?: string;
 			}>;
 		};
 		expect(body.assignments).toHaveLength(2);
@@ -147,6 +149,15 @@ describe("GET /api/assignments", () => {
 			title: "Soil Contamination by Factories (NumPy, Pandas, SciPy, sklearn)",
 			enabled: true,
 			criteria_files: ["data/criteria/general.yaml", "data/criteria/soil_contamination.yaml"],
+			scoring_file: "data/scoring/soil_contamination.yaml",
+		});
+		// Assignments without a scoring file omit the field.
+		expect(body.assignments[1]).toEqual({
+			id: "atom_interaction",
+			title: "Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)",
+			enabled: true,
+			criteria_files: ["data/criteria/general.yaml", "data/criteria/atom_interaction.yaml"],
+			scoring_file: undefined,
 		});
 	});
 

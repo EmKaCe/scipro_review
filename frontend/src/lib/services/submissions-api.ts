@@ -285,6 +285,8 @@ export interface AssignmentSummary {
 	title: string;
 	enabled: boolean;
 	criteria_files: string[];
+	/** Optional per-assignment scoring config (data/scoring/<id>.yaml). */
+	scoring_file?: string;
 }
 
 /** GET /api/assignments response. */
@@ -974,6 +976,55 @@ export async function saveCriteria(
 			method: "PUT",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ categories }),
+		},
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Scoring config editor
+// ---------------------------------------------------------------------------
+
+/**
+ * Raw scoring document shape (the YAML under `scoring:`) as edited by the
+ * scoring editor — the same shape `compileScoringConfig` consumes.
+ */
+export interface ScoringConfigDocument {
+	reference_anchors?: Record<string, number>;
+	evidence_patterns?: Record<
+		string,
+		{
+			pattern: string | string[];
+			semantics: "test" | "test_all" | "capture_value" | "distinct_count";
+			haystack: "output" | "code" | "markdown" | "output+code" | "markdown+code";
+			capture_group?: number;
+		}
+	>;
+	disallowed_libraries?: string[];
+	prompt_anchor_text?: {
+		dimension_guidance?: Record<string, string>;
+	};
+}
+
+/** GET /api/assignments/[id]/scoring — load the assignment's scoring config. */
+export async function getScoringConfig(
+	assignmentId: string,
+): Promise<{ fileName: string | null; content: ScoringConfigDocument | null }> {
+	return requestJson<{ fileName: string | null; content: ScoringConfigDocument | null }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/scoring`,
+	);
+}
+
+/** PUT /api/assignments/[id]/scoring — replace the assignment's scoring config. */
+export async function saveScoringConfig(
+	assignmentId: string,
+	scoring: Record<string, unknown>,
+): Promise<{ fileName: string; content: ScoringConfigDocument }> {
+	return requestJson<{ fileName: string; content: ScoringConfigDocument }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/scoring`,
+		{
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ scoring }),
 		},
 	);
 }

@@ -21,6 +21,9 @@ import * as yaml from "js-yaml";
 
 import { GET as listGET, POST as createPOST } from "../../routes/api/assignments/+server";
 import { DELETE as itemDELETE, PUT as itemPUT } from "../../routes/api/assignments/[id]/+server";
+import { toAssignmentSummary } from "../../lib/server/assignments-writer";
+import type { Assignment } from "../../lib/types/assignments";
+import { dimensionKeyOf } from "../../lib/types/grading";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -140,6 +143,7 @@ describe("POST /api/assignments", () => {
 			title: "Quantum Chemistry",
 			enabled: true, // defaults to true
 			criteria_files: ["data/criteria/quantum_chemistry.yaml"],
+			scoring_file: undefined, // no scoring config yet
 		});
 
 		const listed = await listEnabled();
@@ -206,6 +210,47 @@ describe("POST /api/assignments", () => {
 			400,
 			"title",
 		);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// toAssignmentSummary
+// ---------------------------------------------------------------------------
+
+describe("toAssignmentSummary", () => {
+	it("includes scoring_file when the assignment has one", () => {
+		const assignment: Assignment = {
+			id: "soil_contamination",
+			title: "Soil Contamination by Factories",
+			enabled: true,
+			criteria_files: ["data/criteria/general.yaml"],
+			scoring_file: "data/scoring/soil_contamination.yaml",
+			dimensions: [dimensionKeyOf("code_quality_design")],
+		};
+		expect(toAssignmentSummary(assignment)).toEqual({
+			id: "soil_contamination",
+			title: "Soil Contamination by Factories",
+			enabled: true,
+			criteria_files: ["data/criteria/general.yaml"],
+			scoring_file: "data/scoring/soil_contamination.yaml",
+		});
+	});
+
+	it("omits scoring_file when the assignment has none", () => {
+		const assignment: Assignment = {
+			id: "atom_interaction",
+			title: "Atom Interaction",
+			enabled: true,
+			criteria_files: [],
+			dimensions: [],
+		};
+		expect(toAssignmentSummary(assignment)).toEqual({
+			id: "atom_interaction",
+			title: "Atom Interaction",
+			enabled: true,
+			criteria_files: [],
+			scoring_file: undefined,
+		});
 	});
 });
 

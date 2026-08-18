@@ -107,12 +107,22 @@ function validateEnabled(value: unknown): boolean | undefined {
 	return value;
 }
 
+/** Validate an optional scoring_file path (data/scoring/<id>.yaml). */
+function validateScoringFile(value: unknown): string | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new AssignmentWriteError(400, "scoring_file must be a non-empty string");
+	}
+	return value;
+}
+
 /** Shape accepted by createAssignment. */
 export interface AssignmentCreateInput {
 	id: string;
 	title: string;
 	enabled?: boolean;
 	criteria_files?: string[];
+	scoring_file?: string;
 	dimensions?: string[];
 }
 
@@ -150,12 +160,14 @@ export function toAssignmentSummary(assignment: Assignment): {
 	title: string;
 	enabled: boolean;
 	criteria_files: string[];
+	scoring_file?: string;
 } {
 	return {
 		id: assignment.id,
 		title: assignment.title,
 		enabled: assignment.enabled,
 		criteria_files: [...assignment.criteria_files],
+		scoring_file: assignment.scoring_file,
 	};
 }
 
@@ -213,6 +225,7 @@ export async function updateAssignment(
 	if (input.title !== undefined) validateTitle(input.title);
 	if (input.enabled !== undefined) validateEnabled(input.enabled);
 	if (input.criteria_files !== undefined) validateCriteriaFiles(input.criteria_files);
+	if (input.scoring_file !== undefined) validateScoringFile(input.scoring_file);
 	if (input.dimensions !== undefined) validateDimensions(input.dimensions);
 
 	const updated: Assignment = {
@@ -221,6 +234,9 @@ export async function updateAssignment(
 		...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
 		...(input.criteria_files !== undefined
 			? { criteria_files: validateCriteriaFiles(input.criteria_files) }
+			: {}),
+		...(input.scoring_file !== undefined
+			? { scoring_file: validateScoringFile(input.scoring_file) }
 			: {}),
 		...(input.dimensions !== undefined
 			? { dimensions: validateDimensions(input.dimensions) }

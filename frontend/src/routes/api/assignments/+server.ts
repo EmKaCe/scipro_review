@@ -36,6 +36,7 @@ interface AssignmentSummary {
 	title: string;
 	enabled: boolean;
 	criteria_files: string[];
+	scoring_file?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,7 +122,7 @@ function toHttpError(err: unknown): never {
 /** Validate one YAML entry; returns null when malformed. */
 function toSummary(entry: unknown): AssignmentSummary | null {
 	if (!entry || typeof entry !== "object") return null;
-	const { id, title, enabled, criteria_files } = entry as Record<string, unknown>;
+	const { id, title, enabled, criteria_files, scoring_file } = entry as Record<string, unknown>;
 	if (typeof id !== "string" || typeof title !== "string" || typeof enabled !== "boolean") {
 		return null;
 	}
@@ -131,6 +132,7 @@ function toSummary(entry: unknown): AssignmentSummary | null {
 		title,
 		enabled,
 		criteria_files: criteria_files.filter((f): f is string => typeof f === "string"),
+		scoring_file: typeof scoring_file === "string" ? scoring_file : undefined,
 	};
 }
 

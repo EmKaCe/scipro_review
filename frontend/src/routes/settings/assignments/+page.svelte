@@ -11,6 +11,7 @@
 	import Pencil from "@lucide/svelte/icons/pencil";
 	import Plus from "@lucide/svelte/icons/plus";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
+	import Settings2 from "@lucide/svelte/icons/settings-2";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import X from "@lucide/svelte/icons/x";
 
@@ -225,7 +226,10 @@
 								<span class="badge badge-disabled">disabled</span>
 							{/if}
 						</div>
-						<p class="row-sub">{a.title} · {criteriaCount(a)} criteria file(s)</p>
+						<p class="row-sub">
+							{a.title} · {criteriaCount(a)} criteria file(s)
+							{#if a.scoring_file}<span class="scoring-indicator"> · scoring config</span>{/if}
+						</p>
 					</div>
 					<div class="row-actions">
 						<a
@@ -234,6 +238,14 @@
 							title="Edit the rubric criteria for this assignment"
 						>
 							Edit criteria
+						</a>
+						<a
+							class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+							href={`${base}/settings/assignments/${a.id}/scoring`}
+							title="Edit the scoring config for this assignment"
+						>
+							<Settings2 size={14} />
+							Scoring
 						</a>
 						<Button
 							variant="outline"
@@ -397,6 +409,9 @@
 	.row-sub {
 		margin: 3px 0 0;
 		font-size: 13px;
+		color: var(--muted-foreground);
+	}
+	.scoring-indicator {
 		color: var(--muted-foreground);
 	}
 	.row-actions {
