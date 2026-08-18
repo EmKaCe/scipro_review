@@ -1,6 +1,8 @@
 <script lang="ts">
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Send from "@lucide/svelte/icons/send";
+	import Square from "@lucide/svelte/icons/square";
+	import ListPlus from "@lucide/svelte/icons/list-plus";
 
 	type SlashCommand = {
 		command: string;
@@ -42,8 +44,16 @@
 		isStreaming: boolean;
 		/** True in assignment scope (different placeholder). */
 		assignmentScope: boolean;
+		/** Number of queued messages (W3b) — shows the queue badge. */
+		queuedCount: number;
 		/** Send the current draft (the input clears itself after sending). */
 		onSend: (text: string) => void;
+		/** Queue the draft while streaming (W3b). */
+		onQueue: (text: string) => void;
+		/** Steer: queue + stop at the next tool boundary (W3b). */
+		onSteer: (text: string) => void;
+		/** Hard stop the current run (W3b). */
+		onStop: () => void;
 	};
 
 	let {
@@ -51,7 +61,11 @@
 		incomingPrompt = $bindable(""),
 		isStreaming,
 		assignmentScope,
+		queuedCount,
 		onSend,
+		onQueue,
+		onSteer,
+		onStop,
 	}: Props = $props();
 
 	/** The chat input — focused when an inline chip delivers a prompt. */
@@ -106,10 +120,35 @@
 		inputValue = "";
 	}
 
+	/** Queue the draft while streaming (W3b). */
+	function queue(): void {
+		const text = inputValue.trim();
+		if (!text || !isStreaming) return;
+		onQueue(text);
+		inputValue = "";
+	}
+
+	/** Steer: queue + stop at the next tool boundary (W3b). */
+	function steer(): void {
+		const text = inputValue.trim();
+		if (!text || !isStreaming) return;
+		onSteer(text);
+		inputValue = "";
+	}
+
 	function handleKeydown(e: KeyboardEvent): void {
 		if (e.key === "Enter" && !e.shiftKey) {
 			e.preventDefault();
-			send();
+			if (isStreaming) {
+				// While streaming: Enter queues, Ctrl+Enter steers.
+				if (e.ctrlKey || e.metaKey) {
+					steer();
+				} else {
+					queue();
+				}
+			} else {
+				send();
+			}
 		} else if (e.key === "Tab" && showCommands && matches.length > 0) {
 			// Tab completes the first matching command and closes the dropdown.
 			e.preventDefault();
@@ -157,15 +196,40 @@
 			disabled={isStreaming}
 			bind:this={inputEl}
 		/>
-		<button
-			class="send-btn"
-			onclick={send}
-			disabled={!inputValue.trim() || isStreaming}
-			aria-label="Send message"
-			title="Send message"
-		>
-			<Send size={14} />
-		</button>
+		{#if queuedCount > 0}
+			<span class="queue-badge" title="Queued messages send when the current run ends">
+				{queuedCount} queued
+			</span>
+		{/if}
+		{#if isStreaming}
+			<button
+				class="stop-btn"
+				onclick={onStop}
+				aria-label="Stop the current run"
+				title="Stop"
+			>
+				<Square size={14} />
+			</button>
+			<button
+				class="queue-btn"
+				onclick={queue}
+				disabled={!inputValue.trim()}
+				aria-label="Queue message"
+				title="Queue (Enter)"
+			>
+				<ListPlus size={14} />
+			</button>
+		{:else}
+			<button
+				class="send-btn"
+				onclick={send}
+				disabled={!inputValue.trim() || isStreaming}
+				aria-label="Send message"
+				title="Send message"
+			>
+				<Send size={14} />
+			</button>
+		{/if}
 	</div>
 </div>
 
@@ -262,5 +326,41 @@
 	}
 	.send-btn:hover:not(:disabled) {
 		opacity: 0.9;
+	}
+	.stop-btn,
+	.queue-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 28px;
+		height: 28px;
+		border-radius: var(--radius);
+		border: 1px solid var(--border);
+		background: var(--card);
+		color: var(--muted-foreground);
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+	.stop-btn:hover {
+		color: var(--destructive);
+		border-color: var(--destructive);
+	}
+	.queue-btn:hover:not(:disabled) {
+		color: var(--primary);
+		border-color: var(--primary);
+	}
+	.queue-btn:disabled {
+		opacity: 0.4;
+		cursor: default;
+	}
+	.queue-badge {
+		font-size: 10px;
+		font-weight: 600;
+		color: var(--primary);
+		background: color-mix(in oklch, var(--primary) 10%, transparent);
+		border-radius: 999px;
+		padding: 2px 8px;
+		flex-shrink: 0;
+		white-space: nowrap;
 	}
 </style>

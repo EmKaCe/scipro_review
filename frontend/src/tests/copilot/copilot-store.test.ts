@@ -1160,4 +1160,89 @@ describe("thread management (T.3)", () => {
 			expect(store.changes).toHaveLength(0);
 		});
 		});
+
+		describe("steering (W3b) — queue / steer-at-boundary / stop", () => {
+		it("queues a message while streaming and drains it after the run ends", async () => {
+			copilot.apiMode.value = true;
+			// First turn: tool-call -> tool-result -> done. Second turn (queued): done.
+			const chat = openSseResponse(
+				sseFrame("tool-call", { tool: "analyze-code", args: {} }),
+				sseFrame("tool-result", { tool: "analyze-code", ok: true, summary: "Done" }),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			const sendPromise = store.sendMessage("First");
+			// While streaming, queue a second message.
+			expect(store.queueMessage("Second")).toBe(true);
+			expect(store.queuedMessages).toEqual(["Second"]);
+			await sendPromise;
+
+			// The queued message was drained and sent as a second turn.
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			const secondCall = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+			expect(JSON.parse((secondCall[1]?.body as string) ?? "{}").message).toBe("Second");
+			expect(store.queuedMessages).toEqual([]);
+		});
+
+		it("steer queues the message and stops at the next tool boundary", async () => {
+			copilot.apiMode.value = true;
+			let chat!: ReturnType<typeof openSseResponse>;
+			fetchMock.mockImplementation((_url, init) => {
+				chat = openSseResponse(
+					sseFrame("tool-call", { tool: "analyze-code", args: {} }),
+					sseFrame("tool-result", { tool: "analyze-code", ok: true, summary: "Done" }),
+					// The stream is aborted after the tool-result — no done frame needed.
+				);
+				// Mirror real fetch: aborting the request rejects pending reads.
+				init?.signal?.addEventListener("abort", () => {
+					chat.fail(new DOMException("Aborted", "AbortError"));
+				});
+				return Promise.resolve(chat.response);
+			});
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			const sendPromise = store.sendMessage("First");
+			expect(store.steerMessage("Redirect")).toBe(true);
+			await sendPromise;
+
+			// The steer aborted the stream after the tool-result; the queued
+			// message then sent as a second turn.
+			expect(fetchMock).toHaveBeenCalledTimes(2);
+			const secondCall = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+			expect(JSON.parse((secondCall[1]?.body as string) ?? "{}").message).toBe("Redirect");
+		});
+
+		it("stop aborts the current stream immediately", async () => {
+			copilot.apiMode.value = true;
+			let chat!: ReturnType<typeof openSseResponse>;
+			fetchMock.mockImplementation((_url, init) => {
+				chat = openSseResponse(
+					sseFrame("tool-call", { tool: "analyze-code", args: {} }),
+					// Never ends — the stop aborts it.
+				);
+				init?.signal?.addEventListener("abort", () => {
+					chat.fail(new DOMException("Aborted", "AbortError"));
+				});
+				return Promise.resolve(chat.response);
+			});
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			const sendPromise = store.sendMessage("First");
+			store.stopStream();
+			await sendPromise;
+
+			expect(store.isStreaming).toBe(false);
+			// The abort surfaced an error message (the stream was cancelled).
+			expect(store.messages.some((m) => m.kind === "error")).toBe(true);
+		});
+
+		it("queueMessage returns false when not streaming", () => {
+			copilot.apiMode.value = true;
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			expect(store.queueMessage("Nope")).toBe(false);
+			expect(store.queuedMessages).toEqual([]);
+		});
+		});
 });

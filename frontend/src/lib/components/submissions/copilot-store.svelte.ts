@@ -309,6 +309,9 @@ export function createCopilotStore(options?: {
 	// Harness surface (W2a/W2d): the plan checklist + the change ledger.
 	let planSteps = $state<CopilotPlanStep[]>([]);
 	let changes = $state<CopilotChange[]>([]);
+	// Steering surface (W3b): queued messages + graceful-stop flag.
+	let queuedMessages = $state<string[]>([]);
+	let stopRequested = $state(false);
 	// Thread surface: the server is the source of truth for the
 	// thread list; localStorage holds only the ACTIVE thread id.
 	let threads = $state<CopilotThreadMeta[]>([]);
@@ -391,6 +394,45 @@ export function createCopilotStore(options?: {
 	function resetHarness(): void {
 		planSteps = [];
 		changes = [];
+		queuedMessages = [];
+		stopRequested = false;
+	}
+
+	// -----------------------------------------------------------------------
+	// Steering (W3b) — queue / steer-at-boundary / stop
+	// -----------------------------------------------------------------------
+
+	/**
+	 * Queue a message while the agent is streaming. The queued messages send
+	 * in order when the current run ends (see sendMessage's drain loop).
+	 * Returns false when the store is not streaming (callers should send
+	 * directly instead).
+	 */
+	function queueMessage(text: string): boolean {
+		const trimmed = text.trim();
+		if (!trimmed) return false;
+		if (!isStreaming) return false;
+		queuedMessages = [...queuedMessages, trimmed];
+		return true;
+	}
+
+	/**
+	 * Steer: queue the message AND request a graceful stop at the next tool
+	 * boundary. The store watches for the next tool-result, then aborts the
+	 * stream; the queued message sends immediately after.
+	 */
+	function steerMessage(text: string): boolean {
+		const trimmed = text.trim();
+		if (!trimmed) return false;
+		if (!isStreaming) return false;
+		queuedMessages = [...queuedMessages, trimmed];
+		stopRequested = true;
+		return true;
+	}
+
+	/** Hard stop: abort the current stream immediately (existing controller). */
+	function stopStream(): void {
+		activeController?.abort();
 	}
 
 	// -----------------------------------------------------------------------
@@ -573,6 +615,12 @@ export function createCopilotStore(options?: {
 						summary,
 					}),
 				);
+				// W3b steer-at-boundary: a steer request stops the run right
+				// after the current tool completes (the queued message sends
+				// when the stream ends).
+				if (stopRequested) {
+					activeController?.abort();
+				}
 				break;
 			}
 			case "approval-request": {
@@ -757,6 +805,28 @@ export function createCopilotStore(options?: {
 			return;
 		}
 
+		// W3b queue drain: run the first turn, then any messages queued while
+		// it was streaming (queue/steer), in order.
+		let next = content;
+		do {
+			await sendOneTurn(next);
+			next = queuedMessages[0] ?? "";
+			if (next) {
+				queuedMessages = queuedMessages.slice(1);
+				appendMessage({
+					id: crypto.randomUUID(),
+					role: "teacher",
+					content: next,
+					timestamp: Date.now(),
+					type: next.startsWith("/") ? "command" : "text",
+					kind: "text",
+				});
+			}
+		} while (next && !isStreaming);
+	}
+
+	/** One chat turn: POST to the chat route and stream the SSE response. */
+	async function sendOneTurn(content: string): Promise<void> {
 		isStreaming = true;
 		const controller = new AbortController();
 		activeController = controller;
@@ -1025,6 +1095,9 @@ export function createCopilotStore(options?: {
 		get changes() {
 			return changes;
 		},
+		get queuedMessages() {
+			return queuedMessages;
+		},
 		get inputValue() {
 			return inputValue;
 		},
@@ -1051,6 +1124,9 @@ export function createCopilotStore(options?: {
 		acceptChange,
 		acceptAllChanges,
 		rejectChange,
+		queueMessage,
+		steerMessage,
+		stopStream,
 		clearMessages,
 		loadThreads,
 		openThread,

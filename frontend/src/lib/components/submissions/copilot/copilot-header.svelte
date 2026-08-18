@@ -1,7 +1,5 @@
 <script lang="ts">
 	import Sparkles from "@lucide/svelte/icons/sparkles";
-	import ShieldCheck from "@lucide/svelte/icons/shield-check";
-	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 	import SquarePen from "@lucide/svelte/icons/square-pen";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import History from "@lucide/svelte/icons/history";
@@ -13,17 +11,17 @@
 	type Props = {
 		/** The active thread, if any (drives the selector + context meter). */
 		activeThread: CopilotThreadMeta | null;
-		/** Copilot approval mode (ask / auto-approve-all). */
+		/** Copilot approval mode (ask / read-only / auto-approve-all). */
 		copilotMode: CopilotMode;
-		/** Teacher-mode gate for the mode toggle (apiMode). */
+		/** Teacher-mode gate for the mode control (apiMode). */
 		showModeToggle: boolean;
 		/** True while the thread sidebar is open (toggle button active state). */
 		sidebarOpen: boolean;
 		/** Disables destructive/thread actions while the agent runs. */
 		isStreaming: boolean;
 		loadingHistory: boolean;
-		/** Flip between ask and auto-approve-all (persists via settings API). */
-		onToggleMode: () => void;
+		/** Set the approval mode (persists via settings API). */
+		onSetMode: (mode: CopilotMode) => void;
 		/** Start a brand-new conversation. */
 		onNewConversation: () => void;
 		/** Open/close the thread sidebar. */
@@ -39,11 +37,18 @@
 		sidebarOpen,
 		isStreaming,
 		loadingHistory,
-		onToggleMode,
+		onSetMode,
 		onNewConversation,
 		onToggleSidebar,
 		onDeleteActiveThread,
 	}: Props = $props();
+
+	/** Autonomy levels (W3b) — the 3-position slider. */
+	const AUTONOMY_LEVELS: { mode: CopilotMode; label: string; title: string }[] = [
+		{ mode: "ask", label: "Ask", title: "Ask before every tool call" },
+		{ mode: "read-only", label: "Read-only", title: "No changes — read-only" },
+		{ mode: "auto-approve-all", label: "Auto", title: "Auto-approve (review the summary)" },
+	];
 
 	// -----------------------------------------------------------------------
 	// Context meter (Task 5.3)
@@ -131,24 +136,21 @@
 	{/if}
 	<div class="header-spacer"></div>
 	{#if showModeToggle}
-		<button
-			type="button"
-			class="header-btn"
-			class:header-btn-active={copilotMode === "auto-approve-all"}
-			aria-label={copilotMode === "auto-approve-all"
-				? "Auto-approve all tool calls"
-				: "Ask before running tools"}
-			title={copilotMode === "auto-approve-all"
-				? "Auto-approve all tool calls"
-				: "Ask before running tools"}
-			onclick={onToggleMode}
-		>
-			{#if copilotMode === "auto-approve-all"}
-				<ShieldCheck size={13} />
-			{:else}
-				<ShieldAlert size={13} />
-			{/if}
-		</button>
+		<div class="autonomy" role="group" aria-label="Autonomy level">
+			{#each AUTONOMY_LEVELS as level (level.mode)}
+				<button
+					type="button"
+					class="autonomy-btn"
+					class:autonomy-active={copilotMode === level.mode}
+					aria-label={level.title}
+					title={level.title}
+					aria-pressed={copilotMode === level.mode}
+					onclick={() => onSetMode(level.mode)}
+				>
+					{level.label}
+				</button>
+			{/each}
+		</div>
 	{/if}
 	<button
 		type="button"
@@ -308,6 +310,36 @@
 	.delete-label {
 		font-size: 9px;
 		font-weight: 700;
+	}
+
+	/* Autonomy slider (W3b) — 3-position segmented control, always visible. */
+	.autonomy {
+		display: inline-flex;
+		align-items: center;
+		gap: 2px;
+		padding: 2px;
+		border-radius: var(--radius);
+		background: var(--card);
+		border: 1px solid var(--border);
+		flex-shrink: 0;
+	}
+	.autonomy-btn {
+		font-size: 10px;
+		font-weight: 600;
+		padding: 3px 8px;
+		border-radius: calc(var(--radius) - 2px);
+		border: none;
+		background: none;
+		color: var(--muted-foreground);
+		cursor: pointer;
+		line-height: 1;
+	}
+	.autonomy-btn:hover {
+		color: var(--foreground);
+	}
+	.autonomy-active {
+		color: var(--primary);
+		background: color-mix(in oklch, var(--primary) 12%, transparent);
 	}
 
 	/* Context window visibility meter bar. */

@@ -69,6 +69,7 @@
 import { Agent } from "@mastra/core/agent";
 import { Mastra } from "@mastra/core";
 import { InMemoryStore, MastraCompositeStore } from "@mastra/core/storage";
+import { PromptInjectionDetector, PIIDetector } from "@mastra/core/processors";
 import { Memory } from "@mastra/memory";
 
 import { FileMemoryStore } from "./file-memory";
@@ -436,6 +437,47 @@ const AGENT_INSTRUCTIONS = [
 	"for clarification instead of inventing data.",
 ].join(" ");
 
+/**
+ * Input guardrails (Wave 3a — Mastra audit §4): student submissions are
+ * untrusted content flowing into the teacher's chat, so every user turn is
+ * screened BEFORE the model sees it. Both detectors run an internal detection
+ * agent on the SAME KI Connect model the copilot uses (createModel(settings)).
+ *
+ * - PromptInjectionDetector: default threshold 0.7 (documented Mastra default —
+ *   high enough to avoid false positives on legitimate grading chatter, low
+ *   enough to catch real jailbreaks). Strategy "block" rejects the whole turn
+ *   with a TripWire; the stream surfaces it as an `error` event (see the
+ *   tripwire case in runChat) and the run ends without reaching the model.
+ * - PIIDetector: categories that matter for a grading app — email, phone,
+ *   name, address, iban, api-key. credit-card/ssn are deliberately NOT
+ *   configured (irrelevant to notebook grading; excluding them also keeps the
+ *   detection schema tight). Strategy "redact" (default) masks detected PII in
+ *   place so the teacher's message still reaches the model, minus the PII.
+ *
+ * Both processors degrade gracefully: if the detection LLM call fails, the
+ * detector logs a warning and ALLOWS the content through (verified in the
+ * installed @mastra/core@1.54.0 implementation) — a guardrail failure must
+ * never break the chat loop.
+ */
+function createInputProcessors(settings: AppSettings) {
+	const model = createModel(settings);
+	return [
+		new PromptInjectionDetector({
+			model,
+			// Default threshold 0.7 — documented Mastra default.
+			threshold: 0.7,
+			strategy: "block",
+		}),
+		new PIIDetector({
+			model,
+			// Grading-relevant categories only; credit-card/ssn excluded.
+			detectionTypes: ["email", "phone", "name", "address", "iban", "api-key"],
+			strategy: "redact",
+			redactionMethod: "placeholder",
+		}),
+	];
+}
+
 let agent: Agent | undefined;
 let mastra: Mastra | undefined;
 
@@ -520,6 +562,11 @@ export async function buildAgent(): Promise<void> {
 		tools,
 		hooks: auditHooks,
 		memory,
+		// Wave 3a input guardrails: every user turn is screened for prompt
+		// injection and PII before the model sees it (student submissions are
+		// untrusted content). Both detectors reuse the copilot's KI Connect
+		// model; they degrade to allow-through on detection-LLM failure.
+		inputProcessors: createInputProcessors(settings),
 	});
 }
 
@@ -947,6 +994,20 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 					}
 					case "error":
 						yield { type: "error", message: errorMessage(chunk.payload.error) };
+						break;
+					case "tripwire":
+						// Wave 3a input guardrails: a processor that BLOCKS the turn
+						// (PromptInjectionDetector strategy "block") bails the run
+						// with a single tripwire chunk. Surface it as the existing
+						// `error` event so the teacher sees WHY the turn was
+						// rejected — the run ends without reaching the model.
+						yield {
+							type: "error",
+							message:
+								typeof chunk.payload?.reason === "string" && chunk.payload.reason
+									? chunk.payload.reason
+									: "Input was blocked by a guardrail",
+						};
 						break;
 					case "abort":
 						return; // upstream abort — stop cleanly, no 'done'

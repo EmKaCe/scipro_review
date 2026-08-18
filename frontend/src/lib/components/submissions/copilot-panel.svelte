@@ -113,13 +113,12 @@
 	}
 
 	/** Flip between ask and auto-approve-all, persisting via PUT /api/settings. */
-	async function toggleAutoApprove(): Promise<void> {
-		const nextMode: CopilotMode =
-			copilotMode === "auto-approve-all" ? "ask" : "auto-approve-all";
+	async function setMode(mode: CopilotMode): Promise<void> {
+		if (mode === copilotMode) return;
 		try {
 			const settings = await fetchSettings();
-			await saveSettings({ ...settings, copilot: { ...settings.copilot, mode: nextMode } });
-			copilotMode = nextMode;
+			await saveSettings({ ...settings, copilot: { ...settings.copilot, mode } });
+			copilotMode = mode;
 		} catch {
 			// Save failed — keep showing the current mode.
 		}
@@ -183,7 +182,7 @@
 		sidebarOpen={showThreads}
 		isStreaming={copilot.isStreaming}
 		loadingHistory={copilot.loadingHistory}
-		onToggleMode={toggleAutoApprove}
+		onSetMode={(mode) => void setMode(mode)}
 		onNewConversation={() => copilot.newConversation()}
 		onToggleSidebar={() => (showThreads = !showThreads)}
 		onDeleteActiveThread={handleDeleteActiveThread}
@@ -225,7 +224,11 @@
 		bind:incomingPrompt
 		isStreaming={copilot.isStreaming}
 		{assignmentScope}
+		queuedCount={copilot.queuedMessages.length}
 		onSend={handleSend}
+		onQueue={(text) => copilot.queueMessage(text)}
+		onSteer={(text) => copilot.steerMessage(text)}
+		onStop={() => copilot.stopStream()}
 	/>
 </div>
 
