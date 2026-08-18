@@ -39,6 +39,7 @@ const SOIL_LIKE: ScoringConfigDocument = {
 		},
 	},
 	disallowed_libraries: ["tensorflow", "torch", "keras"],
+	allowed_libraries: ["numpy", "pandas", "scipy", "sklearn", "matplotlib"],
 	prompt_anchor_text: {
 		dimension_guidance: {
 			scientific_programming: "scientific methodology. Anchor scale: 5-5.5 = fit reproduces the reference.",
@@ -53,6 +54,9 @@ describe("scoring-editor-model", () => {
 
 		expect(server.reference_anchors).toEqual(SOIL_LIKE.reference_anchors);
 		expect(server.disallowed_libraries).toEqual(SOIL_LIKE.disallowed_libraries);
+		// The Pass 3 import allow-list must NOT be dropped by the editor
+		// round-trip (quality-review regression: save-after-draft deleted it).
+		expect(server.allowed_libraries).toEqual(SOIL_LIKE.allowed_libraries);
 		expect(server.prompt_anchor_text).toEqual(SOIL_LIKE.prompt_anchor_text);
 
 		const patterns = server.evidence_patterns as Record<string, Record<string, unknown>>;
@@ -84,6 +88,7 @@ describe("scoring-editor-model", () => {
 			anchors: { A: "", B: "", x0: "", y0: "", L: "", r_squared: "", rmse: "" },
 			evidencePatterns: [],
 			disallowedLibraries: "",
+			allowedLibraries: "",
 			dimensionGuidance: {},
 		};
 		expect(toServerScoring(empty)).toEqual({});
@@ -102,6 +107,7 @@ describe("scoring-editor-model", () => {
 				},
 			],
 			disallowedLibraries: "tensorflow, , torch",
+			allowedLibraries: "numpy, pandas, scipy",
 			dimensionGuidance: { creativity: "", scientific_programming: "methodology text" },
 		};
 		const server = toServerScoring(draft);
@@ -113,6 +119,7 @@ describe("scoring-editor-model", () => {
 		expect(patterns.partial_capture!.capture_group).toBeUndefined();
 		// Comma-split trims and drops empty entries.
 		expect(server.disallowed_libraries).toEqual(["tensorflow", "torch"]);
+		expect(server.allowed_libraries).toEqual(["numpy", "pandas", "scipy"]);
 		// Blank guidance entries are dropped.
 		expect(server.prompt_anchor_text).toEqual({
 			dimension_guidance: { scientific_programming: "methodology text" },

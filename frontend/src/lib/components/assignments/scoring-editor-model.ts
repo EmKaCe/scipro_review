@@ -28,6 +28,8 @@ export interface ScoringConfigDocument {
 		}
 	>;
 	disallowed_libraries?: string[];
+	/** Optional Pass 3 import allow-list (post-process scan); absent → default. */
+	allowed_libraries?: string[];
 	prompt_anchor_text?: {
 		dimension_guidance?: Record<string, string>;
 	};
@@ -83,6 +85,8 @@ export interface EditableScoringConfig {
 	evidencePatterns: EditablePattern[];
 	/** Comma-separated library names (empty string = none). */
 	disallowedLibraries: string;
+	/** Comma-separated allowed import list (empty string = default fallback). */
+	allowedLibraries: string;
 	/** Dimension key → guidance suffix text. */
 	dimensionGuidance: Record<string, string>;
 }
@@ -155,6 +159,7 @@ export function fromServerScoring(scoring: ScoringConfigDocument | null): Editab
 		anchors,
 		evidencePatterns,
 		disallowedLibraries: (scoring?.disallowed_libraries ?? []).join(", "),
+		allowedLibraries: (scoring?.allowed_libraries ?? []).join(", "),
 		dimensionGuidance: { ...(scoring?.prompt_anchor_text?.dimension_guidance ?? {}) },
 	};
 }
@@ -221,6 +226,14 @@ export function toServerScoring(draft: EditableScoringConfig): Record<string, un
 		.filter((lib) => lib.length > 0);
 	if (libraries.length > 0) {
 		out.disallowed_libraries = libraries;
+	}
+
+	const allowed = draft.allowedLibraries
+		.split(",")
+		.map((lib) => lib.trim())
+		.filter((lib) => lib.length > 0);
+	if (allowed.length > 0) {
+		out.allowed_libraries = allowed;
 	}
 
 	const guidance: Record<string, string> = {};

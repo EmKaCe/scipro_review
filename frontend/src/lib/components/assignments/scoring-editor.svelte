@@ -87,6 +87,10 @@
 		onChange({ ...draft, disallowedLibraries: value });
 	}
 
+	function setAllowedLibraries(value: string) {
+		onChange({ ...draft, allowedLibraries: value });
+	}
+
 	// -----------------------------------------------------------------------
 	// Dimension guidance
 	// -----------------------------------------------------------------------
@@ -279,6 +283,23 @@
 			placeholder="tensorflow, torch, keras"
 			value={draft.disallowedLibraries}
 			oninput={(e) => setDisallowedLibraries((e.currentTarget as HTMLInputElement).value)}
+		/>
+	</section>
+
+	<!-- ── 3b. Allowed libraries (Pass 3 import allow-list) ─────────────── -->
+	<section class="editor-section">
+		<h3 class="section-title">Allowed libraries</h3>
+		<p class="section-hint">
+			Comma-separated imports the post-process scan permits. Leave empty for the
+			default list (numpy, pandas, scipy, sklearn, matplotlib, pathlib, typing).
+		</p>
+		<input
+			class="input libs-input"
+			type="text"
+			aria-label="Allowed libraries"
+			placeholder="numpy, pandas, scipy"
+			value={draft.allowedLibraries}
+			oninput={(e) => setAllowedLibraries((e.currentTarget as HTMLInputElement).value)}
 		/>
 	</section>
 

@@ -1000,6 +1000,8 @@ export interface ScoringConfigDocument {
 		}
 	>;
 	disallowed_libraries?: string[];
+	/** Optional Pass 3 import allow-list (top-level module names); absent → default. */
+	allowed_libraries?: string[];
 	prompt_anchor_text?: {
 		dimension_guidance?: Record<string, string>;
 	};
@@ -1026,5 +1028,20 @@ export async function saveScoringConfig(
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ scoring }),
 		},
+	);
+}
+
+/**
+ * POST /api/assignments/[id]/scoring/draft — ask the LLM to draft a scoring
+ * config from the assignment's rubric. The draft is NOT persisted: the
+ * teacher reviews it in the editor and saves explicitly via the compile-gate
+ * PUT. `draft` is null when the server could not produce one.
+ */
+export async function draftScoringConfig(
+	assignmentId: string,
+): Promise<{ draft: ScoringConfigDocument | null }> {
+	return requestJson<{ draft: ScoringConfigDocument | null }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/scoring/draft`,
+		{ method: "POST" },
 	);
 }

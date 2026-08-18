@@ -228,7 +228,13 @@
 						</div>
 						<p class="row-sub">
 							{a.title} · {criteriaCount(a)} criteria file(s)
-							{#if a.scoring_file}<span class="scoring-indicator"> · scoring config</span>{/if}
+							{#if a.scoring_file}
+								<span class="scoring-indicator"> · scoring config</span>
+							{:else}
+								<span class="not-calibrated-chip" title="No scoring config yet — pre-evaluation will skip calibration and use generic fallbacks">
+									· not calibrated
+								</span>
+							{/if}
 						</p>
 					</div>
 					<div class="row-actions">
@@ -413,6 +419,10 @@
 	}
 	.scoring-indicator {
 		color: var(--muted-foreground);
+	}
+	.not-calibrated-chip {
+		color: color-mix(in oklch, var(--muted-foreground) 78%, transparent);
+		font-style: italic;
 	}
 	.row-actions {
 		display: flex;

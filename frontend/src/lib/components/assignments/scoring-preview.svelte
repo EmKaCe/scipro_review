@@ -29,6 +29,13 @@
 			.filter((lib) => lib.length > 0),
 	);
 
+	const allowedLibraryList = $derived(
+		draft.allowedLibraries
+			.split(",")
+			.map((lib) => lib.trim())
+			.filter((lib) => lib.length > 0),
+	);
+
 	const guidanceEntries = $derived(Object.entries(draft.dimensionGuidance));
 </script>
 
@@ -84,6 +91,18 @@
 				<h3 class="preview-title">Disallowed libraries</h3>
 				<div class="lib-list">
 					{#each libraryList as lib (lib)}
+						<span class="lib-chip">{lib}</span>
+					{/each}
+				</div>
+			</section>
+		{/if}
+
+		<!-- ── Allowed libraries (Pass 3 import allow-list) ────────────── -->
+		{#if allowedLibraryList.length > 0}
+			<section class="preview-section">
+				<h3 class="preview-title">Allowed libraries</h3>
+				<div class="lib-list">
+					{#each allowedLibraryList as lib (lib)}
 						<span class="lib-chip">{lib}</span>
 					{/each}
 				</div>
