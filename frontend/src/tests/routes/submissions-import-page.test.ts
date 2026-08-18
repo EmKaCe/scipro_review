@@ -164,7 +164,9 @@ describe("submissions/[id] — teacher YAML Import wiring (E5)", () => {
 			expect(api.importTeacherYaml).toHaveBeenCalledWith(
 				"2026SS_03",
 				"student_id: 2026SS_03",
-				undefined,
+				// BUG-004: select() adopts the detail record's assignment, so
+				// mutations from the detail page resolve the right batch.
+				"soil_contamination",
 			),
 		);
 		// Badges/statuses may have changed — the page reloads the assignment's

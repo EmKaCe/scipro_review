@@ -277,7 +277,6 @@ const listSubmissionsTool: CopilotTool<z.infer<typeof assignmentIdArgs>> = {
 			studentId: record.studentId,
 			status: record.status,
 			teacherGrade: record.teacherGrade ?? null,
-			preEvalGrade: (record as { preEvalGrade?: number }).preEvalGrade ?? null,
 			hasResults: record.id in results,
 		}));
 

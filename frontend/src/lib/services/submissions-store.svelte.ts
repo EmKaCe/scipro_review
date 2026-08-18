@@ -6,7 +6,7 @@
  *
  *   - startPolling() polls GET /api/submissions every 2 seconds;
  *   - polling auto-stops as soon as no submission is `pending` or `executing`;
- *   - process/processOne/upload (which create in-flight work) start polling
+ *   - process/upload (which create in-flight work) start polling
  *     automatically; callers may also start/stop it explicitly.
  *
  * The historical sync entry points (listSubmissions/getSubmission) are kept
@@ -24,16 +24,13 @@ import {
 	exportSubmission,
 	fetchSubmission,
 	fetchSubmissions,
-	gradeSubmission,
 	importTeacherYaml as importTeacherYamlApi,
-	processSubmission,
 	processSubmissions,
 	resetSubmission as resetSubmissionApi,
 	saveGrading as saveGradingApi,
 	uploadSubmissions,
 	type BatchProcessResponse,
 	type GradingPatch,
-	type SubmissionExecution,
 	type SubmissionExport,
 	type UploadKind,
 	type UploadResponse,
@@ -198,11 +195,21 @@ export class SubmissionsStore {
 		return this.details.get(id) ?? null;
 	}
 
-	/** Load and select a single submission's detail. */
+	/**
+	 * Load and select a single submission's detail. The detail record's
+	 * assignment is adopted as the store's active assignment — a deep link
+	 * to `/submissions/[id]` (bookmark/refresh/share) must resolve the
+	 * submission's OWN assignment even when it is not the default one, so
+	 * save/export/import/grade/reset/delete from the detail page target the
+	 * right batch.
+	 */
 	async select(id: string): Promise<SubmissionDetail> {
 		const detail = await fetchSubmission(id, this.assignmentId ?? undefined);
 		this.details.set(id, detail);
 		this.selected = detail;
+		if (detail.assignmentId) {
+			this.assignmentId = detail.assignmentId;
+		}
 		this.applyRecord(detail);
 		return detail;
 	}
@@ -232,15 +239,6 @@ export class SubmissionsStore {
 		return response;
 	}
 
-	/** Execute a single submission and apply its updated record. */
-	async processOne(id: string): Promise<SubmissionExecution> {
-		const response = await processSubmission(id, this.assignmentId ?? undefined);
-		this.applyRecord(response.record);
-		await this.refresh();
-		this.syncPolling();
-		return response;
-	}
-
 	/** Persist grading state and merge the updated record into the list. */
 	async saveGrading(id: string, grading: GradingPatch): Promise<SubmissionMeta> {
 		const record = await saveGradingApi(id, grading, this.assignmentId ?? undefined);
@@ -254,13 +252,6 @@ export class SubmissionsStore {
 	 */
 	async importTeacherYaml(id: string, yamlText: string): Promise<SubmissionMeta> {
 		const record = await importTeacherYamlApi(id, yamlText, this.assignmentId ?? undefined);
-		this.applyRecord(record);
-		return record;
-	}
-
-	/** Finalize the teacher grade and merge the updated record. */
-	async grade(id: string, teacherGrade: number): Promise<SubmissionMeta> {
-		const record = await gradeSubmission(id, teacherGrade, this.assignmentId ?? undefined);
 		this.applyRecord(record);
 		return record;
 	}

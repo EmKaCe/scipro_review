@@ -352,11 +352,12 @@
 			void refreshLogs();
 			// Table sync during an active run: refresh the store at most
 			// every 5s so row statuses stay current without hammering the
-			// list endpoint. Failures keep the last good list (next tick
-			// retries) — the live status polls are unaffected.
+			// list endpoint. refresh() keeps the last-good list and only
+			// records the error (BUG-011) — the page never flaps into
+			// loading or throws mid-poll, unlike load().
 			if (selectedAssignment && Date.now() - lastStoreRefresh > 5000) {
 				lastStoreRefresh = Date.now();
-				void submissionsStore.load(selectedAssignment).catch(() => {});
+				void submissionsStore.refresh();
 			}
 		}, 2000);
 		return () => clearInterval(timer);

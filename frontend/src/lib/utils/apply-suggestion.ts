@@ -5,9 +5,13 @@
  * touching any Svelte/store machinery — the page calls this and assigns the
  * result. Two kinds mutate page state:
  *
- *   - `grade`  → `data` is the full PreEvaluation envelope (see
- *     `PreEvalData` in `$lib/types/submissions.ts`): suggested dimension
- *     scores are merged into `gradingInputs` (clamped to sane bounds),
+ *   - `grade`  → `data` is the client `PreEvalData` mirror (see
+ *     `PreEvalData` in `$lib/types/submissions.ts`) — the camelCase wire
+ *     shape produced by GET /api/submissions/[id], NOT the server's
+ *     snake_case `PreEvaluation` envelope: suggested dimension
+ *     scores are merged into `gradingInputs` (clamped per-dimension to the
+ *     grading config's max_points when provided, legacy [0, 1000] bounds
+ *     otherwise),
  *     `feedbackDraft` fills `notesDraft` ONLY when the teacher has not
  *     written anything yet (never clobber teacher-written notes), and
  *     `rubricSelections` (when the envelope carries them) are merged into
@@ -40,13 +44,21 @@ export interface ApplySuggestionState<T extends Record<string, number> = Record<
 	categorySelections?: Record<string, CategorySelections>;
 }
 
-/** Sane bounds for suggested dimension scores (raw points, pre-weighting). */
+/** Sane fallback bounds for suggested dimension scores when no per-dimension
+ * max is provided (raw points, pre-weighting). */
 const MIN_SCORE = 0;
 const MAX_SCORE = 1000;
 
-/** Clamp a suggested score into bounds; NaN/Infinity are rejected by the caller. */
-function clampScore(value: number): number {
-	return Math.min(MAX_SCORE, Math.max(MIN_SCORE, value));
+/**
+ * Clamp a suggested score into bounds; NaN/Infinity are rejected by the
+ * caller. With `maxScores` given (dimension key -> max_points from the
+ * grading config) the clamp is per dimension — a suggestion above a
+ * dimension's max_points (e.g. 7 on a 6-point scale) is capped at the max
+ * so the stored value always agrees with the slider and the breakdown bar.
+ */
+function clampScore(value: number, max?: number): number {
+	const upper = typeof max === "number" && Number.isFinite(max) && max >= 0 ? max : MAX_SCORE;
+	return Math.min(upper, Math.max(MIN_SCORE, value));
 }
 
 /** One rubric item a suggestion wants checked: category key + sub-point text. */
@@ -158,12 +170,17 @@ interface DraftSuggestionData {
  *
  * @param suggestion The suggestion the teacher clicked "Apply" on.
  * @param state      Current page state (grading inputs + notes draft).
+ * @param maxScores  Optional per-dimension caps (dimension key -> max_points
+ *                   from the grading config). Suggested scores are clamped
+ *                   per dimension; without it the legacy [0, 1000] bounds
+ *                   apply.
  * @returns A fresh state object for `grade`/`draft` kinds; the ORIGINAL
  *          state reference for unknown kinds (nothing changed).
  */
 export function applySuggestionToState<T extends Record<string, number>>(
 	suggestion: CopilotSuggestion,
 	state: ApplySuggestionState<T>,
+	maxScores?: Record<string, number>,
 ): ApplySuggestionState<T> {
 	if (suggestion.kind === "grade") {
 		const data = (suggestion.data ?? {}) as GradeSuggestionData;
@@ -171,11 +188,12 @@ export function applySuggestionToState<T extends Record<string, number>>(
 
 		// Merge suggested scores over the existing inputs. Dimensions the
 		// suggestion does not mention keep their current value; out-of-range
-		// suggestions are clamped; non-finite values are skipped entirely.
+		// suggestions are clamped (per-dimension max_points when provided);
+		// non-finite values are skipped entirely.
 		const gradingInputs: Record<string, number> = { ...state.gradingInputs };
 		for (const [dimension, value] of Object.entries(dimensions)) {
 			if (typeof value !== "number" || !Number.isFinite(value)) continue;
-			gradingInputs[dimension] = clampScore(value);
+			gradingInputs[dimension] = clampScore(value, maxScores?.[dimension]);
 		}
 
 		const notesDraft =

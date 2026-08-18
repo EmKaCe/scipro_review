@@ -190,8 +190,6 @@ export interface SubmissionMeta {
 	autofixAvailable?: boolean;
 	/** Last execution error message (when status is "error"). */
 	error?: string | null;
-	/** LLM-suggested overall grade from pre-evaluation. */
-	preEvalGrade?: number;
 	/** Teacher's final grade. */
 	teacherGrade?: number;
 	/**

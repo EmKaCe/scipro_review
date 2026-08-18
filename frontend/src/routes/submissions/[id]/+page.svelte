@@ -215,10 +215,21 @@
 	// -----------------------------------------------------------------------
 	// Derived
 	// -----------------------------------------------------------------------
-	let gradeResult = $derived<GradeResult | null>(
-		gradingConfig ? calculateGrade(gradingInputs, gradingConfig, 0) : null,
+	/**
+	 * Total rubric deductions across all categories (sum of the per
+	 * sub-point deduction values the teacher entered in the Rubric tab).
+	 * Subtracted from the raw weighted percentage by calculateGrade and
+	 * shown as the "Total deductions" line in the grading sidebar.
+	 */
+	let totalDeductions = $derived(
+		Object.values(categorySelections).reduce(
+			(sum, sel) => sum + Object.values(sel.deductions).reduce((s, d) => s + d, 0),
+			0,
+		),
 	);
-	let totalDeductions = $derived(0);
+	let gradeResult = $derived<GradeResult | null>(
+		gradingConfig ? calculateGrade(gradingInputs, gradingConfig, totalDeductions) : null,
+	);
 
 	// -----------------------------------------------------------------------
 	// Data loading
@@ -452,6 +463,11 @@
 		categorySelections = empty;
 		gradingInputs = defaultGradingInputs();
 		notesDraft = "";
+		// BUG-013: a cleared review must not leave stale autofix state —
+		// the fixed-view set (ephemeral) and the durable dispositions
+		// (persisted with the next Save) are reset together.
+		dispositions = {};
+		fixedView.clear();
 		addToast("info", "Review cleared — press Save to persist", 3500);
 	}
 
@@ -587,14 +603,20 @@
 	/**
 	 * Apply a pending copilot suggestion to page state (grading inputs +
 	 * notes draft + rubric selections) via the pure applySuggestionToState
-	 * helper. Never auto-saves — the teacher reviews and presses Save.
+	 * helper. Suggested dimension scores are clamped per-dimension to the
+	 * grading config's max_points (BUG-009) so the stored value always
+	 * agrees with the slider. Never auto-saves — the teacher reviews and
+	 * presses Save.
 	 */
 	function handleApplySuggestion(suggestion: CopilotSuggestion) {
+		const maxScores: Record<string, number> | undefined = gradingConfig
+			? Object.fromEntries(gradingConfig.dimensions.map((d) => [d.key, d.max_points]))
+			: undefined;
 		const next = applySuggestionToState(suggestion, {
 			gradingInputs: { ...gradingInputs },
 			notesDraft,
 			categorySelections,
-		});
+		}, maxScores);
 		gradingInputs = next.gradingInputs;
 		notesDraft = next.notesDraft;
 		if (next.categorySelections) {

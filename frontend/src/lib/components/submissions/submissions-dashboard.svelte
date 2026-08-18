@@ -4,6 +4,12 @@
 	import { submissionsStore } from "$lib/services/submissions-store.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
+	import {
+		ApiError,
+		fetchPreEvalStatus,
+		preEvaluateSubmissions,
+		type PreEvalProgress,
+	} from "$lib/services/submissions-api.js";
 	import { statusConfig } from "$lib/components/submissions/status-config.js";
 	import { Checkbox } from "$lib/components/ui/checkbox/index.js";
 	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
@@ -97,7 +103,7 @@
 	);
 
 	// ── Sort state ──
-	type SortKey = "studentId" | "status" | "cellSummary" | "preEvalGrade" | "teacherGrade";
+	type SortKey = "studentId" | "status" | "cellSummary" | "teacherGrade";
 	let sortKey = $state<SortKey>("studentId");
 	let sortAsc = $state(true);
 
@@ -108,8 +114,6 @@
 				return s.status;
 			case "cellSummary":
 				return s.cellSummary ?? "";
-			case "preEvalGrade":
-				return s.preEvalGrade ?? -1;
 			case "teacherGrade":
 				return s.teacherGrade ?? -1;
 			default:
@@ -194,24 +198,12 @@
 
 	function gradeDisplay(meta: SubmissionMeta): string {
 		if (meta.teacherGrade != null) return meta.teacherGrade.toFixed(1);
-		if (meta.preEvalGrade != null) return `(${meta.preEvalGrade.toFixed(1)})`;
 		return "—";
 	}
 
 	// ── Pre-evaluate All ──
-	// Wire shape of GET /api/submissions/pre-evaluate/status.
-	interface PreEvalRunStatus {
-		running: boolean;
-		assignmentId: string | null;
-		startedAt: number | null;
-		currentStudentId: string | null;
-		currentStartedAt: number | null;
-		done: number;
-		total: number;
-	}
-
 	/** Live run record from the status endpoint (null until first fetch). */
-	let preEvalStatus = $state<PreEvalRunStatus | null>(null);
+	let preEvalStatus = $state<PreEvalProgress | null>(null);
 	/**
 	 * True between the POST and its resolution (the run may be over by the
 	 * time the response arrives). Only the POST handler clears this — an
@@ -246,11 +238,7 @@
 	async function refreshPreEvalStatus() {
 		const seq = ++statusRequestSeq;
 		try {
-			const res = await fetch(`${base}/api/submissions/pre-evaluate/status`);
-			if (!res.ok) {
-				throw new Error(`Pre-evaluation status request failed (${res.status})`);
-			}
-			const status = (await res.json()) as PreEvalRunStatus;
+			const status = await fetchPreEvalStatus();
 			if (seq !== statusRequestSeq) return; // superseded — ignore
 			const wasRunning = preEvalWasRunning;
 			preEvalStatus = status;
@@ -288,23 +276,7 @@
 		preEvalStarting = true;
 		preEvalStatus = null;
 		try {
-			const res = await fetch(
-				`${base}/api/submissions/pre-evaluate?assignment=${encodeURIComponent(assignmentId)}`,
-				{ method: "POST" },
-			);
-			if (res.status === 409) {
-				addToast("error", "A pre-evaluation run is already in progress", 4000);
-				return;
-			}
-			if (!res.ok) {
-				const body = (await res.json().catch(() => null)) as { message?: string } | null;
-				throw new Error(body?.message ?? `Pre-evaluation failed (${res.status})`);
-			}
-			const summary = (await res.json()) as {
-				submitted: number;
-				succeeded: number;
-				failed: number;
-			};
+			const summary = await preEvaluateSubmissions(assignmentId);
 			addToast(
 				"success",
 				`Pre-evaluated ${summary.succeeded} of ${summary.submitted} submission(s)${
@@ -318,7 +290,11 @@
 			// finish before the first status poll ever observes running:true).
 			await submissionsStore.refresh();
 		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+			if (e instanceof ApiError && e.status === 409) {
+				addToast("error", "A pre-evaluation run is already in progress", 4000);
+			} else {
+				addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
+			}
 		} finally {
 			// Only the POST handler clears the starting flag: an idle status
 			// observation (running:false, total:0 before the run registers)
@@ -466,21 +442,8 @@
 							class="sort-arrow-icon"
 						/>
 					</th>
-					<th
-						class="col-preeval"
-						role="columnheader"
-						aria-sort={sortKey === "preEvalGrade" ? (sortAsc ? "ascending" : "descending") : "none"}
-						onclick={() => toggleSort("preEvalGrade")}
-						tabindex="0"
-						onkeydown={(e) => e.key === "Enter" && toggleSort("preEvalGrade")}
-					>
-						Pre-Eval <SortArrow
-							currentKey={sortKey}
-							targetKey="preEvalGrade"
-							ascending={sortAsc}
-							size={10}
-							class="sort-arrow-icon"
-						/>
+					<th class="col-preeval" role="columnheader">
+						Pre-Eval
 					</th>
 					<th
 						class="col-grade"
@@ -558,7 +521,6 @@
 							{:else if sub.status === "pre-evaluated"}
 								<span class="preeval-chip preeval-done" title="Pre-evaluated">
 									<CircleCheck size={11} />
-									{#if sub.preEvalGrade != null}{sub.preEvalGrade.toFixed(1)}{/if}
 								</span>
 							{:else}
 								<span class="preeval-chip preeval-empty">—</span>

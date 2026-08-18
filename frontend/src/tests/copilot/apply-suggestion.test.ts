@@ -79,6 +79,57 @@ describe("applySuggestionToState — grade kind", () => {
 		expect(state.gradingInputs.code_quality_design).toBe(1);
 	});
 
+	it("clamps per-dimension to the grading config's max_points when provided", () => {
+		const state: ApplySuggestionState = {
+			gradingInputs: {},
+			notesDraft: "",
+		};
+		// code_quality_design maxes at 6; scientific_programming at 4 —
+		// out-of-range suggestions must cap at the dimension max, not 1000.
+		const maxScores = {
+			code_quality_design: 6,
+			scientific_programming: 4,
+		};
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				gradeSuggestion: {
+					dimensions: {
+						code_quality_design: 7,
+						scientific_programming: 3.5,
+					},
+				},
+			}),
+			state,
+			maxScores,
+		);
+
+		expect(next.gradingInputs.code_quality_design).toBe(6);
+		expect(next.gradingInputs.scientific_programming).toBe(3.5);
+	});
+
+	it("falls back to the legacy [0, 1000] bounds for dimensions without a max", () => {
+		const state: ApplySuggestionState = { gradingInputs: {}, notesDraft: "" };
+
+		const next = applySuggestionToState(
+			gradeSuggestion({
+				...preEvalData,
+				gradeSuggestion: {
+					dimensions: {
+						// No maxScores given at all — legacy behavior.
+						code_quality_design: 9999,
+						assignment_requirements: -3,
+					},
+				},
+			}),
+			state,
+		);
+
+		expect(next.gradingInputs.code_quality_design).toBe(1000);
+		expect(next.gradingInputs.assignment_requirements).toBe(0);
+	});
+
 	it("fills notesDraft from feedbackDraft when notesDraft is empty", () => {
 		const state: ApplySuggestionState = { gradingInputs: {}, notesDraft: "" };
 

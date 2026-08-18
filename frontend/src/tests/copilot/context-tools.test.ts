@@ -82,7 +82,6 @@ const METADATA = {
 		fileName: "2026SS_02.ipynb",
 		notebookPath: `submissions/${ASSIGNMENT}/2026SS_02.ipynb`,
 		status: "executed",
-		preEvalGrade: 1.7,
 		createdAt: "2026-08-02T09:00:00.000Z",
 		updatedAt: "2026-08-03T10:00:00.000Z",
 	},
@@ -384,14 +383,12 @@ describe("list-submissions", () => {
 				studentId: "2026SS_01",
 				status: "graded",
 				teacherGrade: 12,
-				preEvalGrade: null,
 				hasResults: true,
 			},
 			{
 				studentId: "2026SS_02",
 				status: "executed",
 				teacherGrade: null,
-				preEvalGrade: 1.7,
 				hasResults: false,
 			},
 		]);

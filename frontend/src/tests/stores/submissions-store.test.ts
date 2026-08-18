@@ -22,9 +22,7 @@ const api = vi.hoisted(() => ({
 	fetchSubmission: vi.fn(),
 	uploadSubmissions: vi.fn(),
 	processSubmissions: vi.fn(),
-	processSubmission: vi.fn(),
 	saveGrading: vi.fn(),
-	gradeSubmission: vi.fn(),
 	importTeacherYaml: vi.fn(),
 	exportSubmission: vi.fn(),
 }));
@@ -74,28 +72,6 @@ function batchResponse(
 		totalDurationSeconds: 1.5,
 		results: [{ studentId: "2026SS_01", success: true, error: null }],
 		...overrides,
-	};
-}
-
-function executionResponse(record: SubmissionMeta) {
-	return {
-		success: true,
-		notebookPath: `submissions/${ASSIGNMENT}/2026SS_01.ipynb`,
-		cells: [],
-		totalCells: 1,
-		executedCells: 1,
-		errorCells: 0,
-		durationSeconds: 0.5,
-		preprocessing: {
-			cellsModified: 0,
-			totalEdits: 0,
-			editTypes: {},
-			llmPreprocessing: "skipped",
-			llmAnalysis: false,
-		},
-		modifiedFiles: [],
-		autofix: { attempts: 0, succeeded: 0 },
-		record,
 	};
 }
 
@@ -329,20 +305,6 @@ describe("mutations", () => {
 		expect(api.uploadSubmissions).not.toHaveBeenCalled();
 	});
 
-	it("processOne() applies the updated record, refreshes and starts polling", async () => {
-		api.fetchSubmissions
-			.mockResolvedValueOnce(list(meta("2026SS_01", "pending")))
-			.mockResolvedValueOnce(list(meta("2026SS_01", "executing")));
-		api.processSubmission.mockResolvedValue(executionResponse(meta("2026SS_01", "executing")));
-		await store.load();
-
-		await store.processOne("2026SS_01");
-
-		expect(api.processSubmission).toHaveBeenCalledWith("2026SS_01", ASSIGNMENT);
-		expect(store.submissions[0]?.status).toBe("executing");
-		expect(store.isPolling).toBe(true);
-	});
-
 	it("select() loads and caches the detail", async () => {
 		api.fetchSubmission.mockResolvedValue(detail("2026SS_01"));
 
@@ -355,21 +317,27 @@ describe("mutations", () => {
 		expect(store.getDetail("missing")).toBeNull();
 	});
 
-	it("grade() and saveGrading() merge the updated record into the list", async () => {
-		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executed")));
-		api.gradeSubmission.mockResolvedValue({
-			...meta("2026SS_01", "graded"),
-			teacherGrade: 2.0,
+	it("select() adopts the detail record's assignment for deep links", async () => {
+		// A submission whose assignment is NOT the store's current one —
+		// the deep-link path (bookmark/refresh/share) where the detail
+		// response is the only source of the correct batch.
+		api.fetchSubmission.mockResolvedValue({
+			...detail("2026SS_01"),
+			assignmentId: "molecular_dynamics",
 		});
+
+		await store.select("2026SS_01");
+
+		expect(store.assignmentId).toBe("molecular_dynamics");
+	});
+
+	it("saveGrading() merges the updated record into the list", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executed")));
 		api.saveGrading.mockResolvedValue({
 			...meta("2026SS_01", "executed"),
 			updatedAt: "2026-07-28T11:00:00Z",
 		});
 		await store.load();
-
-		await store.grade("2026SS_01", 2.0);
-		expect(api.gradeSubmission).toHaveBeenCalledWith("2026SS_01", 2.0, ASSIGNMENT);
-		expect(store.submissions[0]).toMatchObject({ status: "graded", teacherGrade: 2.0 });
 
 		await store.saveGrading("2026SS_01", { rubric: { a: "b" } });
 		expect(api.saveGrading).toHaveBeenCalledWith(
@@ -437,10 +405,6 @@ describe("mutations", () => {
 describe("legacy wrappers", () => {
 	it("listSubmissions and getSubmission expose live snapshots without stub data", async () => {
 		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executed")));
-		api.gradeSubmission.mockResolvedValue({
-			...meta("2026SS_01", "graded"),
-			teacherGrade: 2.0,
-		});
 		api.fetchSubmission.mockResolvedValue(detail("2026SS_01"));
 
 		const { listSubmissions, getSubmission } =
@@ -451,7 +415,13 @@ describe("legacy wrappers", () => {
 		expect(snapshot).toEqual([meta("2026SS_01", "executed")]);
 		expect(snapshot).not.toBe(store.submissions); // copy, not the live array
 
-		await store.grade("2026SS_01", 2.0);
+		// The snapshot stays a copy — a later list mutation (here via
+		// applyRecord from saveGrading) never mutates the earlier snapshot.
+		api.saveGrading.mockResolvedValue({
+			...meta("2026SS_01", "graded"),
+			teacherGrade: 2.0,
+		});
+		await store.saveGrading("2026SS_01", { rubric: { a: "b" } });
 		expect(listSubmissions()[0]?.status).toBe("graded");
 		expect(snapshot[0]?.status).toBe("executed"); // earlier snapshot unchanged
 

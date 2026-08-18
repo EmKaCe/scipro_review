@@ -85,11 +85,19 @@
 	let copied = $state(false);
 	let copyResetTimer: ReturnType<typeof setTimeout> | undefined;
 
-	// Open by default while a run is active: the first time `live` flips true
-	// the panel expands, and it stays open until the run ends (a manual
-	// collapse mid-run is respected — the effect only reacts to `live`).
+	// Track the run lifecycle: expand when a run starts (the first time
+	// `live` flips true), and collapse when the run ends so the compact
+	// collapsed strip (latest entry + progress) is shown again. A manual
+	// collapse mid-run is respected — the effect only reacts to `live`
+	// transitions, not to the current value. `wasLive` starts false so a
+	// panel that mounts mid-run (already live) still auto-opens on the
+	// first effect run.
+	let wasLive = $state(false);
 	$effect(() => {
-		if (live) open = true;
+		if (live !== wasLive) {
+			open = live;
+			wasLive = live;
+		}
 	});
 
 	// Follow the tail while live: keep the newest lines in view, but only

@@ -41,19 +41,33 @@ export class PlagiarismStore {
 	/** True while a check is running. */
 	isChecking = $state(false);
 
-	/** Load the cached result for an assignment (404 → null, not an error). */
+	/**
+	 * Monotonic sequence for load() responses. Each load() bumps it and
+	 * captures its own token; a response whose token is stale (a slower
+	 * load for a PREVIOUS assignment resolved after a newer one) is
+	 * dropped so `result`/`assignmentId` never show the wrong assignment's
+	 * pairs (BUG-019 — rapid assignment switching).
+	 */
+	private loadSeq = 0;
+
+	/**
+	 * Load the cached result for an assignment (404 → null, not an error).
+	 * Late responses from a superseded assignment are discarded.
+	 */
 	async load(assignmentId?: string): Promise<PlagiarismResult | null> {
+		const seq = ++this.loadSeq;
+		const target = assignmentId ?? this.assignmentId ?? undefined;
 		this.status = "loading";
 		this.error = null;
 		try {
-			const result = await fetchPlagiarismResults(
-				assignmentId ?? this.assignmentId ?? undefined,
-			);
+			const result = await fetchPlagiarismResults(target);
+			if (seq !== this.loadSeq) return null; // superseded — drop
 			this.result = result;
 			this.assignmentId = result.assignmentId;
 			this.status = "idle";
 			return result;
 		} catch (err) {
+			if (seq !== this.loadSeq) return null; // superseded — drop
 			if (err instanceof ApiError && err.status === 404) {
 				// No check has been run for this assignment yet.
 				this.result = null;

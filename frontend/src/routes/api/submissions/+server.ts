@@ -60,8 +60,13 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			// Confidence routing (Step 8): the deterministic confidence is
 			// part of the persisted pre-eval envelope — surface it on the
 			// list row so the dashboard can filter/prioritize reviews.
-			// Absent for rows pre-evaluation has not run on yet.
-			enriched.gradingConfidence = stored?.preEval?.gradingConfidence;
+			// Legacy envelopes predating the field default to
+			// `needs_review` (unreviewed-by-definition) so the "Needs
+			// Review" filter never silently hides pre-evaluated rows.
+			// Rows pre-evaluation has not run on yet carry no confidence.
+			enriched.gradingConfidence = stored?.preEval
+				? (stored.preEval.gradingConfidence ?? "needs_review")
+				: undefined;
 			// Over-tick guard (Signal B): categories where the pipeline
 			// checked more items than the cohort norm tolerates — the
 			// dashboard badge. Same enrichment path as gradingConfidence.
