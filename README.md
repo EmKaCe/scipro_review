@@ -44,6 +44,8 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
 
+> **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.
+
 ---
 
 ## Tech Stack
