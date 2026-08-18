@@ -80,6 +80,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { appendAuditEntry, createAuditHooks, redactArgs } from "./audit";
 import { resolveApprovalPolicy, type ApprovalDecision } from "./permission";
 import { registerCopilotTools } from "./tools/index";
+import { createRubricFidelityScorer } from "./rubric-fidelity";
 import { getEnabledAssignments } from "$lib/server/assignments";
 import { readMetadata } from "$lib/server/metadata";
 import {
@@ -567,6 +568,15 @@ export async function buildAgent(): Promise<void> {
 		// untrusted content). Both detectors reuse the copilot's KI Connect
 		// model; they degrade to allow-through on detection-LLM failure.
 		inputProcessors: createInputProcessors(settings),
+		// Wave 4 rubric-fidelity evals: a sampled quality signal that the
+		// copilot's grading proposals match the rubric. Low rate (0.1) so it
+		// is cheap; the judge reuses the copilot's KI Connect model.
+		scorers: {
+			rubricFidelity: {
+				scorer: createRubricFidelityScorer(createModel(settings)),
+				sampling: { type: "ratio", rate: 0.1 },
+			},
+		},
 	});
 }
 
