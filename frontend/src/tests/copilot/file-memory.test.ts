@@ -88,6 +88,33 @@ describe("FileMemoryStore", () => {
 		);
 	});
 
+	it("saveThread merges with the existing thread instead of clobbering metadata (working memory)", async () => {
+		const store = new FileMemoryStore();
+		await store.saveThread({ thread: thread("t1") });
+		// The updateWorkingMemory tool writes metadata.workingMemory via
+		// updateThread...
+		await store.updateThread({
+			id: "t1",
+			title: "",
+			metadata: { workingMemory: "# Review State\n- Status: reviewed" },
+		});
+		// ...then Mastra's onStepFinish/onFinish re-save the STALE
+		// prepare-memory-step thread snapshot (no metadata, fresh createdAt)
+		// via saveThread. The stored working memory must survive.
+		await store.saveThread({
+			thread: {
+				id: "t1",
+				resourceId: "s1",
+				createdAt: new Date("2026-08-02T10:00:00Z"),
+				updatedAt: new Date("2026-08-02T10:00:00Z"),
+			},
+		});
+		const got = await store.getThreadById({ threadId: "t1" });
+		expect(got?.metadata?.workingMemory).toBe("# Review State\n- Status: reviewed");
+		// Original creation time is preserved, not the stale re-save's.
+		expect(got?.createdAt.getTime()).toBe(new Date("2026-08-01T10:00:00Z").getTime());
+	});
+
 	it("deleteThread removes the thread and its messages", async () => {
 		const store = new FileMemoryStore();
 		await store.saveThread({ thread: thread("t1") });

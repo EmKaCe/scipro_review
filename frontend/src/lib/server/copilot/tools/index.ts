@@ -13,6 +13,7 @@
 
 import { registerAnalysisTools } from "./analysis-tools";
 import { registerContextTools } from "./context-tools";
+import { registerDocsTools } from "./docs-tools";
 import { registerGradingTools } from "./grading-tools";
 import { registerManagementTools } from "./management-tools";
 import { registerOpsTools } from "./ops-tools";
@@ -30,6 +31,7 @@ import type { CopilotRegistry } from "../registry";
 export function registerCopilotTools(registry: CopilotRegistry): void {
 	registerContextTools(registry);
 	registerReferenceTools(registry);
+	registerDocsTools(registry);
 	registerAnalysisTools(registry);
 	registerPreevalTools(registry);
 	registerGradingTools(registry);

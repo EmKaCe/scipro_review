@@ -67,8 +67,10 @@ import {
 	registry,
 	streamChat,
 	suggestionResult,
+	WORKING_MEMORY_TEMPLATE,
 	type CopilotStreamEvent,
 } from "$lib/server/copilot/agent";
+import { FileMemoryStore } from "$lib/server/copilot/file-memory";
 
 const STREAM_START: V2Part = { type: "stream-start" };
 const FINISH_TOOL_CALLS: V2Part = {
@@ -548,5 +550,88 @@ describe("scope context prefix (Task C)", () => {
 		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
 		const text = receivedUserMessage(mockControl.receivedCalls[0]);
 		expect(text).toBe("hi");
+	});
+});
+
+describe("thread-scoped working memory (Mastra audit §2)", () => {
+	it("registers the updateWorkingMemory tool on the agent", async () => {
+		mockControl.script = [textTurn("Ok")];
+
+		await collect(await streamChat({ submissionId: "s1", message: "hi" }));
+
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		// Mastra passes the converted tool map to the model's doStream as
+		// `tools` (prepareToolsAndToolChoice). Memory.listTools() registers
+		// `updateWorkingMemory` when workingMemory.enabled && agentManaged
+		// !== false && !readOnly — all true for the copilot's Memory.
+		const firstCall = mockControl.receivedCalls[0] as {
+			tools?: Array<{ type: string; name: string }>;
+		};
+		const toolNames = (firstCall.tools ?? []).map((t) => t.name);
+		expect(toolNames).toContain("updateWorkingMemory");
+	});
+
+	it("injects the working-memory template into the system message each turn", async () => {
+		mockControl.script = [textTurn("Ok")];
+
+		await collect(await streamChat({ submissionId: "s1", message: "hi" }));
+
+		expect(mockControl.receivedCalls.length).toBeGreaterThan(0);
+		const firstCall = mockControl.receivedCalls[0] as {
+			prompt?: Array<{ role?: string; content?: unknown }>;
+		};
+		const systemMessages = (firstCall.prompt ?? []).filter((m) => m.role === "system");
+		expect(systemMessages.length).toBeGreaterThan(0);
+		const joined = systemMessages
+			.map((m) => {
+				const content = m.content;
+				if (typeof content === "string") return content;
+				if (Array.isArray(content)) {
+					return content
+						.map((part) =>
+							part && typeof part === "object" && "text" in part
+								? String((part as { text: unknown }).text)
+								: "",
+						)
+						.join("");
+				}
+				return "";
+			})
+			.join("\n");
+		// The WM instruction block carries the template verbatim.
+		expect(joined).toContain("WORKING_MEMORY_SYSTEM_INSTRUCTION");
+		expect(joined).toContain(WORKING_MEMORY_TEMPLATE);
+		expect(joined).toContain("updateWorkingMemory");
+	});
+
+	it("persists working memory to the thread's metadata via the updateWorkingMemory tool", async () => {
+		const threadId = "wm-thread-1";
+		const wmContent = [
+			"# Review State",
+			"- Submission: 2026SS_00",
+			"- Status: already reviewed",
+			"- Professor preferences: caps creativity at 3",
+			"- Notes:",
+		].join("\n");
+		mockControl.script = [
+			toolCallTurn("updateWorkingMemory", JSON.stringify({ memory: wmContent })),
+			textTurn("Stored"),
+		];
+		const events = await collect(
+			await streamChat({ submissionId: "s1", threadId, message: "remember this" }),
+		);
+
+		// The tool ran and the loop completed.
+		const toolResult = events.find((e) => e.type === "tool-result");
+		expect(toolResult && toolResult.type === "tool-result" ? toolResult.ok : false).toBe(true);
+		expect(events[events.length - 1].type).toBe("done");
+
+		// Thread-scoped WM is stored in the thread's metadata.workingMemory
+		// (FileMemoryStore.updateThread persists metadata) — read it back
+		// through the real store.
+		const store = new FileMemoryStore();
+		const thread = await store.getThreadById({ threadId, resourceId: "s1" });
+		expect(thread).not.toBeNull();
+		expect(thread?.metadata?.workingMemory).toBe(wmContent);
 	});
 });

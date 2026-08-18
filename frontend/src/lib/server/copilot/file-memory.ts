@@ -108,7 +108,32 @@ export class FileMemoryStore extends MemoryStorage {
 	}
 
 	async saveThread({ thread }: { thread: StorageThreadType }): Promise<StorageThreadType> {
-		await writeJsonAtomic(path.join(threadsDir(), threadFileName(thread.id)), thread);
+		// Merge with the existing thread instead of blind-overwriting: Mastra
+		// calls saveThread with a STALE thread object (e.g. the agent's
+		// onStepFinish/onFinish createThread re-save, which carries the
+		// thread as it was at prepare-memory-step time) AFTER the
+		// updateWorkingMemory tool wrote metadata.workingMemory via
+		// updateThread. A blind overwrite would clobber the working memory.
+		// updateThread already merges; saveThread must too (same file).
+		const file = path.join(threadsDir(), threadFileName(thread.id));
+		const existing = await readJson<StorageThreadType>(file);
+		if (existing) {
+			const merged: StorageThreadType = {
+				...existing,
+				...thread,
+				// Mastra's createThread re-save regenerates createdAt — keep
+				// the original creation time.
+				createdAt: existing.createdAt ?? thread.createdAt,
+				// The incoming thread may carry stale/empty metadata (Mastra
+				// re-saves the prepare-memory-step snapshot) — keep the
+				// stored metadata keys the incoming one doesn't set.
+				metadata: { ...existing.metadata, ...thread.metadata },
+				updatedAt: new Date(),
+			};
+			await writeJsonAtomic(file, merged);
+			return merged;
+		}
+		await writeJsonAtomic(file, thread);
 		return thread;
 	}
 

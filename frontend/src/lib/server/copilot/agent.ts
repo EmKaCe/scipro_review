@@ -219,6 +219,23 @@ export interface ApproveRunInput {
 
 const MAX_STEPS = 10; // hard bound on the agentic loop (model round-trips)
 const COPILOT_CTX_KEY = "__copilot";
+
+/**
+ * Working-memory template for thread-scoped review state (Mastra audit §2).
+ * The agent persists per-thread state (submission, status, professor
+ * preferences, notes) via the auto-registered `updateWorkingMemory` tool;
+ * the template is injected into the system message each turn. Exported for
+ * tests. Thread-scoped only — resource scope would need 3 new storage
+ * methods on FileMemoryStore (out of scope).
+ */
+export const WORKING_MEMORY_TEMPLATE = [
+	"# Review State",
+	"- Submission:",
+	"- Status:",
+	"- Professor preferences:",
+	"- Notes:",
+].join("\n");
+
 const AGENT_INSTRUCTIONS = [
 	"You are the SciPro Review Copilot, an assistant that helps teachers review and grade",
 	"Jupyter notebook submissions.",
@@ -281,7 +298,24 @@ export async function buildAgent(): Promise<void> {
 	// `new Mastra({ storage, memory: { key } })`) for the agent's
 	// getMemory() to resolve it — an Agent-only instance is ignored at
 	// runtime and threads never persist.
-	const memory = new Memory({ storage });
+	// Thread-scoped working memory (Mastra audit §2): the agent persists
+	// per-thread review state (submission, status, professor preferences,
+	// notes) via the auto-registered `updateWorkingMemory` tool, and the
+	// template is injected into the system message each turn. Thread scope
+	// reads/writes `metadata.workingMemory` on the thread — FileMemoryStore
+	// already persists thread metadata (updateThread), so no storage changes
+	// are needed. Resource scope is deliberately NOT enabled (would require
+	// getResourceById/saveResource/updateResource on FileMemoryStore).
+	const memory = new Memory({
+		storage,
+		options: {
+			workingMemory: {
+				enabled: true,
+				scope: "thread",
+				template: WORKING_MEMORY_TEMPLATE,
+			},
+		},
+	});
 	mastra = new Mastra({ storage, memory: { copilot: memory } });
 	const tools = Object.fromEntries(
 		registry.list().map((tool) => [tool.name, wrapCopilotTool(tool)]),
