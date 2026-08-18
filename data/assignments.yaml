@@ -17,7 +17,7 @@ assignments:
 
   - id: atom_interaction
     title: Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)
-    enabled: true
+    enabled: false
     criteria_files:
       - data/criteria/general.yaml
       - data/criteria/atom_interaction.yaml
