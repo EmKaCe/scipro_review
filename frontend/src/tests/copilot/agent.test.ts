@@ -77,6 +77,8 @@ import {
 import { FileMemoryStore } from "$lib/server/copilot/file-memory";
 import { listCheckpoints, loadCheckpoint } from "$lib/server/copilot/checkpoint-store";
 import * as checkpointStore from "$lib/server/copilot/checkpoint-store";
+import * as docsRag from "$lib/server/copilot/docs-rag";
+import { registerDocsTools } from "$lib/server/copilot/tools/docs-tools";
 
 const STREAM_START: V2Part = { type: "stream-start" };
 const FINISH_TOOL_CALLS: V2Part = {
@@ -1015,4 +1017,59 @@ describe("turn checkpoints (P3)", () => {
 			expect(events.some((e) => e.type === "checkpoint")).toBe(false);
 			expect(events[events.length - 1].type).toBe("done");
 		});
+});
+
+describe("search-docs grounding (P5)", () => {
+	it("calls search-docs on an analyze-code turn and uses the docs hit in the final answer", async () => {
+		// Register the REAL search-docs tool (idempotent — skips if already
+		// registered by buildAgent's registerCopilotTools).
+		registerDocsTools(registry);
+		// The test DATA_DIR is a temp dir with no docs index, so searchDocs
+		// would return [] — mock the retrieval with a pinned-docs hit.
+		const hit = {
+			title: "scipy.optimize.curve_fit",
+			url: "https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html",
+			library: "scipy" as const,
+			version: "1.18.0",
+			snippet:
+				"## scipy.optimize.curve_fit (scipy 1.18.0)\nSignature: curve_fit(f, xdata, ydata, p0=None, sigma=None, absolute_sigma=False, check_finite=None, bounds=(-inf, inf), method=None)\nUse non-linear least squares to fit a function, f, to data.",
+			score: 8.2,
+		};
+		const searchDocsSpy = vi.spyOn(docsRag, "searchDocs").mockResolvedValue([hit]);
+		mockControl.script = [
+			toolCallTurn("search-docs", JSON.stringify({ query: "scipy.optimize.curve_fit" })),
+			textTurn(
+				"The student used scipy.optimize.curve_fit correctly — the signature matches the pinned scipy 1.18.0 docs.",
+			),
+		];
+
+		const events = await collect(
+			await streamChat({
+				submissionId: "s1",
+				message: "Analyze this code: scipy.optimize.curve_fit(model, x, y)",
+			}),
+		);
+
+		// (1) The turn called search-docs and the tool ran successfully.
+		const toolCall = events.find((e) => e.type === "tool-call");
+		expect(toolCall && toolCall.type === "tool-call" ? toolCall.tool : "").toBe("search-docs");
+		const toolResult = events.find((e) => e.type === "tool-result");
+		expect(toolResult && toolResult.type === "tool-result" ? toolResult.ok : false).toBe(true);
+		// The retrieval was actually invoked with the API-name query.
+		expect(searchDocsSpy.mock.calls[0]?.[0]).toBe("scipy.optimize.curve_fit");
+
+		// (2) The streamed tool result carries the docs hit (URL included).
+		const summary =
+			toolResult && toolResult.type === "tool-result" ? (toolResult.summary ?? "") : "";
+		expect(summary).toContain("https://docs.scipy.org");
+		expect(summary).toContain("scipy.optimize.curve_fit");
+
+		// (3) The final answer references the API name from the mocked hit —
+		// the docs result was used in the final message.
+		const msg = events.find((e) => e.type === "message");
+		expect(msg && msg.type === "message" ? msg.content : "").toContain(
+			"scipy.optimize.curve_fit",
+		);
+		expect(events[events.length - 1].type).toBe("done");
+	});
 });

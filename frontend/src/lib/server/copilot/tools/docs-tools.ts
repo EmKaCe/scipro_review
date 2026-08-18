@@ -40,14 +40,15 @@ type SearchDocsArgs = z.infer<typeof searchDocsArgsSchema>;
 
 const searchDocsTool: CopilotTool<SearchDocsArgs, unknown> = {
 	name: "search-docs",
-	description:
-		"Search the offline API reference of NumPy, pandas, SciPy, scikit-learn, and matplotlib " +
-		"(versions pinned to the grading executor). Returns up to top_k self-contained entries, each with " +
-		"the object's signature, parameter semantics, return values, and a usage example, plus the canonical " +
-		"docs URL and version. Use this to VERIFY an API signature, parameter name/default, or return value " +
-		"before flagging student code — never guess API facts. Optional library filter (numpy|pandas|scipy|" +
-		"sklearn|matplotlib) improves precision; top_k defaults to 3 (max 10). Works fully offline (BM25); " +
-		"semantic paraphrase search is best-effort.",
+		description:
+			"Call this BEFORE flagging any API usage as wrong — verify the signature/parameters/return values " +
+			"against the pinned docs. Search the offline API reference of NumPy, pandas, SciPy, scikit-learn, and matplotlib " +
+			"(versions pinned to the grading executor). Returns up to top_k self-contained entries, each with " +
+			"the object's signature, parameter semantics, return values, and a usage example, plus the canonical " +
+			"docs URL and version. Use this to VERIFY an API signature, parameter name/default, or return value " +
+			"before flagging student code — never guess API facts. Optional library filter (numpy|pandas|scipy|" +
+			"sklearn|matplotlib) improves precision; top_k defaults to 3 (max 10). Works fully offline (BM25); " +
+			"semantic paraphrase search is best-effort.",
 	permission: "auto",
 	inputSchema: searchDocsArgsSchema,
 	run: async (args) => {
