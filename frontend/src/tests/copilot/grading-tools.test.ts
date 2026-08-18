@@ -179,15 +179,32 @@ describe("set-rubric-item", () => {
 	});
 
 	it("overwrites an existing selection for the same criterion", async () => {
-		await registry.run(
+		const result = (await registry.run(
 			"set-rubric-item",
 			{ submissionId: STUDENT, criterionKey: "clarity", optionKey: "poor" },
 			makeContext(),
-		);
+		)) as Record<string, unknown>;
+
+		// Change-ledger: the previous selection for the overwritten criterion.
+		expect(result["previous"]).toBe("good");
 
 		const record = await readRecord();
 		expect(record.grading?.rubric).toEqual({ clarity: "poor" });
 		expect(Object.keys(record.grading?.rubric ?? {})).toHaveLength(1);
+	});
+
+	it("reports previous undefined when the criterion was unset", async () => {
+		const result = (await registry.run(
+			"set-rubric-item",
+			{ submissionId: STUDENT, criterionKey: "structure", optionKey: "excellent" },
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		expect(result["previous"]).toBeUndefined();
+		expect(result["rubricItem"]).toEqual({
+			criterionKey: "structure",
+			optionKey: "excellent",
+		});
 	});
 });
 
@@ -234,6 +251,28 @@ describe("update-grade-dimension", () => {
 			).rejects.toThrow(CopilotToolArgumentError);
 		}
 	});
+
+	it("reports the previous score for an overwritten dimension", async () => {
+		const result = (await registry.run(
+			"update-grade-dimension",
+			{ submissionId: STUDENT, dimensionId: "code_quality_design", value: 4 },
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		// Change-ledger: the pre-write score of the changed dimension.
+		expect(result["previous"]).toBe(2);
+		expect(result["dimension"]).toEqual({ dimensionId: "code_quality_design", value: 4 });
+	});
+
+	it("reports previous undefined when the dimension was unset", async () => {
+		const result = (await registry.run(
+			"update-grade-dimension",
+			{ submissionId: STUDENT, dimensionId: "creativity", value: 3.5 },
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		expect(result["previous"]).toBeUndefined();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -257,10 +296,47 @@ describe("write-notes", () => {
 	});
 
 	it("clears the notes when given an empty string", async () => {
-		await registry.run("write-notes", { submissionId: STUDENT, notes: "" }, makeContext());
+		const result = (await registry.run(
+			"write-notes",
+			{ submissionId: STUDENT, notes: "" },
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		// Change-ledger: the pre-write notes string.
+		expect(result["previous"]).toBe("Nice work overall");
 
 		const record = await readRecord();
 		expect(record.grading?.notes).toBe("");
+	});
+
+	it("reports previous null when the submission has no grading state yet", async () => {
+		const other = "2026SS_02";
+		await writeFile(
+			path.join(dataDir, "submissions", ASSIGNMENT, "metadata.json"),
+			JSON.stringify({
+				...METADATA,
+				[other]: {
+					id: other,
+					studentId: other,
+					assignmentId: ASSIGNMENT,
+					semester: "2026SS",
+					fileName: "2026SS_02.ipynb",
+					notebookPath: `submissions/${ASSIGNMENT}/2026SS_02.ipynb`,
+					status: "executed",
+					createdAt: "2026-08-02T09:00:00.000Z",
+					updatedAt: "2026-08-03T10:00:00.000Z",
+				},
+			}),
+		);
+
+		const result = (await registry.run(
+			"write-notes",
+			{ submissionId: other, notes: "First notes." },
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		expect(result["previous"]).toBeNull();
+		expect(result["notes"]).toBe("First notes.");
 	});
 });
 
@@ -338,6 +414,63 @@ describe("save-grading", () => {
 				makeContext(),
 			),
 		).rejects.toThrow(CopilotToolArgumentError);
+	});
+
+	it("reports the previous value of every persisted field", async () => {
+		const result = (await registry.run(
+			"save-grading",
+			{
+				submissionId: STUDENT,
+				rubric: { clarity: "excellent", structure: "good" },
+				dimensions: { code_quality_design: 4 },
+				notes: "Revised after feedback.",
+			},
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		expect(result["persisted"]).toEqual(["rubric", "dimensions", "notes"]);
+		// Change-ledger: pre-write values for exactly the persisted fields.
+		expect(result["previous"]).toEqual({
+			rubric: { clarity: "good" },
+			dimensions: { code_quality_design: 2 },
+			notes: "Nice work overall",
+		});
+	});
+
+	it("reports empty defaults for fields persisted onto a submission with no grading state", async () => {
+		const other = "2026SS_02";
+		await writeFile(
+			path.join(dataDir, "submissions", ASSIGNMENT, "metadata.json"),
+			JSON.stringify({
+				...METADATA,
+				[other]: {
+					id: other,
+					studentId: other,
+					assignmentId: ASSIGNMENT,
+					semester: "2026SS",
+					fileName: "2026SS_02.ipynb",
+					notebookPath: `submissions/${ASSIGNMENT}/2026SS_02.ipynb`,
+					status: "executed",
+					createdAt: "2026-08-02T09:00:00.000Z",
+					updatedAt: "2026-08-03T10:00:00.000Z",
+				},
+			}),
+		);
+
+		const result = (await registry.run(
+			"save-grading",
+			{
+				submissionId: other,
+				rubric: { clarity: "good" },
+				notes: "First notes.",
+			},
+			makeContext(),
+		)) as Record<string, unknown>;
+
+		expect(result["previous"]).toEqual({
+			rubric: {},
+			notes: null,
+		});
 	});
 });
 

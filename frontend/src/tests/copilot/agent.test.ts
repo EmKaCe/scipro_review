@@ -64,6 +64,7 @@ vi.mock("@ai-sdk/openai-compatible", () => ({
 import {
 	__resetAgentForTests,
 	approveRun,
+	derivePlanSteps,
 	registry,
 	streamChat,
 	suggestionResult,
@@ -489,6 +490,85 @@ describe("copilot agent loop (agent.ts)", () => {
 
 		expect(events.some((e) => e.type === "suggestion")).toBe(false);
 		expect(events[events.length - 1].type).toBe("done");
+	});
+});
+
+describe("harness plan event (W2a)", () => {
+	it("emits the plan as the FIRST event, before any thinking/tool events", async () => {
+		registry.register({
+			name: "plan_echo_1",
+			description: "echoes",
+			permission: "auto",
+			inputSchema: z.object({ value: z.string() }),
+			run: async (args: { value: string }) => ({ echoed: args.value }),
+		});
+		mockControl.script = [
+			toolCallTurn("plan_echo_1", JSON.stringify({ value: "hi" })),
+			textTurn("Done"),
+		];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		expect(events[0].type).toBe("plan");
+		// The plan is emitted exactly once, at stream start.
+		expect(events.filter((e) => e.type === "plan")).toHaveLength(1);
+		// The agent loop still runs normally after the plan.
+		expect(events.some((e) => e.type === "tool-call")).toBe(true);
+		expect(events[events.length - 1].type).toBe("done");
+	});
+
+	it("derives phase steps from the registered tool surface (tool-family → phase label)", () => {
+		const steps = derivePlanSteps([
+			"process-submission",
+			"pre-evaluate",
+			"set-rubric-item",
+			"save-grading",
+			"update-grade-dimension",
+			"write-notes",
+			"run-plagiarism-check",
+			"analyze-code",
+			"compare-to-key",
+			"search-docs",
+			"get-submission-context",
+		]);
+
+		expect(steps).toEqual([
+			{ id: "execute-notebook", label: "Execute notebook" },
+			{ id: "pre-evaluate", label: "Pre-evaluate" },
+			{ id: "apply-grading-changes", label: "Apply grading changes" },
+			{ id: "plagiarism-check", label: "Plagiarism check" },
+			{ id: "analyze-code", label: "Analyze code" },
+			{ id: "compare-to-key", label: "Compare to reference key" },
+			{ id: "check-library-docs", label: "Check library docs" },
+			{ id: "gather-context", label: "Gather context" },
+		]);
+	});
+
+	it("omits phases with no registered tool and drops the fallback when every tool maps", () => {
+		const steps = derivePlanSteps(["set-rubric-item", "compare-to-key"]);
+
+		expect(steps).toEqual([
+			{ id: "apply-grading-changes", label: "Apply grading changes" },
+			{ id: "compare-to-key", label: "Compare to reference key" },
+		]);
+	});
+
+	it("emits a plan whose steps match the derived plan for the registered surface", async () => {
+		registry.register({
+			name: "plan_echo_2",
+			description: "echoes",
+			permission: "auto",
+			inputSchema: z.object({ value: z.string() }),
+			run: async (args: { value: string }) => ({ echoed: args.value }),
+		});
+		mockControl.script = [textTurn("Ok")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		const plan = events.find((e) => e.type === "plan");
+		expect(plan && plan.type === "plan" ? plan.steps : []).toEqual(
+			derivePlanSteps(registry.list().map((tool) => tool.name)),
+		);
 	});
 });
 

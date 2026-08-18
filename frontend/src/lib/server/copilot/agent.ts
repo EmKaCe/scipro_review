@@ -151,8 +151,17 @@ export function unwrapSuggestionResult(value: unknown): SuggestionPayload | unde
 	return suggestion;
 }
 
+/** One step of the harness plan (W2a). The client tracks status transitions. */
+export interface CopilotPlanStep {
+	/** Stable slug id, e.g. "apply-grading-changes". */
+	id: string;
+	/** Human-readable phase label, e.g. "Apply grading changes". */
+	label: string;
+}
+
 export type CopilotStreamEvent =
 	| { type: "thinking" }
+	| { type: "plan"; steps: CopilotPlanStep[] }
 	| { type: "tool-call"; tool: string; args: unknown }
 	| { type: "tool-result"; tool: string; ok: boolean; summary?: string }
 	| {
@@ -177,6 +186,79 @@ export type CopilotStreamEvent =
 /** Mutable per-session allowance counter (caller-owned, thread-scoped). */
 export interface CopilotSession {
 	autoApprovedCount: number;
+}
+
+// ---------------------------------------------------------------------------
+// Harness plan (W2a) — derived, not LLM-generated
+// ---------------------------------------------------------------------------
+
+/**
+ * Tool-family → phase mapping for the harness plan. The plan is DERIVED from
+ * the tool surface (v1): each known tool family maps to one phase label, and
+ * the plan is emitted once at stream start with every step pending. The
+ * client derives in_progress/completed from the tool-call events as they
+ * flow — the server only emits the initial plan.
+ */
+const PLAN_PHASES: ReadonlyArray<{ id: string; label: string; tools: readonly string[] }> = [
+	{
+		id: "execute-notebook",
+		label: "Execute notebook",
+		tools: ["process-submission", "process-all"],
+	},
+	{
+		id: "pre-evaluate",
+		label: "Pre-evaluate",
+		tools: ["pre-evaluate", "pre-evaluate-all", "draft-notes"],
+	},
+	{
+		id: "apply-grading-changes",
+		label: "Apply grading changes",
+		tools: ["set-rubric-item", "save-grading", "update-grade-dimension", "write-notes"],
+	},
+	{
+		id: "plagiarism-check",
+		label: "Plagiarism check",
+		tools: ["run-plagiarism-check"],
+	},
+	{
+		id: "analyze-code",
+		label: "Analyze code",
+		tools: ["analyze-code"],
+	},
+	{
+		id: "compare-to-key",
+		label: "Compare to reference key",
+		tools: ["compare-to-key"],
+	},
+	{
+		id: "check-library-docs",
+		label: "Check library docs",
+		tools: ["search-docs"],
+	},
+];
+
+/** Fallback phase for tools not in any known family. */
+const PLAN_FALLBACK_PHASE = { id: "gather-context", label: "Gather context" } as const;
+
+/**
+ * Derive the harness plan from the registered tool surface: one step per
+ * known tool family that has at least one registered tool, plus the fallback
+ * "Gather context" step when any registered tool is unmapped. Stable order —
+ * the phase list is fixed, so the plan is deterministic for a given tool
+ * surface. Exported for tests.
+ */
+export function derivePlanSteps(toolNames: Iterable<string>): CopilotPlanStep[] {
+	const names = new Set(toolNames);
+	const steps: CopilotPlanStep[] = [];
+	for (const phase of PLAN_PHASES) {
+		if (phase.tools.some((tool) => names.has(tool))) {
+			steps.push({ id: phase.id, label: phase.label });
+		}
+	}
+	if ([...names].some((name) => !PLAN_PHASES.some((phase) => phase.tools.includes(name)))) {
+		steps.push({ id: PLAN_FALLBACK_PHASE.id, label: PLAN_FALLBACK_PHASE.label });
+	}
+	return steps;
 }
 
 export interface StreamChatInput {
@@ -592,6 +674,15 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 	}
 
 	const aborted = () => input.signal?.aborted === true;
+
+	// W2a harness plan: emit ONCE at stream start, before the agent loop, with
+	// every step pending. The plan is DERIVED from the registered tool
+	// surface (tool-family → phase label); the client tracks status
+	// transitions from the tool-call events as they flow. An already-aborted
+	// run emits nothing (matches the abort-before-consumption contract).
+	if (aborted()) return;
+	yield { type: "plan", steps: derivePlanSteps(registry.list().map((tool) => tool.name)) };
+
 	let text = "";
 
 	outer: while (true) {

@@ -27,7 +27,7 @@
 import { z } from "zod";
 
 import { resolveAssignmentId } from "$lib/server/assignments";
-import { saveGrading, type SubmissionRecord } from "$lib/server/metadata";
+import { getSubmission, saveGrading, type SubmissionRecord } from "$lib/server/metadata";
 import type { CategoryFeedback } from "$lib/types/evaluation";
 import type { CopilotRegistry, CopilotTool, ToolContext } from "../registry";
 
@@ -127,6 +127,20 @@ function summarizeGrading(record: SubmissionRecord) {
 	};
 }
 
+/**
+ * Read the submission's grading state BEFORE a write, so the tool result can
+ * carry the PREVIOUS value of each changed field (the change-ledger analog of
+ * a git diff — the client builds the accept/reject list from previous → new).
+ * Returns null when the record is absent (the subsequent saveGrading call
+ * will throw the authoritative "not found" error).
+ */
+async function readGradingBeforeWrite(
+	assignmentId: string,
+	submissionId: string,
+): Promise<SubmissionRecord | null> {
+	return getSubmission(assignmentId, submissionId);
+}
+
 // ---------------------------------------------------------------------------
 // Tools
 // ---------------------------------------------------------------------------
@@ -144,12 +158,18 @@ const setRubricItemTool: CopilotTool<SetRubricItemArgs> = {
 			ctx,
 			"set-rubric-item",
 		);
+		// Change-ledger: capture the PREVIOUS selection for this criterion
+		// (undefined when unset) so the client can render the accept/reject
+		// diff for the toggle.
+		const before = await readGradingBeforeWrite(assignmentId, submissionId);
+		const previous = before?.grading?.rubric?.[args.criterionKey];
 		const record = await saveGrading(assignmentId, submissionId, {
 			rubric: { [args.criterionKey]: args.optionKey },
 		});
 		return {
 			...summarizeGrading(record),
 			rubricItem: { criterionKey: args.criterionKey, optionKey: args.optionKey },
+			previous,
 		};
 	},
 };
@@ -167,12 +187,18 @@ const updateGradeDimensionTool: CopilotTool<UpdateGradeDimensionArgs> = {
 			ctx,
 			"update-grade-dimension",
 		);
+		// Change-ledger: capture the PREVIOUS score for this dimension
+		// (undefined when unset) so the client can render the accept/reject
+		// diff for the slider change.
+		const before = await readGradingBeforeWrite(assignmentId, submissionId);
+		const previous = before?.grading?.dimensions?.[args.dimensionId];
 		const record = await saveGrading(assignmentId, submissionId, {
 			dimensions: { [args.dimensionId]: args.value },
 		});
 		return {
 			...summarizeGrading(record),
 			dimension: { dimensionId: args.dimensionId, value: args.value },
+			previous,
 		};
 	},
 };
@@ -186,8 +212,13 @@ const writeNotesTool: CopilotTool<WriteNotesArgs> = {
 	inputSchema: writeNotesArgsSchema,
 	run: async (args, ctx) => {
 		const { submissionId, assignmentId } = await resolveGradingTarget(args, ctx, "write-notes");
+		// Change-ledger: capture the PREVIOUS notes string (null when the
+		// submission has no grading state yet) so the client can render the
+		// accept/reject diff for the text edit.
+		const before = await readGradingBeforeWrite(assignmentId, submissionId);
+		const previous = before?.grading?.notes ?? null;
 		const record = await saveGrading(assignmentId, submissionId, { notes: args.notes });
-		return summarizeGrading(record);
+		return { ...summarizeGrading(record), previous };
 	},
 };
 
@@ -229,8 +260,19 @@ const saveGradingTool: CopilotTool<SaveGradingArgs> = {
 			persisted.push("notes");
 		}
 
+		// Change-ledger: capture the PREVIOUS value of every field about to be
+		// persisted (only the fields actually written), so the client can
+		// render the accept/reject diff per field. Absent grading state reads
+		// as the field's empty default ({} / null).
+		const before = await readGradingBeforeWrite(assignmentId, submissionId);
+		const previous: Record<string, unknown> = {};
+		if (args.rubric !== undefined) previous.rubric = before?.grading?.rubric ?? {};
+		if (args.dimensions !== undefined) previous.dimensions = before?.grading?.dimensions ?? {};
+		if (args.feedback !== undefined) previous.feedback = before?.grading?.feedback ?? {};
+		if (args.notes !== undefined) previous.notes = before?.grading?.notes ?? null;
+
 		const record = await saveGrading(assignmentId, submissionId, grading);
-		return { ...summarizeGrading(record), persisted };
+		return { ...summarizeGrading(record), persisted, previous };
 	},
 };
 
