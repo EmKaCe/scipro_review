@@ -18,6 +18,7 @@
  */
 
 import { base } from "$app/paths";
+import { saveGrading, type GradingPatch } from "$lib/services/submissions-api.js";
 
 // ---------------------------------------------------------------------------
 // Stream lifecycle
@@ -74,12 +75,30 @@ export interface CopilotMessage {
 	summary?: string;
 	/** Run id of the suspended run (approval). */
 	runId?: string;
-	/** Tool call id awaiting a decision (approval). */
+	/** A tool call awaiting a decision (approval). */
 	toolCallId?: string;
 	/** Whether the approval request was "ask" or "blocked". */
 	approvalDecision?: "ask" | "blocked";
 	/** Suggestion payload (suggestion / message with suggestion). */
 	suggestion?: CopilotSuggestion;
+}
+
+/** One step of the harness plan (W2a) — status tracked client-side. */
+export interface CopilotPlanStep {
+	id: string;
+	label: string;
+	status: "pending" | "in_progress" | "completed" | "error";
+}
+
+/** One grading-state change for the change ledger (W2d). */
+export interface CopilotChange {
+	id: string;
+	kind: "rubric" | "dimension" | "notes";
+	field: string;
+	oldValue: unknown;
+	newValue: unknown;
+	submissionId?: string;
+	status: "pending" | "accepted" | "rejected";
 }
 
 export interface PendingSuggestion {
@@ -163,6 +182,8 @@ export const apiMode: { value: boolean } = {
 /** Known SSE event names (used to parse bare `name\ndata\n\n` frames). */
 const SSE_EVENT_NAMES: readonly string[] = [
 	"thinking",
+	"plan",
+	"change",
 	"tool-call",
 	"tool-result",
 	"approval-request",
@@ -285,6 +306,9 @@ export function createCopilotStore(options?: {
 	let pendingSuggestions = $state<PendingSuggestion[]>([]);
 	let pendingApproval = $state<PendingApproval | null>(null);
 	let inputValue = $state("");
+	// Harness surface (W2a/W2d): the plan checklist + the change ledger.
+	let planSteps = $state<CopilotPlanStep[]>([]);
+	let changes = $state<CopilotChange[]>([]);
 	// Thread surface: the server is the source of truth for the
 	// thread list; localStorage holds only the ACTIVE thread id.
 	let threads = $state<CopilotThreadMeta[]>([]);
@@ -325,6 +349,93 @@ export function createCopilotStore(options?: {
 		{ command: "/autofix", description: "Fix an error in a cell" },
 		{ command: "/compare", description: "Compare student approach to key" },
 	];
+
+	// -----------------------------------------------------------------------
+	// Harness plan (W2a) — tool-family → phase mapping, mirrored from the
+	// server's derivePlanSteps so the client can advance the checklist.
+	// -----------------------------------------------------------------------
+
+	const PLAN_PHASE_BY_TOOL: Record<string, string> = {
+		"process-submission": "execute-notebook",
+		"process-all": "execute-notebook",
+		"pre-evaluate": "pre-evaluate",
+		"pre-evaluate-all": "pre-evaluate",
+		"draft-notes": "pre-evaluate",
+		"set-rubric-item": "apply-grading-changes",
+		"save-grading": "apply-grading-changes",
+		"update-grade-dimension": "apply-grading-changes",
+		"write-notes": "apply-grading-changes",
+		"run-plagiarism-check": "plagiarism-check",
+		"analyze-code": "analyze-code",
+		"compare-to-key": "compare-to-key",
+		"search-docs": "check-library-docs",
+	};
+	const PLAN_FALLBACK_PHASE_ID = "gather-context";
+
+	/** Advance the plan checklist for one tool call (in_progress) or result (completed/error). */
+	function advancePlan(tool: string, status: "in_progress" | "completed" | "error"): void {
+		if (planSteps.length === 0) return;
+		const phaseId = PLAN_PHASE_BY_TOOL[tool] ?? PLAN_FALLBACK_PHASE_ID;
+		const step = planSteps.find((s) => s.id === phaseId);
+		if (!step) return;
+		// Never regress a completed/error step back to in_progress (a second
+		// tool call in the same phase keeps the phase in_progress only if it
+		// was pending).
+		if (status === "in_progress" && (step.status === "completed" || step.status === "error")) {
+			return;
+		}
+		planSteps = planSteps.map((s) => (s.id === phaseId ? { ...s, status } : s));
+	}
+
+	/** Reset the harness surface for a new turn. */
+	function resetHarness(): void {
+		planSteps = [];
+		changes = [];
+	}
+
+	// -----------------------------------------------------------------------
+	// Change ledger (W2d) — accept/reject per change; reject reverts via the
+	// same save API the teacher's Save action uses.
+	// -----------------------------------------------------------------------
+
+	/** Mark one change accepted (the write is already persisted — no-op). */
+	function acceptChange(changeId: string): void {
+		changes = changes.map((c) => (c.id === changeId ? { ...c, status: "accepted" } : c));
+	}
+
+	/** Mark every pending change accepted. */
+	function acceptAllChanges(): void {
+		changes = changes.map((c) => (c.status === "pending" ? { ...c, status: "accepted" } : c));
+	}
+
+	/**
+	 * Reject one change: write the OLD value back through the same save API
+	 * the teacher's Save action uses, then mark the entry rejected. Returns
+	 * false when the change is not pending or the revert fails.
+	 */
+	async function rejectChange(changeId: string): Promise<boolean> {
+		const change = changes.find((c) => c.id === changeId);
+		if (!change || change.status !== "pending") return false;
+		const targetId = change.submissionId || submissionId;
+		if (!targetId) return false;
+		try {
+			const patch: GradingPatch = {};
+			if (change.kind === "rubric") {
+				// Revert a rubric selection: set the criterion back to the
+				// old option (null/undefined → clear the selection).
+				patch.rubric = { [change.field]: (change.oldValue as string) ?? "" };
+			} else if (change.kind === "dimension") {
+				patch.dimensions = { [change.field]: (change.oldValue as number) ?? 0 };
+			} else if (change.kind === "notes") {
+				patch.notes = (change.oldValue as string) ?? "";
+			}
+			await saveGrading(targetId, patch, assignmentId || undefined);
+			changes = changes.map((c) => (c.id === changeId ? { ...c, status: "rejected" } : c));
+			return true;
+		} catch {
+			return false;
+		}
+	}
 
 	function appendMessage(message: CopilotMessage): void {
 		messages = [...messages, message];
@@ -407,9 +518,41 @@ export function createCopilotStore(options?: {
 			case "thinking":
 				// No payload — the typing indicator is driven by isStreaming.
 				break;
+			case "plan": {
+				const payload = (data ?? {}) as { steps?: { id?: string; label?: string }[] };
+				const steps = payload.steps ?? [];
+				planSteps = steps
+					.filter((s) => typeof s.id === "string" && typeof s.label === "string")
+					.map((s) => ({ id: s.id!, label: s.label!, status: "pending" as const }));
+				break;
+			}
+			case "change": {
+				const payload = (data ?? {}) as {
+					changes?: { kind?: string; field?: string; oldValue?: unknown; newValue?: unknown; submissionId?: string }[];
+				};
+				const incoming = payload.changes ?? [];
+				const ledger: CopilotChange[] = incoming
+					.filter(
+						(c) =>
+							(c.kind === "rubric" || c.kind === "dimension" || c.kind === "notes") &&
+							typeof c.field === "string",
+					)
+					.map((c) => ({
+						id: crypto.randomUUID(),
+						kind: c.kind as CopilotChange["kind"],
+						field: c.field!,
+						oldValue: c.oldValue ?? null,
+						newValue: c.newValue ?? null,
+						submissionId: c.submissionId,
+						status: "pending" as const,
+					}));
+				if (ledger.length > 0) changes = [...changes, ...ledger];
+				break;
+			}
 			case "tool-call": {
 				const payload = (data ?? {}) as { tool?: string; args?: unknown };
 				const tool = payload.tool ?? "unknown";
+				advancePlan(tool, "in_progress");
 				appendMessage(
 					assistantMessage(`Running tool: ${tool}`, "tool-call", {
 						tool,
@@ -422,6 +565,7 @@ export function createCopilotStore(options?: {
 				const payload = (data ?? {}) as { tool?: string; ok?: boolean; summary?: string };
 				const ok = payload.ok === true;
 				const summary = payload.summary ?? (ok ? "Tool completed" : "Tool failed");
+				if (payload.tool) advancePlan(payload.tool, ok ? "completed" : "error");
 				appendMessage(
 					assistantMessage(summary, "tool-result", {
 						tool: payload.tool,
@@ -594,6 +738,7 @@ export function createCopilotStore(options?: {
 
 	async function sendMessage(content: string): Promise<void> {
 		if (isStreaming) return;
+		resetHarness();
 		appendMessage({
 			id: crypto.randomUUID(),
 			role: "teacher",
@@ -858,6 +1003,7 @@ export function createCopilotStore(options?: {
 		pendingSuggestions = [];
 		pendingApproval = null;
 		currentTextMessageId = null;
+		resetHarness();
 	}
 
 	return {
@@ -872,6 +1018,12 @@ export function createCopilotStore(options?: {
 		},
 		get pendingApproval() {
 			return pendingApproval;
+		},
+		get planSteps() {
+			return planSteps;
+		},
+		get changes() {
+			return changes;
 		},
 		get inputValue() {
 			return inputValue;
@@ -896,6 +1048,9 @@ export function createCopilotStore(options?: {
 		approve,
 		applySuggestion,
 		dismissSuggestion,
+		acceptChange,
+		acceptAllChanges,
+		rejectChange,
 		clearMessages,
 		loadThreads,
 		openThread,

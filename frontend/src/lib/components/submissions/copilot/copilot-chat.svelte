@@ -2,6 +2,8 @@
 	import Markdown from "../Markdown.svelte";
 	import ApprovalCard from "./approval-card.svelte";
 	import SuggestionCard from "./suggestion-card.svelte";
+	import PlanCard from "./plan-card.svelte";
+	import ChangeLedger from "./change-ledger.svelte";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import Wrench from "@lucide/svelte/icons/wrench";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
@@ -11,6 +13,8 @@
 	import type {
 		CopilotMessage,
 		CopilotSuggestion,
+		CopilotPlanStep,
+		CopilotChange,
 		PendingApproval,
 		PendingSuggestion,
 	} from "../copilot-store.svelte.js";
@@ -24,6 +28,10 @@
 		pendingApproval: PendingApproval | null;
 		/** Suggestions still actionable (drives apply/dismiss visibility). */
 		pendingSuggestions: PendingSuggestion[];
+		/** Harness plan checklist (W2a). */
+		planSteps: CopilotPlanStep[];
+		/** Change ledger entries (W2d). */
+		changes: CopilotChange[];
 		/** True in assignment scope: no per-submission context, assignment prompts. */
 		assignmentScope: boolean;
 		/** Slash commands offered as empty-state hint chips (store's list). */
@@ -36,6 +44,12 @@
 		onApply: (suggestion: CopilotSuggestion) => void;
 		/** Dismiss a suggestion without applying. */
 		onDismiss: (suggestion: CopilotSuggestion) => void;
+		/** Accept one change-ledger entry. */
+		onAcceptChange: (changeId: string) => void;
+		/** Reject one change-ledger entry (reverts via the save API). */
+		onRejectChange: (changeId: string) => void;
+		/** Accept every pending change-ledger entry. */
+		onAcceptAllChanges: () => void;
 		/** Fill the input with an assignment-scope prompt hint (no send). */
 		onSelectHint: (hint: string) => void;
 		/** Fill the input with a slash command + trailing space (no send). */
@@ -47,12 +61,17 @@
 		isStreaming,
 		pendingApproval,
 		pendingSuggestions,
+		planSteps,
+		changes,
 		assignmentScope,
 		availableCommands,
 		onApprove,
 		onDeny,
 		onApply,
 		onDismiss,
+		onAcceptChange,
+		onRejectChange,
+		onAcceptAllChanges,
 		onSelectHint,
 		onSelectCommand,
 	}: Props = $props();
@@ -140,6 +159,7 @@
 			</div>
 		</div>
 	{:else}
+		<PlanCard steps={planSteps} />
 		{#each messages as msg (msg.id)}
 			{#if msg.kind === "tool-call"}
 				<div class="copilot-card tool-call-card">
@@ -218,6 +238,12 @@
 				</div>
 			{/if}
 		{/each}
+		<ChangeLedger
+			{changes}
+			onAccept={onAcceptChange}
+			onReject={onRejectChange}
+			onAcceptAll={onAcceptAllChanges}
+		/>
 	{/if}
 
 	{#if isStreaming}

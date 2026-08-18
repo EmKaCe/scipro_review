@@ -65,6 +65,7 @@ import {
 	__resetAgentForTests,
 	approveRun,
 	derivePlanSteps,
+	extractChangesFromToolResult,
 	registry,
 	streamChat,
 	suggestionResult,
@@ -713,5 +714,81 @@ describe("thread-scoped working memory (Mastra audit §2)", () => {
 		const thread = await store.getThreadById({ threadId, resourceId: "s1" });
 		expect(thread).not.toBeNull();
 		expect(thread?.metadata?.workingMemory).toBe(wmContent);
+	});
+});
+
+describe("change-ledger extraction (W2d)", () => {
+	it("maps set-rubric-item results to a rubric change with previous", () => {
+		const changes = extractChangesFromToolResult("set-rubric-item", {
+			submissionId: "s1",
+			rubricItem: { criterionKey: "clarity", optionKey: "good" },
+			previous: "ok",
+		});
+		expect(changes).toEqual([
+			{
+				kind: "rubric",
+				field: "clarity",
+				oldValue: "ok",
+				newValue: "good",
+				submissionId: "s1",
+			},
+		]);
+	});
+
+	it("maps update-grade-dimension results to a dimension change", () => {
+		const changes = extractChangesFromToolResult("update-grade-dimension", {
+			submissionId: "s1",
+			dimension: { dimensionId: "code_quality_design", value: 4 },
+			previous: 3,
+		});
+		expect(changes).toEqual([
+			{
+				kind: "dimension",
+				field: "code_quality_design",
+				oldValue: 3,
+				newValue: 4,
+				submissionId: "s1",
+			},
+		]);
+	});
+
+	it("maps write-notes results to a notes change", () => {
+		const changes = extractChangesFromToolResult("write-notes", {
+			submissionId: "s1",
+			notes: "new notes",
+			previous: "old notes",
+		});
+		expect(changes).toEqual([
+			{ kind: "notes", field: "notes", oldValue: "old notes", newValue: "new notes", submissionId: "s1" },
+		]);
+	});
+
+	it("maps save-grading results to per-field changes", () => {
+		const changes = extractChangesFromToolResult("save-grading", {
+			submissionId: "s1",
+			rubric: { clarity: "good" },
+			dimensions: { code_quality_design: 4 },
+			notes: "hi",
+			previous: {
+				rubric: { clarity: "ok" },
+				dimensions: { code_quality_design: 3 },
+				notes: null,
+			},
+		});
+		expect(changes).toEqual([
+			{ kind: "rubric", field: "clarity", oldValue: "ok", newValue: "good", submissionId: "s1" },
+			{ kind: "dimension", field: "code_quality_design", oldValue: 3, newValue: 4, submissionId: "s1" },
+			{ kind: "notes", field: "notes", oldValue: null, newValue: "hi", submissionId: "s1" },
+		]);
+	});
+
+	it("returns [] for non-grading tools; grading results without previous still yield entries (oldValue null)", () => {
+		expect(extractChangesFromToolResult("analyze-code", { ok: true })).toEqual([]);
+		// A grading result without `previous` (older server) still yields a
+		// ledger entry — oldValue falls back to null ("— → y").
+		expect(extractChangesFromToolResult("set-rubric-item", { rubricItem: { criterionKey: "x", optionKey: "y" } })).toEqual([
+			{ kind: "rubric", field: "x", oldValue: null, newValue: "y", submissionId: undefined },
+		]);
+		expect(extractChangesFromToolResult("save-grading", { rubric: {} })).toEqual([]);
 	});
 });

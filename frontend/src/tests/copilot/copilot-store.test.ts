@@ -999,5 +999,165 @@ describe("thread management (T.3)", () => {
 		await store2.restoreActiveThread();
 		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
 		expect(store2.activeThread).toBeNull();
-	});
+		});
+
+		describe("harness surface (W2a/W2d) — plan checklist + change ledger", () => {
+		it("renders the plan from the plan event and advances status on tool events", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("plan", {
+					steps: [
+						{ id: "execute-notebook", label: "Execute notebook" },
+						{ id: "apply-grading-changes", label: "Apply grading changes" },
+					],
+				}),
+				sseFrame("tool-call", { tool: "process-submission", args: {} }),
+				sseFrame("tool-result", { tool: "process-submission", ok: true, summary: "Executed" }),
+				sseFrame("tool-call", { tool: "set-rubric-item", args: {} }),
+				sseFrame("tool-result", { tool: "set-rubric-item", ok: true, summary: "Set" }),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Grade it");
+
+			expect(store.planSteps).toEqual([
+				{ id: "execute-notebook", label: "Execute notebook", status: "completed" },
+				{ id: "apply-grading-changes", label: "Apply grading changes", status: "completed" },
+			]);
+		});
+
+		it("marks a failed tool phase as error", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("plan", { steps: [{ id: "analyze-code", label: "Analyze code" }] }),
+				sseFrame("tool-call", { tool: "analyze-code", args: {} }),
+				sseFrame("tool-result", { tool: "analyze-code", ok: false, summary: "Failed" }),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Analyze");
+
+			expect(store.planSteps[0]?.status).toBe("error");
+		});
+
+		it("builds ledger entries from change events with old → new", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("change", {
+					changes: [
+						{
+							kind: "dimension",
+							field: "code_quality_design",
+							oldValue: 3,
+							newValue: 4,
+							submissionId: "sub-42",
+						},
+						{ kind: "rubric", field: "clarity", oldValue: null, newValue: "good" },
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Apply");
+
+			expect(store.changes).toHaveLength(2);
+			expect(store.changes[0]).toMatchObject({
+				kind: "dimension",
+				field: "code_quality_design",
+				oldValue: 3,
+				newValue: 4,
+				submissionId: "sub-42",
+				status: "pending",
+			});
+			expect(store.changes[1]).toMatchObject({
+				kind: "rubric",
+				field: "clarity",
+				oldValue: null,
+				newValue: "good",
+			});
+		});
+
+		it("accept marks a change accepted; acceptAll marks every pending change", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("change", {
+					changes: [
+						{ kind: "dimension", field: "a", oldValue: 1, newValue: 2 },
+						{ kind: "notes", field: "notes", oldValue: null, newValue: "hi" },
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Apply");
+
+			store.acceptChange(store.changes[0]!.id);
+			expect(store.changes[0]?.status).toBe("accepted");
+			expect(store.changes[1]?.status).toBe("pending");
+
+			store.acceptAllChanges();
+			expect(store.changes[1]?.status).toBe("accepted");
+		});
+
+		it("reject reverts via the save API with the old value", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("change", {
+					changes: [
+						{
+							kind: "dimension",
+							field: "code_quality_design",
+							oldValue: 3,
+							newValue: 4,
+							submissionId: "sub-42",
+						},
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Apply");
+
+			// The reject triggers a save POST — mock it.
+			fetchMock.mockResolvedValueOnce(jsonResponse({ ok: true }));
+			const ok = await store.rejectChange(store.changes[0]!.id);
+			expect(ok).toBe(true);
+			expect(store.changes[0]?.status).toBe("rejected");
+
+			const saveCall = fetchMock.mock.calls[1] as [RequestInfo | URL, RequestInit?];
+			expect(String(saveCall[0])).toContain("/api/submissions/sub-42/save");
+			expect(JSON.parse((saveCall[1]?.body as string) ?? "{}")).toEqual({
+				dimensions: { code_quality_design: 3 },
+			});
+		});
+
+		it("ignores change events without a valid kind/field (additive contract)", async () => {
+			copilot.apiMode.value = true;
+			const chat = openSseResponse(
+				sseFrame("change", {
+					changes: [
+						{ kind: "bogus", field: "x", oldValue: 1, newValue: 2 },
+						{ kind: "dimension", oldValue: 1, newValue: 2 },
+					],
+				}),
+				sseFrame("done", {}),
+			);
+			fetchMock.mockResolvedValue(chat.response);
+
+			const store = copilot.createCopilotStore({ submissionId: "sub-42" });
+			await store.sendMessage("Apply");
+
+			expect(store.changes).toHaveLength(0);
+		});
+		});
 });

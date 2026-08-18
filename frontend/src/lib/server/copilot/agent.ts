@@ -159,9 +159,24 @@ export interface CopilotPlanStep {
 	label: string;
 }
 
+/** One grading-state change for the change ledger (W2d). */
+export interface CopilotChange {
+	/** What kind of grading state changed. */
+	kind: "rubric" | "dimension" | "notes";
+	/** Field key: criterion key, dimension id, or "notes". */
+	field: string;
+	/** Value before the write (null when unset). */
+	oldValue: unknown;
+	/** Value after the write. */
+	newValue: unknown;
+	/** Submission the change applies to (from the tool result). */
+	submissionId?: string;
+}
+
 export type CopilotStreamEvent =
 	| { type: "thinking" }
 	| { type: "plan"; steps: CopilotPlanStep[] }
+	| { type: "change"; changes: CopilotChange[] }
 	| { type: "tool-call"; tool: string; args: unknown }
 	| { type: "tool-result"; tool: string; ok: boolean; summary?: string }
 	| {
@@ -239,6 +254,100 @@ const PLAN_PHASES: ReadonlyArray<{ id: string; label: string; tools: readonly st
 
 /** Fallback phase for tools not in any known family. */
 const PLAN_FALLBACK_PHASE = { id: "gather-context", label: "Gather context" } as const;
+
+/**
+ * Extract change-ledger entries from a grading write tool's result (W2d).
+ * The grading tools return `previous` alongside the new value; this maps
+ * that pair to the structured change list the client renders as the
+ * accept/reject ledger. Returns [] for non-grading tools or results
+ * without `previous` (older server / other tools) — the ledger is purely
+ * additive and never blocks the stream.
+ */
+export function extractChangesFromToolResult(
+	toolName: string,
+	result: unknown,
+): CopilotChange[] {
+	if (result === null || typeof result !== "object" || Array.isArray(result)) return [];
+	const r = result as Record<string, unknown>;
+	const submissionId = typeof r.submissionId === "string" ? r.submissionId : undefined;
+
+	if (toolName === "set-rubric-item") {
+		const item = r.rubricItem as { criterionKey?: string; optionKey?: string } | undefined;
+		if (!item?.criterionKey || typeof item.optionKey !== "string") return [];
+		return [
+			{
+				kind: "rubric",
+				field: item.criterionKey,
+				oldValue: r.previous ?? null,
+				newValue: item.optionKey,
+				submissionId,
+			},
+		];
+	}
+	if (toolName === "update-grade-dimension") {
+		const dim = r.dimension as { dimensionId?: string; value?: number } | undefined;
+		if (!dim?.dimensionId || typeof dim.value !== "number") return [];
+		return [
+			{
+				kind: "dimension",
+				field: dim.dimensionId,
+				oldValue: r.previous ?? null,
+				newValue: dim.value,
+				submissionId,
+			},
+		];
+	}
+	if (toolName === "write-notes") {
+		if (typeof r.notes !== "string") return [];
+		return [
+			{
+				kind: "notes",
+				field: "notes",
+				oldValue: r.previous ?? null,
+				newValue: r.notes,
+				submissionId,
+			},
+		];
+	}
+	if (toolName === "save-grading") {
+		// save-grading returns `previous` as a map of field -> pre-write value
+		// (only for the fields actually persisted) plus the new values in the
+		// grading summary (rubric/dimensions/notes).
+		const previous = (r.previous ?? {}) as Record<string, unknown>;
+		const changes: CopilotChange[] = [];
+		const rubric = (r.rubric ?? {}) as Record<string, string>;
+		for (const [criterionKey, optionKey] of Object.entries(rubric)) {
+			changes.push({
+				kind: "rubric",
+				field: criterionKey,
+				oldValue: (previous.rubric as Record<string, string> | undefined)?.[criterionKey] ?? null,
+				newValue: optionKey,
+				submissionId,
+			});
+		}
+		const dimensions = (r.dimensions ?? {}) as Record<string, number>;
+		for (const [dimensionId, value] of Object.entries(dimensions)) {
+			changes.push({
+				kind: "dimension",
+				field: dimensionId,
+				oldValue: (previous.dimensions as Record<string, number> | undefined)?.[dimensionId] ?? null,
+				newValue: value,
+				submissionId,
+			});
+		}
+		if (typeof r.notes === "string") {
+			changes.push({
+				kind: "notes",
+				field: "notes",
+				oldValue: previous.notes ?? null,
+				newValue: r.notes,
+				submissionId,
+			});
+		}
+		return changes;
+	}
+	return [];
+}
 
 /**
  * Derive the harness plan from the registered tool surface: one step per
@@ -726,6 +835,18 @@ async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEve
 								ok: true,
 								summary: summarizeToolResult(result),
 							};
+							// W2d change ledger: grading write tools return
+							// `previous`; emit the structured change list so
+							// the client can render the accept/reject ledger.
+							// Non-grading tools / missing previous → [] (no
+							// event emitted — the ledger is additive).
+							const changes = extractChangesFromToolResult(
+								chunk.payload.toolName,
+								result,
+							);
+							if (changes.length > 0) {
+								yield { type: "change", changes };
+							}
 						} else {
 							yield {
 								type: "tool-result",

@@ -204,12 +204,17 @@
 			isStreaming={copilot.isStreaming}
 			pendingApproval={copilot.pendingApproval}
 			pendingSuggestions={copilot.pendingSuggestions}
+			planSteps={copilot.planSteps}
+			changes={copilot.changes}
 			{assignmentScope}
 			availableCommands={copilot.availableCommands}
 			onApprove={() => void copilot.approve("approve")}
 			onDeny={() => void copilot.approve("deny")}
 			onApply={handleApply}
 			onDismiss={handleDismiss}
+			onAcceptChange={(changeId) => copilot.acceptChange(changeId)}
+			onRejectChange={(changeId) => void copilot.rejectChange(changeId)}
+			onAcceptAllChanges={() => copilot.acceptAllChanges()}
 			onSelectHint={selectHint}
 			onSelectCommand={selectCommand}
 		/>
