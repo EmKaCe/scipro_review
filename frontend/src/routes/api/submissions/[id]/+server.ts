@@ -30,6 +30,10 @@ import { getSubmissionNotebookAbsolutePath } from "$lib/server/file-service";
 import { getSubmission, removeSubmission } from "$lib/server/metadata";
 import { removeStudentFromPlagiarism } from "$lib/server/plagiarism/cache";
 import { readResults, clearResult } from "$lib/server/results-store";
+import {
+	loadCohortNorms,
+	overTickFromStored,
+} from "$lib/server/copilot/over-tick";
 import type { CellInfo } from "$lib/types/submissions";
 
 export async function GET(event: RequestEvent): Promise<Response> {
@@ -71,8 +75,12 @@ export async function GET(event: RequestEvent): Promise<Response> {
 					: null,
 			}
 		: undefined;
+	// Over-tick guard (review-diff workflow): full advisory result for the
+	// review-page extras panel. Absent norms degrade to no flags.
+	const norms = await loadCohortNorms(assignmentId).catch(() => null);
+	const overTick = norms ? overTickFromStored(stored, norms) : null;
 
-	return json({ ...record, cells, fixedCells, preEval });
+	return json({ ...record, cells, fixedCells, preEval, overTick });
 }
 
 export async function DELETE(event: RequestEvent): Promise<Response> {

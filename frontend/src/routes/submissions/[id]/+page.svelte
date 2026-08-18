@@ -119,6 +119,8 @@
 	let activeTab = $state<Tab>("rubric");
 	/** Hidden file input backing the header Import button (teacher YAML, 3i). */
 	let importInput: HTMLInputElement | undefined = $state(undefined);
+	/** Review-extras panel (over-tick guard): collapsed by default. */
+	let overTickOpen = $state(false);
 
 	// -----------------------------------------------------------------------
 	// Non-destructive autofix view state (3c.3): view set is EPHEMERAL
@@ -934,6 +936,63 @@
 					onApplyGradeSuggestion={handleApplyPreEval}
 				/>
 
+				<!-- Review extras (over-tick guard, review-diff workflow):
+				     advisory panel listing pipeline-checked items that exceed
+				     the cohort norm, with the professor's typical count for
+				     context. Never blocks export — pruning is deliberate. -->
+				{#if submission.overTick && (submission.overTick.overTickCategories.length > 0 || submission.overTick.totalFlagged || submission.overTick.overlapNote)}
+					{@const overTick = submission.overTick}
+					{@const catTitle = (key: string) =>
+						rubric?.categories.find((c) => c.key === key)?.category.title ?? key}
+					<div class="over-tick-panel">
+						<button
+							type="button"
+							class="over-tick-toggle"
+							aria-expanded={overTickOpen}
+							onclick={() => (overTickOpen = !overTickOpen)}
+						>
+							<TriangleAlert size={13} />
+							<span class="over-tick-title">Review extras</span>
+							<span class="over-tick-hint">
+								{overTick.overTickCategories.length} categor{overTick.overTickCategories.length ===
+								1
+									? "y"
+									: "ies"} over the cohort norm
+							</span>
+							<span class="over-tick-chevron">{overTickOpen ? "▾" : "▸"}</span>
+						</button>
+						{#if overTickOpen}
+							<div class="over-tick-body">
+								{#if overTick.totalFlagged}
+									<p class="over-tick-note over-tick-warn">
+										Pipeline checked {overTick.total} items — well above the typical
+										review (cohort median {overTick.median}). Verify the selection
+										before accepting.
+									</p>
+								{/if}
+								{#if overTick.overlapNote}
+									<p class="over-tick-note">{overTick.overlapNote}</p>
+								{/if}
+								{#each overTick.overTickCategories as cat (cat.categoryKey)}
+									<div class="over-tick-cat">
+										<p class="over-tick-cat-head">
+											<strong>{catTitle(cat.categoryKey)}</strong>
+											<span class="over-tick-cat-count">
+												pipeline checked {cat.count}, typical {cat.median} — review
+											</span>
+										</p>
+										<ul class="over-tick-items">
+											{#each cat.items as item (item)}
+												<li>{item}</li>
+											{/each}
+										</ul>
+									</div>
+								{/each}
+							</div>
+						{/if}
+					</div>
+				{/if}
+
 				<!-- Sticky page-level counter for the derived view: only visible
 				     while at least one cell shows its auto-fixed version. -->
 				{#if fixedView.size > 0}
@@ -1511,6 +1570,84 @@
 		border: 1px solid var(--border);
 		border-radius: var(--radius-md);
 		background: var(--bg);
+	}
+
+	/* ── Review extras panel (over-tick guard, review-diff workflow) ── */
+	.over-tick-panel {
+		margin: 12px;
+		border: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in oklch, var(--destructive) 4%, var(--bg));
+		overflow: hidden;
+	}
+	.over-tick-toggle {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		width: 100%;
+		padding: 8px 12px;
+		background: none;
+		border: none;
+		cursor: pointer;
+		color: var(--destructive);
+		text-align: left;
+	}
+	.over-tick-toggle:hover {
+		background: color-mix(in oklch, var(--destructive) 6%, transparent);
+	}
+	.over-tick-title {
+		font-size: 12px;
+		font-weight: 600;
+		color: var(--fg);
+	}
+	.over-tick-hint {
+		margin-left: auto;
+		font-size: 11px;
+		color: var(--muted-foreground);
+	}
+	.over-tick-chevron {
+		font-size: 11px;
+		color: var(--muted-foreground);
+	}
+	.over-tick-body {
+		padding: 4px 12px 12px;
+		border-top: 1px solid color-mix(in oklch, var(--destructive) 15%, transparent);
+	}
+	.over-tick-note {
+		margin: 8px 0 0;
+		padding: 7px 9px;
+		border-radius: var(--radius-sm);
+		background: color-mix(in oklch, var(--info) 8%, transparent);
+		border: 1px solid color-mix(in oklch, var(--info) 20%, transparent);
+		font-size: 12px;
+		line-height: 1.45;
+		color: var(--fg);
+	}
+	.over-tick-note.over-tick-warn {
+		background: color-mix(in oklch, var(--destructive) 8%, transparent);
+		border-color: color-mix(in oklch, var(--destructive) 25%, transparent);
+	}
+	.over-tick-cat {
+		margin-top: 10px;
+	}
+	.over-tick-cat-head {
+		display: flex;
+		align-items: baseline;
+		gap: 8px;
+		font-size: 12px;
+		color: var(--fg);
+	}
+	.over-tick-cat-count {
+		font-size: 11px;
+		color: var(--destructive);
+		font-variant-numeric: tabular-nums;
+	}
+	.over-tick-items {
+		margin: 4px 0 0;
+		padding-left: 18px;
+		font-size: 12px;
+		line-height: 1.5;
+		color: var(--muted-foreground);
 	}
 	.notes-card-header {
 		display: flex;

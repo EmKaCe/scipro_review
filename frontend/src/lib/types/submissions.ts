@@ -122,6 +122,48 @@ export interface PreEvalData {
 }
 
 // ---------------------------------------------------------------------------
+// Over-tick guard (review-diff workflow, signed off 2026-08-18)
+// ---------------------------------------------------------------------------
+
+/**
+ * One category flagged by the over-tick guard (Signal B): the pipeline
+ * checked more items in this category than the cohort norm tolerates.
+ * `categoryKey` is the pipeline's snake_case criteria key; `median` /
+ * `threshold` come from the committed cohort norms.
+ */
+export interface OverTickCategory {
+	/** Pipeline category key (criteria YAML snake_case, e.g. "plotting_visualization"). */
+	categoryKey: string;
+	/** Pipeline checked-item count in this category. */
+	count: number;
+	/** Cohort median for the category (professor's typical count). */
+	median: number;
+	/** Flag threshold = median + 3. */
+	threshold: number;
+	/** The pipeline-checked sub-point texts in this category (the extras to review). */
+	items: string[];
+}
+
+/**
+ * Advisory over-tick flags for one submission, computed server-side from
+ * the committed cohort norms (data/cohort_norms/<assignment>.yaml) and the
+ * stored pipeline rubric selections. The flag NEVER blocks export — it is
+ * teacher-review input (Q3 sign-off).
+ */
+export interface OverTickResult {
+	/** Signal A: total checked count exceeds max(median*1.5, median+10). */
+	totalFlagged: boolean;
+	/** Signal B: categories whose count exceeds category_median + 3. */
+	overTickCategories: OverTickCategory[];
+	/** Signal C: informational note when the count looks normal but overlap with a typical review is < 60%. */
+	overlapNote?: string;
+	/** Total pipeline-checked item count. */
+	total: number;
+	/** Cohort median total (the professor's typical checked count). */
+	median: number;
+}
+
+// ---------------------------------------------------------------------------
 // Submission metadata
 // ---------------------------------------------------------------------------
 
@@ -159,6 +201,15 @@ export interface SubmissionMeta {
 	 * field) — such rows only match the "All" confidence filter.
 	 */
 	gradingConfidence?: GradingConfidence;
+	/**
+	 * Advisory over-tick flags (review-diff workflow): categories where the
+	 * pipeline checked more items than the cohort norm tolerates (Signal B),
+	 * enriched from the stored pre-eval/postProcessed envelope by
+	 * GET /api/submissions. Absent when no norm is committed for the
+	 * assignment or the submission carries no rubric selections. The flag
+	 * never blocks export — it is teacher-review input.
+	 */
+	overTickCategories?: OverTickCategory[];
 	/** ISO timestamp of upload. */
 	createdAt: string;
 	/** ISO timestamp of last status change. */
@@ -185,6 +236,14 @@ export interface SubmissionDetail extends SubmissionMeta {
 	 * comparison data yet — the review UI keeps its pending/neutral state.
 	 */
 	preEval?: PreEvalData;
+	/**
+	 * Advisory over-tick flags (review-diff workflow): full result —
+	 * Signal A total flag, Signal B per-category extras, Signal C overlap
+	 * note — computed server-side from the committed cohort norms and the
+	 * stored pipeline selections. Absent when no norm is committed or the
+	 * submission carries no rubric selections.
+	 */
+	overTick?: OverTickResult;
 	/** Reference key cells for comparison (loaded from assignment materials). */
 	referenceCells?: CellInfo[];
 	/** Persisted grading state (rubric/dimensions/feedback/notes) — from the record. */

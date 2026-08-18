@@ -13,6 +13,7 @@
 	import Upload from "@lucide/svelte/icons/upload";
 	import ShieldCheck from "@lucide/svelte/icons/shield-check";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
+	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import Loader from "@lucide/svelte/icons/loader";
 	import type { Snippet } from "svelte";
@@ -534,6 +535,17 @@
 									Auto-fix available
 								</span>
 							{/if}
+							{#if sub.overTickCategories && sub.overTickCategories.length > 0}
+								<span
+									class="over-tick-badge"
+									title={`Pipeline checked more items than the cohort norm in ${sub.overTickCategories
+										.map((c) => c.categoryKey)
+										.join(", ")} — open the submission to review the extras`}
+								>
+									<TriangleAlert size={11} />
+									Over-tick
+								</span>
+							{/if}
 						</td>
 						<td class="col-preeval cell-muted">
 							{#if preEvalRunning && (sub.status === "executed" || sub.status === "error")}
@@ -800,6 +812,23 @@
 		background: color-mix(in oklch, var(--warning) 18%, transparent);
 		color: var(--warning);
 		border: 1px solid color-mix(in oklch, var(--warning) 40%, transparent);
+		white-space: nowrap;
+	}
+	/* Over-tick guard (review-diff workflow): advisory badge on rows where
+	   the pipeline checked more items than the cohort norm tolerates. */
+	.over-tick-badge {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		margin-left: 6px;
+		padding: 1px 7px;
+		border-radius: 999px;
+		font-size: 10px;
+		font-weight: 600;
+		line-height: 1.4;
+		background: color-mix(in oklch, var(--destructive) 10%, transparent);
+		color: var(--destructive);
+		border: 1px solid color-mix(in oklch, var(--destructive) 35%, transparent);
 		white-space: nowrap;
 	}
 	.status-pending {

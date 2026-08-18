@@ -16,6 +16,10 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { listSubmissions } from "$lib/server/metadata";
 import { deriveCellSummary, readResults } from "$lib/server/results-store";
+import {
+	loadCohortNorms,
+	overTickFromStored,
+} from "$lib/server/copilot/over-tick";
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	const assignmentId = await resolveAssignmentId(event.url.searchParams.get("assignment"));
@@ -29,6 +33,11 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const includeArchived = event.url.searchParams.get("includeArchived") === "1";
 	const records = await listSubmissions(assignmentId);
 	const results = await readResults(assignmentId);
+	// Over-tick guard (review-diff workflow): the committed cohort norm for
+	// this assignment, loaded once per request. Absent norms (assignment
+	// without a committed norm) degrade to no flags — the guard is a
+	// best-effort affordance, never a hard dependency.
+	const norms = await loadCohortNorms(assignmentId).catch(() => null);
 
 	const submissions = records
 		.filter((record) => includeArchived || record.status !== "archived")
@@ -53,6 +62,15 @@ export async function GET(event: RequestEvent): Promise<Response> {
 			// list row so the dashboard can filter/prioritize reviews.
 			// Absent for rows pre-evaluation has not run on yet.
 			enriched.gradingConfidence = stored?.preEval?.gradingConfidence;
+			// Over-tick guard (Signal B): categories where the pipeline
+			// checked more items than the cohort norm tolerates — the
+			// dashboard badge. Same enrichment path as gradingConfidence.
+			if (norms) {
+				const overTick = overTickFromStored(stored, norms);
+				if (overTick && overTick.overTickCategories.length > 0) {
+					enriched.overTickCategories = overTick.overTickCategories;
+				}
+			}
 			return enriched;
 		});
 
