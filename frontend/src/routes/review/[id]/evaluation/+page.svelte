@@ -7,10 +7,15 @@
 	import { base } from "$app/paths";
 	import { page } from "$app/state";
 	import { renderMarkdown } from "$lib/utils/markdown.js";
+	import {
+		resolveReviewAssignmentId,
+		isUnknownReviewAssignmentId,
+	} from "$lib/utils/review-route.js";
 	import EvaluationMetadata from "$lib/components/evaluation-metadata.svelte";
 	import EvaluationActionBar from "$lib/components/evaluation-action-bar.svelte";
 	import EvaluationSkeleton from "$lib/components/skeleton/evaluation-skeleton.svelte";
 	import EmptyState from "$lib/components/ui/empty-state.svelte";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import ArrowLeft from "@lucide/svelte/icons/arrow-left";
 
@@ -44,20 +49,30 @@
 	});
 
 	// Load assignment criteria on direct navigation / refresh
-	// Skip if a session was already restored (student_id is set)
+	// Skip if a session was already restored (student_id is set), and only
+	// feed setAssignment a VALID assignment id — a student id in the `[id]`
+	// slot (B1 wiring defect) must never be passed to it.
 	$effect(() => {
 		const id = page.params.id;
 		const hasRestoredSession = reviewStore.student_id !== "";
+		const validAssignmentId = resolveReviewAssignmentId(id, assignments);
 		if (
-			id &&
+			validAssignmentId &&
 			!reviewStore.rubric &&
 			!isLoading &&
 			assignments.length > 0 &&
 			!hasRestoredSession
 		) {
-			reviewStore.setAssignment(id);
+			reviewStore.setAssignment(validAssignmentId);
 		}
 	});
+
+	// True when the route `[id]` is not a valid assignment id (e.g. a student
+	// id like 2026SS_00) — drives the honest empty-state message instead of the
+	// misleading "generate an evaluation" hint (B1 wiring defect).
+	let unknownAssignment = $derived(
+		isUnknownReviewAssignmentId(page.params.id, assignments, assignments.length > 0),
+	);
 
 	// Human-readable assignment title
 	let assignmentTitle = $derived.by(() => {
@@ -149,17 +164,18 @@
 		<EvaluationSkeleton />
 	{:else if pageState === "empty"}
 		<EmptyState
-			title="No evaluation to preview"
-			description="Complete at least one category and click 'Generate Evaluation' to create a preview."
+			title={unknownAssignment ? "Evaluation not available" : "No evaluation to preview"}
+			description={
+				unknownAssignment
+					? "This review could not be resolved — the address uses an unknown identifier. Start a review from the home page to generate an evaluation."
+					: "Complete at least one category and click 'Generate Evaluation' to create a preview."
+			}
 		>
 			{#snippet icon()}
 				<FileText size={48} class="text-muted-foreground" />
 			{/snippet}
 			{#snippet action()}
-				<button
-					onclick={handleBack}
-					class="inline-flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-				>
+				<button onclick={handleBack} class={buttonVariants({ variant: "outline", size: "default" })}>
 					<ArrowLeft size={14} />
 					Back to Review
 				</button>

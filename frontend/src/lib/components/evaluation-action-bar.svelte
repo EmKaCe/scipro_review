@@ -4,6 +4,8 @@
 	import FileText from "@lucide/svelte/icons/file-text";
 	import ArrowLeft from "@lucide/svelte/icons/arrow-left";
 	import Printer from "@lucide/svelte/icons/printer";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 
 	/** Props for the evaluation action bar with copy, export, and navigation buttons. */
 	interface Props {
@@ -25,32 +27,23 @@
 <div
 	class="evaluation-action-bar sticky bottom-4 z-30 flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-border bg-card p-3 shadow-lg"
 >
-	<button
-		onclick={onCopy}
-		class="flex h-9 items-center gap-2 rounded-[var(--radius)] bg-primary px-4 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
-	>
+	<button onclick={onCopy} class={buttonVariants({ variant: "default", size: "default" })}>
 		<Clipboard size={14} />
 		Copy to Clipboard
 	</button>
-	<button
-		onclick={onExportYaml}
-		class="flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-	>
+	<button onclick={onExportYaml} class={buttonVariants({ variant: "outline", size: "default" })}>
 		<Download size={14} />
 		Export YAML
 	</button>
 	<button
 		onclick={onExportMarkdown}
-		class="flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+		class={buttonVariants({ variant: "outline", size: "default" })}
 	>
 		<FileText size={14} />
 		Export Markdown
 	</button>
 	{#if onPrint}
-		<button
-			onclick={onPrint}
-			class="flex h-9 items-center gap-2 rounded-[var(--radius)] border border-border px-4 text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
-		>
+		<button onclick={onPrint} class={buttonVariants({ variant: "outline", size: "default" })}>
 			<Printer size={14} />
 			Print
 		</button>
@@ -58,7 +51,7 @@
 	<div class="flex-1"></div>
 	<button
 		onclick={onBack}
-		class="flex h-9 items-center gap-2 rounded-[var(--radius)] px-4 text-sm font-medium text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+		class={cn(buttonVariants({ variant: "ghost", size: "default" }), "text-muted-foreground")}
 	>
 		<ArrowLeft size={14} />
 		Back to Review

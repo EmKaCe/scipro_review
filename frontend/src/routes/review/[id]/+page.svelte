@@ -7,6 +7,9 @@
 	import { base } from "$app/paths";
 	import { page } from "$app/state";
 	import type { CategoryKey } from "$lib/types/criteria.js";
+	import { resolveReviewAssignmentId } from "$lib/utils/review-route.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
+	import { cn } from "$lib/utils.js";
 	import RubricCategory from "$lib/components/rubric-category.svelte";
 	import GradingSidebar from "$lib/components/grading-sidebar.svelte";
 	import QuickNav from "$lib/components/quick-nav.svelte";
@@ -45,11 +48,14 @@
 		}
 	});
 
-	// Load assignment criteria on direct navigation / refresh
+	// Load assignment criteria on direct navigation / refresh.
+	// Only feed setAssignment a VALID assignment id — a student id in the `[id]`
+	// slot (B1 wiring defect) must never be passed to it.
 	$effect(() => {
 		const id = page.params.id;
-		if (id && !rubric && !isLoading && assignments.length > 0) {
-			reviewStore.setAssignment(id);
+		const validAssignmentId = resolveReviewAssignmentId(id, assignments);
+		if (validAssignmentId && !rubric && !isLoading && assignments.length > 0) {
+			reviewStore.setAssignment(validAssignmentId);
 		}
 	});
 
@@ -316,21 +322,21 @@
 		{#if !isLoading}
 			<div class="space-y-2 rounded-[var(--radius)] border border-border bg-card p-5">
 				<button
-					class="flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius)] bg-primary text-sm font-medium text-primary-foreground transition-opacity hover:opacity-90"
+					class={cn(buttonVariants({ variant: "default", size: "default" }), "w-full")}
 					onclick={handleGenerateEvaluation}
 				>
 					<FileText size={14} />
 					Generate Evaluation
 				</button>
 				<button
-					class="flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius)] border border-border text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class={cn(buttonVariants({ variant: "outline", size: "default" }), "w-full")}
 					onclick={() => reviewStore.exportReview("yaml", settings.reviewerName)}
 				>
 					<Download size={14} />
 					Export YAML
 				</button>
 				<button
-					class="flex h-9 w-full items-center justify-center gap-2 rounded-[var(--radius)] border border-border text-sm font-medium text-foreground transition-colors hover:bg-black/5 dark:hover:bg-white/10"
+					class={cn(buttonVariants({ variant: "outline", size: "default" }), "w-full")}
 					onclick={() => reviewStore.exportReview("md", settings.reviewerName)}
 				>
 					<FileText size={14} />
