@@ -10,6 +10,8 @@ import {
 	loadGradingConfig,
 	getGradingConfig,
 	clearGradingConfigCache,
+	saveGradingConfig,
+	fetchGradingConfig,
 } from "$lib/services/grading-config";
 
 // ---------------------------------------------------------------------------
@@ -295,6 +297,91 @@ describe("apiMode (teacher build)", () => {
 		await loadGradingConfig();
 		await loadGradingConfig();
 		expect(fetchMock).toHaveBeenCalledTimes(1);
+
+		vi.unstubAllGlobals();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Settings editor: fetchGradingConfig / saveGradingConfig
+// ---------------------------------------------------------------------------
+
+describe("fetchGradingConfig / saveGradingConfig (settings editor)", () => {
+	beforeEach(() => {
+		clearGradingConfigCache();
+		setApiMode(false);
+	});
+
+	it("saveGradingConfig PUTs { config } and returns the saved config", async () => {
+		const savedConfig = {
+			dimensions: [
+				{ key: "code_quality_design", title: "Code Quality & Design", max_points: 6, weight: 4 },
+			],
+			grade_boundaries: [{ min_percentage: 95, grade: 1.0, label: "excellent", us_equiv: "A+" }],
+		};
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ config: savedConfig }), {
+				status: 200,
+				headers: { "Content-Type": "application/json" },
+			}),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const out = await saveGradingConfig(
+			savedConfig as unknown as Parameters<typeof saveGradingConfig>[0],
+		);
+		expect(out.dimensions).toHaveLength(1);
+		expect(out.grade_boundaries).toHaveLength(1);
+
+		const [url, init] = fetchMock.mock.calls[0] as [unknown, RequestInit];
+		expect(String(url)).toContain("/api/config/grading");
+		expect((init as RequestInit).method).toBe("PUT");
+		expect(JSON.parse((init as RequestInit).body as string).config).toEqual(savedConfig);
+
+		vi.unstubAllGlobals();
+	});
+
+	it("saveGradingConfig refreshes the in-memory cache on success", async () => {
+		clearGradingConfigCache();
+		const savedConfig = { dimensions: [], grade_boundaries: [] };
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await saveGradingConfig({ dimensions: [], grade_boundaries: [] });
+		const cfg = await loadGradingConfig(); // cache hit — no new fetch
+		expect(cfg).not.toBeNull();
+		expect(cfg!.dimensions).toEqual([]);
+		expect(fetchMock).toHaveBeenCalledTimes(1); // only the save call
+
+		vi.unstubAllGlobals();
+	});
+
+	it("saveGradingConfig throws on a non-OK response", async () => {
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ message: "Invalid grading config: bad" }), { status: 400 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		await expect(saveGradingConfig({ dimensions: [], grade_boundaries: [] })).rejects.toThrow(
+			"Invalid grading config",
+		);
+
+		vi.unstubAllGlobals();
+	});
+
+	it("fetchGradingConfig issues a fresh GET (bypasses cache)", async () => {
+		clearGradingConfigCache();
+		const savedConfig = { dimensions: [], grade_boundaries: [] };
+		const fetchMock = vi.fn().mockResolvedValue(
+			new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
+		);
+		vi.stubGlobal("fetch", fetchMock);
+
+		const out = await fetchGradingConfig();
+		expect(out.dimensions).toEqual([]);
+		expect(String(fetchMock.mock.calls[0][0])).toContain("/api/config/grading");
 
 		vi.unstubAllGlobals();
 	});

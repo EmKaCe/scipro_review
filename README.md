@@ -48,6 +48,24 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
 
+## Settings map
+
+Configuration lives across **six surfaces**. The Settings page (`/settings`) indexes them all in a
+"Configuration map" card; this is the reference for what goes where.
+
+| Surface | What it holds | Where it's edited |
+| --- | --- | --- |
+| **Environment variables** | Deployment-level: `DATA_DIR`, `DOCS_INDEX_DIR`, `ORIGIN`, `PRE_EVAL_CRITIQUE`, `KI_CONNECT_BASE_URL`, `KI_CONNECT_API_KEY` (secret) | Environment / `.env` — **restart to apply**. The API key can be set at runtime under Settings → Execution & AI (masked, never read back). |
+| **`data/settings.yaml`** | App-level: executor timeouts, LLM provider (base URL / model / timeout), copilot (approval mode, allow/deny tools, TTL, session cap, recall window, auto-compact) | Settings → Execution & AI. Read fresh on every request, so a save applies immediately; LLM endpoint/model changes apply on the next LLM request (copilot agent may need a restart). |
+| **`data/grading_config.yaml`** | **Global** grading config: dimensions (key/title/`max_points`/weight) + grade boundaries | Settings → Grading. Validated and written atomically; read fresh by grading pages on load. |
+| **Assignment editor** | **Per-assignment** (app-vs-assignment rule): rubric criteria (`data/criteria/<id>.yaml`), scoring config (anchors, evidence regexes, disallowed libs, dimension guidance — `data/scoring/<id>.yaml`), assignment metadata (`data/assignments.yaml`) | Assignment editor → Criteria / Scoring. Not on the Settings page. |
+| **localStorage** | Browser-only, per-device: color scheme, autosave (`scipro-settings`) | Settings → Appearance. |
+| **Code constants** | Injection threshold 0.7 (`copilot/agent.ts`), KI Connect concurrency 2 (`routes/api/submissions/pre-evaluate/+server.ts`), `TEXTAREA_MIN_CHARS` 20 (`copilot/post-process.ts`), rich-output caps (`RICH_OUTPUT_MAX_IMAGE_BYTES` / `RICH_OUTPUT_MAX_HTML_CHARS`, env-driven in the executor) | Read-only — edit source (or env) + rebuild / restart. |
+
+Application-level changes (llm/executor/copilot, env vars, localStorage, in-code) belong in the
+Settings UI; assignment-level changes (per-assignment llm/executor/copilot, criteria, scoring) belong
+in the assignment editor. A global llm/executor/copilot setting goes on the normal settings page.
+
 ### Agent Configuration
 
 Agent-facing conventions live in `AGENTS.md` files, readable by any agent

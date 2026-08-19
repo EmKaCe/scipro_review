@@ -9,7 +9,7 @@
  *   GET /api/config/grading  — grading config from DATA_DIR, 500s
  */
 
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -17,7 +17,8 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GET as criteriaGET } from "../../routes/api/config/criteria/+server";
-import { GET as gradingGET } from "../../routes/api/config/grading/+server";
+import { GET as gradingGET, PUT as gradingPUT } from "../../routes/api/config/grading/+server";
+import { loadGradingConfigFile } from "$lib/server/grading-config-writer";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -127,6 +128,19 @@ function makeEvent(url: string): RequestEvent {
 		url: new URL(`http://localhost${url}`),
 		params: {},
 		request: new Request(`http://localhost${url}`, { method: "GET" }),
+	} as unknown as RequestEvent;
+}
+
+/** PUT event stub with a JSON body for the grading route. */
+function makePutEvent(body: unknown): RequestEvent {
+	return {
+		url: new URL("http://localhost/api/config/grading"),
+		params: {},
+		request: new Request("http://localhost/api/config/grading", {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		}),
 	} as unknown as RequestEvent;
 }
 
@@ -248,5 +262,110 @@ describe("GET /api/config/grading", () => {
 	it("500s when grading_config.yaml is missing the dimensions array", async () => {
 		await writeFile(path.join(dataDir, "grading_config.yaml"), "grade_boundaries: []\n");
 		await expectApiError(gradingGET(makeEvent("/api/config/grading")), 500, "dimensions");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api/config/grading
+// ---------------------------------------------------------------------------
+
+const VALID_GRADING = {
+	dimensions: [
+		{ key: "code_quality_design", title: "Code Quality & Design", max_points: 6, weight: 4 },
+		{ key: "creativity", title: "Creativity", max_points: 4, weight: 1 },
+	],
+	grade_boundaries: [
+		{ min_percentage: 95, grade: 1.0, label: "excellent", us_equiv: "A+" },
+		{ min_percentage: 0, grade: 5.0, label: "insufficient", us_equiv: "F" },
+	],
+};
+
+async function readOnDisk(): Promise<string> {
+	return readFile(path.join(dataDir, "grading_config.yaml"), "utf-8");
+}
+
+describe("PUT /api/config/grading", () => {
+	it("validates and persists a valid config, returning it sorted", async () => {
+		const resp = await gradingPUT(
+			makePutEvent({ config: { ...VALID_GRADING, grade_boundaries: [...VALID_GRADING.grade_boundaries].reverse() } }),
+		);
+		expect(resp.status).toBe(200);
+
+		const body = (await resp.json()) as { config: { grade_boundaries: Array<{ min_percentage: number }> } };
+		// Boundaries are returned sorted descending regardless of input order.
+		expect(body.config.grade_boundaries.map((b) => b.min_percentage)).toEqual([95, 0]);
+
+		// Persisted to disk and reloadable fresh.
+		const onDisk = await loadGradingConfigFile();
+		expect(onDisk).not.toBeNull();
+		expect(onDisk!.dimensions).toHaveLength(2);
+		expect(onDisk!.grade_boundaries.map((b) => b.min_percentage).sort((a, b) => b - a)).toEqual([95, 0]);
+	});
+
+	it("no-op guard: saving a semantically identical config does NOT rewrite the file", async () => {
+		// First save writes the file.
+		await gradingPUT(makePutEvent({ config: VALID_GRADING }));
+		const contentAfterFirst = await readOnDisk();
+
+		// Save again (key order / boundary order can differ) — must be a no-op.
+		const noop = {
+			dimensions: VALID_GRADING.dimensions.map((d) => ({ ...d })),
+			grade_boundaries: [...VALID_GRADING.grade_boundaries].reverse(),
+		};
+		const resp = await gradingPUT(makePutEvent({ config: noop }));
+		expect(resp.status).toBe(200);
+
+		// The file must be byte-identical — a no-op save must not churn git.
+		expect(await readOnDisk()).toBe(contentAfterFirst);
+	});
+
+	it("no-op guard does not suppress a real change", async () => {
+		await gradingPUT(makePutEvent({ config: VALID_GRADING }));
+		const changed = {
+			...VALID_GRADING,
+			dimensions: [
+				{ key: "code_quality_design", title: "Code Quality & Design", max_points: 6, weight: 5 },
+			],
+		};
+		const resp = await gradingPUT(makePutEvent({ config: changed }));
+		expect(resp.status).toBe(200);
+
+		const onDisk = await loadGradingConfigFile();
+		expect(onDisk!.dimensions[0]!.weight).toBe(5);
+	});
+
+	it("rejects invalid configs with 400 and leaves the file untouched", async () => {
+		await gradingPUT(makePutEvent({ config: VALID_GRADING }));
+		const before = await readOnDisk();
+
+		const badCases: unknown[] = [
+			null,
+			{},
+			{ config: null },
+			{ config: {} },
+			{ config: { dimensions: [], grade_boundaries: [] } },
+			{ config: { ...VALID_GRADING, dimensions: [{ key: "x", title: "", max_points: 6, weight: 1 }] } },
+			{ config: { ...VALID_GRADING, dimensions: [{ key: "x", title: "T", max_points: -1, weight: 1 }] } },
+			{ config: { ...VALID_GRADING, grade_boundaries: [{ min_percentage: 150, grade: 1, label: "l", us_equiv: "A" }] } },
+		];
+		for (const bad of badCases) {
+			let status: number | null = null;
+			try {
+				await gradingPUT(makePutEvent(bad as { config: unknown }));
+			} catch (err) {
+				status = (err as { status?: number }).status ?? null;
+			}
+			expect(status).toBe(400);
+		}
+
+		expect(await readOnDisk()).toBe(before);
+	});
+
+	it("writes atomically — file is complete and valid YAML after save", async () => {
+		const resp = await gradingPUT(makePutEvent({ config: VALID_GRADING }));
+		expect(resp.status).toBe(200);
+		// No leftover temp files.
+		const entries = await readdir(dataDir);
+		expect(entries.some((f) => f.includes(".tmp-"))).toBe(false);
 	});
 });

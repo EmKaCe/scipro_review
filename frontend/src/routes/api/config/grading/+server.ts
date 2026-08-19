@@ -1,77 +1,97 @@
 /**
- * @file GET /api/config/grading — grading configuration (dimensions +
- * grade boundaries) read from data/grading_config.yaml in DATA_DIR.
+ * @file GET/PUT /api/config/grading — grading configuration (dimensions +
+ * grade boundaries) read from / written to data/grading_config.yaml in
+ * DATA_DIR.
  *
- * Teacher-mode counterpart to $lib/services/grading-config.ts. Missing or
- * invalid configuration is a 500 — the teacher UI needs this to compute
- * grades, so failures must be visible, not silently null.
+ * GET — current config. Missing or invalid configuration is a 500 — the
+ *       teacher UI needs this to compute grades, so failures must be
+ *       visible, not silently null.
+ * PUT — validate (reuse server/grading-validation.ts), no-op guard (skip the
+ *       write when semantically identical to what's on disk), then write
+ *       atomically (temp file + rename). Returns the persisted config.
+ *
+ * This is APPLICATION-level config (global, shared across assignments), so
+ * it is edited on the Settings page — not per-assignment like criteria or
+ * scoring (see the assignment editor).
+ *
+ * Environment: DATA_DIR (default ./data). Server-only ($lib/server deps).
  */
-
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import * as yaml from "js-yaml";
-
 import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
-import { getDataDir } from "$lib/server/metadata";
-import type { GradingConfig, GradeBoundary, GradeDimension } from "$lib/types/grading";
-import { parseDimensionKey } from "$lib/types/grading";
+import { validateGradingConfig } from "$lib/server/grading-validation";
+import {
+	deepEqualGradingConfig,
+	loadGradingConfigFile,
+	writeGradingConfigFile,
+} from "$lib/server/grading-config-writer";
+import type { GradingConfig } from "$lib/types/grading";
 
-export async function GET(_event: RequestEvent): Promise<Response> {
-	const filePath = path.join(getDataDir(), "grading_config.yaml");
-
-	let raw: string;
-	try {
-		raw = await readFile(filePath, "utf-8");
-	} catch (err) {
-		if (isNodeError(err) && err.code === "ENOENT") {
-			throw error(500, `grading_config.yaml not found at ${filePath}`);
-		}
-		throw error(500, `Failed to read grading_config.yaml: ${(err as Error).message}`);
-	}
-
-	let parsed: unknown;
-	try {
-		parsed = yaml.load(raw);
-	} catch (err) {
-		throw error(500, `Failed to parse grading_config.yaml: ${(err as Error).message}`);
-	}
-
-	const record = parsed as { dimensions?: unknown; grade_boundaries?: unknown };
-	if (!record || typeof record !== "object" || !Array.isArray(record.dimensions)) {
-		throw error(500, "grading_config.yaml is missing the 'dimensions' array");
-	}
-	if (!Array.isArray(record.grade_boundaries)) {
-		throw error(500, "grading_config.yaml is missing the 'grade_boundaries' array");
-	}
-
-	const dimensions: GradeDimension[] = (record.dimensions as Record<string, unknown>[]).map(
-		(d) => ({
-			key: parseDimensionKey(d.key as string),
-			title: d.title as string,
-			max_points: d.max_points as number,
-			weight: d.weight as number,
-		}),
-	);
-
-	const grade_boundaries: GradeBoundary[] = (
-		record.grade_boundaries as Record<string, unknown>[]
-	).map((b) => ({
-		min_percentage: b.min_percentage as number,
-		grade: b.grade as number,
-		label: b.label as string,
-		us_equiv: b.us_equiv as string,
-	}));
-
-	// Sort boundaries by min_percentage descending for efficient lookup
-	// (same post-processing as the client loader).
-	grade_boundaries.sort((a, b) => b.min_percentage - a.min_percentage);
-
-	const config: GradingConfig = { dimensions, grade_boundaries };
-	return json({ config });
+/** Return a config whose grade boundaries are sorted by min_percentage
+ * descending (the consumption order the rest of the app expects). Never
+ * mutates the readonly source arrays. */
+function withSortedBoundaries(config: GradingConfig): GradingConfig {
+	return {
+		dimensions: config.dimensions,
+		grade_boundaries: [...config.grade_boundaries].sort((a, b) => b.min_percentage - a.min_percentage),
+	};
 }
 
-function isNodeError(err: unknown): err is NodeJS.ErrnoException {
-	return err instanceof Error && "code" in err;
+export async function GET(_event: RequestEvent): Promise<Response> {
+	let config: GradingConfig | null;
+	try {
+		config = await loadGradingConfigFile();
+	} catch (err) {
+		// Broken config should surface as a 500, not a silent empty editor.
+		throw error(500, `Failed to read grading_config.yaml: ${(err as Error).message}`);
+	}
+	if (!config) {
+		throw error(500, `grading_config.yaml not found in DATA_DIR`);
+	}
+	return json({ config: withSortedBoundaries(config) });
+}
+
+export async function PUT(event: RequestEvent): Promise<Response> {
+	let body: unknown;
+	try {
+		body = await event.request.json();
+	} catch {
+		throw error(400, "Expected a JSON body");
+	}
+	const record = (body as Record<string, unknown> | null) ?? {};
+	const config = record.config;
+
+	const validationError = validateGradingConfig(config);
+	if (validationError) {
+		throw error(400, `Invalid grading config: ${validationError}`);
+	}
+
+	const normalized = config as GradingConfig;
+
+	// Normalize the incoming config for the no-op comparison: grade boundaries
+	// are consumed sorted by min_percentage, so their file order is cosmetic —
+	// a save that only reorders boundaries is a semantic no-op.
+	function forCompare(c: GradingConfig): GradingConfig {
+		return {
+			dimensions: c.dimensions,
+			grade_boundaries: [...c.grade_boundaries].sort((a, b) => b.min_percentage - a.min_percentage),
+		};
+	}
+
+	// No-op guard: when the saved config is semantically identical to what is
+	// already on disk, skip the write entirely. The YAML dump reformats
+	// (indentation, folding), so a no-op save must NOT churn the tracked git
+	// file — otherwise every "Save" click produces a fake diff.
+	const existing = await loadGradingConfigFile();
+	if (existing && deepEqualGradingConfig(forCompare(existing), forCompare(normalized))) {
+		return json({ config: withSortedBoundaries(normalized) });
+	}
+
+	try {
+		await writeGradingConfigFile(normalized);
+	} catch (err) {
+		throw error(500, `Failed to write grading_config.yaml: ${(err as Error).message}`);
+	}
+
+	return json({ config: withSortedBoundaries(normalized) });
 }

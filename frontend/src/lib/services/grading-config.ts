@@ -155,3 +155,63 @@ export async function getGradingConfig(): Promise<GradingConfig> {
 export function clearGradingConfigCache(): void {
 	cachedConfig = null;
 }
+
+// ---------------------------------------------------------------------------
+// Settings-page editor helpers
+// ---------------------------------------------------------------------------
+
+/** Wire shape the PUT /api/config/grading route accepts and returns. */
+export interface GradingConfigPayload {
+	dimensions: readonly GradeDimension[];
+	grade_boundaries: readonly GradeBoundary[];
+}
+
+/**
+ * Fetch the grading config FRESH from the server (bypasses the in-memory
+ * cache) — used by the Settings editor so a save elsewhere is picked up
+ * immediately. Throws on failure.
+ */
+export async function fetchGradingConfig(): Promise<GradingConfig> {
+	const response = await fetch(`${base}/api/config/grading`);
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		const message =
+			body && typeof body.message === "string"
+				? body.message
+				: `Failed to load grading config (${response.status})`;
+		throw new Error(message);
+	}
+	const payload = (await response.json()) as { config: GradingConfig };
+	if (!payload?.config || !Array.isArray(payload.config.dimensions)) {
+		throw new Error("Invalid grading config response");
+	}
+	return payload.config;
+}
+
+/**
+ * Save the grading config via PUT /api/config/grading. The route validates,
+ * no-op guards (a semantically identical save is skipped server-side), and
+ * writes atomically to data/grading_config.yaml. On success the in-memory
+ * cache is refreshed so the grade calculator sees the new values.
+ */
+export async function saveGradingConfig(config: GradingConfigPayload): Promise<GradingConfig> {
+	const response = await fetch(`${base}/api/config/grading`, {
+		method: "PUT",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify({ config }),
+	});
+	if (!response.ok) {
+		const body = await response.json().catch(() => null);
+		const message =
+			body && typeof body.message === "string"
+				? body.message
+				: `Failed to save grading config (${response.status})`;
+		throw new Error(message);
+	}
+	const payload = (await response.json()) as { config: GradingConfig };
+	if (!payload?.config || !Array.isArray(payload.config.dimensions)) {
+		throw new Error("Invalid grading config response");
+	}
+	cachedConfig = payload.config;
+	return payload.config;
+}

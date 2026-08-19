@@ -3,6 +3,8 @@
 	import AppearanceCard from "$lib/components/settings/appearance-card.svelte";
 	import DataManagementCard from "$lib/components/settings/data-management-card.svelte";
 	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
+	import GradingConfigCard from "$lib/components/settings/grading-config-card.svelte";
+	import ConfigurationMapCard from "$lib/components/settings/configuration-map-card.svelte";
 	import AboutCard from "$lib/components/settings/about-card.svelte";
 	import DangerZoneCard from "$lib/components/settings/danger-zone-card.svelte";
 
@@ -29,6 +31,8 @@
 	<div class="space-y-6">
 		<AppearanceCard />
 		<ExecutionAiCard />
+		<GradingConfigCard />
+		<ConfigurationMapCard />
 		<DataManagementCard />
 		<AboutCard />
 		<DangerZoneCard />

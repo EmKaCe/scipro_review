@@ -20,6 +20,12 @@
 	let form = $state<AppSettings | null>(null);
 	let loadError = $state<string | null>(null);
 
+	// Snapshot of the LLM endpoint/model at load, so a save that actually
+	// changes them can surface a reload note (new endpoint/model applies on
+	// the next LLM request, not to the already-held singleton).
+	let baselineLlm = $state<{ baseUrl: string; model: string } | null>(null);
+	let llmReloadNote = $state<string | null>(null);
+
 	// Model dropdown state
 	let models = $state<ModelInfo[]>([]);
 	let modelsSource = $state<"live" | "static" | null>(null);
@@ -45,6 +51,7 @@
 			try {
 				const settings = await fetchSettings();
 				form = settings;
+				baselineLlm = { baseUrl: settings.llm.baseUrl, model: settings.llm.model };
 				apiKeyHasKey = settings.hasApiKey;
 				apiKeyEditing = !settings.hasApiKey;
 				loadError = null;
@@ -76,6 +83,13 @@
 		saving = true;
 		try {
 			form = await saveSettings(form);
+			const endpointChanged =
+				baselineLlm !== null &&
+				(form.llm.baseUrl !== baselineLlm.baseUrl || form.llm.model !== baselineLlm.model);
+			llmReloadNote = endpointChanged
+				? "The new LLM endpoint/model takes effect on the next LLM request. If a grading run or copilot session already holds the old model, restart the app so the held client is rebuilt — the API key change applies immediately."
+				: null;
+			baselineLlm = { baseUrl: form.llm.baseUrl, model: form.llm.model };
 			addToast("success", "Settings saved", 3000);
 		} catch (e) {
 			addToast("error", e instanceof Error ? e.message : "Failed to save settings", 4000);
@@ -343,6 +357,15 @@
 					{/if}
 				</button>
 			</div>
+
+			{#if llmReloadNote}
+				<div
+					class="flex items-start gap-2 rounded-[var(--radius)] border border-warning/30 bg-warning/10 p-3 text-xs text-warning"
+				>
+					<span>⚠</span>
+					<p>{llmReloadNote}</p>
+				</div>
+			{/if}
 		</div>
 	{/if}
 </div>
