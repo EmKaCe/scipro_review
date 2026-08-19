@@ -38,6 +38,16 @@ vi.mock("$lib/server/ki-connect", () => ({
 	}),
 }));
 
+// (B13) Cell screening is stubbed so pre-eval call-counts stay exact (no
+// screening calls ride through kiConnectMock.chatCompletion).
+const screeningCellsMock = vi.hoisted(() => ({ screenNotebookCells: vi.fn() }));
+
+vi.mock("$lib/server/copilot/screening", () => ({
+	screenNotebookCells: screeningCellsMock.screenNotebookCells,
+	screenStudentContent: vi.fn(),
+	INJECTION_CELL_PLACEHOLDER: "[cell content removed: injection attempt]",
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
@@ -145,6 +155,12 @@ beforeEach(async () => {
 
 	kiConnectMock.chatCompletion.mockReset();
 	kiConnectMock.chatCompletionText.mockReset();
+	// Default screening: pass cells through unchanged (clean).
+	screeningCellsMock.screenNotebookCells.mockReset();
+	screeningCellsMock.screenNotebookCells.mockImplementation(async (cells: readonly unknown[]) => ({
+		cells: cells as typeof cells,
+		needsReview: false,
+	}));
 	kiConnectMock.chatCompletion.mockImplementation(
 		async (systemPrompt: string) => {
 			if (systemPrompt.includes("Your ONLY job is to mark each cell")) {

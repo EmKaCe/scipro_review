@@ -34,6 +34,7 @@ import { getAssignmentById, resolveAssignmentId } from "$lib/server/assignments"
 import { getDataDir, getSubmission, listSubmissions } from "$lib/server/metadata";
 import { readResults } from "$lib/server/results-store";
 import { loadSettings, type AppSettings } from "$lib/server/settings";
+import { INJECTION_CELL_PLACEHOLDER, screenStudentContent } from "../screening";
 
 // ---------------------------------------------------------------------------
 // Preview bounds
@@ -198,7 +199,19 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 		const cells = stored?.cells ?? [];
 		let truncatedSources = 0;
 		let truncatedOutputs = 0;
-		const executedCells = cells.map((cell) => {
+		let injectionCells = 0;
+		// (B13) Cell source + text output are UNTRUSTED student content flowing
+		// into the model as a tool result — screen each cell before returning it.
+		// FAIL-OPEN: screenStudentContent degrades to "clean" on any API/parse
+		// failure, so a guard failure never breaks the tool.
+		const executedCells: {
+			index: number;
+			cell_type: string;
+			error: string | null;
+			sourcePreview: string;
+			outputPreview: string;
+		}[] = [];
+		for (const cell of cells) {
 			// What the student actually wrote (what the teacher sees); the
 			// cleaned as-executed source is the fallback when absent.
 			const source = cell.original_source?.trim() ? cell.original_source : cell.source;
@@ -206,14 +219,24 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 			const outputPreview = previewOutput(cell.output ?? "");
 			if (sourcePreview.truncated) truncatedSources += 1;
 			if (outputPreview.truncated) truncatedOutputs += 1;
-			return {
+
+			let sourceText = sourcePreview.text;
+			let outputText = outputPreview.text;
+			const verdict = await screenStudentContent(`${sourceText}\n\n${outputText}`);
+			if (verdict === "injection") {
+				injectionCells += 1;
+				sourceText = INJECTION_CELL_PLACEHOLDER;
+				outputText = "";
+			}
+
+			executedCells.push({
 				index: cell.index,
 				cell_type: cell.type,
 				error: cell.error ?? null,
-				sourcePreview: sourcePreview.text,
-				outputPreview: outputPreview.text,
-			};
-		});
+				sourcePreview: sourceText,
+				outputPreview: outputText,
+			});
+		}
 
 		const noticeParts: string[] = [];
 		if (truncatedSources > 0) {
@@ -224,6 +247,11 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 		if (truncatedOutputs > 0) {
 			noticeParts.push(
 				`${truncatedOutputs} of ${executedCells.length} cell outputs truncated at ${OUTPUT_PREVIEW_CHARS} chars`,
+			);
+		}
+		if (injectionCells > 0) {
+			noticeParts.push(
+				`${injectionCells} of ${executedCells.length} cells flagged for possible injection — content removed`,
 			);
 		}
 
