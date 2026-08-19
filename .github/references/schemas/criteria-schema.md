@@ -10,11 +10,14 @@ submissions. Each file contains one or more **categories**, each with
 **positive**, **neutral**, and **negative** feedback sections organized into
 **main points** and **sub-points**.
 
-There are two types of criteria files:
+There are three kinds of criteria files — shared **general** categories,
+optional **shared** per-assignment files (wired via `assignments.yaml`), and
+**assignment-specific** categories:
 
 | Type | File | Loaded For |
 |------|------|-----------|
-| **General** | `criteria/general.yaml` | Every assignment |
+| **General** | `criteria/general.yaml` | Every assignment (4 categories: `code_formatting`, `coding_concept`, `jupyter_notebooks`, `academic_scholarship`) |
+| **Shared** | `criteria/following_instructions.yaml`, `criteria/general_feedback.yaml` | Referenced per-assignment from `assignments.yaml` (currently only `soil_contamination`) |
 | **Assignment-specific** | `criteria/<assignment>.yaml` | One assignment only |
 
 ## Structure
@@ -92,44 +95,71 @@ categories:
 Category keys are `snake_case` identifiers used throughout the system. They
 must be unique across the combined set of general + assignment-specific categories.
 
-### General Categories
+### General Categories (`general.yaml`)
 
 | Key | Title | Notes |
 |-----|-------|-------|
 | `code_formatting` | Code Formatting | ✅ |
 | `coding_concept` | Coding Concept | ✅ |
 | `jupyter_notebooks` | Jupyter Notebooks | ✅ |
-| `academic_scholarship` | Academic Scholarship | ✅ |
-| `following_instructions` | Following Instructions | ✅ |
-| `general_feedback` | General Feedback | ✅ |
+| `academic_scholarship` | Academic Scholarship (Citations and Writing) | ✅ |
 
-### Assignment-Specific Categories (Atom Interaction)
+### Shared Categories (loaded via `assignments.yaml`)
 
 | Key | Title | Notes |
 |-----|-------|-------|
-| `user_defined_functions` | User-Defined Functions | ✅ |
-| `function_calling` | Function (and Method) Calling | ✅ |
+| `following_instructions` | Following Instructions | ✅ |
+| `general_feedback` | General Feedback | ✅ |
+
+### Assignment-Specific Categories (soil_contamination.yaml)
+
+| Key | Title | Notes |
+|-----|-------|-------|
 | `pandas` | Pandas | ✅ |
-| `plotting` | Plotting Data | ✅ |
-| `significant_figures` | Significant Figures | ✅ |
+| `numpy` | NumPy | ✅ |
+| `scipy` | SciPy | ✅ |
+| `sklearn` | sklearn | ✅ |
+| `genai` | GenAI | ✅ |
+| `user_defined_functions` | User-defined Functions | ✅ |
+| `function_calling` | Function (and Method) Calling | ✅ |
+| `plotting_visualization` | Plotting / Visualization | ✅ |
+
+### Assignment-Specific Categories (atom_interaction.yaml)
+
+| Key | Title | Notes |
+|-----|-------|-------|
+| `valid_values` | Valid Values | ✅ |
+| `wrong_numbers` | Wrong Numbers | ❌ (`additional_notes: false`) |
+| `atom_interaction` | Atom Interaction | ✅ |
+| `user_function` | User-defined Functions | ✅ |
+| `calling_function` | Function (and Method) Calling | ✅ |
+| `pandas` | Pandas | ✅ |
+| `plotting_data` | Plotting Data | ✅ |
 
 ## Loading & Merging
 
-When a grader selects an assignment, the app loads:
-
-1. **`general.yaml`** → 6 shared categories
-2. **`<assignment>.yaml`** → assignment-specific categories
-
-Both files use the same `categories:` top-level key. The app merges them into
-a single ordered list: general categories first, then assignment-specific.
+When an assignment is selected, the app loads every file listed in the
+assignment's `criteria_files` (in order) and merges their categories into one
+ordered list. The merge is a plain concatenation: categories keep the order
+of the `criteria_files` entries, and keys must be unique across the merged
+set. Missing files are skipped. Both the server loader
+(`frontend/src/lib/server/criteria.ts` → `loadCriteriaForAssignment`) and the
+client loader (`frontend/src/lib/services/criteria-loader.ts` →
+`loadCriteriaForAssignment`, or `GET /api/config/*` in teacher mode) mirror
+this behavior so category order is identical.
 
 ```
-general.yaml  ──►  categories: {code_formatting, coding_concept, ...}
+general.yaml  ──►  categories: {code_formatting, coding_concept, jupyter_notebooks, academic_scholarship}
                         │
-atom_interaction.yaml ──►  categories: {user_defined_functions, pandas, ...}
+following_instructions.yaml ──►  categories: {following_instructions}
+general_feedback.yaml    ──►  categories: {general_feedback}
+                        │
+soil_contamination.yaml  ──►  categories: {pandas, numpy, scipy, sklearn, genai,
+                                           user_defined_functions, function_calling,
+                                           plotting_visualization}
                         │
                         ▼
-              Merged rubric (11 categories)
+              Merged rubric (14 categories, soil_contamination)
 ```
 
 ## Examples
@@ -174,7 +204,7 @@ categories:
 
 ```yaml
 categories:
-  function_calling:
+  calling_function:
     title: Function (and Method) Calling
     additional_notes: true
     positive: []
@@ -183,15 +213,38 @@ categories:
     - main_point: ''
       sub_points:
       - text: formatting - placing each parameter being passed onto a new line is not necessary and makes the code less concise
-      - text: keyword arguments calls - include the parameter that are being assigned the argument to
+      - text: keyword arguments calls - include the parameter that are being assigned the argument to (e.g., 'my_function(param1=arg1, param2=arg2)'). Doing so ensure that the arguments are passed correctly.
 ```
 
-### Assignment-Specific File (Atom Interaction)
+### Assignment-Specific File (atom_interaction.yaml)
 
 ```yaml
 categories:
-  user_defined_functions:
-    title: User-Defined Functions
+  valid_values:
+    title: Valid Values
+    additional_notes: true
+    positive:
+    - main_point: ''
+      sub_points:
+      - text: Good job on checking whether the distance is negative.
+    neutral: []
+    negative:
+    - main_point: ''
+      sub_points:
+      - text: You did not check for negative values for the distance.
+
+  wrong_numbers:
+    title: Wrong Numbers
+    additional_notes: false
+    positive: []
+    neutral: []
+    negative:
+    - main_point: ''
+      sub_points:
+      - text: The mass of the sun and/or the earth is wrong!
+
+  user_function:
+    title: User-defined Functions
     additional_notes: true
     positive:
     - main_point: Good use of the following

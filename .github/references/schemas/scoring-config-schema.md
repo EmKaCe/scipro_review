@@ -45,6 +45,9 @@ scoring:
       capture_group: <int 1..9>      # REQUIRED for capture_value / distinct_count
   disallowed_libraries:     # OPTIONAL string[] — absent → [] (nothing disallowed)
     - <library>
+  allowed_libraries:        # OPTIONAL string[] — Pass 3 (post-process) import allow-list
+    - <library>             # absent → the default list (numpy, pandas, scipy, sklearn,
+                            # matplotlib, pathlib, typing) applies unchanged
   prompt_anchor_text:       # OPTIONAL
     dimension_guidance:     # per-dimension Phase 2a suffix text; {A} {B} {L} … substituted from anchors
       scientific_programming: <string>
@@ -58,6 +61,7 @@ scoring:
 | `scoring.reference_anchors` | map | ⭕ | Reference-fit facts used ONLY to identify the reference-fit cluster during cohort calibration — never score targets. **All-or-nothing** (partial anchors are a hard error). Absent → `runCohortCalibration` skips (0 adjustments). |
 | `scoring.evidence_patterns` | map | ⭕ | Compiled at load time with `new RegExp(pattern, 'i')` — invalid regex throws with the pattern key. `test` → boolean bullet; `test_all` → list of patterns, ALL must match; `capture_value` → first capture group value; `distinct_count` → distinct values of the capture group (matchAll). |
 | `scoring.disallowed_libraries` | string[] | ⭕ | Imports flagged by pre-analysis. Absent → `[]` (no assignment-specific disallowed libraries). |
+| `scoring.allowed_libraries` | string[] | ⭕ | Pass 3 (post-process) import allow-list — top-level module names (lowercased) allowed in code cells; anything else imported is flagged by the post-process disallowed-import scan. Absent → the code default list applies (`numpy`, `pandas`, `scipy`, `sklearn`, `matplotlib`, `pathlib`, `typing` — soil_contamination's config lists exactly these). Not part of any prompt. |
 | `scoring.prompt_anchor_text.dimension_guidance` | map | ⭕ | Per-dimension suffix text for the Phase 2a PER-DIMENSION GUIDE. `{A} {B} {L} {x0} {y0} {r_squared} {rmse}` placeholders substitute from `reference_anchors` so each reference value exists in exactly one place. Unlisted dimensions fall back to `DEFAULT_DIMENSION_GUIDANCE` (code constant). |
 
 ## Contract Rules (enforced by `frontend/src/lib/server/copilot/scoring-config.ts`)
@@ -82,7 +86,7 @@ scoring:
 
 | Consumer | Reads |
 |----------|-------|
-| `pre-evaluation.ts` (`preEvaluateSubmission`) | `disallowed_libraries` (pre-analysis), `evidence_patterns` + `reference_anchors` (via `buildExtraAnalysisEvidence`), `dimension_guidance` (Phase 2a prompt) |
+| `pre-evaluation.ts` (`preEvaluateSubmission`) | `disallowed_libraries` (pre-analysis), `evidence_patterns` + `reference_anchors` (via `buildExtraAnalysisEvidence`), `dimension_guidance` (Phase 2a prompt), `allowed_libraries` → post-process Pass 3 (`allowedImports`) |
 | `pre-evaluation.ts` (`runCohortCalibration`) | `reference_anchors` (cluster band); skips when absent |
 | `cohort-calibration.ts` (`extractFitMetricsFromResults`) | `fit_metrics_*` / `bounds_assignment` patterns (single source for R²/RMSE parsing; code constants as fallback) |
 | `pipeline/context.ts` (`buildExtraAnalysisEvidence`) | `evidence_patterns` + anchors for the evidence bullet |

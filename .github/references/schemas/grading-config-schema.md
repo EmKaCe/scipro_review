@@ -18,7 +18,8 @@ dimensions:
 grade_boundaries:
   - min_percentage: <number>
     grade: <number>          # German grade (1.0–5.0)
-    label: <string>          # US equivalent (A+, A, A-, ...)
+    label: <string>          # German descriptor ("excellent", "very good", "good", ...)
+    us_equiv: <string>       # US equivalent (A+, A, A-, ...)
 ```
 
 ## Field Definitions
@@ -38,7 +39,8 @@ grade_boundaries:
 |-------|------|----------|-------------|
 | `min_percentage` | number | ✅ | Lower bound (inclusive) of the percentage range |
 | `grade` | number | ✅ | German grade (1.0 = best, 5.0 = fail) |
-| `label` | string | ✅ | US letter-grade equivalent for display |
+| `label` | string | ✅ | German grade descriptor (`excellent`, `very good`, `good`, `above average`, `average`, `below average`, `sufficient`, `insufficient`) |
+| `us_equiv` | string | ✅ | US letter-grade equivalent for display (A+, A, A-, B+, ...) |
 
 ## Current Configuration
 
@@ -55,19 +57,19 @@ grade_boundaries:
 
 ### Grade Boundaries
 
-| Min % | Grade | Label |
-|-------|-------|-------|
-| 95 | 1.0 | A+ |
-| 90 | 1.3 | A |
-| 85 | 1.7 | A- |
-| 80 | 2.0 | B+ |
-| 75 | 2.3 | B |
-| 70 | 2.7 | B- |
-| 65 | 3.0 | C+ |
-| 60 | 3.3 | C |
-| 55 | 3.7 | C- |
-| 50 | 4.0 | D |
-| 0 | 5.0 | F |
+| Min % | Grade | Label (German) | US equiv |
+|-------|-------|----------------|----------|
+| 95 | 1.0 | excellent | A+ |
+| 90 | 1.3 | very good | A |
+| 85 | 1.7 | very good | A- |
+| 80 | 2.0 | good | B+ |
+| 75 | 2.3 | good | B |
+| 70 | 2.7 | good | B- |
+| 65 | 3.0 | above average | C+ |
+| 60 | 3.3 | average | C |
+| 55 | 3.7 | below average | C- |
+| 50 | 4.0 | sufficient | D |
+| 0 | 5.0 | insufficient | F |
 
 ## Grade Calculation
 
@@ -77,7 +79,7 @@ $$\text{percentage} = \frac{\sum_i (\text{score}_i \times \text{weight}_i)}{\sum
 
 Scores: CQ=4.5, CE=5.5, AR=5.0, SP=4.5, CR=2.0
 
-$$\frac{4.5 \times 4 + 5.5 \times 4 + 5.0 \times 4 + 4.5 \times 4 + 2.0 \times 1}{6 \times 4 + 6 \times 4 + 6 \times 4 + 6 \times 4 + 4 \times 1} \times 100 = \frac{82}{100} \times 100 = 82.0\%$$
+$$\frac{4.5 \times 4 + 5.5 \times 4 + 5.0 \times 4 + 4.5 \times 4 + 2.0 \times 1}{6 \times 4 + 6 \times 4 + 6 \times 4 + 6 \times 4 + 4 \times 1} \times 100 = \frac{80}{100} \times 100 = 80.0\%$$
 
 → Grade 2.0 (B+)
 
@@ -109,37 +111,48 @@ dimensions:
 grade_boundaries:
   - min_percentage: 95
     grade: 1.0
-    label: A+
+    label: excellent
+    us_equiv: A+
   - min_percentage: 90
     grade: 1.3
-    label: A
+    label: very good
+    us_equiv: A
   - min_percentage: 85
     grade: 1.7
-    label: A-
+    label: very good
+    us_equiv: A-
   - min_percentage: 80
     grade: 2.0
-    label: B+
+    label: good
+    us_equiv: B+
   - min_percentage: 75
     grade: 2.3
-    label: B
+    label: good
+    us_equiv: B
   - min_percentage: 70
     grade: 2.7
-    label: B-
+    label: good
+    us_equiv: B-
   - min_percentage: 65
     grade: 3.0
-    label: C+
+    label: above average
+    us_equiv: C+
   - min_percentage: 60
     grade: 3.3
-    label: C
+    label: average
+    us_equiv: C
   - min_percentage: 55
     grade: 3.7
-    label: C-
+    label: below average
+    us_equiv: C-
   - min_percentage: 50
     grade: 4.0
-    label: D
+    label: sufficient
+    us_equiv: D
   - min_percentage: 0
     grade: 5.0
-    label: F
+    label: insufficient
+    us_equiv: F
 ```
 
 ## Migration from Legacy Formats

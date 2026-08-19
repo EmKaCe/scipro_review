@@ -23,7 +23,7 @@ assignments:
     enabled: <boolean>        # Whether the assignment is active
     scoring_file: <string>    # Optional: data/scoring/<id>.yaml (scoring semantics)
     criteria_files:           # Ordered list of criteria YAML files to load
-      - <string>              # Relative path from data/criteria/
+      - <string>              # Full data-root-relative path, e.g. "data/criteria/general.yaml"
     dimensions:               # Which grading dimensions apply
       - <string>              # Key from grading_config.yaml
 ```
@@ -38,7 +38,7 @@ assignments:
 | `title` | string | ✅ | Human-readable display name |
 | `enabled` | boolean | ✅ | Whether the assignment appears in the assignment selector |
 | `scoring_file` | string | ⭕ | Optional path to the per-assignment scoring config (see [Scoring Config Schema](scoring-config-schema.md)). Absent → generic fallback semantics (no calibration anchors → calibration skipped; no disallowed libraries; generic dimension guidance). Added 2026-08-18 (design signed off). |
-| `criteria_files` | string[] | ✅ | Ordered list of criteria YAML files (relative to `data/criteria/`) |
+| `criteria_files` | string[] | ✅ | Ordered list of criteria YAML files. Entries carry the `data/` prefix relative to the data root (e.g. `data/criteria/general.yaml`); the server loader (`frontend/src/lib/server/criteria.ts`) strips it before joining to `DATA_DIR`. In static/student mode the client `criteria-loader.ts` fetches the `data/...` paths directly as URLs (no strip, no DATA_DIR). |
 | `dimensions` | string[] | ✅ | Keys from `grading_config.yaml` dimensions that apply |
 
 ### Criteria File Loading
@@ -51,12 +51,17 @@ assignment. Files are loaded and merged in order:
 3. Category keys must be unique across the merged set
 
 The convention is to always include `general.yaml` first, followed by the
-assignment-specific file:
+assignment-specific files. As of 2026-08-19 the committed registry uses
+data-root-relative paths with the `data/` prefix (`data/criteria/...`), and
+soil_contamination additionally ships `following_instructions.yaml` and
+`general_feedback.yaml` between the general and the assignment-specific file:
 
 ```yaml
 criteria_files:
-  - general.yaml              # 6 shared categories
-  - atom_interaction.yaml     # 5 assignment-specific categories
+  - data/criteria/general.yaml                # 4 shared categories
+  - data/criteria/following_instructions.yaml # shared (soil)
+  - data/criteria/general_feedback.yaml       # shared (soil)
+  - data/criteria/soil_contamination.yaml     # assignment-specific (8 categories)
 ```
 
 ### Dimensions
@@ -80,12 +85,15 @@ dimensions:
 
 ```yaml
 assignments:
-  - id: atom_interaction
-    title: Atom Interaction (Lennard-Jones / Pandas)
+  - id: soil_contamination
+    title: Soil Contamination by Factories (NumPy, Pandas, SciPy, sklearn)
     enabled: true
+    scoring_file: data/scoring/soil_contamination.yaml
     criteria_files:
-      - general.yaml
-      - atom_interaction.yaml
+      - data/criteria/general.yaml
+      - data/criteria/following_instructions.yaml
+      - data/criteria/general_feedback.yaml
+      - data/criteria/soil_contamination.yaml
     dimensions:
       - code_quality_design
       - code_execution_results
@@ -93,12 +101,12 @@ assignments:
       - scientific_programming
       - creativity
 
-  - id: molecular_dynamics
-    title: Molecular Dynamics (NumPy / Matplotlib)
-    enabled: false
+  - id: atom_interaction
+    title: Atom Interaction (Lennard-Jones / User Functions / Pandas / Plotting)
+    enabled: false        # disabled since 2026-08-18; no scoring_file
     criteria_files:
-      - general.yaml
-      - molecular_dynamics.yaml
+      - data/criteria/general.yaml
+      - data/criteria/atom_interaction.yaml
     dimensions:
       - code_quality_design
       - code_execution_results
@@ -106,6 +114,10 @@ assignments:
       - scientific_programming
       - creativity
 ```
+
+(Current registry as of 2026-08-19: `soil_contamination` is the only enabled
+assignment; `atom_interaction`, `molecular_dynamics`, and `quantum_chemistry`
+are registered with `enabled: false` and no `scoring_file`.)
 
 ## Migration from Legacy Formats
 
