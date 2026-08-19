@@ -47,6 +47,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 > **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
+> **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.
 
 ## Settings map
 
@@ -214,103 +215,97 @@ scripts/               Root-level helper & smoke-test scripts
 - Agent conventions: root + scoped `AGENTS.md` (cross-harness primary) —
   see the *Agent Configuration* note in the Documentation section above.
 
-The frontend source tree in detail:
+The frontend source tree in detail (the deep module map lives in
+[`.github/references/architecture.md`](.github/references/architecture.md)):
 
 ```
 frontend/src/
 ├── lib/
-│   ├── components/       # Svelte UI components
-│   │   ├── ui/           # In-repo UI primitives
-│   │   ├── settings/     # Settings page cards
-│   │   ├── skeleton/     # Loading skeletons
-│   │   └── submissions/  # Teacher dashboard & upload components
-│   ├── services/         # Business logic
-│   │   ├── criteria-loader.ts    # YAML criteria loading
-│   │   ├── grading-config.ts     # Grading config loading
-│   │   ├── grade-calculator.ts   # Weighted grade calculation
-│   │   ├── text-generator.ts     # Evaluation text generation
-│   │   ├── session-persistence.ts # Serialization & export/import
-│   │   ├── db.ts                 # IndexedDB CRUD
-│   │   ├── validation.ts         # Zod schemas for imports
-│   │   └── submissions-store.ts  # Stub submissions data (Phase 3: API)
-│   ├── stores/           # Reactive state (Svelte 5 runes)
-│   │   ├── review.svelte.ts      # Orchestrator — composes sub-stores
-│   │   ├── rubric.svelte.ts      # Rubric loading & assignment selection
-│   │   ├── grading.svelte.ts     # Dimension scores & grade calculation
-│   │   ├── selection.svelte.ts   # Category selections, comments, undo/redo
-│   │   ├── session.svelte.ts     # IndexedDB persistence & auto-save
-│   │   ├── export.svelte.ts      # YAML/MD/JSON export & import
-│   │   ├── settings.svelte.ts    # App settings
-│   │   ├── toast.svelte.ts       # Toast notifications
-│   │   └── header.svelte.ts      # Header configuration
-│   ├── types/            # TypeScript type definitions
-│   │   ├── criteria.ts
-│   │   ├── grading.ts
-│   │   ├── evaluation.ts
-│   │   ├── assignments.ts
-│   │   ├── session.ts
-│   │   ├── persistence.ts
-│   │   ├── submissions.ts        # Teacher submission types
-│   │   └── index.ts
-│   ├── utils.ts          # Utility functions
-│   └── version.ts        # Build version
+│   ├── components/          # Svelte 5 UI components
+│   │   ├── ui/              # In-repo, dependency-free UI primitives (token-only)
+│   │   ├── settings/        # Settings page cards (grading, configuration map)
+│   │   ├── assignments/     # Assignment editor (criteria / scoring / draft)
+│   │   ├── skeleton/        # Loading skeletons
+│   │   └── submissions/     # Dashboard, upload panel, review, grading widgets
+│   ├── services/            # Rune-based stores + pure service helpers
+│   │   ├── submissions-api.ts         # Typed fetch client for every /api/* endpoint
+│   │   ├── submissions-store.svelte.ts# Dashboard list/selection/polling store
+│   │   ├── plagiarism-store.svelte.ts # Plagiarism result cache (sequence-guarded)
+│   │   ├── run-state.svelte.ts        # Shared batch run-state registry (B4)
+│   │   ├── autofix-store.svelte.ts    # Autofix dispositions / fixed-view
+│   │   ├── submission-filters.ts      # Canonical filter util (shared by page+dashboard)
+│   │   ├── grading-config.ts / grade-calculator.ts / criteria-loader.ts
+│   │   └── grading-persistence.ts / settings-api.ts / db.ts / validation.ts
+│   ├── stores/              # Legacy student-side + app-wide state
+│   │   ├── review.svelte.ts # Orchestrator — composes sub-stores (student mode)
+│   │   ├── grading/selection/session/rubric/export.svelte.ts
+│   │   └── settings/toast/header.svelte.ts
+│   ├── server/              # Teacher-server only (SSR + API routes) — see architecture.md
+│   │   ├── copilot/         # Pre-evaluation pipeline + copilot harness (pipeline/, tools/)
+│   │   ├── plagiarism/      # structural + semantic plagiarism engine
+│   │   ├── ki-connect.ts    # OpenAI-compatible endpoint abstraction
+│   │   ├── metadata.ts / results-store.ts / executor-client.ts / file-service.ts
+│   │   └── criteria.ts / settings.ts / assignments*.ts / grading-*.ts / backup-service.ts
+│   ├── types/               # Client-safe wire types (see data-structures.md)
+│   └── utils/               # Pure helpers (apply-suggestion, marker-rendering, …)
 ├── routes/
-│   ├── +layout.svelte    # App shell
-│   ├── +layout.ts        # SSR disabled in static mode
-│   ├── +page.svelte      # Landing page
-│   ├── docs/+page.svelte # Documentation
-│   ├── review/[id]/      # Review page (student mode)
-│   ├── submissions/      # Teacher dashboard (Phase 2)
-│   │   ├── +page.svelte  # Submissions table with upload bar
-│   │   └── [id]/         # Per-submission review page
-│   └── settings/+page.svelte
-└── tests/
-    ├── setup.ts          # Vitest global setup
-    └── services/         # Unit tests
+│   ├── review/[id]/evaluation/   # STUDENT: read-only evaluation view
+│   ├── submissions/             # TEACHER: dashboard + per-submission review
+│   ├── settings/                # TEACHER: settings + assignment editors
+│   ├── docs/                    # TEACHER: in-app documentation
+│   └── api/                     # All server endpoints (submissions, pipeline, plagiarism,
+│                               #   copilot, config, backup, assignments drafts, …)
+└── tests/                       # Vitest mirrors of src/ (copilot, stores, services,
+                                #   components, routes)
 ```
 
 ---
 
 ## Architecture
 
-### Data Flow (Student Mode)
+The canonical, current reference is
+**[`.github/references/architecture.md`](.github/references/architecture.md)**
+(component map, data flow, module map) and
+**[`.github/references/data-structures.md`](.github/references/data-structures.md)**
+(key types, who writes vs reads). The short version:
 
-```
-assignments.yaml → select assignment → load criteria YAML
-                                          ↓
-                                    MergedRubric
-                                          ↓
-                              ReviewStore (category selections,
-                              grading inputs, undo/redo)
-                                          ↓
-                              IndexedDB (auto-save + manual save)
-                                          ↓
-                              Export (YAML / Markdown / JSON)
-```
+### High-level data flow (teacher mode)
 
-### Teacher Mode (Phases 2–4)
-
-```
-Upload bar → classify files → stub data store
-                                   ↓
-                         Dashboard (hand-rolled table)
-                        /                        \
-              Process All (Phase 3)     [id]/review page
-              Pre-evaluate All (P4)     Left: cell comparison
-                                        Right: tabs (Rubric | Grading | Copilot)
+```mermaid
+flowchart TD
+    A[Upload notebooks] --> B[executor runs them<br/>hardened container]
+    B --> C[results.json: cells + rich outputs]
+    C --> D[Pre-evaluation pipeline<br/>markers → dim scores → turn-based rubric → feedback]
+    D --> E[post-process 7 passes + cohort calibration]
+    E --> F[PreEvaluation envelope + gradingConfidence + calibrationAdjustments]
+    F --> G[Teacher reviews + Accept/Reject]
+    G --> H[saveGrading → export (Karl-compatible)]
 ```
 
-### Dual-Adapter Build
+### Pre-evaluation inside
+
+```mermaid
+flowchart LR
+    P1[Phase 1<br/>cell markers] --> P2A[Phase 2a<br/>dimension scores<br/>docs-RAG grounded]
+    P2A --> P2B[Phase 2b<br/>turn-based rubric<br/>1 category per call]
+    P2B --> PP[post-process<br/>7 passes]
+    PP --> CAL[cohort calibration]
+```
+
+### Dual-adapter build
 
 The same codebase produces two builds via the `ADAPTER` environment variable:
 
-- `ADAPTER=static` (default): `adapter-static` — pre-rendered SPA for GitHub Pages. Student features only; teacher routes render stub data.
-- `ADAPTER=node`: `adapter-node` — Node server for Docker/teacher mode. Full teacher routes with SSR, file upload, and notebook execution.
+- `ADAPTER=static` (default): `adapter-static` — pre-rendered SPA for GitHub Pages. Student features only; teacher routes render stubs (student mode is the only deployed public build).
+- `ADAPTER=node`: `adapter-node` — Node server for Docker/teacher mode. Full teacher routes with SSR, file upload, notebook execution, the pre-eval pipeline, and the copilot harness.
 
-### State Management
+### State management
 
-The app uses **class-based stores** in `.svelte.ts` files with Svelte 5 runes.
-The `ReviewStore` is an **orchestrator** that composes focused sub-stores.
+The app uses **class-based stores** in `.svelte.ts` files with Svelte 5 runes
+(`$state` / `$derived` / `$effect`). Student mode has the `ReviewStore`
+orchestrator composing focused sub-stores; teacher mode uses
+`submissions-store`, `plagiarism-store`, and the shared `run-state` registry
+for batch-run progress. See the [developer guide](.github/references/developer-guide.md).
 
 ---
 
