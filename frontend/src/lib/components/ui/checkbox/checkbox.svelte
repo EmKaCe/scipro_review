@@ -7,10 +7,9 @@
 	/**
 	 * Shadcn-style controlled checkbox (button[role=checkbox]).
 	 *
-	 * Renders the same structure shadcn-svelte produces (data-state,
+	 * Renders the same structure the shadcn checkbox produces (data-state,
 	 * rounded-sm border, Check icon, focus ring) but keeps the checked
-	 * state fully parent-controlled — bits-ui's Root ignores controlled
-	 * prop updates, which desyncs row selection checkboxes.
+	 * state fully parent-controlled.
 	 */
 	interface Props extends HTMLButtonAttributes {
 		class?: string;

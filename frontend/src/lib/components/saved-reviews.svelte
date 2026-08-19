@@ -138,9 +138,9 @@
 		>
 			{filteredReviews.length}
 		</span>
-		<Tooltip>
+		<Tooltip class="ml-auto">
 			<TooltipTrigger
-				class="ml-auto flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
+				class="flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-muted-foreground transition-colors hover:bg-black/5 hover:text-foreground dark:hover:bg-white/10"
 				aria-label="Toggle section"
 				aria-expanded={!isCollapsed}
 				aria-controls="saved-reviews-content"

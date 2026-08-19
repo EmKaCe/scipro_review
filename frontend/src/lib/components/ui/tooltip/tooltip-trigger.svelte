@@ -1,12 +1,15 @@
 <script lang="ts">
-	import { Tooltip as TooltipPrimitive } from "bits-ui";
 	import type { HTMLButtonAttributes } from "svelte/elements";
 	import type { Snippet } from "svelte";
 
+	import { cn } from "$lib/utils.js";
+
+	import { tooltipRootContext } from "./tooltip-context.svelte.js";
+
 	/**
 	 * Tooltip trigger — wraps any button (or custom trigger via the `child`
-	 * snippet). bits-ui injects the pointer/keyboard handlers, id,
-	 * `aria-describedby` and `data-state` onto the wrapped element.
+	 * snippet) and wires the pointer/keyboard handlers, ids, `aria-describedby`
+	 * and `data-state` onto the wrapped element.
 	 *
 	 * Two usage forms:
 	 *
@@ -24,7 +27,7 @@
 	 */
 	interface Props extends HTMLButtonAttributes {
 		class?: string;
-		/** Custom trigger element; receives the merged bits-ui trigger props. */
+		/** Custom trigger element; receives the merged trigger props. */
 		child?: Snippet<[{ props: Record<string, unknown> }]>;
 		/** Default trigger content when no `child` snippet is given. */
 		children?: Snippet;
@@ -32,23 +35,109 @@
 
 	let { class: className, child, children, disabled = false, ...restProps }: Props = $props();
 
-	function forward(props: Record<string, unknown>): Record<string, unknown> {
-		return className ? { ...props, class: className } : props;
+	const root = tooltipRootContext[0]();
+
+	// Compose the caller's handler with the tooltip's own handler so both run.
+	function chain(a: ((e: Event) => void) | undefined, b: (e: Event) => void) {
+		if (!a) return b;
+		return (e: Event) => {
+			a(e);
+			b(e);
+		};
+	}
+
+	function isEffectivelyDisabled() {
+		return disabled || root.disabled;
+	}
+
+	function handlePointerEnter(e: PointerEvent) {
+		if (isEffectivelyDisabled()) return;
+		if (e.pointerType === "touch") return;
+		root.scheduleOpen();
+	}
+
+	function handlePointerLeave() {
+		if (isEffectivelyDisabled()) return;
+		root.triggerLeave();
+	}
+
+	function handlePointerDown() {
+		if (isEffectivelyDisabled()) return;
+		// Track mouse-focus vs keyboard-focus: focus that follows a
+		// pointer-down must not open the tooltip.
+		root.setPointerDown();
+	}
+
+	function handlePointerUp() {
+		root.clearPointerDown();
+	}
+
+	function handleFocus() {
+		if (isEffectivelyDisabled()) {
+			if (root.open) root.closeTooltip();
+			return;
+		}
+		if (root.pointerDown) return;
+		if (root.ignoreNonKeyboardFocus) return;
+		root.openTooltip();
+	}
+
+	function handleBlur() {
+		if (isEffectivelyDisabled()) return;
+		root.closeTooltip();
+	}
+
+	function handleClick() {
+		if (isEffectivelyDisabled()) return;
+		root.toggleOnClick();
+	}
+
+	// Tooltip's own handlers — always installed, composed with any caller
+	// handler of the same event so both run.
+	const TOOLTIP_HANDLERS: Record<string, (e: Event) => void> = {
+		onpointerenter: handlePointerEnter as (e: Event) => void,
+		onpointerleave: handlePointerLeave as (e: Event) => void,
+		onpointerdown: handlePointerDown as (e: Event) => void,
+		onpointerup: handlePointerUp as (e: Event) => void,
+		onfocus: handleFocus as (e: Event) => void,
+		onblur: handleBlur as (e: Event) => void,
+		onclick: handleClick as (e: Event) => void,
+	};
+
+	function mergeProps(props: Record<string, unknown>): Record<string, unknown> {
+		const merged: Record<string, unknown> = {
+			...props,
+			id: root.triggerId,
+			"aria-describedby": root.open ? root.contentId : undefined,
+			"data-state": root.stateAttr,
+		};
+		// Caller attrs (onclick, aria-label, ...) win over defaults; the
+		// tooltip's event handlers are always composed in so both run.
+		for (const [key, value] of Object.entries(restProps)) {
+			if (key in TOOLTIP_HANDLERS) {
+				merged[key] = chain(value as (e: Event) => void | undefined, TOOLTIP_HANDLERS[key]);
+			} else {
+				merged[key] = value;
+			}
+		}
+		for (const [key, handler] of Object.entries(TOOLTIP_HANDLERS)) {
+			if (!(key in merged)) merged[key] = handler;
+		}
+		if (className) {
+			merged.class = cn(merged.class as string | undefined, className);
+		}
+		return merged;
 	}
 </script>
 
 {#snippet triggerChild({ props }: { props: Record<string, unknown> })}
 	{#if child}
-		{@render child({ props: forward(props) })}
+		{@render child({ props: mergeProps({ ...props, disabled }) })}
 	{:else}
-		<!-- Caller attrs (onclick, aria-label, ...) win over bits-ui's merged
-		     props; bits-ui's pointer/focus handlers survive because callers
-		     don't pass them. Its own close-on-click is redundant (Escape and
-		     outside-click still close the tooltip). -->
-		<button {...props} {...restProps} type="button">
+		<button {...mergeProps({ disabled })} type="button">
 			{@render children?.()}
 		</button>
 	{/if}
 {/snippet}
 
-<TooltipPrimitive.Trigger {disabled} child={triggerChild} />
+{@render triggerChild({ props: {} })}

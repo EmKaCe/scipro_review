@@ -1,17 +1,23 @@
-/** @file Shared utility functions for grading, formatting, and CSS class merging. */
-import { clsx, type ClassValue } from "clsx";
+/** @file Shared utility functions for grading, formatting, and CSS class joining. */
 import { twMerge } from "tailwind-merge";
-
 import type { GradeMapping } from "./types/index.js";
 
 /**
- * Merge Tailwind CSS classes with conflict resolution.
- * Combines `clsx` conditional class joining with `tailwind-merge` deduplication.
- * @param inputs - Class values, arrays, or conditional objects.
- * @returns Merged class string with Tailwind conflicts resolved.
+ * Join CSS class names, filtering out falsy values, with Tailwind conflict
+ * resolution (last-wins per property via tailwind-merge).
+ *
+ * Kept tailwind-merge on purpose: the app's dominant idiom is
+ * `cn(buttonVariants({ size }), "h-8")` — a variant class + an override.
+ * Tailwind v4 emits utilities in ascending numeric scale, so WITHOUT
+ * merge-dedup the variant's larger value wins and the override silently
+ * loses (verified empirically: `.px-3` after `.px-0`, `.h-9` after
+ * `.h-8`). twMerge is a ~3KB class-merge utility, not a UI library —
+ * it does not conflict with the de-bloat goal.
+ * @param inputs - Class strings or falsy values (conditional joins).
+ * @returns Joined class string with merge-dedup.
  */
-export function cn(...inputs: ClassValue[]) {
-	return twMerge(clsx(inputs));
+export function cn(...inputs: Array<string | false | null | undefined>) {
+	return twMerge(inputs.filter(Boolean).join(" "));
 }
 
 /** Remove the `child` property from a type if it exists. */

@@ -57,7 +57,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 | SvelteKit 2     | App framework (SPA + Node server)                  |
 | Svelte 5        | UI with runes (`$state`, `$derived`, `$effect`)    |
 | Tailwind CSS v4 | Utility-first styling                              |
-| shadcn-svelte   | UI primitive components                            |
+| Dependency-free UI primitives | Hand-rolled tooltip/button/checkbox components |
 | TypeScript 6    | Type-safe source                                   |
 | IndexedDB       | Client-side persistence (student mode)             |
 | js-yaml         | Criteria loading and export                        |
@@ -134,7 +134,7 @@ pnpm start:teacher        # Start server on port 4174
 frontend/src/
 ├── lib/
 │   ├── components/       # Svelte UI components
-│   │   ├── ui/           # shadcn-svelte primitives
+│   │   ├── ui/           # In-repo UI primitives
 │   │   ├── settings/     # Settings page cards
 │   │   ├── skeleton/     # Loading skeletons
 │   │   └── submissions/  # Teacher dashboard & upload components

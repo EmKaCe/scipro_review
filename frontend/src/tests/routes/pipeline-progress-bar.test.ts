@@ -13,8 +13,9 @@ import { render, screen } from "@testing-library/svelte";
 import type { SubmissionMeta } from "$lib/types/submissions.js";
 import type { PreEvalProgress, ProcessProgress } from "$lib/services/submissions-api.js";
 
-// Static import (not dynamic): the page pulls in the bits-ui tooltip graph,
-// whose first-load transform exceeds the per-test timeout in a fresh worker.
+// Static import (not dynamic): the page pulls in the tooltip component
+// graph, whose first-load transform exceeds the per-test timeout in a
+// fresh worker.
 import SubmissionsPage from "../../routes/submissions/+page.svelte";
 
 // ---------------------------------------------------------------------------
