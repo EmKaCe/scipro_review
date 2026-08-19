@@ -18,6 +18,7 @@ vi.mock("$lib/services/submissions-api.js", async (importOriginal) => {
 	return {
 		...actual,
 		saveCriteria: vi.fn(),
+		draftCriteria: vi.fn(),
 	};
 });
 
@@ -33,6 +34,7 @@ import { clearCache } from "$lib/services/criteria-loader.js";
 import { addToast } from "$lib/stores/toast.svelte.js";
 
 const mockedSave = vi.mocked(api.saveCriteria);
+const mockedDraft = vi.mocked(api.draftCriteria);
 const mockedClearCache = vi.mocked(clearCache);
 const mockedToast = vi.mocked(addToast);
 
@@ -61,14 +63,34 @@ const INITIAL: CriteriaFile = {
 	},
 };
 
+/** A distinct LLM draft used to prefill the editor via "Draft with AI". */
+const DRAFTED: CriteriaFile = {
+	categories: {
+		drafted: {
+			title: "Drafted Category",
+			additional_notes: true,
+			positive: [
+				{
+					main_point: "Drafted main point",
+					sub_points: [{ text: "Drafted checkable sub-point" }],
+				},
+			],
+			neutral: [],
+			negative: [],
+		},
+	},
+};
+
 beforeEach(() => {
 	mockedSave.mockReset();
+	mockedDraft.mockReset();
 	mockedClearCache.mockClear();
 	mockedToast.mockClear();
 	mockedSave.mockResolvedValue({
 		fileName: "data/criteria/soil_contamination.yaml",
 		content: INITIAL,
 	});
+	mockedDraft.mockResolvedValue({ draft: DRAFTED });
 });
 
 describe("CriteriaEditorTabs", () => {
@@ -253,5 +275,41 @@ describe("CriteriaEditorTabs", () => {
 		expect(mockedClearCache).not.toHaveBeenCalled();
 		// Editor state survives — the category is still rendered.
 		expect(screen.getByDisplayValue("Code Formatting v2")).toBeTruthy();
+	});
+
+	it("Draft with AI prefills the editor, marks it dirty, and does NOT auto-save", async () => {
+		render(CriteriaEditorTabs, {
+			props: { assignmentId: "soil_contamination", initial: INITIAL },
+		});
+
+		await fireEvent.click(screen.getByText("Draft with AI"));
+
+		// The drafted categories replace the editor draft.
+		await waitFor(() => expect(screen.getByDisplayValue("Drafted Category")).toBeTruthy());
+		expect(screen.getByDisplayValue("Drafted checkable sub-point")).toBeTruthy();
+		// The pre-save content is gone.
+		expect(screen.queryByDisplayValue("Code Formatting")).toBeNull();
+
+		// Dirty chip appears because the draft differs from the saved shape.
+		expect(screen.getByText("Unsaved changes")).toBeTruthy();
+
+		// Never auto-saves — the teacher must click Save explicitly.
+		expect(mockedSave).not.toHaveBeenCalled();
+		expect(mockedClearCache).not.toHaveBeenCalled();
+	});
+
+	it("Draft with AI surfaces the error and keeps the current draft when it fails", async () => {
+		mockedDraft.mockRejectedValue(new Error("Assignment has no rubric — upload criteria first"));
+		render(CriteriaEditorTabs, {
+			props: { assignmentId: "soil_contamination", initial: INITIAL },
+		});
+
+		await fireEvent.click(screen.getByText("Draft with AI"));
+
+		expect(await screen.findByText(/upload criteria first/)).toBeTruthy();
+		// The existing draft is untouched and still rendered.
+		expect(screen.getByDisplayValue("Code Formatting")).toBeTruthy();
+		expect(screen.queryByText("Unsaved changes")).toBeNull();
+		expect(mockedSave).not.toHaveBeenCalled();
 	});
 });

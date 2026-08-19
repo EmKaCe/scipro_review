@@ -16,11 +16,12 @@
 	import FileCode2 from "@lucide/svelte/icons/file-code-2";
 	import Eye from "@lucide/svelte/icons/eye";
 	import Save from "@lucide/svelte/icons/save";
+	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 
 	import { Button } from "$lib/components/ui/button/index.js";
-	import { saveCriteria } from "$lib/services/submissions-api.js";
+	import { draftCriteria, saveCriteria } from "$lib/services/submissions-api.js";
 	import { clearCache } from "$lib/services/criteria-loader.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import type { CriteriaFile } from "$lib/types/criteria.js";
@@ -53,7 +54,9 @@
 	let yamlText = $state("");
 	let yamlError = $state<string | null>(null);
 	let busy = $state(false);
+	let drafting = $state(false);
 	let saveError = $state<string | null>(null);
+	let draftError = $state<string | null>(null);
 	let validationError = $state<string | null>(null);
 	/** JSON of the last saved server shape — dirty = draft differs from it. */
 	let savedServerShape = $state("");
@@ -129,6 +132,35 @@
 			busy = false;
 		}
 	}
+
+	/**
+	 * Ask the LLM endpoint for a draft criteria document and re-seed the
+	 * editor draft with it. NEVER persists: the draft replaces the current
+	 * editor draft (the dirty chip appears because `savedServerShape` is
+	 * unchanged), and the teacher must review and click Save — which goes
+	 * through the existing compile-gate PUT.
+	 */
+	async function handleDraft() {
+		if (busy || drafting) return;
+		draftError = null;
+		saveError = null;
+		validationError = null;
+		drafting = true;
+		try {
+			const { draft } = await draftCriteria(assignmentId);
+			if (!draft) {
+				draftError = "Draft failed: the server returned no draft";
+				return;
+			}
+			categories = fromServerCategories(draft.categories);
+			yamlText = yaml.dump({ categories: toServerCategories(categories) });
+			addToast("success", "Draft generated — review before saving", 3500);
+		} catch (e) {
+			draftError = `Draft failed: ${e instanceof Error ? e.message : "unknown error"}`;
+		} finally {
+			drafting = false;
+		}
+	}
 </script>
 
 <div class="criteria-editor-tabs">
@@ -152,10 +184,24 @@
 				<span class="dirty-chip" title="Unsaved changes">Unsaved changes</span>
 			{/if}
 			<Button
+				variant="secondary"
+				size="sm"
+				onclick={handleDraft}
+				disabled={busy || drafting}
+				title="Generate a draft criteria document from the assignment's rubric (review before saving)"
+			>
+				{#if drafting}
+					<span class="spinner"><LoaderCircle size={14} /></span>
+				{:else}
+					<Sparkles size={14} />
+				{/if}
+				{drafting ? "Drafting…" : "Draft with AI"}
+			</Button>
+			<Button
 				variant="default"
 				size="sm"
 				onclick={handleSave}
-				disabled={busy || !dirty}
+				disabled={busy || !dirty || drafting}
 				title="Validate and save the current criteria"
 			>
 				{#if busy}
@@ -168,11 +214,11 @@
 		</div>
 	</div>
 
-	{#if validationError || saveError}
-		<div class="editor-error" role="alert">
-			<TriangleAlert size={14} class="shrink-0" />
-			<span>{validationError ?? saveError}</span>
-		</div>
+	{#if validationError || saveError || draftError}
+	<div class="editor-error" role="alert">
+		<TriangleAlert size={14} class="shrink-0" />
+		<span>{validationError ?? saveError ?? draftError}</span>
+	</div>
 	{/if}
 
 	<div class="tab-panel" role="tabpanel">

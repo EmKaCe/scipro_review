@@ -980,6 +980,23 @@ export async function saveCriteria(
 	);
 }
 
+/**
+ * POST /api/assignments/[id]/criteria/draft — ask the LLM to draft the
+ * assignment's criteria (rubric) categories from its own rubric + metadata,
+ * following the quantifiable criteria-authoring rules. The draft is NOT
+ * persisted: the teacher reviews it in the criteria editor and saves
+ * explicitly via the compile-gate PUT. `draft` is null when the server could
+ * not produce one (e.g. the assignment has no own rubric to ground on).
+ */
+export async function draftCriteria(
+	assignmentId: string,
+): Promise<{ draft: CriteriaFile | null }> {
+	return requestJson<{ draft: CriteriaFile | null }>(
+		`/api/assignments/${encodeURIComponent(assignmentId)}/criteria/draft`,
+		{ method: "POST" },
+	);
+}
+
 // ---------------------------------------------------------------------------
 // Scoring config editor
 // ---------------------------------------------------------------------------
