@@ -1223,13 +1223,14 @@ function parseRedactedArgs(args: unknown): unknown {
 	}
 }
 
-/** Cap a string at maxLen chars, appending an ellipsis when cut. URLs are
- * kept whole — they are short, high-value (the search-docs summary must
- * keep its grounding link for the model), and the old string-slice
- * preserved them by accident. */
+/** Cap a string at maxLen chars, appending an ellipsis when cut. URLs up to
+ * 200 chars are kept whole — they are short, high-value (the search-docs
+ * summary must keep its grounding link for the model), and the old
+ * string-slice preserved them by accident. Longer URLs are truncated like
+ * any other string. */
 function truncateString(value: string, maxLen: number): string {
 	if (value.length <= maxLen) return value;
-	if (/^https?:\/\//.test(value)) return value;
+	if (/^https?:\/\//.test(value) && value.length <= 200) return value;
 	return `${value.slice(0, maxLen)}…`;
 }
 
@@ -1238,7 +1239,10 @@ function truncateString(value: string, maxLen: number): string {
  * VALID while capping its size, so the client's ToolArgs can parse it and
  * render key/value rows instead of a raw truncated blob. Long strings are
  * shortened; arrays/objects keep the first entries and append a count
- * marker. Falls back to the raw string when the value is not JSON-safe.
+ * marker. The budget is a HARD cap on the serialized output: each entry is
+ * accepted only while the accumulated JSON.stringify stays within budget
+ * (structural overhead — quotes, commas, keys — is counted by serializing
+ * the whole structure, not just payloads).
  */
 function truncateJson(value: unknown, budget: number): unknown {
 	// Strings inside a structure share the budget: cap each at a quarter of
@@ -1250,40 +1254,46 @@ function truncateJson(value: unknown, budget: number): unknown {
 	}
 	if (Array.isArray(value)) {
 		const kept: unknown[] = [];
-		let used = 0;
 		for (const item of value) {
-			const t = truncateJson(item, Math.max(16, budget - used));
-			const s = JSON.stringify(t) ?? "";
-			if (used + s.length > budget) break;
+			const t = truncateJson(item, budget);
 			kept.push(t);
-			used += s.length;
+			if (JSON.stringify(kept).length > budget) {
+				kept.pop();
+				const marker = `… +${value.length - kept.length} more`;
+				if (JSON.stringify([...kept, marker]).length <= budget) kept.push(marker);
+				break;
+			}
 		}
-		if (kept.length < value.length) kept.push(`… +${value.length - kept.length} more`);
 		return kept;
 	}
 	const record = value as Record<string, unknown>;
 	const out: Record<string, unknown> = {};
-	let used = 0;
 	for (const [key, val] of Object.entries(record)) {
-		const t = truncateJson(val, Math.max(16, budget - used));
-		const s = JSON.stringify(t) ?? "";
-		if (used + s.length > budget) break;
-		out[key] = t;
-		used += s.length;
+		out[key] = truncateJson(val, budget);
+		if (JSON.stringify(out).length > budget) {
+			delete out[key];
+			const marker = `+${Object.keys(record).length - Object.keys(out).length} more keys`;
+			if (JSON.stringify({ ...out, "…": marker }).length <= budget) out["…"] = marker;
+			break;
+		}
 	}
-	const remaining = Object.keys(record).length - Object.keys(out).length;
-	if (remaining > 0) out["…"] = `+${remaining} more keys`;
 	return out;
 }
 
 /** Short JSON summary of a tool result (truncated), or undefined when empty.
  * Budget 400 chars: lean enough for the model's per-turn context, generous
  * enough that a search-docs hit (URL + title + snippet) or a grading
- * envelope's key fields survive structural truncation. */
+ * envelope's key fields survive structural truncation. The budget is a
+ * HARD cap on the serialized summary (truncateJson counts structural
+ * overhead by serializing the accumulated structure). */
 const TOOL_RESULT_SUMMARY_BUDGET = 400;
 
 function summarizeToolResult(result: unknown): string | undefined {
 	if (result === undefined || result === null) return undefined;
+	// Top-level strings use the full budget (not the nested stringCap).
+	if (typeof result === "string") {
+		return truncateString(result, TOOL_RESULT_SUMMARY_BUDGET);
+	}
 	let json: string;
 	try {
 		json = JSON.stringify(result);

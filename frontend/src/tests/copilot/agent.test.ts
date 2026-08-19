@@ -245,7 +245,31 @@ describe("copilot agent loop (agent.ts)", () => {
 		expect(parsed.dimensions).toBeDefined();
 		// Long strings are shortened; the count marker is present.
 		expect(String(parsed.notes).length).toBeLessThan(500);
-		expect(JSON.stringify(parsed).length).toBeLessThanOrEqual(420);
+		// The budget is a HARD cap on the serialized summary.
+		expect(JSON.stringify(parsed).length).toBeLessThanOrEqual(400);
+	});
+
+	it("hard-caps the summary even for pathological payloads (many short keys)", async () => {
+		registry.register({
+			name: "echo_keys_1",
+			description: "echoes many short keys",
+			permission: "auto",
+			inputSchema: z.object({}),
+			run: async () => {
+				executed.push("echo_keys_1");
+				const wide: Record<string, string> = {};
+				for (let i = 0; i < 60; i++) wide[`k${i}`] = "v";
+				return wide;
+			},
+		});
+		mockControl.script = [toolCallTurn("echo_keys_1", "{}"), textTurn("Done")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		const toolResult = events.find((e) => e.type === "tool-result");
+		const summary = toolResult && toolResult.type === "tool-result" ? toolResult.summary : "";
+		expect(() => JSON.parse(summary ?? "")).not.toThrow();
+		expect((summary ?? "").length).toBeLessThanOrEqual(400);
 	});
 
 	it("suspends for approval, then approves and executes the tool", async () => {
