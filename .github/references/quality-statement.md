@@ -152,3 +152,34 @@ not what the grade should be.
 > `assignments.yaml`, `grading_config.yaml`, and `criteria/*.yaml` and can lag
 > the repo. Diff volume vs repo and sync before any measurement run; back up
 > the volume config first (`cp -r /var/lib/docker/volumes/svelte-review-data/_data`).
+
+## Rubric-fidelity regression harness (P12, recorded transcripts)
+
+Rubric-fidelity regression harness: `cd frontend && pnpm exec tsx scripts/run-transcript-evals.mjs --dry-run`
+lists the grading proposals extracted from the recorded copilot transcripts
+(no LLM; this is what CI/docs run) or, without `--dry-run`, replays them
+through the live rubric-fidelity judge on the copilot's own KI Connect model
+(concurrency 2, the empirical rate-limit ceiling; requires `KI_CONNECT_API_KEY`;
+use `--model <id>` when `data/settings.yaml` lags the deployment — the live
+baseline below was measured with `--model openai-gpt-oss-120b`).
+Proposals are grouped per assistant turn from the grading WRITE tools
+(`set-rubric-item` → rubric, `update-grade-dimension` → dimensions,
+`write-notes`/`draft-notes` → feedback) recorded under
+`DATA_DIR/copilot/memory/{threads,messages}/`; threads without grading writes
+(e.g. the `e2e-smoke` context-only thread) are skipped. Nothing is written —
+the harness only reads the store and prints a table + JSON report.
+
+Baseline (2026-08-19, dry-run extraction): **2 proposals from 2 recorded
+threads** — `9f4ccf99-b1eb-4a2e-a45a-9e49c2a53812` (turn 2: rubric
+`assignment_requirements`/`code_execution_results` = `complete`, dimensions
+`code_quality_design` 600 / `scientific_programming` 600, feedback present) and
+`46f266bd-56bf-4418-9e54-21dd257e390b` (turn 2: dimension
+`code_quality_design` 500 + feedback), both assignment `soil_contamination`.
+Live fidelity baseline (2026-08-19, `openai-gpt-oss-120b`, concurrency 2):
+**mean 0.00 / 2 proposals** (reproduced on a controller re-run the same night;
+one of three runs scored 0.5 — single-shot judge variance is the dominant
+signal at n=2). The recorded sessions' `update-grade-dimension` writes carry
+slider-scale values (600/500 on the tool's [0,1000] bound) far above the
+rubric's `max_points` (4–6), so the judge tends to flag both proposals as
+over-scoring. Treat any single live score as noise until more recorded
+grading turns exist; the harness (not the number) is the deliverable.
