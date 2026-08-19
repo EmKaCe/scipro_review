@@ -64,7 +64,6 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 | Zod 4           | Import validation                                  |
 | marked          | Evaluation Markdown rendering                      |
 | Vitest          | Unit testing                                       |
-| TanStack Table  | Data grid for submissions dashboard (teacher mode) |
 
 ---
 
@@ -208,7 +207,7 @@ assignments.yaml → select assignment → load criteria YAML
 ```
 Upload bar → classify files → stub data store
                                    ↓
-                         Dashboard (TanStack Table)
+                         Dashboard (hand-rolled table)
                         /                        \
               Process All (Phase 3)     [id]/review page
               Pre-evaluate All (P4)     Left: cell comparison
