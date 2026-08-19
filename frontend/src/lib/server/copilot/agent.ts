@@ -1223,7 +1223,65 @@ function parseRedactedArgs(args: unknown): unknown {
 	}
 }
 
-/** Short JSON summary of a tool result (truncated), or undefined when empty. */
+/** Cap a string at maxLen chars, appending an ellipsis when cut. URLs are
+ * kept whole — they are short, high-value (the search-docs summary must
+ * keep its grounding link for the model), and the old string-slice
+ * preserved them by accident. */
+function truncateString(value: string, maxLen: number): string {
+	if (value.length <= maxLen) return value;
+	if (/^https?:\/\//.test(value)) return value;
+	return `${value.slice(0, maxLen)}…`;
+}
+
+/**
+ * Structural JSON truncation for tool-result summaries: keeps the JSON
+ * VALID while capping its size, so the client's ToolArgs can parse it and
+ * render key/value rows instead of a raw truncated blob. Long strings are
+ * shortened; arrays/objects keep the first entries and append a count
+ * marker. Falls back to the raw string when the value is not JSON-safe.
+ */
+function truncateJson(value: unknown, budget: number): unknown {
+	// Strings inside a structure share the budget: cap each at a quarter of
+	// it (min 16) so a multi-field item (e.g. a search-docs hit with title +
+	// URL + snippet) still fits and isn't dropped whole.
+	const stringCap = Math.max(16, Math.floor(budget / 4));
+	if (value === null || typeof value !== "object") {
+		return typeof value === "string" ? truncateString(value, stringCap) : value;
+	}
+	if (Array.isArray(value)) {
+		const kept: unknown[] = [];
+		let used = 0;
+		for (const item of value) {
+			const t = truncateJson(item, Math.max(16, budget - used));
+			const s = JSON.stringify(t) ?? "";
+			if (used + s.length > budget) break;
+			kept.push(t);
+			used += s.length;
+		}
+		if (kept.length < value.length) kept.push(`… +${value.length - kept.length} more`);
+		return kept;
+	}
+	const record = value as Record<string, unknown>;
+	const out: Record<string, unknown> = {};
+	let used = 0;
+	for (const [key, val] of Object.entries(record)) {
+		const t = truncateJson(val, Math.max(16, budget - used));
+		const s = JSON.stringify(t) ?? "";
+		if (used + s.length > budget) break;
+		out[key] = t;
+		used += s.length;
+	}
+	const remaining = Object.keys(record).length - Object.keys(out).length;
+	if (remaining > 0) out["…"] = `+${remaining} more keys`;
+	return out;
+}
+
+/** Short JSON summary of a tool result (truncated), or undefined when empty.
+ * Budget 400 chars: lean enough for the model's per-turn context, generous
+ * enough that a search-docs hit (URL + title + snippet) or a grading
+ * envelope's key fields survive structural truncation. */
+const TOOL_RESULT_SUMMARY_BUDGET = 400;
+
 function summarizeToolResult(result: unknown): string | undefined {
 	if (result === undefined || result === null) return undefined;
 	let json: string;
@@ -1232,8 +1290,14 @@ function summarizeToolResult(result: unknown): string | undefined {
 	} catch {
 		json = String(result);
 	}
-	if (json.length > 200) json = `${json.slice(0, 200)}…`;
-	return json;
+	if (json.length <= TOOL_RESULT_SUMMARY_BUDGET) return json;
+	// Structural truncation keeps the JSON valid so the client's ToolArgs
+	// can render key/value rows instead of a raw truncated blob.
+	try {
+		return JSON.stringify(truncateJson(result, TOOL_RESULT_SUMMARY_BUDGET));
+	} catch {
+		return `${json.slice(0, TOOL_RESULT_SUMMARY_BUDGET)}…`;
+	}
 }
 
 /**

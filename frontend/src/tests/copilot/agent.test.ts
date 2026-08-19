@@ -212,6 +212,42 @@ describe("copilot agent loop (agent.ts)", () => {
 		expect(kinds).not.toContain("approval-request");
 	});
 
+	it("keeps tool-result summaries valid JSON when truncated (P14-C follow-up)", async () => {
+		registry.register({
+			name: "echo_big_1",
+			description: "echoes a large nested value",
+			permission: "auto",
+			inputSchema: z.object({}),
+			run: async () => {
+				executed.push("echo_big_1");
+				return {
+					submissionId: "2026SS_00",
+					assignmentId: "soil_contamination",
+					dimensions: { code_quality_design: 4, scientific_programming: 5 },
+					notes: "x".repeat(500),
+					feedbackCategories: ["a", "b", "c", "d", "e", "f", "g", "h"],
+				};
+			},
+		});
+		mockControl.script = [toolCallTurn("echo_big_1", "{}"), textTurn("Done")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "go" }));
+
+		const toolResult = events.find((e) => e.type === "tool-result");
+		expect(toolResult && toolResult.type === "tool-result" ? toolResult.ok : false).toBe(true);
+		const summary = toolResult && toolResult.type === "tool-result" ? toolResult.summary : "";
+		expect(typeof summary).toBe("string");
+		// The summary must remain parseable JSON (structural truncation),
+		// so the client's ToolArgs can render key/value rows.
+		expect(() => JSON.parse(summary ?? "")).not.toThrow();
+		const parsed = JSON.parse(summary ?? "") as Record<string, unknown>;
+		expect(parsed.submissionId).toBe("2026SS_00");
+		expect(parsed.dimensions).toBeDefined();
+		// Long strings are shortened; the count marker is present.
+		expect(String(parsed.notes).length).toBeLessThan(500);
+		expect(JSON.stringify(parsed).length).toBeLessThanOrEqual(420);
+	});
+
 	it("suspends for approval, then approves and executes the tool", async () => {
 		registry.register({
 			name: "ask_approve_1",
