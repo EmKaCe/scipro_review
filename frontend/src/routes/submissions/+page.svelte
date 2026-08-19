@@ -1,5 +1,10 @@
 <script lang="ts">
 	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import {
+		markRunFinished,
+		markRunStarted,
+		runRegistry,
+	} from "$lib/services/run-state.svelte.js";
 	import { filterSubmissions } from "$lib/services/submission-filters.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
@@ -50,7 +55,6 @@
 		restoreBackup,
 		type ExecutorLogEntry,
 		type PreEvalProgress,
-		type PreEvalRunSummary,
 		type ProcessProgress,
 	} from "$lib/services/submissions-api.js";
 	import type { MaterialsStatus, SubmissionUploadResult } from "$lib/services/submissions-api.js";
@@ -113,9 +117,9 @@
 	/** Human label of the running bulk action (progress line). */
 	let bulkAction = $state<string | null>(null);
 	/** Process start timestamp — drives the elapsed stopwatch in the bar. */
-	let processStartedAt = $state<number | null>(null);
+	let processStartedAt = $derived(runRegistry.process.startedAt);
 	/** Process target count — drives "N of M done" from live statuses. */
-	let processTargetCount = $state(0);
+	let processTargetCount = $derived(runRegistry.process.targetCount);
 	/** Elapsed seconds while processing (ticks via interval while active). */
 	let processElapsed = $state(0);
 	/**
@@ -138,13 +142,11 @@
 	 */
 	let preEvalStatus = $state<PreEvalProgress | null>(null);
 	/** Pre-evaluation run start timestamp — drives polling + the live badge. */
-	let preEvalStartedAt = $state<number | null>(null);
+	let preEvalStartedAt = $derived(runRegistry.preEval.startedAt);
 	/** Pre-evaluation run target count — drives "N of M" from live statuses. */
-	let preEvalTargetCount = $state(0);
+	let preEvalTargetCount = $derived(runRegistry.preEval.targetCount);
 	/** Elapsed seconds while pre-evaluating (ticks via the shared stopwatch). */
 	let preEvalElapsed = $state(0);
-	/** Completed pre-evaluation run tallies (log panel run-complete banner). */
-	let preEvalRunSummary = $state<PreEvalRunSummary | null>(null);
 	/** Bulk delete confirm dialog. */
 	let bulkDeleteOpen = $state(false);
 	/** Bulk reset confirm dialog. */
@@ -155,9 +157,14 @@
 	let preEvalResetBusy = $state(false);
 	/**
 	 * True while a pre-evaluation run is starting or in flight — the reset
-	 * must not race the run's writers (the route also refuses with 409).
+	 * must not race the run's writers (the route also refuses with 409). The
+	 * shared registry's startedAt is armed by the dashboard's POST handler and
+	 * by the reload-mid-run restore, so a dashboard-started run also disables
+	 * the Reset button here (BUG-008).
 	 */
-	let preEvalRunning = $derived(preEvalStartedAt !== null || (preEvalStatus?.running ?? false));
+	let preEvalRunning = $derived(
+		runRegistry.preEval.startedAt !== null || (preEvalStatus?.running ?? false),
+	);
 	/** The assignment has pre-evaluated rows — something to reset. */
 	let canResetPreEvaluation = $derived(submissions.some((s) => s.status === "pre-evaluated"));
 
@@ -264,14 +271,12 @@
 			};
 			const process = status.process;
 			if (process?.running && process.startedAt != null) {
-				processStartedAt = process.startedAt;
-				processTargetCount = process.total;
+				markRunStarted("process", process.total, process.startedAt);
 				processElapsed = Math.floor((Date.now() - process.startedAt) / 1000);
 			}
 			const preEval = status.preEval;
 			if (preEval?.running && preEval.startedAt != null) {
-				preEvalStartedAt = preEval.startedAt;
-				preEvalTargetCount = preEval.total;
+				markRunStarted("preEval", preEval.total, preEval.startedAt);
 				preEvalElapsed = Math.floor((Date.now() - preEval.startedAt) / 1000);
 			}
 			// A recovered run means row statuses are changing server-side —
@@ -356,6 +361,14 @@
 		return () => clearInterval(timer);
 	});
 
+	// BUG-020: keep the store's 2s list-polling loop alive while a
+	// pre-evaluation run is in flight so dashboard rows update live mid-run —
+	// the pre-evaluate path produces no pending/executing rows, so row-status
+	// polling alone would never keep the loop going. Stops when the run ends.
+	$effect(() => {
+		submissionsStore.setPreEvalActive(runRegistry.preEval.running);
+	});
+
 	// Restore run state after a page reload: the unified pipeline status
 	// re-arms in-flight run trackers (stopwatch/polling), and the per-run
 	// status fetches restore the final tallies (the executor's log buffer
@@ -389,11 +402,13 @@
 
 	/**
 	 * Completed pre-evaluation run tallies for the log panel banner. The POST
-	 * response wins (it carries exact succeeded/failed counts); after a page
-	 * reload the status endpoint's retained final tallies are the fallback.
+	 * response wins (it carries exact succeeded/failed counts and is written
+	 * to the shared registry by the dashboard's handler — BUG-007); after a
+	 * page reload the status endpoint's retained final tallies are the
+	 * fallback.
 	 */
 	let preEvalBanner = $derived(
-		preEvalRunSummary ??
+		runRegistry.preEval.summary ??
 			(preEvalStatus && !preEvalStatus.running && preEvalStatus.total > 0
 				? {
 						submitted: preEvalStatus.total,
@@ -752,8 +767,7 @@
 		bulkAction = "Processing";
 		processTargetIds.clear();
 		for (const id of ids) processTargetIds.add(id);
-		processTargetCount = ids.length;
-		processStartedAt = Date.now();
+		markRunStarted("process", ids.length);
 		processElapsed = 0;
 		processStatus = null;
 		submissionsStore.startPolling(); // live row statuses while the batch runs
@@ -769,8 +783,7 @@
 		} finally {
 			bulkBusy = false;
 			bulkAction = null;
-			processStartedAt = null;
-			processTargetCount = 0;
+			markRunFinished("process");
 			processTargetIds.clear();
 			// Fetch once more — the route already wrote its final tallies, so
 			// the panel can show the completed run summary (done/total, autofix).

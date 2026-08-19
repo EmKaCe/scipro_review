@@ -8,10 +8,15 @@
  * live run's done/total, current notebook, elapsed, and auto-fix tallies.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { render, screen } from "@testing-library/svelte";
+import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 
 import type { SubmissionMeta } from "$lib/types/submissions.js";
 import type { PreEvalProgress, ProcessProgress } from "$lib/services/submissions-api.js";
+import {
+	markRunFinished,
+	markRunStarted,
+	setRunSummary,
+} from "$lib/services/run-state.svelte.js";
 
 // Static import (not dynamic): the page pulls in the tooltip component
 // graph, whose first-load transform exceeds the per-test timeout in a
@@ -155,10 +160,20 @@ describe("submissions dashboard — pipeline progress bar", () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
 		api.server = [meta("2026SS_01"), meta("2026SS_02"), meta("2026SS_04")];
+		// Clear mock implementations left by earlier tests in the file (a
+		// test that resolves a RUNNING status would otherwise leak that
+		// running state into every later test and wrongly arm run guards).
+		api.fetchProcessStatus.mockResolvedValue(PROCESS_IDLE);
+		api.fetchPreEvalStatus.mockResolvedValue(PRE_EVAL_IDLE);
 	});
 
 	afterEach(() => {
 		vi.unstubAllGlobals();
+		// The run-state registry is a module singleton shared across every
+		// test in this file — reset it so a run left armed by one test never
+		// leaks as "active" into the next.
+		markRunFinished("process");
+		markRunFinished("preEval");
 	});
 
 	it("restores an in-flight process run from /api/pipeline/status and renders the bar", async () => {
@@ -199,5 +214,56 @@ describe("submissions dashboard — pipeline progress bar", () => {
 
 		await screen.findByText("2026SS_01");
 		expect(screen.queryByRole("progressbar")).toBeNull();
+	});
+
+	it("arming the shared registry (as a dashboard start does) lights the bar and disables Reset Pre-Evaluation (BUG-006/008)", async () => {
+		// Include a pre-evaluated row so the Reset button is otherwise enabled
+		// (canResetPreEvaluation), isolating the disable to BUG-008's guard.
+		api.server = [meta("2026SS_01", "pre-evaluated"), meta("2026SS_02", "executed")];
+		stubPipelineStatus(PROCESS_IDLE, PRE_EVAL_IDLE);
+		render(SubmissionsPage);
+		await screen.findByText("2026SS_01");
+
+		const resetBtn = () =>
+			screen.getByRole("button", { name: /reset pre-evaluation/i });
+		// Idle: Reset enabled (wait for the fresh list carrying the
+		// pre-evaluated row), no pre-eval bar.
+		await waitFor(() => expect(resetBtn().hasAttribute("disabled")).toBe(false));
+		expect(screen.queryByText("Pre-evaluating batch")).toBeNull();
+
+		// The dashboard's pre-evaluate POST handler arms the registry exactly
+		// like this (markRunStarted) — the page must react through the single
+		// source of truth, not page-local flags the dashboard never set.
+		markRunStarted("preEval", 1);
+
+		// BUG-006: the page's pre-eval progress bar (and log live mode) light up.
+		await waitFor(() => expect(screen.getByText("Pre-evaluating batch")).toBeTruthy());
+		// BUG-008: Reset Pre-Evaluation is now disabled while the run is active.
+		await waitFor(() => expect(resetBtn().hasAttribute("disabled")).toBe(true));
+
+		// The run ends (POST resolves -> markRunFinished): bar + disable clear.
+		markRunFinished("preEval");
+		await waitFor(() => expect(screen.queryByText("Pre-evaluating batch")).toBeNull());
+		await waitFor(() => expect(resetBtn().hasAttribute("disabled")).toBe(false));
+	});
+
+	it("setRunSummary renders the completed pre-eval banner in the log panel (BUG-007)", async () => {
+		api.server = [meta("2026SS_01", "executed")];
+		stubPipelineStatus(PROCESS_IDLE, PRE_EVAL_IDLE);
+		render(SubmissionsPage);
+		await screen.findByText("2026SS_01");
+		expect(screen.queryByText(/Pre-evaluation complete/)).toBeNull();
+
+		// The dashboard's POST handler arms, records the returned tallies, and
+		// finishes the run — the page's banner must read the registry summary.
+		markRunStarted("preEval", 1);
+		setRunSummary("preEval", { submitted: 1, succeeded: 1, failed: 0 });
+		markRunFinished("preEval");
+
+		// The panel auto-closes when the run's live flag clears; reopen it so
+		// the run-complete banner (read from the shared registry) is visible.
+		await fireEvent.click(screen.getByRole("button", { name: /pipeline log/i }));
+		const banner = screen.getByRole("status");
+		expect(banner.textContent).toContain("Pre-evaluation complete — 1/1 succeeded");
 	});
 });

@@ -233,6 +233,27 @@ describe("polling", () => {
 		// 1 load + 2 ticks — a doubled interval would produce 5 calls.
 		expect(api.fetchSubmissions).toHaveBeenCalledTimes(3);
 	});
+
+	it("setPreEvalActive keeps the 2s list loop alive and stops it when the run ends (BUG-020)", async () => {
+		// A pre-evaluation run has no pending/executing rows — row-status
+		// polling alone would stop immediately, so the pre-eval-active flag
+		// must keep the loop polling so dashboard rows update live mid-run.
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "executed")));
+		await store.load();
+		expect(store.isPolling).toBe(false);
+
+		store.setPreEvalActive(true);
+		expect(store.isPolling).toBe(true);
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(api.fetchSubmissions).toHaveBeenCalledTimes(2); // load + 1 tick
+
+		// The run ends: the flag clears and the loop stops.
+		store.setPreEvalActive(false);
+		expect(store.isPolling).toBe(false);
+		const callsAtStop = api.fetchSubmissions.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(api.fetchSubmissions).toHaveBeenCalledTimes(callsAtStop);
+	});
 });
 
 // ---------------------------------------------------------------------------

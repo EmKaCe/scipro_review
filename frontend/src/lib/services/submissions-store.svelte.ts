@@ -66,6 +66,8 @@ export class SubmissionsStore {
 	error = $state<string | null>(null);
 	/** Whether the D5 polling loop is currently running. */
 	isPolling = $state(false);
+	/** True while a pre-evaluation batch run is in flight (keeps the 2s list loop alive). */
+	private preEvalActive = false;
 	/** Fetch archived rows too (set while the "Archived" filter is active). */
 	includeArchived = $state(false);
 
@@ -175,11 +177,25 @@ export class SubmissionsStore {
 	}
 
 	/**
+	 * Mark whether a pre-evaluation batch run is in flight. Keeps the 2s list
+	 * polling loop alive during a pre-eval run so dashboard rows update live
+	 * mid-run (BUG-020) — the pre-evaluate path produces no pending/executing
+	 * rows, so row-status polling alone would never keep the loop going.
+	 */
+	setPreEvalActive(active: boolean): void {
+		if (this.preEvalActive === active) {
+			return;
+		}
+		this.preEvalActive = active;
+		this.syncPolling();
+	}
+
+	/**
 	 * Align the polling loop with the current list: start when there is
-	 * in-flight work, stop when everything settled.
+	 * in-flight work (or an active pre-eval run), stop when everything settled.
 	 */
 	private syncPolling(): void {
-		if (this.hasActiveWork) {
+		if (this.hasActiveWork || this.preEvalActive) {
 			this.startPolling();
 		} else {
 			this.stopPolling();

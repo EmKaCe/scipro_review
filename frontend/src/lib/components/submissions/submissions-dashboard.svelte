@@ -2,6 +2,12 @@
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import {
+		markRunFinished,
+		markRunStarted,
+		runRegistry,
+		setRunSummary,
+	} from "$lib/services/run-state.svelte.js";
 	import { filterSubmissions } from "$lib/services/submission-filters.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
@@ -194,12 +200,6 @@
 	// ── Pre-evaluate All ──
 	/** Live run record from the status endpoint (null until first fetch). */
 	let preEvalStatus = $state<PreEvalProgress | null>(null);
-	/**
-	 * True between the POST and its resolution (the run may be over by the
-	 * time the response arrives). Only the POST handler clears this — an
-	 * idle status observation must never disarm the polling loop mid-run.
-	 */
-	let preEvalStarting = $state(false);
 	/** Whether the previous poll observed a running run (drives row refresh). */
 	let preEvalWasRunning = $state(false);
 
@@ -209,14 +209,18 @@
 	);
 
 	/**
-	 * True while a pre-evaluation run is starting or in flight. Armed by
-	 * preEvalStarting (POST in flight) or a status observation with
-	 * running:true — never disarmed by a total:0 idle observation.
+	 * True while a pre-evaluation run is starting or in flight. The shared
+	 * registry is armed by the POST handler (markRunStarted) and only cleared
+	 * by it (markRunFinished) — an idle status observation (running:false,
+	 * total:0 before the run registers) never disarms the polling loop mid-run.
+	 * A status observation with running:true also keeps it armed.
 	 */
-	let preEvalRunning = $derived(preEvalStarting || (preEvalStatus?.running ?? false));
+	let preEvalRunning = $derived(
+		runRegistry.preEval.running || (preEvalStatus?.running ?? false),
+	);
 
 	let preEvalDone = $derived(preEvalStatus?.done ?? 0);
-	let preEvalTotal = $derived(preEvalStatus?.total ?? 0);
+	let preEvalTotal = $derived(preEvalStatus?.total ?? runRegistry.preEval.targetCount);
 
 	/**
 	 * Monotonic id of the newest status request. Responses from superseded
@@ -263,8 +267,15 @@
 
 	async function handlePreEvaluateAll() {
 		if (preEvalRunning) return;
-		preEvalStarting = true;
 		preEvalStatus = null;
+		// Arm the shared registry so the page's progress bar, log live mode,
+		// polling/stopwatch effects and Reset-disable all light up for this
+		// dashboard-started run (BUG-006/BUG-008), and the store's list loop
+		// stays alive (BUG-020).
+		const total = submissions.filter(
+			(s) => s.status === "executed" || s.status === "error",
+		).length;
+		markRunStarted("preEval", total);
 		try {
 			const summary = await preEvaluateSubmissions(assignmentId);
 			addToast(
@@ -274,6 +285,9 @@
 				}`,
 				5000,
 			);
+			// Record the run's tallies so the page's log-panel banner shows
+			// them (BUG-007 — the POST handler is the only writer).
+			setRunSummary("preEval", summary);
 			// The route runs the whole batch before responding and flips the
 			// target rows to "pre-evaluated" — refresh the list directly so
 			// the table shows the new statuses immediately (a fast run can
@@ -286,10 +300,10 @@
 				addToast("error", e instanceof Error ? e.message : "Pre-evaluation failed", 5000);
 			}
 		} finally {
-			// Only the POST handler clears the starting flag: an idle status
-			// observation (running:false, total:0 before the run registers)
-			// must not disarm the polling loop mid-run.
-			preEvalStarting = false;
+			// Only the POST handler finishes the run (markRunFinished keeps the
+			// summary): an idle status observation (running:false, total:0
+			// before the run registers) must never disarm the polling loops.
+			markRunFinished("preEval");
 		}
 	}
 </script>
