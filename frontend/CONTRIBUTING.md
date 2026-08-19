@@ -89,7 +89,7 @@ in an emergency.
 - **Data**: YAML config files in `static/data/`
 - **Validation**: Zod 4 for import validation
 - **Markdown**: `marked` for evaluation rendering
-- **Data grid**: TanStack Svelte Table v9 (teacher dashboard)
+- **Data grid**: hand-rolled table markup (submissions dashboard)
 - **Testing**: Vitest with `jsdom` and `fake-indexeddb`
 
 ### Directory Structure

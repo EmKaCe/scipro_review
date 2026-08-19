@@ -38,7 +38,7 @@ here (as CSS variables in `frontend/src/routes/layout.css`) and is referenced vi
 | Location | Value | Why |
 |---|---|---|
 | `custom-switch.svelte` knob | `background: white` | Track/knob needs absolute white for contrast on any surface |
-| Neutral shadows | `oklch(0 0 0 / 0.1)`-style alphas in grade-slider, modals, tabs | Shadows are universal neutral black at alpha |
+| Neutral shadows | `rgb(0 0 0 / 0.08)`, `rgb(0 0 0 / 0.18)`, `oklch(0 0 0 / …)` alphas in grade-slider, tabs, modals | Shadows are universal neutral black at alpha |
 | Print styles (`layout.css` `@media print`) | forced-light oklch values | Printing always renders light regardless of theme |
 | `favicon.svg` | its own colors | Image asset, not CSS |
 
@@ -51,7 +51,9 @@ grep -rnE '#[0-9a-fA-F]{3,8}\b|oklch\(|rgb\(|hsl\(' lib routes
 
 Allowed hits: `layout.css` (token definitions + print styles), the documented
 exceptions above, and image assets. Everything else is drift and must be
-tokenized.
+tokenized. Note: the grep gate only catches hex/oklch/rgb/hsl literals —
+named-color exceptions (e.g. `white` in the switch knob) are documented here
+but not gate-enforced.
 
 > **P8 (2026-08-19):** the two copilot-harness components (`plan-card.svelte`,
 > `change-ledger.svelte`) previously used an invented `--color-*` namespace with

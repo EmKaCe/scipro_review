@@ -995,14 +995,6 @@
 	}
 
 	/* ── Dark mode refinements ── */
-	:global(.dark) .chip-submission {
-		background: var(--chip-submission-bg);
-		color: var(--chip-submission-fg);
-	}
-	:global(.dark) .chip-data {
-		background: var(--chip-data-bg);
-		color: var(--chip-data-fg);
-	}
 	:global(.dark) .drop-zone {
 		background: var(--muted-bg);
 	}

@@ -656,7 +656,7 @@
 		padding: 0 5px;
 		border-radius: 999px;
 		background: var(--destructive);
-		color: var(--destructive-foreground, white);
+		color: var(--destructive-foreground);
 		font-size: 10px;
 		font-weight: 700;
 		line-height: 1;
