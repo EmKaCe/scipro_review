@@ -24,7 +24,7 @@ A **monorepo** with two applications plus runtime configuration:
 | `executor/` | Python **notebook-execution** backend (FastAPI, uv). Runs untrusted student notebooks in a hardened container. |
 | `data/` | Tracked config (`assignments.yaml`, `grading_config.yaml`, `settings.yaml`, `criteria/*.yaml`, `scoring/*.yaml`, `cohort_norms/*.yaml`) + gitignored runtime state (`submissions/`, `plagiarism/`, `copilot/`, `materials/`). |
 | `.github/references/` | Tracked docs home (calibration, quality statement, tokens, **this file**). |
-| `docs/directives/` | Tracked, **non-negotiable** pipeline contracts (e.g. `turn-based-preeval.md`). |
+| `.github/references/directives/` | Tracked, **non-negotiable** pipeline contracts (e.g. `turn-based-preeval.md`). |
 
 **The core idea (per the VISION):** the AI is a **copilot that works *with*
 the teacher** — it pre-evaluates, drafts a rubric worksheet and feedback, and
@@ -114,7 +114,7 @@ lib/server/
 
 Pre-evaluation is the deterministic-then-LLM layer that turns an executed
 notebook into a full draft grade worksheet. The non-negotiable contract is
-[`../../docs/directives/turn-based-preeval.md`](../../docs/directives/turn-based-preeval.md) —
+[`directives/turn-based-preeval.md`](directives/turn-based-preeval.md) —
 read it before touching this code.
 
 ### 3.1 Codes of the pipeline

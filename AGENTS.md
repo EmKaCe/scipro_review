@@ -22,7 +22,7 @@ Monorepo with two apps plus runtime configuration and tracked docs:
 | `executor/` | Python notebook-execution backend (FastAPI, Python, managed with uv — pinned via `executor/.python-version`, currently 3.12). |
 | `data/` | Runtime configuration: `assignments.yaml`, `grading_config.yaml`, `settings.yaml`, `criteria/*.yaml`, `scoring/*.yaml`, `cohort_norms/*.yaml` — **tracked**. Runtime state (`submissions/`, `plagiarism/`, `copilot/`, `materials/`) is **gitignored**. |
 | `.github/` | GitHub-native config and workflows; `references/` is the tracked docs home (calibration, quality statement, design tokens, schema specs). |
-| `docs/directives/` | Tracked, **non-negotiable pipeline contracts** (e.g. `turn-based-preeval.md`). |
+| `.github/references/directives/` | Tracked, **non-negotiable pipeline contracts** (e.g. `turn-based-preeval.md`). |
 | `scripts/` | Root-level helper / smoke-test scripts. |
 
 Scoped conventions: `frontend/AGENTS.md`, `executor/AGENTS.md`,

@@ -34,7 +34,7 @@ Worksheet checkbox texts must equal the rubric sub-point `text` **byte for byte 
 no synonyms, no abbreviations, no rephrasing.** The worksheet validation is
 exact-text (`hasOption` only normalizes case/whitespace/trailing punctuation, not
 wording) and typo-for-typo (e.g. `separatation`, `encode ideas`, `PEP8 guidelines- followed`
-are matched verbatim). See `docs/directives/turn-based-preeval.md` (worksheet =
+are matched verbatim). See `.github/references/directives/turn-based-preeval.md` (worksheet =
 per-category edited markdown, checked items matched verbatim to rubric sub-points).
 
 - When drafting a NEW category, write each `text` once and reuse that exact

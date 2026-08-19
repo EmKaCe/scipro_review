@@ -199,19 +199,18 @@ frontend/              SvelteKit app (student SPA + teacher Node server)
 executor/              Python notebook-execution backend
 data/                  Runtime configuration (assignments, grading config,
                        criteria, scoring) — tracked, with runtime-state exceptions
-.github/references/    Tracked documentation home (calibration, quality statement,
-                       design tokens, schema specs)
-docs/                  Research artifacts & directives (gitignored, except docs/directives/)
+.github/references/    Tracked documentation home (architecture, calibration, quality,
+                       design tokens, schemas, directives)
 scripts/               Root-level helper & smoke-test scripts
 ```
 
 - `data/` — committed config: `assignments.yaml`, `grading_config.yaml`,
   `criteria/*.yaml`, `scoring/*.yaml`. Runtime state (submissions, plagiarism
   cache, copilot audit log, materials) is gitignored.
-- `.github/references/` — the home for reviewed, versioned docs (linked from the
-  Documentation section above and from `README`'s references).
-- `docs/directives/` — non-negotiable pipeline contracts (e.g. the turn-based
-  pre-evaluation directive), tracked as the exception to the gitignored `docs/`.
+- `.github/references/` — the single home for reviewed, versioned docs (linked
+  from the Documentation section above): architecture, data structures,
+  developer guide, calibration, quality statement, design tokens, schemas, and
+  the `directives/` subfolder of non-negotiable pipeline contracts.
 - Agent conventions: root + scoped `AGENTS.md` (cross-harness primary) —
   see the *Agent Configuration* note in the Documentation section above.
 
