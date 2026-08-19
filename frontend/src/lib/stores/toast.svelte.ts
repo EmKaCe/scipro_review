@@ -22,6 +22,19 @@ const toastTimeouts = new SvelteMap<string, number>();
  * @param duration - Auto-dismiss duration in milliseconds (default 3000).
  */
 export function addToast(type: ToastType, message: string, duration: number = 3000): void {
+	// Guard against stacked duplicates: the review mount effects can re-fire the
+	// same failed load several times while the first toast is still visible,
+	// stacking 2–3 identical error banners. Reset the timer on re-push instead
+	// of pushing a twin. A toast mid-exit-animation counts as NOT existing — a
+	// re-fire during the 200ms exit window re-pushes a fresh banner (the old
+	// one is already on its way out).
+	const existing = toasts.find((t) => t.type === type && t.message === message && !exitingToasts.has(t.id));
+	if (existing) {
+		const timeoutId = toastTimeouts.get(existing.id);
+		if (timeoutId !== undefined) clearTimeout(timeoutId);
+		toastTimeouts.set(existing.id, window.setTimeout(() => removeToast(existing.id), duration));
+		return;
+	}
 	const id = `toast-${nextId++}`;
 	toasts.push({ id, type, message, duration });
 	const timeoutId = window.setTimeout(() => removeToast(id), duration);

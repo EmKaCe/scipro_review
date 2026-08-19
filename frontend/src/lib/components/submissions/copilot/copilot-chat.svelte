@@ -446,8 +446,12 @@
 
 	.tool-result-card {
 		display: flex;
+		flex-wrap: wrap;
 		align-items: center;
 		gap: 8px;
+	}
+	.tool-result-card .tool-name {
+		flex: none;
 	}
 	.tool-result-ok {
 		color: var(--success);
@@ -460,7 +464,9 @@
 	}
 	.tool-result-summary {
 		color: var(--foreground);
+		flex: 1 1 100%;
 		min-width: 0;
+		overflow-wrap: anywhere;
 	}
 
 	/* P10-A: plan-phase group headers above the tool cards. */
