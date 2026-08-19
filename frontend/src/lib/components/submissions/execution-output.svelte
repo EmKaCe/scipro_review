@@ -470,8 +470,8 @@
 	}
 	.cell-code {
 		display: flex;
-		background: oklch(0.148 0.004 228.8);
-		color: oklch(0.987 0.002 197.1);
+		background: var(--code-bg);
+		color: var(--code-fg);
 		font-family: ui-monospace, "SFMono-Regular", monospace;
 		font-size: 12px;
 		line-height: 1.5;
@@ -482,9 +482,9 @@
 		flex-direction: column;
 		align-items: flex-end;
 		padding: 10px 8px 10px 12px;
-		border-right: 1px solid oklch(0.3 0.01 228.8);
-		background: oklch(0.19 0.005 228.8);
-		color: oklch(0.65 0.01 228.8);
+		border-right: 1px solid var(--code-border);
+		background: var(--code-gutter-bg);
+		color: var(--code-gutter-fg);
 		user-select: none;
 		text-align: right;
 	}

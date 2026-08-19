@@ -53,16 +53,16 @@
 
 <style>
 	.plan-card {
-		border: 1px solid var(--color-border, #e2e8f0);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 		padding: 8px 10px;
-		background: var(--color-surface, #f8fafc);
+		background: var(--muted);
 	}
 	.plan-header {
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 		font-size: 12px;
 		font-weight: 600;
 		text-transform: uppercase;
@@ -82,20 +82,20 @@
 		align-items: center;
 		gap: 7px;
 		font-size: 13px;
-		color: var(--color-text, #0f172a);
+		color: var(--foreground);
 	}
 	.step-dot {
 		width: 13px;
 		height: 13px;
 		border-radius: 50%;
-		border: 1.5px solid var(--color-border, #cbd5e1);
+		border: 1.5px solid var(--border);
 		flex: none;
 	}
 	.step-done {
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 	}
 	.step-error {
-		color: var(--color-danger, #dc2626);
+		color: var(--destructive);
 	}
 	.spin {
 		animation: spin 1s linear infinite;

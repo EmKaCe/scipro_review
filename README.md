@@ -46,6 +46,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 
 > **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
+> **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
 
 ---
 

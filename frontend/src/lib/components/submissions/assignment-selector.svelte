@@ -60,7 +60,7 @@
 	.assign-select:focus {
 		outline: none;
 		border-color: var(--accent);
-		box-shadow: 0 0 0 2px var(--accent-soft, oklch(0.9 0.05 165));
+		box-shadow: 0 0 0 2px var(--accent-soft);
 	}
 	.assign-select option {
 		padding: 6px 10px;

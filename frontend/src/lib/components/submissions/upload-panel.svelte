@@ -982,12 +982,12 @@
 		white-space: nowrap;
 	}
 	.chip-submission {
-		background: oklch(0.92 0.045 195);
-		color: oklch(0.55 0.12 195);
+		background: var(--chip-submission-bg);
+		color: var(--chip-submission-fg);
 	}
 	.chip-data {
-		background: oklch(0.9 0.1 145);
-		color: oklch(0.5 0.15 145);
+		background: var(--chip-data-bg);
+		color: var(--chip-data-fg);
 	}
 	.chip-material {
 		background: var(--muted);
@@ -996,12 +996,12 @@
 
 	/* ── Dark mode refinements ── */
 	:global(.dark) .chip-submission {
-		background: oklch(0.25 0.05 195);
-		color: oklch(0.65 0.1 195);
+		background: var(--chip-submission-bg);
+		color: var(--chip-submission-fg);
 	}
 	:global(.dark) .chip-data {
-		background: oklch(0.22 0.08 145);
-		color: oklch(0.6 0.15 145);
+		background: var(--chip-data-bg);
+		color: var(--chip-data-fg);
 	}
 	:global(.dark) .drop-zone {
 		background: var(--muted-bg);

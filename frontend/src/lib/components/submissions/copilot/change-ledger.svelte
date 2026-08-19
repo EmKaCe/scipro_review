@@ -109,10 +109,10 @@
 
 <style>
 	.ledger {
-		border: 1px solid var(--color-border, #e2e8f0);
+		border: 1px solid var(--border);
 		border-radius: 8px;
 		padding: 8px 10px;
-		background: var(--color-surface, #f8fafc);
+		background: var(--muted);
 	}
 	.ledger-header {
 		display: flex;
@@ -125,7 +125,7 @@
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 	}
 	.ledger-actions {
 		display: inline-flex;
@@ -146,16 +146,16 @@
 		border-radius: 4px;
 	}
 	.accept-all {
-		color: var(--color-primary, #2563eb);
+		color: var(--primary);
 	}
 	.accept-all:hover {
-		background: var(--color-primary-soft, #eff6ff);
+		background: var(--primary-soft);
 	}
 	.revert-turn {
-		color: var(--color-danger, #dc2626);
+		color: var(--destructive);
 	}
 	.revert-turn:hover {
-		background: var(--color-danger-soft, #fef2f2);
+		background: var(--destructive-soft);
 	}
 	.ledger-list {
 		list-style: none;
@@ -171,8 +171,8 @@
 		gap: 8px;
 		padding: 5px 6px;
 		border-radius: 6px;
-		background: var(--color-surface-raised, #ffffff);
-		border: 1px solid var(--color-border, #e2e8f0);
+		background: var(--card);
+		border: 1px solid var(--border);
 	}
 	.item-accepted {
 		opacity: 0.65;
@@ -183,7 +183,7 @@
 	}
 	.item-icon {
 		flex: none;
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 	}
 	.item-body {
 		flex: 1;
@@ -192,7 +192,7 @@
 	.item-kind {
 		font-size: 11px;
 		font-weight: 600;
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 		text-transform: uppercase;
 		letter-spacing: 0.03em;
 	}
@@ -204,15 +204,15 @@
 		margin-top: 1px;
 	}
 	.old-value {
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 		text-decoration: line-through;
 	}
 	.arrow {
-		color: var(--color-muted, #94a3b8);
+		color: var(--muted-foreground);
 	}
 	.new-value {
 		font-weight: 600;
-		color: var(--color-text, #0f172a);
+		color: var(--foreground);
 	}
 	.item-actions {
 		display: flex;
@@ -227,18 +227,18 @@
 		width: 24px;
 		height: 24px;
 		border-radius: 5px;
-		border: 1px solid var(--color-border, #e2e8f0);
-		background: var(--color-surface-raised, #ffffff);
+		border: 1px solid var(--border);
+		background: var(--card);
 		cursor: pointer;
-		color: var(--color-muted, #64748b);
+		color: var(--muted-foreground);
 	}
 	.btn-accept:hover {
-		color: var(--color-success, #16a34a);
-		border-color: var(--color-success, #16a34a);
+		color: var(--success);
+		border-color: var(--success);
 	}
 	.btn-reject:hover {
-		color: var(--color-danger, #dc2626);
-		border-color: var(--color-danger, #dc2626);
+		color: var(--destructive);
+		border-color: var(--destructive);
 	}
 	.status-badge {
 		font-size: 11px;
@@ -248,11 +248,11 @@
 		flex: none;
 	}
 	.status-accepted {
-		color: var(--color-success, #16a34a);
-		background: var(--color-success-soft, #f0fdf4);
+		color: var(--success);
+		background: var(--success-soft);
 	}
 	.status-rejected {
-		color: var(--color-danger, #dc2626);
-		background: var(--color-danger-soft, #fef2f2);
+		color: var(--destructive);
+		background: var(--destructive-soft);
 	}
 </style>

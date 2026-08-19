@@ -106,6 +106,18 @@
 	--accent-on: var(--accent-foreground);
 	--accent-hover: color-mix(in oklch, var(--accent) 80%, var(--foreground));
 	--accent-soft: color-mix(in oklch, var(--accent) 15%, transparent);
+	--primary-soft: color-mix(in oklch, var(--primary) 15%, transparent);
+	--destructive-soft: color-mix(in oklch, var(--destructive) 15%, transparent);
+	--success-soft: color-mix(in oklch, var(--success) 15%, transparent);
+	--code-bg: oklch(0.148 0.004 228.8);
+	--code-fg: oklch(0.987 0.002 197.1);
+	--code-gutter-bg: oklch(0.19 0.005 228.8);
+	--code-gutter-fg: oklch(0.65 0.01 228.8);
+	--code-border: oklch(0.3 0.01 228.8);
+	--chip-submission-bg: oklch(0.92 0.045 195);
+	--chip-submission-fg: oklch(0.55 0.12 195);
+	--chip-data-bg: oklch(0.9 0.1 145);
+	--chip-data-fg: oklch(0.5 0.15 145);
 }
 
 .dark {
@@ -158,6 +170,18 @@
 	--warning: oklch(0.65 0.14 85);
 	--error: oklch(0.704 0.191 22.216);
 	--info: oklch(0.55 0.14 250);
+	--primary-soft: color-mix(in oklch, var(--primary) 15%, transparent);
+	--destructive-soft: color-mix(in oklch, var(--destructive) 15%, transparent);
+	--success-soft: color-mix(in oklch, var(--success) 15%, transparent);
+	--code-bg: oklch(0.148 0.004 228.8);
+	--code-fg: oklch(0.987 0.002 197.1);
+	--code-gutter-bg: oklch(0.19 0.005 228.8);
+	--code-gutter-fg: oklch(0.65 0.01 228.8);
+	--code-border: oklch(0.3 0.01 228.8);
+	--chip-submission-bg: oklch(0.25 0.05 195);
+	--chip-submission-fg: oklch(0.65 0.1 195);
+	--chip-data-bg: oklch(0.22 0.08 145);
+	--chip-data-fg: oklch(0.6 0.15 145);
 	/* Legacy aliases (pre-shadcn token names still used across components) */
 	--fg: var(--foreground);
 	--bg: var(--background);

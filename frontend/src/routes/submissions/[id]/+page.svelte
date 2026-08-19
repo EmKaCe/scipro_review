@@ -710,7 +710,7 @@
 					<div class="overflow-hidden rounded-[var(--radius)] border border-border">
 						<div
 							class="flex items-center gap-4 border-b border-border px-3 py-1.5"
-							style="background:oklch(0.985 0.002 247.8)"
+							style="background:var(--card)"
 						>
 							<SkeletonPulse class="h-3 w-16" />
 							<SkeletonPulse class="ml-auto h-4 w-28 rounded-full" />
@@ -718,7 +718,7 @@
 						<div class="p-3">
 							<SkeletonPulse
 								class="h-12 w-full"
-								style="background:oklch(0.148 0.004 228.8)"
+								style="background:var(--code-bg)"
 							/>
 						</div>
 					</div>
