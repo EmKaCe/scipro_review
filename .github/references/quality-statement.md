@@ -38,8 +38,10 @@ snapshot** — deliberately **not** re-measured here.
 - **Docs grounding is LIVE and verified (2026-08-18)**: the Phase 2a prompt
   carries a `{DOCS_FACTS}` block citing real docs URLs. Smoke-tested on
   2026SS_00 + 2026SS_04 — **6 URLs cited** from pandas.pydata.org,
-  docs.scipy.org, scikit-learn.org. The offline index covers **12,054 chunks ×
-  4096 dims** for numpy/pandas/scipy/sklearn (matplotlib is BM25-only).
+  docs.scipy.org, scikit-learn.org. The offline index covers **19,109 chunks ×
+  4096 dims** for numpy/pandas/scipy/sklearn/**matplotlib** (matplotlib added
+  2026-08-19 via a crawled api/ tree — plot/scatter/axes queries return real
+  matplotlib.org/stable pages in live probes).
 - **Detector calibration**: the false "disallowed sklearn" flag was removed
   (2026-08-17) — sklearn (KMeans) is the assignment's **core library**. After
   the fix, on a small-batch re-run: `code_quality_design` 2→4,
