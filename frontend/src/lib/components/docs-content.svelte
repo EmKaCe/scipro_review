@@ -85,6 +85,14 @@ cd svelte_review</code
 			<code>data/settings.yaml</code>). Course content lives in YAML files under
 			<code>data/</code>.
 		</p>
+		<p class="note">
+			<strong>Deep reference:</strong> this page is the <em>how-to</em>. For the full
+			architecture, data flow, how the data structures are wired, and the terminology, see
+			the repo's <code>.github/references/</code> docs —
+			<code>architecture.md</code>, <code>data-structures.md</code>,
+			<code>developer-guide.md</code> — and for new-assignment / accuracy guidance,
+			<code>assignment-calibration.md</code> and <code>quality-statement.md</code>.
+		</p>
 		<h3>Environment File (<code>.env</code>)</h3>
 		<ul>
 			<li>
@@ -614,6 +622,13 @@ docker compose up -d --build</code
 		line-height: 1.7;
 		color: var(--muted-foreground);
 		font-size: 0.9375rem;
+	}
+
+	.doc-content .note {
+		border-left: 3px solid var(--accent);
+		background: color-mix(in oklch, var(--accent) 6%, transparent);
+		padding: 0.5rem 0.75rem;
+		border-radius: var(--radius);
 	}
 
 	.doc-content ul {

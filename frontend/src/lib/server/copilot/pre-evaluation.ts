@@ -4,6 +4,11 @@
  * per-cell markers against the reference key, a grade suggestion, a feedback
  * draft, and a notebook summary.
  *
+ * Whole-system context (module map + data flow): see
+ * `.github/references/architecture.md` (§3) and `data-structures.md`. This
+ * module orchestrates the phases; the per-phase LLM calls + turn-based rubric
+ * protocol live in `./pipeline/phases.ts`.
+ *
  * Pipeline: Phase 1 (cell markers) → Phase 2a (dimension scores) → optional
  * self-critique of 2a → Phase 2b (turn-based rubric selection: generate the
  * rubric checklist worksheet, then fill it ONE category per LLM call — the
