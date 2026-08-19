@@ -8,8 +8,8 @@
  *
  *   set-rubric-item        — set one rubric selection (criterion key ->
  *                            option key) in the submission's grading state.
- *   update-grade-dimension — set one dimension slider value (bounded
- *                            [0, 1000], finite).
+ *   update-grade-dimension — set one dimension score in POINTS (0 to the
+ *                            dimension's max_points, e.g. 0..6).
  *   write-notes            — set the top-level free-form notes.
  *   save-grading           — persist a MERGE of rubric / dimensions /
  *                            feedback / notes (fields absent from the args
@@ -28,8 +28,14 @@ import { z } from "zod";
 
 import { resolveAssignmentId } from "$lib/server/assignments";
 import { getSubmission, saveGrading, type SubmissionRecord } from "$lib/server/metadata";
+import { loadGradingConfigFile } from "$lib/server/grading-config-writer";
 import type { CategoryFeedback } from "$lib/types/evaluation";
-import type { CopilotRegistry, CopilotTool, ToolContext } from "../registry";
+import {
+	CopilotToolArgumentError,
+	type CopilotRegistry,
+	type CopilotTool,
+	type ToolContext,
+} from "../registry";
 
 // ---------------------------------------------------------------------------
 // Arg schemas
@@ -54,8 +60,12 @@ type SetRubricItemArgs = z.infer<typeof setRubricItemArgsSchema>;
 const updateGradeDimensionArgsSchema = gradingTargetArgs.extend({
 	/** Grading dimension id, e.g. "code_quality_design". */
 	dimensionId: z.string().min(1),
-	/** Dimension score (points). Must be finite and within [0, 1000]. */
-	value: z.number().finite().min(0).max(1000),
+	/**
+	 * Dimension score in POINTS, in [0, max_points] of the dimension (e.g.
+	 * 0..6). The schema only bounds non-negative/finite here; the dimension's
+	 * actual max_points is enforced at run time (grading config).
+	 */
+	value: z.number().finite().min(0),
 });
 type UpdateGradeDimensionArgs = z.infer<typeof updateGradeDimensionArgsSchema>;
 
@@ -107,6 +117,36 @@ async function resolveGradingTarget(
 		throw new Error(`${toolName}: no assignmentId given and no assignment is configured`);
 	}
 	return { submissionId, assignmentId };
+}
+
+/**
+ * Resolve the max_points for a grading dimension from the GLOBAL grading
+ * config (data/grading_config.yaml) — the same file / scale the UI slider and
+ * the grade calculator use. Dimension scores are POINTS in [0, max_points]
+ * (e.g. 0..6); a value on any other scale (e.g. an old 0-1000-style 800)
+ * would be silently clamped by the grade calculator and inflate the grade, so
+ * the tools reject out-of-range values up front instead.
+ */
+async function resolveDimensionMaxPoints(dimensionId: string): Promise<number> {
+	const config = await loadGradingConfigFile();
+	const dim = config?.dimensions.find((d) => d.key === dimensionId);
+	if (!dim) {
+		throw new CopilotToolArgumentError("dimension-score", [
+			{
+				code: "custom",
+				message: `unknown grading dimension '${dimensionId}' (not in grading_config.yaml)`,
+				path: ["dimensionId"],
+			},
+		]);
+	}
+	return dim.max_points;
+}
+
+/** A CopilotToolArgumentError for a semantic (run-time) arg violation. */
+function argError(toolName: string, message: string, path: (string | number)[]): CopilotToolArgumentError {
+	return new CopilotToolArgumentError(toolName, [
+		{ code: "custom", message, path },
+	] as ConstructorParameters<typeof CopilotToolArgumentError>[1]);
 }
 
 /**
@@ -177,7 +217,7 @@ const setRubricItemTool: CopilotTool<SetRubricItemArgs> = {
 const updateGradeDimensionTool: CopilotTool<UpdateGradeDimensionArgs> = {
 	name: "update-grade-dimension",
 	description:
-		"Set one grading dimension score for a submission (dimension id -> value in [0, 1000]), exactly like the teacher dragging a grading slider. " +
+		"Set one grading dimension score for a submission (dimension id -> value in POINTS, 0 to the dimension's max_points, e.g. 0..6 — NOT a 0-1000 scale), exactly like the teacher dragging a grading slider. " +
 		"Persists through the same save path as the teacher's Save action; other grading state is untouched.",
 	permission: "approval",
 	inputSchema: updateGradeDimensionArgsSchema,
@@ -192,6 +232,17 @@ const updateGradeDimensionTool: CopilotTool<UpdateGradeDimensionArgs> = {
 		// diff for the slider change.
 		const before = await readGradingBeforeWrite(assignmentId, submissionId);
 		const previous = before?.grading?.dimensions?.[args.dimensionId];
+		// Dimension scores are POINTS on [0, max_points] — reject a
+		// 0-1000-scale value (e.g. 800) that the grade calculator would
+		// silently clamp and mis-grade.
+		const maxPoints = await resolveDimensionMaxPoints(args.dimensionId);
+		if (args.value > maxPoints) {
+			throw argError(
+				"update-grade-dimension",
+				`value ${args.value} out of range for dimension '${args.dimensionId}' (max ${maxPoints} points)`,
+				["value"],
+			);
+		}
 		const record = await saveGrading(assignmentId, submissionId, {
 			dimensions: { [args.dimensionId]: args.value },
 		});
@@ -248,6 +299,18 @@ const saveGradingTool: CopilotTool<SaveGradingArgs> = {
 			persisted.push("rubric");
 		}
 		if (args.dimensions !== undefined) {
+			// Dimension scores are POINTS on [0, max_points] — reject
+			// 0-1000-scale values before they reach grading state.
+			for (const [dimId, v] of Object.entries(args.dimensions)) {
+				const maxPoints = await resolveDimensionMaxPoints(dimId);
+				if (v < 0 || v > maxPoints) {
+					throw argError(
+						"save-grading",
+						`dimension '${dimId}' value ${v} out of range (0..${maxPoints})`,
+						["dimensions"],
+					);
+				}
+			}
 			grading.dimensions = args.dimensions;
 			persisted.push("dimensions");
 		}

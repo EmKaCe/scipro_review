@@ -14,7 +14,7 @@
  * ctx.submissionId fallback chain, and the approval permission on all four.
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -53,6 +53,9 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 const STUDENT = "2026SS_01";
+
+/** Real global grading config — dimensions carry their max_points (0..max). */
+const GRADING_CONFIG_SOURCE = "/root/projects/svelte-review-copilot/data/grading_config.yaml";
 
 /** Pre-seeded grading state: rubric, dimensions, feedback, and notes. */
 const METADATA: Record<string, SubmissionRecord> = {
@@ -113,6 +116,10 @@ beforeEach(async () => {
 
 	await mkdir(path.join(dataDir, "submissions", ASSIGNMENT), { recursive: true });
 	await writeFile(path.join(dataDir, "assignments.yaml"), ASSIGNMENTS_YAML);
+	await writeFile(
+		path.join(dataDir, "grading_config.yaml"),
+		await readFile(GRADING_CONFIG_SOURCE, "utf-8"),
+	);
 	await writeFile(
 		path.join(dataDir, "submissions", ASSIGNMENT, "metadata.json"),
 		JSON.stringify(METADATA, null, 2),
@@ -240,8 +247,36 @@ describe("update-grade-dimension", () => {
 		).rejects.toThrow(CopilotToolArgumentError);
 	});
 
-	it("rejects values above the 1000 bound and non-finite values", async () => {
-		for (const value of [1001, Number.POSITIVE_INFINITY, Number.NaN]) {
+	it("rejects values above the dimension's max_points and non-finite values", async () => {
+		// Grading dimensions are POINTS on [0, max_points] (code_quality_design
+		// has max_points 6). Values on the old 0-1000 scale (500-800) are
+		// out of range and must be rejected — this is the B7 regression: a
+		// 0-1000-scale value would be silently clamped by the grade calculator.
+		await expect(
+			registry.run(
+				"update-grade-dimension",
+				{ submissionId: STUDENT, dimensionId: "code_quality_design", value: 7 },
+				makeContext(),
+			),
+		).rejects.toThrow(CopilotToolArgumentError);
+		await expect(
+			registry.run(
+				"update-grade-dimension",
+				{ submissionId: STUDENT, dimensionId: "code_quality_design", value: 100 },
+				makeContext(),
+			),
+		).rejects.toThrow(CopilotToolArgumentError);
+		// Old 0-1000-scale values like the recorded 500/800 are long past the
+		// max_points bound — reject, not silently clamp.
+		await expect(
+			registry.run(
+				"update-grade-dimension",
+				{ submissionId: STUDENT, dimensionId: "code_quality_design", value: 800 },
+				makeContext(),
+			),
+		).rejects.toThrow(CopilotToolArgumentError);
+		// Non-finite are still schema-rejected.
+		for (const value of [Number.POSITIVE_INFINITY, Number.NaN]) {
 			await expect(
 				registry.run(
 					"update-grade-dimension",
@@ -250,6 +285,16 @@ describe("update-grade-dimension", () => {
 				),
 			).rejects.toThrow(CopilotToolArgumentError);
 		}
+	});
+
+	it("accepts valid points within the dimension's max_points", async () => {
+		// creativity max_points is 4 — 3.5 is valid; exactly max is valid.
+		const result = (await registry.run(
+			"update-grade-dimension",
+			{ submissionId: STUDENT, dimensionId: "creativity", value: 4 },
+			makeContext(),
+		)) as Record<string, unknown>;
+		expect(result["dimension"]).toEqual({ dimensionId: "creativity", value: 4 });
 	});
 
 	it("reports the previous score for an overwritten dimension", async () => {
