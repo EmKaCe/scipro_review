@@ -136,6 +136,30 @@ export interface PreEvalData {
 }
 
 // ---------------------------------------------------------------------------
+// Cohort calibration (review signal, Q: BUG-002)
+// ---------------------------------------------------------------------------
+
+/**
+ * One old→new score correction applied by cross-submission cohort
+ * calibration. Mirrors the server-side audit record so the detail page can
+ * explain to the teacher which dimension scores were shifted toward the
+ * cohort reference (and from what to what). Client-safe — never import the
+ * server type here.
+ */
+export interface CalibrationAdjustment {
+	/** Submission the adjustment belongs to. */
+	submissionId: string;
+	/** Dimension id, e.g. "code_execution_results". */
+	dimension: string;
+	/** Pre-calibration score. */
+	oldScore: number;
+	/** Calibrated replacement score. */
+	newScore: number;
+	/** Plain-language reason for the correction. */
+	reason: string;
+}
+
+// ---------------------------------------------------------------------------
 // Over-tick guard (review-diff workflow, signed off 2026-08-18)
 // ---------------------------------------------------------------------------
 
@@ -248,6 +272,12 @@ export interface SubmissionDetail extends SubmissionMeta {
 	 * comparison data yet — the review UI keeps its pending/neutral state.
 	 */
 	preEval?: PreEvalData;
+	/**
+	 * Advisory old→new score corrections from cross-submission cohort
+	 * calibration (BUG-002). Absent/empty when calibration made no changes
+	 * to this submission — the UI renders no notice in that case.
+	 */
+	calibrationAdjustments?: CalibrationAdjustment[];
 	/**
 	 * Advisory over-tick flags (review-diff workflow): full result —
 	 * Signal A total flag, Signal B per-category extras, Signal C overlap

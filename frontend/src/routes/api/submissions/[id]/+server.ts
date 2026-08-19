@@ -80,7 +80,16 @@ export async function GET(event: RequestEvent): Promise<Response> {
 	const norms = await loadCohortNorms(assignmentId).catch(() => null);
 	const overTick = norms ? overTickFromStored(stored, norms) : null;
 
-	return json({ ...record, cells, fixedCells, preEval, overTick });
+	return json({
+		...record,
+		cells,
+		fixedCells,
+		preEval,
+		// Cohort calibration audit (BUG-002): pass the advisory old→new
+		// score corrections through so the detail UI can surface them.
+		calibrationAdjustments: stored?.calibrationAdjustments,
+		overTick,
+	});
 }
 
 export async function DELETE(event: RequestEvent): Promise<Response> {

@@ -28,6 +28,7 @@
 	import { applySuggestionToState } from "$lib/utils/apply-suggestion.js";
 	import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 	import ReferenceComparison from "$lib/components/submissions/reference-comparison.svelte";
+	import CohortCalibrationNote from "$lib/components/submissions/cohort-calibration-note.svelte";
 	import RightPanelTabs from "$lib/components/submissions/right-panel-tabs.svelte";
 	import MenuButton from "$lib/components/ui/menu-button.svelte";
 	import { Button } from "$lib/components/ui/button/index.js";
@@ -957,6 +958,14 @@
 					preEval={submission.preEval}
 					onApplyGradeSuggestion={handleApplyPreEval}
 				/>
+
+				<!-- Cohort calibration notice (BUG-002): surface adjusted
+				     dimension scores right where the (calibrated) suggested
+				     grade is shown. Renders nothing when calibration made no
+				     changes to this submission. -->
+				{#if (submission.calibrationAdjustments?.length ?? 0) > 0}
+					<CohortCalibrationNote adjustments={submission.calibrationAdjustments ?? []} />
+				{/if}
 
 				<!-- Review extras (over-tick guard, review-diff workflow):
 				     advisory panel listing pipeline-checked items that exceed
