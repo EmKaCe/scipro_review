@@ -8,6 +8,7 @@
 	import Wrench from "@lucide/svelte/icons/wrench";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
 	import CircleX from "@lucide/svelte/icons/circle-x";
+	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
 	import ChevronRight from "@lucide/svelte/icons/chevron-right";
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 	import type {
@@ -18,6 +19,7 @@
 		PendingApproval,
 		PendingSuggestion,
 	} from "../copilot-store.svelte.js";
+	import { groupMessagesByPhase } from "./grouping.js";
 
 	type Props = {
 		/** Transcript messages to render. */
@@ -132,6 +134,9 @@
 			minute: "2-digit",
 		});
 	}
+
+	/** P10-A: transcript partitioned into plan-phase groups + ungrouped messages. */
+	const grouped = $derived(groupMessagesByPhase(messages, planSteps));
 </script>
 
 <div
@@ -166,7 +171,7 @@
 		</div>
 	{:else}
 		<PlanCard steps={planSteps} />
-		{#each messages as msg (msg.id)}
+		{#snippet messageCard(msg: CopilotMessage)}
 			{#if msg.kind === "tool-call"}
 				<div class="copilot-card tool-call-card">
 					<div class="card-header">
@@ -243,6 +248,28 @@
 					<span class="msg-time">{msgTime(msg.timestamp)}</span>
 				</div>
 			{/if}
+		{/snippet}
+		{#each grouped.groups as group (group.step.id)}
+			<div class="phase-group">
+				<div class="phase-header" role="heading" aria-level="3">
+					{#if group.step.status === "in_progress"}
+						<span class="phase-icon spin"><LoaderCircle size={12} /></span>
+					{:else if group.step.status === "completed"}
+						<span class="phase-icon"><CircleCheck size={12} /></span>
+					{:else if group.step.status === "error"}
+						<span class="phase-icon"><CircleX size={12} /></span>
+					{:else}
+						<span class="phase-dot" aria-hidden="true"></span>
+					{/if}
+					<span class="phase-label">{group.step.label}</span>
+				</div>
+				{#each group.messages as msg (msg.id)}
+					{@render messageCard(msg)}
+				{/each}
+			</div>
+		{/each}
+		{#each grouped.ungrouped as msg (msg.id)}
+			{@render messageCard(msg)}
 		{/each}
 		<ChangeLedger
 			{changes}
@@ -434,6 +461,51 @@
 	.tool-result-summary {
 		color: var(--foreground);
 		min-width: 0;
+	}
+
+	/* P10-A: plan-phase group headers above the tool cards. */
+	.phase-group {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.phase-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 11px;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--muted-foreground);
+		padding-top: 6px;
+		border-top: 1px dashed var(--border);
+	}
+	.phase-icon {
+		display: inline-flex;
+		flex: none;
+	}
+	.phase-dot {
+		width: 12px;
+		height: 12px;
+		border-radius: 50%;
+		border: 1.5px solid var(--border);
+		flex: none;
+	}
+	.phase-label {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
+	.spin {
+		animation: phase-spin 1s linear infinite;
+		flex: none;
+	}
+	@keyframes phase-spin {
+		to {
+			transform: rotate(360deg);
+		}
 	}
 
 	.typing-indicator {

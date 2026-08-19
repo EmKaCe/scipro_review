@@ -379,6 +379,8 @@ export function createCopilotStore(options?: {
 	// -----------------------------------------------------------------------
 	// Harness plan (W2a) — tool-family → phase mapping, mirrored from the
 	// server's derivePlanSteps so the client can advance the checklist.
+	// NOTE: mirrored in copilot/grouping.ts (phaseForMessage) for the
+	// phase-grouped transcript render — keep both in sync when adding tools.
 	// -----------------------------------------------------------------------
 
 	const PLAN_PHASE_BY_TOOL: Record<string, string> = {
