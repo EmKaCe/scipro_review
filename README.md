@@ -130,6 +130,29 @@ pnpm start:teacher        # Start server on port 4174
 
 ## Project Structure
 
+The repository holds two apps plus runtime configuration and tracked docs:
+
+```
+frontend/              SvelteKit app (student SPA + teacher Node server)
+executor/              Python notebook-execution backend
+data/                  Runtime configuration (assignments, grading config,
+                       criteria, scoring) — tracked, with runtime-state exceptions
+.github/references/    Tracked documentation home (calibration, quality statement,
+                       design tokens, schema specs)
+docs/                  Research artifacts & directives (gitignored, except docs/directives/)
+scripts/               Root-level helper & smoke-test scripts
+```
+
+- `data/` — committed config: `assignments.yaml`, `grading_config.yaml`,
+  `criteria/*.yaml`, `scoring/*.yaml`. Runtime state (submissions, plagiarism
+  cache, copilot audit log, materials) is gitignored.
+- `.github/references/` — the home for reviewed, versioned docs (linked from the
+  Documentation section above and from `README`'s references).
+- `docs/directives/` — non-negotiable pipeline contracts (e.g. the turn-based
+  pre-evaluation directive), tracked as the exception to the gitignored `docs/`.
+
+The frontend source tree in detail:
+
 ```
 frontend/src/
 ├── lib/

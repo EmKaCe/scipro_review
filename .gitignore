@@ -35,8 +35,9 @@ executor/*.egg-info/
 # Python lockfile (uv) — committed for reproducibility
 executor/uv.lock
 
-# Docs (research artifacts, not code)
-docs/
+# Docs (research artifacts, not code) — but keep tracked directives
+docs/*
+!docs/directives/
 
 # Hermes agent plans (local session planning only)
 .hermes/
