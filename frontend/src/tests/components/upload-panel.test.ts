@@ -141,4 +141,61 @@ describe("upload-panel.svelte (real upload flow)", () => {
 		);
 		expect(await screen.findByText("2026SS_05.ipynb")).toBeDefined();
 	});
+
+	it("disambiguates two same-named files by byte size instead of collapsing them", async () => {
+		// Two DISTINCT files that happen to share a file name (an edited
+		// re-upload of the same student notebook) — different byte sizes.
+		const nbA = new File(
+			[JSON.stringify({ cells: [], metadata: { tag: "a" }, nbformat: 4, nbformat_minor: 5 })],
+			"2026SS_05.ipynb",
+			{ type: "application/json" },
+		);
+		const nbB = new File(
+			[
+				JSON.stringify({
+					cells: [],
+					metadata: { tag: "longer-distinct-content" },
+					nbformat: 4,
+					nbformat_minor: 5,
+				}),
+			],
+			"2026SS_05.ipynb",
+			{ type: "application/json" },
+		);
+		expect(nbA.size).not.toBe(nbB.size);
+
+		// Two per-file results with the SAME name, keyed apart by their bytes.
+		api.uploadSubmissions.mockResolvedValue({
+			assignmentId: "soil_contamination",
+			results: [
+				{
+					fileName: "2026SS_05.ipynb",
+					kind: "submission",
+					studentId: "2026SS_05",
+					replaced: false,
+					bytes: nbB.size,
+				},
+				{
+					fileName: "2026SS_05.ipynb",
+					kind: "submission",
+					studentId: "2026SS_05",
+					replaced: false,
+					bytes: nbA.size,
+				},
+			],
+		});
+
+		render(UploadPanel, { assignmentId: "soil_contamination" });
+		const dropZone = screen.getByText("Drop files here or click to browse").parentElement;
+		const dataTransfer = { files: [nbA, nbB] } as unknown as DataTransfer;
+		await fireEvent.drop(dropZone as HTMLElement, { dataTransfer });
+		await screen.findByText("Upload 2 files");
+
+		await fireEvent.click(screen.getByText("Upload 2 files"));
+
+		// One batched request; BOTH files resolve to "Uploaded" (each matched
+		// to its own result by byte size, not collapsed onto the last one).
+		expect(api.uploadSubmissions).toHaveBeenCalledTimes(1);
+		expect((await screen.findAllByText("Uploaded")).length).toBe(2);
+	});
 });

@@ -121,7 +121,9 @@
 	// ---------------------------------------------------------------------
 
 	const uploadTargets = $derived(
-		files.filter((f) => f.phase === "pending" || f.phase === "failed"),
+		files.filter(
+			(f) => f.status !== "error" && (f.phase === "pending" || f.phase === "failed"),
+		),
 	);
 	const succeededCount = $derived(files.filter((f) => f.phase === "succeeded").length);
 	const failedCount = $derived(files.filter((f) => f.phase === "failed").length);
@@ -333,7 +335,7 @@
 			// Mark every target as uploading up front, then send ALL files in
 			// ONE multipart request (the server's upload route accepts any
 			// number of files per POST). Results come back together and are
-			// matched to each file by name below — single request, single
+			// matched to each file below by name+size — single request, single
 			// list refresh (BUG-018).
 			for (const entry of targets) {
 				entry.phase = "uploading";
@@ -344,9 +346,19 @@
 					kind: entry.kind !== entry.detectedKind ? entry.kind : undefined,
 				})),
 			);
-			const resultByName = new Map(res.results.map((r) => [r.fileName, r]));
+			// Group results by file name; two distinct files can share a name
+			// (e.g. an edited re-upload of 2026SS_01.ipynb), so a name keyed
+			// Map alone would collapse them — disambiguate by byte size.
+			const resultsByName = new Map<string, SubmissionUploadResult[]>();
+			for (const r of res.results) {
+				const arr = resultsByName.get(r.fileName) ?? [];
+				arr.push(r);
+				resultsByName.set(r.fileName, arr);
+			}
 			for (const entry of targets) {
-				const result = resultByName.get(entry.file.name);
+				const candidates = resultsByName.get(entry.file.name) ?? [];
+				const result =
+					candidates.find((r) => r.bytes === entry.file.size) ?? candidates[0];
 				if (!result) {
 					entry.phase = "failed";
 					entry.errorMessage = "No result returned for this file";
