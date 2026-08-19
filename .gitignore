@@ -32,7 +32,7 @@ executor/.venv/
 __pycache__/
 executor/*.egg-info/
 
-# Python lockfile (uv) — committed for reproducibility
+# Python lockfile (uv) — local only (regenerate with `uv lock`; not committed)
 executor/uv.lock
 
 # Docs (research artifacts, not code) — but keep tracked directives

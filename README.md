@@ -48,6 +48,39 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
 
+### Agent Configuration
+
+Agent-facing conventions live in `AGENTS.md` files, readable by any agent
+harness (Claude / Codex, Gemini CLI, Cursor, GitHub Copilot):
+
+- The **cross-harness primary** is the root [`AGENTS.md`](AGENTS.md), with
+  scoped files at [`frontend/AGENTS.md`](frontend/AGENTS.md),
+  [`executor/AGENTS.md`](executor/AGENTS.md), and
+  [`data/AGENTS.md`](data/AGENTS.md). Together they encode the build/verify
+  commands, the per-package local-commit discipline, and the key invariants
+  (golden-prompt byte-equality, the Karl gate, KI Connect concurrency).
+- `.github/` remains the **GitHub-native complement**: `agents/*.agent.md`,
+  `instructions/`, `copilot-instructions.md`, and `skills/` are Copilot-specific
+  and never override `AGENTS.md`.
+
+**Two skill-set model.** Skills have two distinct homes, and only one lives in
+this repo:
+
+- `.hermes/skills/` — the assistant's own skill directory (how *we* work). It is
+  **not** in the repository (gitignored); do not create or edit it here.
+- Repo skills (dev-environment skills such as `AGENTS.md`/scoped conventions,
+  plus webapp skills supplied to the copilot harness) are **tracked in the
+  repo** — the first webapp skill lands with a later package.
+
+### Development Container
+
+This repo is monorepo-friendly and language-mixed (Node 22 + pnpm for the
+SvelteKit app, Python 3.12 + uv for the executor). For a reproducible **DEV**
+environment open the repo in a dev container via [`devcontainer.json`](devcontainer.json)
+— it provisions identical editor + tooling on any machine. This is *distinct*
+from [`docker-compose.yml`](docker-compose.yml), which launches the stable
+teacher-mode production release.
+
 ---
 
 ## Tech Stack
@@ -150,6 +183,8 @@ scripts/               Root-level helper & smoke-test scripts
   Documentation section above and from `README`'s references).
 - `docs/directives/` — non-negotiable pipeline contracts (e.g. the turn-based
   pre-evaluation directive), tracked as the exception to the gitignored `docs/`.
+- Agent conventions: root + scoped `AGENTS.md` (cross-harness primary) —
+  see the *Agent Configuration* note in the Documentation section above.
 
 The frontend source tree in detail:
 
