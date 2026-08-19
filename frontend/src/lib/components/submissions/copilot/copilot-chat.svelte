@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Markdown from "../Markdown.svelte";
+	import ToolArgs from "./tool-args.svelte";
 	import ApprovalCard from "./approval-card.svelte";
 	import SuggestionCard from "./suggestion-card.svelte";
 	import PlanCard from "./plan-card.svelte";
@@ -105,12 +106,6 @@
 		if (hasContent) messagesEl.scrollTop = messagesEl.scrollHeight;
 	});
 
-	/** Render tool args safely — the store guarantees strings, but older
-	 * SSE/history payloads carried objects ("[object object]"). */
-	function displayArgs(args: unknown): string {
-		return typeof args === "string" ? args : JSON.stringify(args);
-	}
-
 	/** True when this approval message is the live pending request. */
 	function isPendingApproval(msg: CopilotMessage): boolean {
 		const pending = pendingApproval;
@@ -185,7 +180,7 @@
 								<span class="chevron-wrap"><ChevronRight size={12} /></span>
 								<span>Arguments</span>
 							</summary>
-							<pre class="args-pre">{displayArgs(msg.args)}</pre>
+							<ToolArgs args={msg.args ?? ""} />
 						</details>
 					{/if}
 				</div>
@@ -428,20 +423,6 @@
 	}
 	details[open] .chevron-wrap {
 		transform: rotate(90deg);
-	}
-	.args-pre {
-		margin: 8px 0 0;
-		padding: 8px;
-		background: var(--muted);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-		font-size: 11px;
-		line-height: 1.45;
-		white-space: pre-wrap;
-		word-break: break-word;
-		overflow-x: auto;
-		color: var(--foreground);
 	}
 
 	.tool-result-card {

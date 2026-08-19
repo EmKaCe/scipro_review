@@ -211,6 +211,22 @@ describe("copilot-panel.svelte — thread switcher (T.4)", () => {
 		expect(await screen.findByText("No conversations yet")).toBeTruthy();
 	});
 
+	// P14-A2: the context meter is ALWAYS visible. On a fresh load with no
+	// restored/active thread it renders an empty, muted meter (0% fill) instead
+	// of disappearing — previously the whole meter was gated on activeThread.
+	it("always renders the context meter — idle (empty, muted) when no thread is active (P14-A2)", async () => {
+		await renderPanel(); // thread list loads, but no thread is opened
+
+		const meter = document.querySelector(".context-meter") as HTMLElement;
+		expect(meter).toBeTruthy();
+		expect(meter.classList.contains("context-meter-idle")).toBe(true);
+		expect(meter.getAttribute("aria-label")).toBe("Context meter: no active thread");
+		expect(screen.getByText("Context: no active thread")).toBeTruthy();
+		// The idle meter has an empty fill — no recall window to show.
+		const fill = meter.querySelector(".context-meter-fill") as HTMLElement;
+		expect(fill.style.width).toBe("0%");
+	});
+
 	it("clicking a thread row opens it (detail GET), closes the list and renders history", async () => {
 		await openThreadList();
 

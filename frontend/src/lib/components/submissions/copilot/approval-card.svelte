@@ -2,6 +2,7 @@
 	import ShieldAlert from "@lucide/svelte/icons/shield-alert";
 	import Lock from "@lucide/svelte/icons/lock";
 	import CircleCheck from "@lucide/svelte/icons/circle-check";
+	import ToolArgs from "./tool-args.svelte";
 
 	type Props = {
 		/** Tool name the approval is for. */
@@ -33,11 +34,6 @@
 		onDeny,
 	}: Props = $props();
 
-	/** Render tool args safely — the store guarantees strings, but older
-	 * SSE/history payloads carried objects ("[object object]"). */
-	function displayArgs(value: unknown): string {
-		return typeof value === "string" ? value : JSON.stringify(value);
-	}
 </script>
 
 <div class="copilot-card approval-card" aria-live="assertive">
@@ -48,7 +44,7 @@
 	<div class="approval-body">
 		<code class="tool-name">{toolName}</code>
 		{#if args}
-			<pre class="args-pre">{displayArgs(args)}</pre>
+			<ToolArgs args={args} />
 		{/if}
 		{#if runId}
 			<span class="run-id" title={`Tool call: ${toolCallId}`}>Run {runId}</span>
@@ -119,20 +115,6 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
-	}
-	.args-pre {
-		margin: 8px 0 0;
-		padding: 8px;
-		background: var(--muted);
-		border: 1px solid var(--border);
-		border-radius: var(--radius);
-		font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-		font-size: 11px;
-		line-height: 1.45;
-		white-space: pre-wrap;
-		word-break: break-word;
-		overflow-x: auto;
-		color: var(--foreground);
 	}
 
 	/* Approval request — prominent until decided. */

@@ -225,6 +225,15 @@
 			</span>
 		</div>
 	{/if}
+{:else}
+	<!-- P14-A2: the context meter is ALWAYS visible. No active thread (fresh
+	     load, or a run that has not produced a thread yet) -> empty muted meter. -->
+	<div class="context-meter context-meter-idle" aria-label="Context meter: no active thread">
+		<div class="context-meter-track">
+			<div class="context-meter-fill" style:width="0%" style:background={barColor}></div>
+		</div>
+		<div class="context-line">Context: no active thread</div>
+	</div>
 {/if}
 
 <style>
@@ -347,6 +356,13 @@
 		padding: 6px 12px;
 		border-bottom: 1px solid var(--border);
 		background: var(--card);
+	}
+	/* P14-A2: no active thread — muted, empty meter. */
+	.context-meter-idle .context-meter-track {
+		background: color-mix(in oklch, var(--muted) 55%, transparent);
+	}
+	.context-meter-idle .context-line {
+		opacity: 0.65;
 	}
 	.context-meter-track {
 		height: 4px;
