@@ -6,10 +6,11 @@
 	 * classification (submission / material-data / material-file), a status
 	 * icon (✓ valid, ⚠ warning, ✗ error), a size readout and a per-file kind
 	 * override dropdown for material files. "Upload N files" then uploads the
-	 * list one file per request (real per-file progress like "Uploading…
-	 * 5/12"), shows per-file results inline, and re-uploads only the files
-	 * that have not succeeded yet on retry. After a fully successful batch
-	 * the panel auto-closes after 3 seconds.
+	 * whole list in ONE batched request (the server persists every file in a
+	 * single multipart POST and returns per-file results), shows per-file
+	 * results inline, and re-uploads only the files that have not succeeded
+	 * yet on retry. After a fully successful batch the panel auto-closes
+	 * after 3 seconds.
 	 *
 	 * The server (upload route + file-service.validateSubmissionFile) is the
 	 * source of truth: client-side detection mirrors the server's filename
@@ -279,11 +280,6 @@
 		entry.kind = kind;
 	}
 
-	/** Kind override map sent to the server — only when the user changed it. */
-	function kindsFor(entry: PendingFile): Record<string, UploadKind> | undefined {
-		return entry.kind !== entry.detectedKind ? { [entry.file.name]: entry.kind } : undefined;
-	}
-
 	// ── Drag & drop ────────────────────────────────────────────────────────
 	// Without dragover.preventDefault() the browser refuses the drop, and
 	// without an explicit drop handler the OS file drop is ignored entirely.
@@ -315,8 +311,9 @@
 	// ---------------------------------------------------------------------
 
 	/**
-	 * Upload the pending + failed files, one request per file so the UI can
-	 * show real per-file progress ("Uploading… 5/12") and isolate failures.
+	 * Upload the pending + failed files in ONE batched request (all files in
+	 * a single multipart POST, then a single list refresh — BUG-018). Per-file
+	 * phases/go results are assigned from the returned per-file results.
 	 * Files that already succeeded are skipped (retry semantics).
 	 */
 	async function startUpload() {
@@ -333,27 +330,35 @@
 			if (submissionsStore.assignmentId !== assignmentId) {
 				await submissionsStore.load(assignmentId);
 			}
+			// Mark every target as uploading up front, then send ALL files in
+			// ONE multipart request (the server's upload route accepts any
+			// number of files per POST). Results come back together and are
+			// matched to each file by name below — single request, single
+			// list refresh (BUG-018).
 			for (const entry of targets) {
 				entry.phase = "uploading";
-				try {
-					const res = await submissionsStore.upload([entry.file], kindsFor(entry));
-					const result = res.results[0];
-					if (!result) {
-						entry.phase = "failed";
-						entry.errorMessage = "No result returned for this file";
-					} else {
-						batchResults.push(result);
-						entry.result = result;
-						if (result.error) {
-							entry.phase = "failed";
-							entry.errorMessage = result.error;
-						} else {
-							entry.phase = "succeeded";
-						}
-					}
-				} catch (err) {
+			}
+			const res = await submissionsStore.uploadMany(
+				targets.map((entry) => ({
+					file: entry.file,
+					kind: entry.kind !== entry.detectedKind ? entry.kind : undefined,
+				})),
+			);
+			const resultByName = new Map(res.results.map((r) => [r.fileName, r]));
+			for (const entry of targets) {
+				const result = resultByName.get(entry.file.name);
+				if (!result) {
 					entry.phase = "failed";
-					entry.errorMessage = err instanceof Error ? err.message : "Upload failed";
+					entry.errorMessage = "No result returned for this file";
+				} else {
+					batchResults.push(result);
+					entry.result = result;
+					if (result.error) {
+						entry.phase = "failed";
+						entry.errorMessage = result.error;
+					} else {
+						entry.phase = "succeeded";
+					}
 				}
 				progress.done += 1;
 			}

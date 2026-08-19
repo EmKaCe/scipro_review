@@ -2,6 +2,7 @@
 	import { base } from "$app/paths";
 	import type { SubmissionMeta } from "$lib/types/submissions.js";
 	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import { filterSubmissions } from "$lib/services/submission-filters.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
 	import {
@@ -86,20 +87,9 @@
 	/** Unreviewed pairs across the assignment — badge count. */
 	let unreviewed = $derived(plagiarismStore.unreviewedCount());
 
-	// ── Filtered list ──
+	// ── Filtered list (canonical rules live in submission-filters.ts) ──
 	let filtered = $derived(
-		submissions.filter((s) => {
-			// Archived rows are hidden unless the "Archived" filter is active.
-			if (s.status === "archived" && statusFilter !== "archived") return false;
-			if (statusFilter !== "all" && s.status !== statusFilter) return false;
-			// Confidence routing: rows without a stored confidence (pre-eval
-			// not run, or a legacy envelope) only match the "All" filter.
-			if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter)
-				return false;
-			if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
-				return false;
-			return true;
-		}),
+		filterSubmissions(submissions, { statusFilter, confidenceFilter, searchQuery }),
 	);
 
 	// ── Sort state ──

@@ -231,6 +231,33 @@ export class SubmissionsStore {
 		return response;
 	}
 
+	/**
+	 * Upload several files in a SINGLE request, then ONE list refresh + ONE
+	 * polling sync. The server's POST /api/submissions/upload accepts any
+	 * number of files in one multipart request, so per-file looped uploads
+	 * (N × upload → N refreshes) are collapsed here (BUG-018).
+	 *
+	 * @param entries Files to upload; `kind` is an optional per-file override
+	 *   (omit it to let the server auto-detect, matching the old behavior).
+	 */
+	async uploadMany(
+		entries: { file: File; kind?: UploadKind }[],
+	): Promise<UploadResponse> {
+		const assignmentId = this.requireAssignment();
+		const files = entries.map((e) => e.file);
+		const kinds: Record<string, UploadKind> = {};
+		for (const e of entries) {
+			if (e.kind !== undefined) kinds[e.file.name] = e.kind;
+		}
+		// No overrides → omit the "kinds" field entirely (matches the single
+		// upload() wire contract); otherwise send the override map.
+		const hasOverrides = Object.keys(kinds).length > 0;
+		const response = await uploadSubmissions(files, assignmentId, hasOverrides ? kinds : undefined);
+		await this.refresh();
+		this.syncPolling();
+		return response;
+	}
+
 	/** Batch-process submissions (all pending, or the given ids). */
 	async process(ids?: string[]): Promise<BatchProcessResponse> {
 		const response = await processSubmissions(ids, this.assignmentId ?? undefined);

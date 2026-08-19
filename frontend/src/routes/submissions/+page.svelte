@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { submissionsStore } from "$lib/services/submissions-store.js";
+	import { filterSubmissions } from "$lib/services/submission-filters.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import { base } from "$app/paths";
@@ -176,17 +177,9 @@
 
 	/** Ids visible under the current search/status/confidence filter (bar "Select all in view"). */
 	let visibleIds = $derived(
-		submissions
-			.filter((s) => {
-				if (s.status === "archived" && statusFilter !== "archived") return false;
-				if (statusFilter !== "all" && s.status !== statusFilter) return false;
-				if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter)
-					return false;
-				if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
-					return false;
-				return true;
-			})
-			.map((s) => s.id),
+		filterSubmissions(submissions, { statusFilter, confidenceFilter, searchQuery }).map(
+			(s) => s.id,
+		),
 	);
 
 	/** Action eligibility based on the scope rows' statuses. */

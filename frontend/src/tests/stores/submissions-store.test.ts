@@ -305,6 +305,84 @@ describe("mutations", () => {
 		expect(api.uploadSubmissions).not.toHaveBeenCalled();
 	});
 
+	it("uploadMany() batches all files into one request + one refresh", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "pending")));
+		api.uploadSubmissions.mockResolvedValue({
+			assignmentId: ASSIGNMENT,
+			results: [
+				{
+					fileName: "2026SS_01.ipynb",
+					kind: "submission",
+					studentId: "2026SS_01",
+					semester: "2026SS",
+					replaced: false,
+					bytes: 2,
+					notebookPath: `submissions/${ASSIGNMENT}/2026SS_01.ipynb`,
+				},
+				{
+					fileName: "notes.pdf",
+					kind: "material-file",
+					replaced: false,
+					bytes: 3,
+					relativePath: `materials/${ASSIGNMENT}/notes.pdf`,
+				},
+			],
+		});
+		await store.load();
+
+		const files = [new File(["{}"], "2026SS_01.ipynb"), new File(["pdf"], "notes.pdf")];
+		const response = await store.uploadMany([
+			{ file: files[0] },
+			{ file: files[1], kind: "material-file" },
+		]);
+
+		// ONE upload request carrying every file; kinds map only holds overrides.
+		expect(api.uploadSubmissions).toHaveBeenCalledTimes(1);
+		expect(api.uploadSubmissions).toHaveBeenCalledWith(
+			[files[0], files[1]],
+			ASSIGNMENT,
+			{ "notes.pdf": "material-file" },
+		);
+		// load + a single list refresh (not one refresh per file) + one poll.
+		expect(api.fetchSubmissions).toHaveBeenCalledTimes(2);
+		expect(store.isPolling).toBe(true);
+		expect(response.results).toHaveLength(2);
+	});
+
+	it("uploadMany() omits the kinds field entirely when no overrides given", async () => {
+		api.fetchSubmissions.mockResolvedValue(list(meta("2026SS_01", "pending")));
+		api.uploadSubmissions.mockResolvedValue({
+			assignmentId: ASSIGNMENT,
+			results: [
+				{
+					fileName: "2026SS_01.ipynb",
+					kind: "submission",
+					studentId: "2026SS_01",
+					semester: "2026SS",
+					replaced: false,
+					bytes: 2,
+					notebookPath: `submissions/${ASSIGNMENT}/2026SS_01.ipynb`,
+				},
+			],
+		});
+		await store.load();
+
+		await store.uploadMany([{ file: new File(["{}"], "2026SS_01.ipynb") }]);
+
+		expect(api.uploadSubmissions).toHaveBeenCalledWith(
+			[expect.any(File)],
+			ASSIGNMENT,
+			undefined,
+		);
+	});
+
+	it("uploadMany() refuses to run without a loaded assignment", async () => {
+		await expect(
+			store.uploadMany([{ file: new File(["{}"], "a.ipynb") }]),
+		).rejects.toThrow("No assignment selected");
+		expect(api.uploadSubmissions).not.toHaveBeenCalled();
+	});
+
 	it("select() loads and caches the detail", async () => {
 		api.fetchSubmission.mockResolvedValue(detail("2026SS_01"));
 
