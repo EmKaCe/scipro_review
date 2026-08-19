@@ -198,7 +198,9 @@
 					{#if msg.tool}
 						<code class="tool-name">{msg.tool}</code>
 					{/if}
-					<span class="tool-result-summary">{msg.summary}</span>
+					<div class="tool-result-summary">
+						<ToolArgs args={msg.summary ?? ""} />
+					</div>
 				</div>
 			{:else if msg.kind === "approval"}
 				<ApprovalCard
