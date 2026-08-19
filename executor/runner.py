@@ -29,6 +29,36 @@ import nbformat
 logger = logging.getLogger("runner")
 
 # ---------------------------------------------------------------------------
+# Rich output caps (env-configurable)
+#
+# The teacher preview renders rich notebook outputs (image/png + text/html)
+# from the stored results.json. Untrusted student output is rendered in a
+# sandboxed iframe on the client, but the SIZE is bounded here in the Python
+# executor so a single student cell cannot balloon the stored result. These
+# defaults (5 MiB per image, 200k chars of HTML) are sanity caps for storage,
+# not a correctness guarantee — the iframe sandbox is the security boundary.
+#
+# RICH_OUTPUT_MAX_IMAGE_BYTES — decoded image byte size cap. Images over the
+#     cap are SKIPPED (logged) rather than stored, so results.json can never
+#     be bloated by one oversized plot.
+# RICH_OUTPUT_MAX_HTML_CHARS  — character cap for text/html output. HTML over
+#     the cap is truncated. (HTML is only ever rendered inside a sandboxed,
+#     script-less iframe, so truncation cannot break page isolation.)
+# ---------------------------------------------------------------------------
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, "")
+    try:
+        return int(raw) if raw else default
+    except ValueError:
+        return default
+
+
+RICH_OUTPUT_MAX_IMAGE_BYTES = _env_int("RICH_OUTPUT_MAX_IMAGE_BYTES", 5 * 1024 * 1024)
+RICH_OUTPUT_MAX_HTML_CHARS = _env_int("RICH_OUTPUT_MAX_HTML_CHARS", 200_000)
+
+
+# ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
 
@@ -41,6 +71,7 @@ class CellOutput:
         "execution_count",
         "source",
         "output_text",
+        "outputs",
         "error",
         "traceback",
     )
@@ -53,11 +84,21 @@ class CellOutput:
         output_text: str,
         error: str | None = None,
         traceback: list[str] | None = None,
+        # NOTE: `outputs` is deliberately the LAST positional parameter —
+        # pre-existing callers (test_auto_fix.py) bind `error`/`traceback`
+        # positionally, so inserting a param mid-signature would silently
+        # misbind them. New code must use keyword args for `outputs`.
+        outputs: list[dict[str, str]] | None = None,
     ) -> None:
         self.cell_index = cell_index
         self.execution_count = execution_count
         self.source = source
         self.output_text = output_text
+        # Canonical rich outputs: [{"mime_type": mime, "data": ...}] where
+        # data is base64 for image/png and raw HTML for text/html. Never
+        # included in `output_text` — prompts / teachers keep reading the
+        # plain-text view only (byte-identity contract).
+        self.outputs = outputs or []
         self.error = error
         self.traceback = traceback
 
@@ -67,6 +108,7 @@ class CellOutput:
             "execution_count": self.execution_count,
             "source": self.source,
             "output_text": self.output_text,
+            "outputs": self.outputs,
             "error": self.error,
             "traceback": self.traceback,
         }
@@ -246,44 +288,88 @@ def cleanup_sandbox(sandbox_dir: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _extract_outputs(
+def _coerce_output_text(value: Any) -> str:
+    """Coerce a notebook output value (str or list[str]) to a plain string."""
+    if isinstance(value, list):
+        return "".join(str(v) for v in value)
+    return str(value)
+
+
+def _extract_rich_outputs(data_map: dict[str, Any]) -> list[dict[str, str]]:
+    """Extract rich (non-text) outputs from a cell's ``data`` map.
+
+    Preserves ``image/png`` (as base64, size-capped) and ``text/html``
+    (as a raw HTML string, length-capped). Base64 images over
+    ``RICH_OUTPUT_MAX_IMAGE_BYTES`` are SKIPPED (logged); HTML over
+    ``RICH_OUTPUT_MAX_HTML_CHARS`` is truncated. Rich data is NEVER folded
+    back into ``output_text`` — the plain-text contract drives prompts.
+    """
+    rich: list[dict[str, str]] = []
+
+    png = data_map.get("image/png")
+    if png:
+        b64 = _coerce_output_text(png)
+        # base64 is ~4/3 the length of the decoded bytes; use that as a
+        # cheap size estimate without decoding every plot into memory.
+        if len(b64) * 3 // 4 <= RICH_OUTPUT_MAX_IMAGE_BYTES:
+            rich.append({"mime_type": "image/png", "data": b64})
+        else:
+            logger.warning(
+                "Skipping image/png output of ~%d bytes (> RICH_OUTPUT_MAX_IMAGE_BYTES=%d)",
+                len(b64) * 3 // 4,
+                RICH_OUTPUT_MAX_IMAGE_BYTES,
+            )
+
+    html = data_map.get("text/html")
+    if html:
+        html_str = _coerce_output_text(html)
+        if len(html_str) > RICH_OUTPUT_MAX_HTML_CHARS:
+            logger.warning(
+                "Truncating text/html output to %d chars (RICH_OUTPUT_MAX_HTML_CHARS)",
+                RICH_OUTPUT_MAX_HTML_CHARS,
+            )
+            html_str = html_str[:RICH_OUTPUT_MAX_HTML_CHARS]
+        if html_str:
+            rich.append({"mime_type": "text/html", "data": html_str})
+
+    return rich
+
+
+def _extract_cell_output(
     cell: dict[str, Any],
-) -> tuple[str, str | None, list[str] | None]:
-    """Extract text output, error, and traceback from an executed cell.
+) -> tuple[str, list[dict[str, str]], str | None, list[str] | None]:
+    """Extract text output, rich outputs, error, and traceback from a cell.
 
     Args:
         cell: A notebook cell dict (nbformat >= 4).
 
     Returns:
-        (output_text, error_message, traceback_lines).
+        (output_text, rich_outputs, error_message, traceback_lines).
     """
     output_text_parts: list[str] = []
+    outputs: list[dict[str, str]] = []
     error: str | None = None
     traceback: list[str] | None = None
 
     for output in cell.get("outputs", []):
         output_type = output.get("output_type", "")
+        data = output.get("data", {})
 
         if output_type == "stream":
             text = output.get("text", "")
-            if isinstance(text, list):
-                text = "".join(text)
+            text = _coerce_output_text(text)
             if text:
                 output_text_parts.append(text)
 
-        elif output_type == "execute_result":
-            text = output.get("data", {}).get("text/plain", "")
-            if isinstance(text, list):
-                text = "".join(text)
+        elif output_type in ("execute_result", "display_data"):
+            if not isinstance(data, dict):
+                data = {}
+            text = data.get("text/plain", "")
+            text = _coerce_output_text(text)
             if text:
                 output_text_parts.append(text)
-
-        elif output_type == "display_data":
-            text = output.get("data", {}).get("text/plain", "")
-            if isinstance(text, list):
-                text = "".join(text)
-            if text:
-                output_text_parts.append(text)
+            # Rich mime types ride alongside the plain-text view.
+            outputs.extend(_extract_rich_outputs(data))
 
         elif output_type == "error":
             ename = output.get("ename", "")
@@ -297,7 +383,7 @@ def _extract_outputs(
                 # Strip ANSI escape codes from traceback lines
                 traceback = [str(line) for line in tb]
 
-    return "\n".join(output_text_parts).strip(), error, traceback
+    return "\n".join(output_text_parts).strip(), outputs, error, traceback
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +480,7 @@ def execute_notebook(
                 if isinstance(raw_source, str)
                 else "".join(raw_source)
             )
-            output_text, error, traceback = _extract_outputs(cell)
+            output_text, outputs, error, traceback = _extract_cell_output(cell)
 
             cells.append(
                 CellOutput(
@@ -402,6 +488,7 @@ def execute_notebook(
                     execution_count=getattr(cell, "execution_count", None),
                     source=source_str,
                     output_text=output_text,
+                    outputs=outputs,
                     error=error,
                     traceback=traceback,
                 )

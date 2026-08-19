@@ -118,6 +118,16 @@ cd svelte_review/frontend
 pnpm install
 ```
 
+> **Rich notebook outputs (teacher preview).** The review page renders rich
+> cell outputs — matplotlib plots (`image/png`) and pandas DataFrame displays
+> (`text/html`) — alongside the plain-text output. Student HTML renders inside
+> a **sandboxed iframe** (`sandbox=""`, no scripts / no same-origin), so it can
+> never execute or reach the app. Two executor env vars cap storage:
+> `RICH_OUTPUT_MAX_IMAGE_BYTES` (default 5242880 = 5 MiB; larger plots are
+> skipped) and `RICH_OUTPUT_MAX_HTML_CHARS` (default 200000; longer HTML is
+> truncated). Rich output is **never** included in LLM prompts — they stay
+> text-only.
+
 ### Student Mode (SPA / GitHub Pages)
 
 ```bash

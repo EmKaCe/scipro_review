@@ -111,6 +111,22 @@
 		return Array.from({ length: Math.max(1, count) }, (_, i) => i + 1);
 	}
 
+	/**
+	 * HTML-attribute-escape a raw HTML string before placing it into an
+	 * iframe's `srcdoc`. srcdoc's attribute value is parsed as HTML, so the
+	 * browser decodes the entities back into the original markup inside the
+	 * iframe — escaping here only prevents a student string from breaking
+	 * OUT of the srcdoc attribute (XSS breakout), never from rendering.
+	 * Student HTML is additionally quarantined by the iframe sandbox.
+	 */
+	function escapeSrcdoc(html: string): string {
+		return html
+			.replace(/&/g, "&amp;")
+			.replace(/</g, "&lt;")
+			.replace(/>/g, "&gt;")
+			.replace(/"/g, "&quot;");
+	}
+
 	/** Pre-evaluation verdicts (null = no comparison data yet). */
 	const markers = $derived(preEval?.markers ?? null);
 	/** True when the submission carries at least one real comparison marker. */
@@ -150,6 +166,25 @@
 			</span>
 		</div>
 	{/if}
+
+	{#snippet richOutputs(outCell: CellInfo)}
+		{#each outCell.outputs ?? [] as rich, i (i)}
+			{#if rich.mime_type === "image/png"}
+				<img
+					src="data:image/png;base64,{rich.data}"
+					alt="cell output"
+					class="cell-rich-image"
+				/>
+			{:else if rich.mime_type === "text/html"}
+				<iframe
+					sandbox=""
+					srcdoc={escapeSrcdoc(rich.data)}
+					class="rich-html-iframe"
+					title="cell HTML output"
+				></iframe>
+			{/if}
+		{/each}
+	{/snippet}
 
 	{#each cells as cell (cell.index)}
 		{@const verdict = verdictForCell(markers, cell.index)}
@@ -256,6 +291,7 @@
 					{#if fixed.output}
 						<div class="cell-output">{fixed.output}</div>
 					{/if}
+					{@render richOutputs(fixed)}
 				{:else}
 					<div class="cell-code">
 						<div class="code-gutter" aria-hidden="true">
@@ -269,6 +305,7 @@
 					{#if cell.output}
 						<div class="cell-output">{cell.output}</div>
 					{/if}
+					{@render richOutputs(cell)}
 				{/if}
 				{#if cell.error && fixed === undefined}
 					<!-- Autofix card (P3-3): suggestion on demand, teacher writes
@@ -501,6 +538,26 @@
 		font-family: ui-monospace, "SFMono-Regular", monospace;
 		font-size: 12px;
 		border-top: 1px solid var(--border);
+	}
+	/* Rich output — client-side downscale: the image is capped server-side
+	   (RICH_OUTPUT_MAX_IMAGE_BYTES) but rendered at panel width here. */
+	.cell-rich-image {
+		display: block;
+		max-width: 100%;
+		height: auto;
+		padding: 8px 12px;
+		box-sizing: border-box;
+	}
+	/* Student HTML is quarantined in a script-less, opaque-origin sandboxed
+	   iframe: it cannot run JS or reach the application origin. */
+	.rich-html-iframe {
+		display: block;
+		width: 100%;
+		min-height: 240px;
+		border: 1px solid var(--border);
+		border-top: none;
+		background: var(--card);
+		box-sizing: border-box;
 	}
 	.cell-error-block {
 		padding: 8px 12px;

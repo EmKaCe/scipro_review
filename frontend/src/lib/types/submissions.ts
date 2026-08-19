@@ -53,6 +53,14 @@ export type CellMarker =
 	/** Cell execution failed. */
 	| "error";
 
+/** One rich (non-text) output preserved for the teacher preview. */
+export interface CellRichOutput {
+	/** Mime type: "image/png" (data = base64) or "text/html" (data = raw HTML). */
+	mime_type: "image/png" | "text/html" | string;
+	/** Base64 encoded image bytes (image/png) or raw HTML string (text/html). */
+	data: string;
+}
+
 /** A single cell from an executed notebook. */
 export interface CellInfo {
 	/** 0-based index within the notebook. */
@@ -63,6 +71,12 @@ export interface CellInfo {
 	source: string;
 	/** Cell output text (undefined for markdown or if execution failed). */
 	output?: string;
+	/**
+	 * Rich (non-text) outputs for the teacher preview: image/png (data =
+	 * base64) and text/html (data = raw HTML). Rendered in sandboxed
+	 * iframes only — NEVER interpolated into copilot prompts.
+	 */
+	outputs?: CellRichOutput[];
 	/** Error traceback if execution failed. */
 	error?: string;
 	/** Comparison marker against the reference key. */

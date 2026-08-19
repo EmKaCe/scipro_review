@@ -129,6 +129,20 @@ class BatchExecuteRequest(BaseModel):
     """If true, stop processing after the first notebook that fails."""
 
 
+class RichCellOutput(BaseModel):
+    """A preserved rich (non-text) notebook output for the teacher preview.
+
+    ``mime_type`` is ``image/png`` (``data`` is base64) or ``text/html``
+    (``data`` is a raw HTML string). Capped in the executor (see
+    ``runner.RICH_OUTPUT_MAX_IMAGE_BYTES`` / ``RICH_OUTPUT_MAX_HTML_CHARS``)
+    so results.json can never be ballooned by one student cell. Rich output
+    never rides inside ``output_text`` — LLM prompts stay text-only.
+    """
+
+    mime_type: str
+    data: str
+
+
 class CellResult(BaseModel):
     """Result of a single executed cell."""
 
@@ -145,6 +159,12 @@ class CellResult(BaseModel):
     traceback: list[str] | None = None
     cell_type: str = "code"
     """Cell type from the original notebook ("code" | "markdown")."""
+
+    outputs: list[RichCellOutput] = []
+    """Rich (non-text) outputs for the teacher preview: image/png (base64) and
+    text/html (raw). Never folded into ``output_text`` — prompts stay
+    text-only (byte-identity contract). Empty for markdown / plain-text-only
+    cells."""
 
 
 class PreprocessingInfo(BaseModel):
@@ -586,6 +606,10 @@ def _cells_to_response(
             error=c.error,
             traceback=c.traceback,
             cell_type=cell_types.get(c.cell_index, "code"),
+            outputs=[
+                RichCellOutput(mime_type=o["mime_type"], data=o["data"])
+                for o in getattr(c, "outputs", []) or []
+            ],
         )
         for c in cells
     ]

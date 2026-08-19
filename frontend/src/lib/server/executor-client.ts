@@ -18,11 +18,16 @@
  * This module runs only on the SvelteKit server (`$lib/server/`).
  */
 
-import type { CellMarker } from "$lib/types/submissions";
+import type { CellMarker, CellRichOutput } from "$lib/types/submissions";
 
 // ---------------------------------------------------------------------------
 // Wire types (mirror executor/app.py pydantic models — snake_case)
 // ---------------------------------------------------------------------------
+
+export interface ExecutorRichCellOutput {
+	mime_type: string;
+	data: string;
+}
 
 export interface ExecutorCellResult {
 	cell_index: number;
@@ -31,6 +36,13 @@ export interface ExecutorCellResult {
 	output_text: string;
 	error: string | null;
 	traceback: string[] | null;
+	/**
+	 * Rich (non-text) outputs preserved for the teacher preview:
+	 * image/png (data = base64) and text/html (data = raw HTML). Capped in
+	 * the Python executor (RICH_OUTPUT_MAX_IMAGE_BYTES / _HTML_CHARS).
+	 * Optional so the client stays compatible with older executor responses.
+	 */
+	outputs?: ExecutorRichCellOutput[];
 	/**
 	 * Original (pre-cleaning) source. Optional so the
 	 * client stays compatible with the current executor response.
@@ -156,6 +168,13 @@ export interface ExecutedCell {
 	original_source: string;
 	/** Cell output text (was output_text). */
 	output: string;
+	/**
+	 * Rich (non-text) outputs for the teacher preview: image/png (data =
+	 * base64) and text/html (data = raw HTML). Never rendered into prompts —
+	 * the plain-text `output` is the only thing the copilot reads. Optional
+	 * Optional so old persisted results.json entries (predating the field) stay valid.
+	 */
+	outputs?: CellRichOutput[];
 	/** Error message if execution failed, else null. */
 	error: string | null;
 	traceback: string[] | null;
@@ -440,6 +459,9 @@ export function translateCell(cell: ExecutorCellResult, metadata?: CellMetadata)
 		source: cell.source,
 		original_source: originalSource,
 		output: cell.output_text,
+		outputs: (cell.outputs ?? []).map(
+			(o): CellRichOutput => ({ mime_type: o.mime_type, data: o.data }),
+		),
 		error: cell.error,
 		traceback: cell.traceback,
 		execution_count: cell.execution_count,

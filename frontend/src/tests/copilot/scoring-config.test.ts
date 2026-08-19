@@ -215,6 +215,29 @@ describe("Phase 2a prompt byte-equality golden", () => {
 	});
 });
 
+describe("rich outputs never leak into prompts (B11 text-only contract)", () => {
+	it("buildEvidenceHaystacks ignores cell.outputs — output haystack stays plain text", () => {
+		const base = { type: "code", source: "print(1)" };
+		const plain = [{ ...base, output: "1" }];
+		const rich = [
+			{
+				...base,
+				output: "1",
+				outputs: [
+					{ mime_type: "image/png", data: "iVBORw0KGgo=" },
+					{ mime_type: "text/html", data: "<script>window.__pwned=1</script>" },
+				],
+			},
+		];
+		// Rich outputs are a SEPARATE optional field: the haystack (the only
+		// thing prompts read) must be byte-identical with or without them.
+		expect(buildEvidenceHaystacks(rich)).toEqual(buildEvidenceHaystacks(plain));
+		expect(buildEvidenceHaystacks(rich).output).toBe("1");
+		expect(buildEvidenceHaystacks(rich).output).not.toContain("script");
+		expect(buildEvidenceHaystacks(rich).output).not.toContain("iVBOR");
+	});
+});
+
 describe("Phase 2a docs grounding (P2-4d)", () => {
 	const CODE_CELLS = [
 		{ type: "code", source: "import numpy as np\nimport pandas as pd\npopt, pcov = scipy.optimize.curve_fit(model, x, y)" },

@@ -154,6 +154,7 @@ function toCellInfo(cell: CellInfo | ExecutedCell): CellInfo {
 		type: cell.type,
 		source: cell.source,
 		output: cell.output,
+		outputs: cell.outputs ?? (cell as CellInfo).outputs,
 		error: cell.error ?? undefined,
 		marker: cell.marker,
 	};
