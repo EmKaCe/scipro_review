@@ -28,15 +28,17 @@ import importlib
 import inspect
 import json
 import os
+import pkgutil
 import sys
+import warnings
 
 LIBS = {
-    "numpy":     {"base": "https://numpy.org/doc/stable/reference/generated/",     "url_fmt": "{name}.html",              "submodules": ["numpy.linalg", "numpy.random", "numpy.fft", "numpy.ma", "numpy.polynomial"]},
-    "pandas":    {"base": "https://pandas.pydata.org/docs/reference/api/",         "url_fmt": "{name}.html",              "submodules": ["pandas.io", "pandas.tseries"]},
-    "scipy":     {"base": "https://docs.scipy.org/doc/scipy/reference/generated/", "url_fmt": "{name}.html",              "submodules": ["scipy.linalg", "scipy.optimize", "scipy.stats", "scipy.signal", "scipy.interpolate", "scipy.integrate", "scipy.cluster", "scipy.spatial", "scipy.fft", "scipy.odr"]},
-    "sklearn":   {"base": "https://scikit-learn.org/stable/modules/generated/",    "url_fmt": "{name}.html",              "submodules": ["sklearn.cluster", "sklearn.decomposition", "sklearn.ensemble", "sklearn.linear_model", "sklearn.metrics", "sklearn.model_selection", "sklearn.naive_bayes", "sklearn.neighbors", "sklearn.pipeline", "sklearn.preprocessing", "sklearn.svm", "sklearn.tree", "sklearn.utils"]},
-    "matplotlib":{"base": "https://matplotlib.org/stable/api/",                     "url_fmt": "_as_gen/{name}.html",     "submodules": ["matplotlib.pyplot", "matplotlib.axes", "matplotlib.figure", "matplotlib.lines", "matplotlib.patches", "matplotlib.collections", "matplotlib.colors", "matplotlib.cm", "matplotlib.ticker", "matplotlib.legend", "matplotlib.text", "matplotlib.image", "matplotlib.gridspec", "matplotlib.animation"]},
-    "seaborn":   {"base": "https://seaborn.pydata.org/generated/",                  "url_fmt": "{name}.html",              "submodules": []},
+    "numpy":     {"base": "https://numpy.org/doc/stable/reference/generated/",     "url_fmt": "{name}.html",              "deny": {"core", "distutils", "numpy.f2py"}},
+    "pandas":    {"base": "https://pandas.pydata.org/docs/reference/api/",         "url_fmt": "{name}.html",              "deny": {"core", "util", "compat", "pandas.io.formats"}},
+    "scipy":     {"base": "https://docs.scipy.org/doc/scipy/reference/generated/", "url_fmt": "{name}.html",              "deny": set()},
+    "sklearn":   {"base": "https://scikit-learn.org/stable/modules/generated/",    "url_fmt": "{name}.html",              "deny": {"externals"}},
+    "matplotlib":{"base": "https://matplotlib.org/stable/api/",                     "url_fmt": "_as_gen/{name}.html",     "deny": {"backends", "testing", "cbook", "ft2font", "mathtext", "sphinxext", "type1font", "dviread", "afm", "matplotlib.pylab"}},
+    "seaborn":   {"base": "https://seaborn.pydata.org/generated/",                  "url_fmt": "{name}.html",              "deny": set()},
 }
 
 MIN_CHARS = 60
@@ -73,19 +75,40 @@ def collect_module(module, public_path, cfg, out, visited, depth=0):
     _distns.norm_gen`) — using __qualname__ there would yield `._`-laden names that
     the build's pruneChunks (correctly) drops as internal. Naming by the path we
     walked keeps `sklearn.linear_model.LinearRegression` / `scipy.stats.norm`."""
-    if depth > 2 or id(module) in visited:
+    if depth > 3 or id(module) in visited:
         return
     visited.add(id(module))
-    # Import explicitly-listed public submodules by full name. Some libs (e.g.
-    # matplotlib.pyplot) only lazily expose submodules via getattr on the parent,
-    # which raises before Agg is set up — importing by name sidesteps that.
-    for sub in cfg["submodules"]:
-        if sub.startswith(public_path + ".") and sub not in out["_mods"]:
-            out["_mods"].add(sub)
-            try:
-                collect_module(importlib.import_module(sub), sub, cfg, out, visited, depth + 1)
-            except Exception as e:
-                print(f"[extract-docstrings] WARN: cannot import {sub}: {e}", file=sys.stderr)
+    # Auto-descend into ALL public submodules (imported by full name), bounded by
+    # depth. A curated list silently drifted and dropped whole subpackages
+    # (scipy.special/ndimage/sparse/constants, several sklearn submodules,
+    # matplotlib.widgets) that the old zips covered — pkgutil enumeration + depth
+    # bound + visited-set keeps it complete without that drift. Private submodules
+    # (names starting with `_`) are skipped so `._` qualnames can't sneak in.
+    try:
+        children = [m.name for m in pkgutil.iter_modules(module.__path__ or [])]
+    except Exception:
+        children = []
+    for child in children:
+        if not is_public(child):
+            continue
+        # Test packages are public-named but carry no user API (and drag in the
+        # `pytest` dependency).
+        if child in ("tests", "test", "conftest") or child.startswith("test"):
+            continue
+        full = f"{public_path}.{child}"
+        # Deny implementation packages (public-named but not documented API) as
+        # dotted prefixes — fail-closed on junk without reintroducing allow-list
+        # drift: everything not denied is still auto-walked.
+        deny = cfg.get("deny", set())
+        if child in deny or any(full == d or full.startswith(d + ".") for d in deny):
+            continue
+        if full in out["_mods"] or full == public_path:
+            continue
+        out["_mods"].add(full)
+        try:
+            collect_module(importlib.import_module(full), full, cfg, out, visited, depth + 1)
+        except Exception as e:
+            print(f"[extract-docstrings] WARN: cannot import {full}: {e}", file=sys.stderr)
     names = getattr(module, "__all__", None)
     if names is None:
         names = [n for n in dir(module) if is_public(n)]
@@ -146,6 +169,9 @@ def main():
     wanted = [s.strip() for s in args.libs.split(",") if s.strip()]
     # matplotlib imports need a non-interactive backend or pyplot import can hang.
     os.environ.setdefault("MPLBACKEND", "Agg")
+    # Importing subpackages (notably scipy.constants) emits module-level
+    # DeprecationWarnings that flood stderr — not actionable, suppress them.
+    warnings.simplefilter("ignore", DeprecationWarning)
     result = {}
     for lib in wanted:
         cfg = LIBS[lib]
