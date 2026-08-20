@@ -44,10 +44,12 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
 
+> **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.
 > **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
 > **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.
+> **Why is it structured this way?** Read the [decision records](.github/references/decisions/) (e.g. the monolith-split ADR).
 
 ## Settings map
 

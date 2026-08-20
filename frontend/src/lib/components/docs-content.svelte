@@ -89,9 +89,10 @@ cd svelte_review</code
 			<strong>Deep reference:</strong> this page is the <em>how-to</em>. For the full
 			architecture, data flow, how the data structures are wired, and the terminology, see
 			the repo's <code>.github/references/</code> docs —
-			<code>architecture.md</code>, <code>data-structures.md</code>,
-			<code>developer-guide.md</code> — and for new-assignment / accuracy guidance,
-			<code>assignment-calibration.md</code> and <code>quality-statement.md</code>.
+			<code>concepts.md</code> (the explainable mental model), <code>architecture.md</code>,
+			<code>data-structures.md</code>, <code>developer-guide.md</code> — and for
+			new-assignment / accuracy guidance, <code>assignment-calibration.md</code> and
+			<code>quality-statement.md</code>.
 		</p>
 		<h3>Environment File (<code>.env</code>)</h3>
 		<ul>

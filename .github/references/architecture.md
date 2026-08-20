@@ -6,7 +6,10 @@ component map, data flow, and module map, kept in sync with the code. The
 [data structures](data-structures.md) and [developer guide](developer-guide.md)
 sit alongside; the [quality statement](quality-statement.md) is the honest
 accuracy baseline, and [assignment-calibration](assignment-calibration.md) is
-how to onboard a new assignment.
+how to onboard a new assignment. **New maintainers:** start with
+[Concepts & trust boundaries](concepts.md) (the explainable mental model +
+visuals), then return here for the module-level detail. Historical decisions
+are logged under [decisions/](decisions/).
 
 > **Keep this honest.** If you change the pipeline's phases, add a server
 > module, or move a data structure, update this file in the same change. A doc
