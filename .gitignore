@@ -36,8 +36,7 @@ executor/.venv/
 __pycache__/
 executor/*.egg-info/
 
-# Python lockfile (uv) — local only (regenerate with `uv lock`; not committed)
-executor/uv.lock
+# Python lockfile (uv) — committed for reproducible CI (update via `uv lock`)
 
 # Research artifacts (transient, not code) — tracked docs live in .github/references/
 docs/

@@ -37,6 +37,38 @@ jobs:
 
       - run: pnpm check
 
+      # Lean CI (D9): full vitest suite. The unset is required — GitHub's
+      # default env (ADAPTER/NODE_ENV/KI_CONNECT_API_KEY) would make
+      # env-dependent tests fail (see AGENTS.md canonical recipe).
+      - name: Vitest (full suite)
+        run: unset ADAPTER NODE_ENV KI_CONNECT_API_KEY && pnpm test
+
+      # Synthetic grading-quality gate — deterministic, no LLM/network.
+      # Self-resolves DATA_DIR to repo data/ so it runs from frontend/.
+      - name: Synthetic grading gate
+        run: pnpm exec tsx scripts/verify-grading-gate.mjs
+
       - name: Check for unused/missing dependencies
         continue-on-error: true
         run: pnpm dlx depcheck
+
+  executor-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: executor
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v6
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: uv sync --frozen
+
+      # pytest is not a declared dependency of the executor project (no dev
+      # group in pyproject.toml), so inject it via an ephemeral uv overlay
+      # rather than a bare `uv run pytest` (which would not be installed).
+      - run: uv run --with pytest pytest -q

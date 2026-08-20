@@ -21,9 +21,9 @@ uv run python app.py    # run the backend
 ```
 
 Under `uv`, use `uv run <cmd>` rather than activating a venv. Dependencies are
-declared in `pyproject.toml`; `uv.lock` is a **local-only**, gitignored
-lockfile — regenerate with `uv lock` / refresh with `uv sync` (it is NOT
-committed). On Python-only changes you may need `uv sync` to refresh.
+declared in `pyproject.toml`; `uv.lock` is **committed** (for reproducible CI
+builds — the `executor-tests` CI job runs `uv sync --frozen`). On dependency
+changes, regenerate it deliberately: `uv lock` then commit.
 
 ## Verification
 
