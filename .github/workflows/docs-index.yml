@@ -4,13 +4,25 @@ name: build-docs-index
 # and publishes it as GitHub Release assets under the `docs-index` tag. A fresh
 # clone / teacher deploy consumes it with `node scripts/fetch-docs-index.mjs`.
 #
+# Runtime/quota discipline (the build embeds ~20k chunks @ concurrency 2 = a
+# 40-60 min job):
+#   - No periodic schedule. Rebuilds happen only when the corpus config /
+#     build script changes (push path filter) or on manual dispatch.
+#   - On push, if the corpus config fingerprint is UNCHANGED vs the last
+#     published manifest, the job skips the expensive build.
+#   - A single concurrency group + bounded timeout-minutes prevent overlap and
+#     runaway.
+#
 # Requires the repository secret KI_CONNECT_API_KEY (used only for the one-time
 # corpus embedding; it is never committed).
 
 on:
-  workflow_dispatch: {}
-  schedule:
-    - cron: "0 4 1 * *" # monthly, in case pinned doc sources drift
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Always rebuild (skip the unchanged-fingerprint gate)"
+        type: boolean
+        default: true
   push:
     paths:
       - "frontend/scripts/docs-libraries.json"
@@ -26,10 +38,26 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180 # bound cost; fail fast if a run hangs
     permissions:
       contents: write # publish the release asset
     steps:
       - uses: actions/checkout@v7
+
+      # Push path only: if the corpus config is byte-identical to the last
+      # published manifest's fingerprint, skip the costly rebuild. Manual
+      # dispatch always builds (force defaults true).
+      - name: Skip if corpus config unchanged (push only)
+        if: github.event_name == 'push'
+        id: skip
+        run: |
+          config_sha=$(cat frontend/scripts/docs-libraries.json frontend/scripts/build-docs-index.mjs | sha256sum | cut -d' ' -f1)
+          manifest=$(curl -sf https://github.com/EmKaCe/svelte_review/releases/download/docs-index/docs-index.manifest.json || true)
+          prev=$([ -n "$manifest" ] && printf '%s' "$manifest" | python3 -c "import sys,json;print(json.load(sys.stdin).get('configSha') or '')" || true)
+          if [ -n "$prev" ] && [ "$config_sha" = "$prev" ]; then
+            echo "Corpus config unchanged (${config_sha}); skipping rebuild."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: pnpm/action-setup@v6
         with:
@@ -41,10 +69,12 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install
+        if: steps.skip.outputs.skip != 'true'
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Build + embed the docs index (zip sha256-verified; crawls fetched from config)
+        if: steps.skip.outputs.skip != 'true'
         working-directory: frontend
         env:
           KI_CONNECT_API_KEY: ${{ secrets.KI_CONNECT_API_KEY }}
@@ -52,33 +82,41 @@ jobs:
           node scripts/build-docs-index.mjs --fetch-crawls /tmp/docs-sources --out /tmp/docs-index
 
       - name: Verify the index is internally consistent
+        if: steps.skip.outputs.skip != 'true'
         run: |
           node -e 'const d=require("/tmp/docs-index/docs-index.json"); if (d.vectorCount!==d.chunks.length){throw new Error(`vectorCount ${d.vectorCount} != chunks ${d.chunks.length}`)} console.log(`OK: ${d.chunks.length} chunks, ${d.libraries.length} libraries`)'
 
       - name: Write the integrity manifest
+        if: steps.skip.outputs.skip != 'true'
         run: |
           node -e '
             const {createHash}=require("node:crypto");const fs=require("node:fs");
+            const sha=b=>createHash("sha256").update(b).digest("hex");
             const j=JSON.parse(fs.readFileSync("/tmp/docs-index/docs-index.json","utf8"));
-            const sha=f=>createHash("sha256").update(fs.readFileSync(`/tmp/docs-index/${f}`)).digest("hex");
+            const configSha=sha(Buffer.concat([fs.readFileSync("frontend/scripts/docs-libraries.json"),fs.readFileSync("frontend/scripts/build-docs-index.mjs")]));
+            const fileSha=f=>sha(fs.readFileSync(`/tmp/docs-index/${f}`));
             const m={format:j.format,formatVersion:j.formatVersion,chunks:j.chunks.length,
               embeddingModel:j.embeddingModel,libraries:(j.libraries||[]).map(l=>l.library),
-              builtAt:j.builtAt,sha256:{"docs-index.json":sha("docs-index.json"),"docs-vectors.bin":sha("docs-vectors.bin")}};
+              builtAt:j.builtAt,configSha,
+              sha256:{"docs-index.json":fileSha("docs-index.json"),"docs-vectors.bin":fileSha("docs-vectors.bin")}};
             fs.writeFileSync("/tmp/docs-index/docs-index.manifest.json",JSON.stringify(m,null,2));
-            console.log("manifest written");'
+            console.log("manifest written (configSha "+configSha.slice(0,12)+")");'
 
       - uses: actions/upload-artifact@v4
+        if: steps.skip.outputs.skip != 'true'
         with:
           name: docs-index
           path: /tmp/docs-index/docs-index.json
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
+        if: steps.skip.outputs.skip != 'true'
         with:
           name: docs-index
           path: /tmp/docs-index/docs-vectors.bin
           if-no-files-found: error
 
       - name: Publish to the docs-index release
+        if: steps.skip.outputs.skip != 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: docs-index
