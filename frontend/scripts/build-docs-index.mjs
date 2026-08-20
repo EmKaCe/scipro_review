@@ -235,7 +235,7 @@ function usage() {
 }
 
 function parseArgs(argv) {
-	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, fetchCrawls: null, skipEmbed: false };
+	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, fetchCrawls: null, venv: null, skipEmbed: false };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		switch (a) {
@@ -256,6 +256,9 @@ function parseArgs(argv) {
 				break;
 			case "--fetch-crawls":
 				args.fetchCrawls = argv[++i];
+				break;
+			case "--venv":
+				args.venv = argv[++i];
 				break;
 			case "--skip-embed":
 				args.skipEmbed = true;
@@ -743,6 +746,33 @@ if (args.fetchCrawls) {
 }
 
 const allChunks = [];
+
+// Docstring-source libraries (source:"docstrings"): ensure a uv venv with the
+// pinned versions, run the Python extractor once for all of them, and load the
+// per-library chunks. Fully reproducible + version-exact (no crawls, no zips).
+const docstringLibs = libraries.filter((lib) => LIBRARIES[lib]?.source === "docstrings");
+const docChunksByLib = new Map();
+if (docstringLibs.length > 0) {
+	const venv = args.venv ?? process.env.DOCS_VENV ?? "/tmp/docs-docstrings-venv";
+	const pybin = path.join(venv, "bin", "python");
+	console.log(`[build-docs-index] docstring extraction for: ${docstringLibs.join(", ")} (venv ${venv})`);
+	execSync(`test -x ${JSON.stringify(pybin)} || uv venv --python 3.12 ${JSON.stringify(venv)}`, { stdio: "inherit" });
+	// Some lib keys differ from their PyPI distribution name (import module
+	// `sklearn` ships as the `scikit-learn` package).
+	const PIP_PACKAGE = { sklearn: "scikit-learn" };
+	const specs = docstringLibs
+		.map((l) => `${PIP_PACKAGE[l] ?? l}==${LIBRARIES[l].pinnedVersion}`)
+		.join(" ");
+	execSync(`uv pip install --python ${JSON.stringify(pybin)} ${specs}`, { stdio: "inherit" });
+	const chunksOut = path.join(outDir, "docstrings-chunks.json");
+	const versions = docstringLibs.map((l) => `${l}=${LIBRARIES[l].pinnedVersion}`).join(";");
+	execSync(
+		`${JSON.stringify(pybin)} ${JSON.stringify(path.join(SCRIPT_DIR, "extract-docstrings.py"))} --libs ${docstringLibs.join(",")} --versions "${versions}" --out ${JSON.stringify(chunksOut)}`,
+		{ stdio: "inherit" },
+	);
+	const parsed = JSON.parse(await readFile(chunksOut, "utf-8"));
+	for (const lib of docstringLibs) docChunksByLib.set(lib, parsed[lib] ?? []);
+}
 const allVectors = [];
 const manifestLibraries = [];
 let embeddingModel = null;
@@ -779,21 +809,34 @@ for (const lib of libraries) {
 		console.log(`[build-docs-index] reading pre-crawled dir ${dirArg} …`);
 		files = await readCrawlDir(dirArg);
 		sourceUrl = "crawled:" + dirArg;
+	} else if (cfg.source === "docstrings") {
+		sourceUrl = `docstrings:${cfg.pinnedVersion}`;
+		// files stays undefined — chunks come from docChunksByLib below.
 	} else {
 		console.warn(`[build-docs-index] no source for ${lib} — skipping`);
 		continue;
 	}
 
-	const pages = selectApiPages(files, lib);
-	const limited = args.limit ? pages.slice(0, args.limit) : pages;
-	console.log(`[build-docs-index]   ${pages.length} API pages (processing ${limited.length})`);
-
 	let version = cfg.pinnedVersion;
-	let libChunks = [];
-	for (const relPath of limited) {
-		const html = strFromU8(files[relPath]);
-		if (version === cfg.pinnedVersion) version = detectVersion(html, cfg.pinnedVersion);
-		libChunks.push(...chunkPage(html, relPath, lib, version));
+	let libChunks;
+	if (cfg.source === "docstrings") {
+		libChunks = (docChunksByLib.get(lib) ?? []).map((c, i) => ({
+			id: `${lib}:docstrings:${i}`,
+			title: c.title,
+			url: c.url,
+			text: c.text,
+		}));
+		console.log(`[build-docs-index]   ${libChunks.length} docstring chunk(s) (version ${version})`);
+	} else {
+		const pages = selectApiPages(files, lib);
+		const limited = args.limit ? pages.slice(0, args.limit) : pages;
+		console.log(`[build-docs-index]   ${pages.length} API pages (processing ${limited.length})`);
+		libChunks = [];
+		for (const relPath of limited) {
+			const html = strFromU8(files[relPath]);
+			if (version === cfg.pinnedVersion) version = detectVersion(html, cfg.pinnedVersion);
+			libChunks.push(...chunkPage(html, relPath, lib, version));
+		}
 	}
 	const pruned = pruneChunks(libChunks);
 	if (pruned.length !== libChunks.length) {
