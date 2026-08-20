@@ -1,0 +1,90 @@
+name: build-docs-index
+
+# Builds the offline docs index (all libraries from frontend/scripts/docs-libraries.json)
+# and publishes it as GitHub Release assets under the `docs-index` tag. A fresh
+# clone / teacher deploy consumes it with `node scripts/fetch-docs-index.mjs`.
+#
+# Requires the repository secret KI_CONNECT_API_KEY (used only for the one-time
+# corpus embedding; it is never committed).
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 4 1 * *" # monthly, in case pinned doc sources drift
+  push:
+    paths:
+      - "frontend/scripts/docs-libraries.json"
+      - "frontend/scripts/build-docs-index.mjs"
+      - "frontend/scripts/fetch-docs-index.mjs"
+    branches: [main, phase-3b]
+
+concurrency:
+  group: docs-index
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # publish the release asset
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build + embed the docs index (zip sha256-verified; crawls fetched from config)
+        working-directory: frontend
+        env:
+          KI_CONNECT_API_KEY: ${{ secrets.KI_CONNECT_API_KEY }}
+        run: |
+          node scripts/build-docs-index.mjs --fetch-crawls /tmp/docs-sources --out /tmp/docs-index
+
+      - name: Verify the index is internally consistent
+        run: |
+          node -e 'const d=require("/tmp/docs-index/docs-index.json"); if (d.vectorCount!==d.chunks.length){throw new Error(`vectorCount ${d.vectorCount} != chunks ${d.chunks.length}`)} console.log(`OK: ${d.chunks.length} chunks, ${d.libraries.length} libraries`)'
+
+      - name: Write the integrity manifest
+        run: |
+          node -e '
+            const {createHash}=require("node:crypto");const fs=require("node:fs");
+            const j=JSON.parse(fs.readFileSync("/tmp/docs-index/docs-index.json","utf8"));
+            const sha=f=>createHash("sha256").update(fs.readFileSync(`/tmp/docs-index/${f}`)).digest("hex");
+            const m={format:j.format,formatVersion:j.formatVersion,chunks:j.chunks.length,
+              embeddingModel:j.embeddingModel,libraries:(j.libraries||[]).map(l=>l.library),
+              builtAt:j.builtAt,sha256:{"docs-index.json":sha("docs-index.json"),"docs-vectors.bin":sha("docs-vectors.bin")}};
+            fs.writeFileSync("/tmp/docs-index/docs-index.manifest.json",JSON.stringify(m,null,2));
+            console.log("manifest written");'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-index
+          path: /tmp/docs-index/docs-index.json
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docs-index
+          path: /tmp/docs-index/docs-vectors.bin
+          if-no-files-found: error
+
+      - name: Publish to the docs-index release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: docs-index
+          name: Offline docs index
+          body: |
+            Prebuilt offline docs index from `build-docs-index.mjs` + `docs-libraries.json`.
+            Consume with: `node scripts/fetch-docs-index.mjs`
+          files: |
+            /tmp/docs-index/docs-index.json
+            /tmp/docs-index/docs-vectors.bin
+            /tmp/docs-index/docs-index.manifest.json
+          overwrite: true

@@ -51,99 +51,24 @@
  */
 
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import { strFromU8, unzipSync } from "fflate";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 
 // ---------------------------------------------------------------------------
-// Library config (versions = executor venv pins, measured 2026-08-18)
+// Library config — single source of truth (committed): docs-libraries.json
 // ---------------------------------------------------------------------------
-
-/** Official Python 3.12 docs HTML zip (matches the executor's interpreter). */
-const PYTHON_DOCS_ZIP = "https://docs.python.org/3.12/archives/python-3.12.6-docs-html.zip";
-
-const LIBRARIES = {
-	numpy: {
-		zipUrl: "https://numpy.org/doc/stable/numpy-html.zip",
-		pinnedVersion: "2.5.1",
-		apiPrefix: "reference/generated/",
-		urlBase: "https://numpy.org/doc/stable/",
-	},
-	pandas: {
-		zipUrl: "https://pandas.pydata.org/docs/pandas.zip",
-		pinnedVersion: "3.0.5",
-		apiPrefix: "reference/api/",
-		urlBase: "https://pandas.pydata.org/docs/",
-	},
-	scipy: {
-		zipUrl: "https://docs.scipy.org/doc/scipy-1.18.0/scipy-html-1.18.0.zip",
-		pinnedVersion: "1.18.0",
-		apiPrefix: "reference/generated/",
-		urlBase: "https://docs.scipy.org/doc/scipy/",
-	},
-	sklearn: {
-		zipUrl: "https://scikit-learn.org/stable/_downloads/scikit-learn-docs.zip",
-		pinnedVersion: "1.9.0",
-		apiPrefix: "modules/generated/",
-		urlBase: "https://scikit-learn.org/stable/",
-	},
-	matplotlib: {
-		zipUrl: null, // no official zip — pre-crawled dir via --matplotlib-dir
-		pinnedVersion: "3.11.1",
-		apiPrefix: "api/",
-		urlBase: "https://matplotlib.org/stable/",
-	},
-	seaborn: {
-		zipUrl: null, // no official zip — pre-crawled dir via --seaborn-dir
-		pinnedVersion: "0.13.2",
-		apiPrefix: "generated/",
-		urlBase: "https://seaborn.pydata.org/",
-	},
-	builtins: {
-		zipUrl: PYTHON_DOCS_ZIP,
-		pinnedVersion: "3.12",
-		apiPrefix: "",
-		urlBase: "https://docs.python.org/3.12/",
-		pages: ["library/functions.html", "library/constants.html", "library/builtins.html"],
-	},
-	stdlib: {
-		zipUrl: PYTHON_DOCS_ZIP,
-		pinnedVersion: "3.12",
-		apiPrefix: "",
-		urlBase: "https://docs.python.org/3.12/",
-		pages: [
-			"library/math.html",
-			"library/statistics.html",
-			"library/random.html",
-			"library/os.html",
-			"library/sys.html",
-			"library/re.html",
-			"library/json.html",
-			"library/datetime.html",
-			"library/collections.html",
-			"library/itertools.html",
-			"library/functools.html",
-			"library/pathlib.html",
-			"library/operator.html",
-			"library/copy.html",
-			"library/string.html",
-			"library/decimal.html",
-			"library/fractions.html",
-			"library/heapq.html",
-			"library/bisect.html",
-		],
-	},
-	typing: {
-		zipUrl: PYTHON_DOCS_ZIP,
-		pinnedVersion: "3.12",
-		apiPrefix: "",
-		urlBase: "https://docs.python.org/3.12/",
-		pages: ["library/typing.html"],
-	},
-};
+// Adding a library or bumping a version = edit docs-libraries.json + commit;
+// the build consumes it here. Zip sources carry an expected sha256 so a
+// drifting download fails the build (reproducibility) rather than silently
+// embedding stale docs.
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const LIBRARIES = JSON.parse(await readFile(path.join(SCRIPT_DIR, "docs-libraries.json"), "utf-8"))
+	.libraries;
 
 // ---------------------------------------------------------------------------
 // Curated cross-library integration notes
@@ -304,12 +229,13 @@ function usage() {
   --limit <N>          process only the first N API pages per library (smoke tests)
   --matplotlib-dir <d> pre-crawled matplotlib docs dir (api/ inside); enables matplotlib
   --seaborn-dir <d>    pre-crawled seaborn docs dir (generated/ inside); enables seaborn
+  --fetch-crawls <d>   crawl matplotlib+seaborn into <d>/<lib> first (CI: sources fully from docs-libraries.json)
   --skip-embed         write chunks without vectors (no KI Connect call)
   --help               show this help`);
 }
 
 function parseArgs(argv) {
-	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, skipEmbed: false };
+	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, fetchCrawls: null, skipEmbed: false };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		switch (a) {
@@ -327,6 +253,9 @@ function parseArgs(argv) {
 				break;
 			case "--seaborn-dir":
 				args.seabornDir = argv[++i];
+				break;
+			case "--fetch-crawls":
+				args.fetchCrawls = argv[++i];
 				break;
 			case "--skip-embed":
 				args.skipEmbed = true;
@@ -697,6 +626,48 @@ function stripCommonTopDir(files) {
 	return out;
 }
 
+/** Recursively find the first directory whose basename equals `name`. */
+async function findDir(dir, name) {
+	for (const e of await readdir(dir, { withFileTypes: true })) {
+		if (!e.isDirectory()) continue;
+		if (e.name === name) return path.join(dir, e.name);
+		const sub = await findDir(path.join(dir, e.name), name);
+		if (sub) return sub;
+	}
+	return null;
+}
+
+/**
+ * `--fetch-crawls <baseDir>`: crawl a no-zip library (matplotlib, seaborn)
+ * from its pinned `crawlSeedUrl` into `<baseDir>/<lib>` such that the
+ * apiPrefix directory (`api/`, `generated/`) sits directly under it — the
+ * layout readCrawlDir + selectApiPages expect. Crawled fresh each run so CI
+ * is reproducible from the committed config; a changed sha of the crawl is
+ * visible in the manifest's sourceUrl/builtAt (matplotlib ~180 MB cannot be
+ * committed, so the crawl stays a pinned network step).
+ */
+async function crawlLibrary(baseDir, lib, cfg) {
+	const raw = path.join(baseDir, `${lib}-raw`);
+	const target = path.join(baseDir, lib);
+	await rm(raw, { recursive: true, force: true });
+	await rm(target, { recursive: true, force: true });
+	await mkdir(raw, { recursive: true });
+	const cmd = `wget --no-host-directories --recursive --level=${cfg.crawlDepth ?? 2} --no-parent --no-clobber --timeout=25 --tries=2 --wait=0.2 -A '*.html' -P ${JSON.stringify(raw)} ${JSON.stringify(cfg.crawlSeedUrl)}`;
+	console.log(`[fetch-crawls] crawling ${lib} (${cfg.crawlSeedUrl}) …`);
+	execSync(cmd, { stdio: "inherit" });
+	const prefixDir = cfg.apiPrefix.replace(/\/$/, "");
+	const found = await findDir(raw, prefixDir);
+	await mkdir(path.dirname(target), { recursive: true });
+	if (found) {
+		await rename(found, target);
+	} else {
+		await rename(raw, target);
+		return;
+	}
+	await rm(raw, { recursive: true, force: true });
+	console.log(`[fetch-crawls] ${lib} -> ${target}`);
+}
+
 // ---------------------------------------------------------------------------
 // Embedding
 // ---------------------------------------------------------------------------
@@ -759,6 +730,18 @@ if (libraries.length === 0) {
 const outDir = args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
 await mkdir(outDir, { recursive: true });
 
+// --fetch-crawls: produce the no-zip crawl sources (matplotlib/seaborn) from
+// the committed config before the build loop consumes them.
+if (args.fetchCrawls) {
+	for (const lib of libraries) {
+		const cfg = LIBRARIES[lib];
+		if (cfg.source === "crawl" && !args[cfg.dirArg]) {
+			await crawlLibrary(args.fetchCrawls, lib, cfg);
+			args[cfg.dirArg] = path.join(args.fetchCrawls, lib);
+		}
+	}
+}
+
 const allChunks = [];
 const allVectors = [];
 const manifestLibraries = [];
@@ -771,21 +754,25 @@ for (const lib of libraries) {
 
 	let files;
 	let zipSha = null;
-	let sourceUrl = cfg.zipUrl ?? null;
+	let sourceUrl = cfg.url ?? null;
 
-	if (cfg.zipUrl) {
-		console.log(`[build-docs-index] downloading ${cfg.zipUrl} …`);
-		const buf = await downloadZip(cfg.zipUrl);
+	if (cfg.source === "zip") {
+		console.log(`[build-docs-index] downloading ${cfg.url} …`);
+		const buf = await downloadZip(cfg.url);
 		zipSha = sha256(buf);
-		console.log(`[build-docs-index]   ${(buf.length / 1024 / 1024).toFixed(1)} MB, sha256 ${zipSha.slice(0, 12)}…`);
+		if (cfg.sha256 && zipSha !== cfg.sha256) {
+			throw new Error(
+				`sha256 mismatch for ${lib}: expected ${cfg.sha256}, got ${zipSha} — source changed; update docs-libraries.json (pinned version) and rebuild`,
+			);
+		}
+		console.log(`[build-docs-index]   ${(buf.length / 1024 / 1024).toFixed(1)} MB, sha256 ${zipSha.slice(0, 12)}… (verified)`);
 		files = unzipSync(new Uint8Array(buf));
 		if (Array.isArray(cfg.pages)) files = stripCommonTopDir(files); // python docs zip nests under a version dir
-	} else if (lib === "matplotlib" || lib === "seaborn") {
-		const dirArgName = lib === "matplotlib" ? "matplotlibDir" : "seabornDir";
-		const dirArg = args[dirArgName];
+	} else if (cfg.source === "crawl") {
+		const dirArg = args[cfg.dirArg];
 		if (!dirArg) {
 			console.warn(
-				`[build-docs-index] ${lib} has no official doc zip — pass --${dirArgName.replace("Dir", "-dir")} <crawled-dir> to include it; skipping for this build`,
+				`[build-docs-index] ${lib} has no official zip — pass --${cfg.dirArg.replace("Dir", "-dir")} <crawled-dir> (or --fetch-crawls) to include it; skipping for this build`,
 			);
 			continue;
 		}
