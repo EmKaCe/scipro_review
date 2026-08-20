@@ -8,19 +8,28 @@
  * THIS to get a working corpus in seconds — no crawl, no embedding, no
  * long build. `build-docs-index.mjs` remains the path to REBUILD from source.
  *
- * Requires the `gh` CLI authenticated as a member of the repo (the repo is
- * private; the asset is fetched via `gh release download`, which carries the
- * necessary auth). SHA256 of the two artifacts is verified against the
- * release manifest before anything is renamed into place.
+ * Two download modes:
+ *   1. DEFAULT (private repo): `gh release download`. Requires the `gh` CLI
+ *      authenticated as a member of the repo (the repo is private; the asset
+ *      is fetched with the necessary auth).
+ *   2. --public (public repo): plain HTTPS download of the release assets.
+ *      Uses node's built-in `fetch` with redirect following onto
+ *      objects.githubusercontent.com — no auth, no gh CLI, works for any
+ *      public release. Required for the public release repo at cutover.
+ *
+ * In BOTH modes the SHA256 of the two artifacts is verified against the
+ * release manifest (docs-index.manifest.json) before anything is renamed
+ * into place; the same staging dir + rename-into-place flow is used.
  *
  * Usage: node scripts/fetch-docs-index.mjs [options]
  *   --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
  *   --repo <r>    owner/repo (default: EmKaCe/svelte_review)
  *   --tag <t>     release tag (default: docs-index)
+ *   --public      use plain HTTPS download (public repo) instead of the gh CLI
  *   --help        show this help
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -33,11 +42,12 @@ function usage() {
   --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
   --repo <r>    owner/repo (default: EmKaCe/svelte_review)
   --tag <t>     release tag (default: ${TAG})
+  --public      use plain HTTPS download (public repo) instead of the gh CLI
   --help        show this help`);
 }
 
 function parseArgs(argv) {
-	const args = { out: null, repo: "EmKaCe/svelte_review", tag: TAG };
+	const args = { out: null, repo: "EmKaCe/svelte_review", tag: TAG, public: false };
 	for (let i = 0; i < argv.length; i++) {
 		switch (argv[i]) {
 			case "--out":
@@ -48,6 +58,9 @@ function parseArgs(argv) {
 				break;
 			case "--tag":
 				args.tag = argv[++i];
+				break;
+			case "--public":
+				args.public = true;
 				break;
 			case "--help":
 				usage();
@@ -62,13 +75,36 @@ function parseArgs(argv) {
 const sha256 = (b) => createHash("sha256").update(b).digest("hex");
 const gh = (args) => execFileSync("gh", args, { encoding: "utf-8" });
 
+/**
+ * Download a release asset over plain HTTPS, following redirects (GitHub
+ * redirects /releases/download/... to objects.githubusercontent.com).
+ * No auth; works for any PUBLIC release asset.
+ */
+async function downloadViaHttps(repo, tag, asset, dest) {
+	const url = `https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`;
+	console.log(`[fetch-docs-index] fetch ${url}`);
+	const res = await fetch(url, { redirect: "follow" });
+	if (!res.ok) {
+		throw new Error(`download ${asset}: HTTP ${res.status} ${res.statusText}`);
+	}
+	const buf = Buffer.from(await res.arrayBuffer());
+	await writeFile(dest, buf);
+}
+
 const args = parseArgs(process.argv.slice(2));
 const outDir = args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
 const stashed = path.join(outDir, ".fetch-staging");
 await mkdir(stashed, { recursive: true });
 
-console.log(`[fetch-docs-index] gh release download ${args.tag} (${args.repo}) -> ${stashed}`);
-gh(["release", "download", args.tag, "--repo", args.repo, "--dir", stashed, "--clobber"]);
+if (args.public) {
+	console.log(`[fetch-docs-index] HTTPS download ${args.tag} (${args.repo}, public) -> ${stashed}`);
+	for (const f of [...ARTIFACTS, MANIFEST]) {
+		await downloadViaHttps(args.repo, args.tag, f, path.join(stashed, f));
+	}
+} else {
+	console.log(`[fetch-docs-index] gh release download ${args.tag} (${args.repo}) -> ${stashed}`);
+	gh(["release", "download", args.tag, "--repo", args.repo, "--dir", stashed, "--clobber"]);
+}
 console.log("[fetch-docs-index] downloaded; verifying sha256 …");
 
 const manifest = JSON.parse(await readFile(path.join(stashed, MANIFEST), "utf-8"));
