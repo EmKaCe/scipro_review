@@ -1,0 +1,208 @@
+# Teacher Guide — SciPro Review
+
+This guide walks a teacher (Karl's job) from first setup to exported grades, one
+task at a time. It is the *task-oriented* companion to the in-app
+**Documentation** page (`/docs`), which is the full reference. It does not repeat
+everything the in-app docs say — it tells you the order to do things, links the
+details, and is honest about what the system can and cannot do.
+
+> **The one idea that matters:** the AI copilot is an **accelerator**, not an
+> autograder. It drafts a grade worksheet; **you** review it and decide the final
+> grade. The pipeline can be *wrong without being broken* — deterministic
+> correctness and a fair grade are different questions, and you answer the
+> second one.
+
+```mermaid
+flowchart LR
+    A[First setup] --> B[Upload submissions]
+    B --> C[Pre-evaluate All]
+    C --> D[Review the copilot worksheet]
+    D --> E[Export grades]
+```
+
+---
+
+## 1. First setup
+
+Do these in order. Each step maps to one place in the app (or one file).
+
+| # | Step | Where it happens | Notes |
+|---|---|---|---|
+| 1 | **Create or import the assignment** | Assignments UI (`/settings/assignments`) → `data/assignments.yaml` | id, title, enabled, grading dimensions |
+| 2 | **Wire the criteria + scoring** | Assignment editor → `data/criteria/<id>.yaml` + `data/scoring/<id>.yaml` | The rubric checklist + scoring config (anchors, evidence, dimension guidance) |
+| 3 | **Configure the LLM provider** | `.env` (start-up) or Settings → Execution & AI (runtime) | Base URL, model id, API key |
+| 4 | **Fetch the offline docs index** *(optional)* | `frontend/scripts/fetch-docs-index.mjs` or `build-docs-index.mjs` | Grounds API-fact checks; without it, search is BM25-only (see below) |
+| 5 | **Upload the first submission** | Submissions page (`/submissions`) upload bar | Drag-and-drop; classified automatically |
+
+### Where each one lives
+
+- **Assignment + criteria + scoring** are *per-assignment* content, edited in the
+  **assignment editor**, not on the Settings page. Rubric criteria
+  (`data/criteria/<id>.yaml`) define what to check per category; the scoring
+  config (`data/scoring/<id>.yaml`) holds anchors, evidence patterns, disallowed
+  libraries, and the per-dimension guidance text the model sees.
+- **LLM provider** is *app-level*. The API key is a **runtime-only secret** — in
+  Settings → Execution & AI or the `.env` key `KI_CONNECT_API_KEY`; it is never
+  written to a settings file. The app works with **any OpenAI-compatible
+  endpoint** (KI Connect is the default; OpenRouter is a first-class target) —
+  set the base URL, the provider-specific **model id**, and the key.
+- **Docs index** — the prebuilt offline index
+  (`<DATA_DIR>/docs-index/`) covers numpy / pandas / scipy / sklearn /
+  matplotlib / seaborn. Fetching it is **optional**: the index loader never throws — if the
+  index is missing or the semantic (vector) leg is unavailable, retrieval
+  **degrades to BM25-only** (exact-name matching) and logs a `loadNote`. That is
+  quieter, not broken.
+
+> ⚠️ **Localhost-only by design (D4).** The notebook-execution backend
+> (**executor**) is **not hardened sandboxing** — it runs untrusted student
+> notebooks, and keeping it on localhost (the Docker default) is intentional.
+> Do **not** expose it publicly. Treat the whole teacher app as a trusted,
+> single-operator tool on your own machine.
+
+---
+
+## 2. Your first pre-evaluation
+
+1. On the **submissions page** (`/submissions`), upload one or more notebooks
+   (drag-and-drop onto the upload bar; files are classified automatically —
+   notebooks become submissions, data files become assignment materials).
+2. Click **Process All** in the toolbar — the executor runs every notebook in its
+   own sandbox with the assignment's input data. A failing or timing-out notebook
+   does not block the batch; row status updates as each finishes. Watch the
+   **progress bar** and the **pipeline log** panel.
+3. Click **Pre-evaluate All** — the LLM pre-evaluation runs over the executed
+   submissions and produces the draft. It runs inside the app process, so it
+   keeps working even if the executor is down.
+
+**What comes out of a pre-evaluation** (per submission):
+
+| Output | What it is | Trust level |
+|---|---|---|
+| **Cell markers** | Each cell flagged `same` / `different` / `questionable` vs. the reference key | Deterministic — no LLM, reproducible |
+| **Dimension scores** | Points on the `0..max_points` scale per grading dimension | LLM — review it |
+| **Rubric worksheet** | Turn-based: one rubric category checked per LLM call, edited markdown | LLM — review it |
+| **Feedback draft** | Drafted student feedback text | LLM — review it |
+| **confidence + flags** | `high_confidence` / `review_optional` / `needs_review` | Deterministic summary of the audit trail — see below |
+
+The **confidence flags** are *not* an AI opinion about the grade. They are a
+deterministic summary of the pipeline's own audit trail (retry-loop flags, number
+of post-process fixes, execution errors, disallowed imports) that tells you
+**which rows to look at first**. The exact thresholds are in the
+[Quality statement](quality-statement.md).
+
+---
+
+## 3. Reviewing the copilot worksheet
+
+Reviewing is a **teacher-only**, sequential activity: look at the cells, mark the
+rubric, dial the dimension scores, then save and export. The copilot's job is to
+make this faster — never to replace your judgment.
+
+1. **Open a submission** — click **Review** in the submissions table to open the
+   submission detail page with the notebook execution results.
+2. **Reference comparison** — the left panel shows the submission cells
+   **side-by-side with the reference key**; markers highlight matches, differences,
+   and questionable cells. Student HTML output renders in a sandboxed iframe.
+3. **Rubric** — the rubric panel lists the assignment's criteria: check each,
+   add comments where allowed, set point deductions.
+4. **Grading sidebar** — stays visible while you work: dial each dimension score
+   and watch the **live grade calculation** (German 1.0–5.0) update immediately.
+5. **Apply or Reject the copilot's suggestions** — the copilot delivers results as
+   **suggestions**: apply them with one click or dismiss them. **Nothing is
+   written to a submission without an explicit apply** — neither the copilot nor
+   anything else bypasses your review.
+6. **A human must review before finalizing.** The pre-evaluation is a *draft*.
+   You (the teacher) review, accept or fix each evaluation, then it becomes a
+   grade. There is no such thing as an unattended final grade.
+7. **Check the "Review extras" panel** *(over-tick guard)* — if a submission's
+   pre-evaluation looks *too thorough* — many more rubric selections than the
+   cohort median — the submission page shows a collapsed **Review extras**
+   panel. It flags the rubric categories that exceed the cohort norm and shows
+   the cohort median for context. This panel is **advisory only**: it never
+   blocks export, and deliberately keeping extra selections is a valid choice.
+   Expand it and verify the selection before you accept the evaluation.
+
+### The copilot (how to use it)
+
+- Open the **copilot tab** on a submission (per-submission scope) or the
+  **copilot button** on the submissions table (whole-assignment scope).
+- **Slash commands** — type one in the chat input for a specific capability:
+  `/suggest` (grades + rubric), `/draft` (feedback), `/summary` (summarize),
+  `/audit` (common issues), `/plagiarism` (check others), `/compare` (vs.
+  reference key), `/fix` (broken cells), `/explain`, `/grade`, `/help`. Use
+  `/help` to list the available commands.
+- **Approval modes** (set in Settings → Execution & AI): **Ask** (default —
+  every tool action asks you first), **Auto-approve all** (trusted, low-cost
+  ops), **Read-only** (can look and reason but change nothing). There are also
+  per-mode **allow/deny lists** for tools, and some actions are hard-blocked
+  regardless of mode.
+
+### Save & export
+
+- **Save** — grading data persists to the server per submission, so you can close
+  the page and resume later.
+- **Export** — download the graded review as **YAML**, **Markdown**, or **JSON**
+  for delivery to students or archiving.
+
+---
+
+## 4. Calibrating a new assignment (30-second version)
+
+Full detail: [Assignment calibration guide](assignment-calibration.md).
+
+1. Run the pipeline on a **small batch (2–3 submissions)**.
+2. **Compare** the dimension scores and rubric selections to your own reference
+   grading for those samples (tolerance ≈ ±0.5 per dimension).
+3. **Tune the scoring config** — evidence patterns and the per-dimension guide
+   text via the scoring editor — and **re-run** until within tolerance.
+4. **Repeat** with more submissions until the drift is stable.
+
+The ground truth is **your** grades, not the system's. The scoring config is a
+*form*, not a silver bullet — quality comes from the loop. Use the scoring
+editor's **Draft with AI** button to get a starting point, but validate its
+regexes against real executed output before trusting it.
+
+---
+
+## 5. Exporting grades
+
+| What | How |
+|---|---|
+| **Single review** | Open the submission → **Export** → YAML / Markdown / JSON |
+| **Batch / Karl-compatible** | Use the JSON export; the app emits **Karl-compatible** export keys for the downstream workflow |
+| **Save semantics** | Saving persists to the server (per-submission results); exporting downloads a file — they are separate actions |
+
+### Backup & restore
+
+- **Download Backup** zips the entire data directory — submissions, execution
+  results, copilot threads, settings, criteria files, and the grading config.
+  Take one **before upgrading**.
+- **Restore** uploads a backup ZIP to restore all data; existing data is replaced
+  by the backup's contents. On a new machine, make sure the app version matches
+  the backup's format.
+
+---
+
+## 6. Troubleshooting quick table
+
+For the full troubleshooting list see the in-app **/docs → Troubleshooting**.
+
+| Symptom | Fix |
+|---|---|
+| **Uploads return 403** | Set `ORIGIN` in `.env` to the URL you actually use to reach the app (e.g. `http://<lan-ip>:4174`) and restart with `docker compose up -d`. This is the CSRF guard, not an upload bug. |
+| **No LLM / pre-eval or copilot does nothing** | Check the API key (`KI_CONNECT_API_KEY` or Settings → Execution & AI) and the provider's **model id**. Keys are runtime-only and never written to a settings file. |
+| **Executor not healthy** | `docker compose ps` — the executor must show `healthy`; start with `docker compose up -d` and inspect `docker compose logs executor`. |
+| **Pipeline is slow** | Concurrency is capped at **2** against the LLM provider (the empirical rate-limit ceiling — do not raise it). For a faster-but-less-thorough run, set `PRE_EVAL_CRITIQUE=0` to disable the extra critique pass, or pick a faster model in Settings. |
+
+---
+
+## Related docs
+
+| Doc | What it is |
+|---|---|
+| **In-app `/docs`** | The full how-to reference for setup, configuration, uploads, pipeline, grading, copilot, backup, troubleshooting, deployment |
+| [quality-statement.md](quality-statement.md) | What the pre-evaluation gets right, the confidence flags and their thresholds, the honest accuracy posture |
+| [assignment-calibration.md](assignment-calibration.md) | How to onboard a new assignment to high-quality pre-evaluation |
+| [concepts.md](concepts.md) | The explainable mental model — pipeline, deterministic-vs-LLM, trust boundaries |
+| [architecture.md](architecture.md) | The canonical module map and data flow |
+| **README** | Quickstart, which build to use, honest limitations, configuration reference |

@@ -142,6 +142,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
 
 > **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.  
+> **Teacher?** Read the [Teacher guide](.github/references/teacher-guide.md) — task-oriented setup, pre-evaluation, review, and export.
 > **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.  
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, and the confidence flags.  
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.  
