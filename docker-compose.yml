@@ -26,7 +26,12 @@ services:
     image: svelte-review-frontend:latest
     container_name: svelte-review-frontend
     ports:
-      - "4174:4174"
+      # Loopback-only by default: the teacher's grading app is a trusted,
+      # single-operator tool that should not be reachable from the LAN/internet.
+      # The `127.0.0.1:` prefix binds only on the teacher's own machine. If you
+      # ever need remote/team access, add auth FIRST, then change this to
+      # "4174:4174" (and set ORIGIN accordingly).
+      - "127.0.0.1:4174:4174"
     volumes:
       - data:/app/data
     environment:
@@ -35,10 +40,10 @@ services:
       - NODE_ENV=production
       # adapter-node derives the request base URL from ORIGIN. Without it the
       # protocol defaults to https, so plain-http deployments reject form
-      # POSTs (uploads, materials) with a CSRF 403 in real browsers. Set it to
-      # the address teachers use to reach the app (http://localhost:4174
-      # locally; http://<lan-ip>:4174 or a domain on a teacher machine) — e.g.
-      # ORIGIN=http://192.168.1.10:4174 docker compose up -d
+      # POSTs (uploads, materials) with a CSRF 403 in real browsers. For the
+      # default loopback deployment use http://localhost:4174. (Only if you
+      # deliberately expose on the LAN — after adding auth — would you set it
+      # to e.g. ORIGIN=http://192.168.1.10:4174.)
       - ORIGIN=${ORIGIN:-http://localhost:4174}
       # Internal URL to reach the executor via Docker DNS
       - EXECUTOR_URL=http://executor:8766
