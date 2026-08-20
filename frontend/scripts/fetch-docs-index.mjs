@@ -3,56 +3,51 @@
  * @file fetch-docs-index.mjs — download the PREBUILT offline docs index.
  *
  * The offline docs index (docs-index.json + docs-vectors.bin, ~350 MB) is
- * built once by CI (see .github/workflows/docs-index.yml) and published as a
- * GitHub Release asset under the `docs-index` tag. A fresh clone / a teacher
- * deploy runs THIS script to get a working corpus in seconds — no crawl, no
- * embedding job, no 30-60 min build. `build-docs-index.mjs` remains the path
- * to REBUILD from source.
+ * published to the `docs-index` GitHub release (see scripts/publish-docs-index.mjs
+ * and .github/workflows/docs-index.yml). A fresh clone / teacher deploy runs
+ * THIS to get a working corpus in seconds — no crawl, no embedding, no
+ * long build. `build-docs-index.mjs` remains the path to REBUILD from source.
  *
- * Requires network only. (The runtime KI_CONNECT_API_KEY is still needed
- * separately — the semantic search leg embeds the query per request — but
- * that is not this script's concern.)
+ * Requires the `gh` CLI authenticated as a member of the repo (the repo is
+ * private; the asset is fetched via `gh release download`, which carries the
+ * necessary auth). SHA256 of the two artifacts is verified against the
+ * release manifest before anything is renamed into place.
  *
  * Usage: node scripts/fetch-docs-index.mjs [options]
- *   --out <dir>     target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
- *   --base <url>    release base URL (default: https://github.com/EmKaCe/svelte_review/releases/download/docs-index)
- *   --check         verify the manifest + file shas WITHOUT writing
- *   --help          show usage
- *
- * Env: DATA_DIR, DOCS_INDEX_DIR (honoured for the default --out).
- *
- * Integrity: downloads docs-index.manifest.json first (contains the sha256 of
- * both artifacts), verifies each download against it, and only then renames
- * into place — a tampered or truncated download never clobbers a good index.
+ *   --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
+ *   --repo <r>    owner/repo (default: EmKaCe/svelte_review)
+ *   --tag <t>     release tag (default: docs-index)
+ *   --help        show this help
  */
 import { createHash } from "node:crypto";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
+const TAG = "docs-index";
 const MANIFEST = "docs-index.manifest.json";
 const ARTIFACTS = ["docs-index.json", "docs-vectors.bin"];
-const DEFAULT_BASE = "https://github.com/EmKaCe/svelte_review/releases/download/docs-index";
 
 function usage() {
 	console.log(`Usage: node scripts/fetch-docs-index.mjs [options]
-  --out <dir>    target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
-  --base <url>   release base URL (default: ${DEFAULT_BASE})
-  --check        verify manifest + file shas without writing
-  --help         show this help`);
+  --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
+  --repo <r>    owner/repo (default: EmKaCe/svelte_review)
+  --tag <t>     release tag (default: ${TAG})
+  --help        show this help`);
 }
 
 function parseArgs(argv) {
-	const args = { out: null, base: null, check: false };
+	const args = { out: null, repo: "EmKaCe/svelte_review", tag: TAG };
 	for (let i = 0; i < argv.length; i++) {
 		switch (argv[i]) {
 			case "--out":
 				args.out = argv[++i];
 				break;
-			case "--base":
-				args.base = argv[++i];
+			case "--repo":
+				args.repo = argv[++i];
 				break;
-			case "--check":
-				args.check = true;
+			case "--tag":
+				args.tag = argv[++i];
 				break;
 			case "--help":
 				usage();
@@ -64,47 +59,36 @@ function parseArgs(argv) {
 	return args;
 }
 
-async function download(url, label) {
-	const resp = await fetch(url, { redirect: "follow" });
-	if (!resp.ok) throw new Error(`download failed (HTTP ${resp.status}): ${url}`);
-	return Buffer.from(await resp.arrayBuffer());
-}
-
-const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
+const sha256 = (b) => createHash("sha256").update(b).digest("hex");
+const gh = (args) => execFileSync("gh", args, { encoding: "utf-8" });
 
 const args = parseArgs(process.argv.slice(2));
-const outDir =
-	args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
-const base = args.base ?? DEFAULT_BASE;
+const outDir = args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
+const stashed = path.join(outDir, ".fetch-staging");
+await mkdir(stashed, { recursive: true });
 
-const manifestUrl = `${base}/${MANIFEST}`;
-console.log(`[fetch-docs-index] fetching ${manifestUrl}`);
-const manifestBuf = await download(manifestUrl, MANIFEST);
-const manifest = JSON.parse(manifestBuf.toString("utf-8"));
+console.log(`[fetch-docs-index] gh release download ${args.tag} (${args.repo}) -> ${stashed}`);
+gh(["release", "download", args.tag, "--repo", args.repo, "--dir", stashed, "--clobber"]);
+console.log("[fetch-docs-index] downloaded; verifying sha256 …");
+
+const manifest = JSON.parse(await readFile(path.join(stashed, MANIFEST), "utf-8"));
 console.log(
-	`[fetch-docs-index] manifest: ${manifest.chunks ?? "?"} chunks, ${manifest.libraries?.length ?? "?"} libraries, built ${manifest.builtAt ?? "?"}`,
+	`[fetch-docs-index] manifest: ${manifest.chunks ?? "?"} chunks, ${manifest.libraries?.length ?? "?"} libraries, vectors=${manifest.sha256 ? "yes" : "n/a"}, built ${manifest.builtAt ?? "?"}`,
 );
 
 for (const f of ARTIFACTS) {
-	const buf = await download(`${base}/${f}`, f);
+	const buf = await readFile(path.join(stashed, f));
 	const h = sha256(buf);
 	const expected = manifest.sha256?.[f];
 	if (expected && h !== expected) {
-		throw new Error(`sha256 mismatch for ${f}: expected ${expected}, got ${h} — refusing to write`);
+		throw new Error(`sha256 mismatch for ${f}: expected ${expected}, got ${h} — refusing to install`);
 	}
-	if (args.check) {
-		console.log(`[fetch-docs-index] ${f}: ok (${expected ? "verified" : "no pinned sha"} ${h.slice(0, 12)})`);
-		continue;
-	}
-	await mkdir(outDir, { recursive: true });
-	const tmp = path.join(outDir, `${f}.tmp-${process.pid}`);
-	await writeFile(tmp, buf);
-	await rename(tmp, path.join(outDir, f));
-	console.log(`[fetch-docs-index] wrote ${path.join(outDir, f)} (${(buf.length / 1024 / 1024).toFixed(1)} MB, sha ${h.slice(0, 12)})`);
+	if (expected) console.log(`  ${f}: ok (${h.slice(0, 12)})`);
 }
 
-if (!args.check) {
-	await mkdir(outDir, { recursive: true });
-	await writeFile(path.join(outDir, MANIFEST), manifestBuf);
-	console.log(`[fetch-docs-index] done -> ${outDir}`);
+await mkdir(outDir, { recursive: true });
+for (const f of [...ARTIFACTS, MANIFEST]) {
+	await rename(path.join(stashed, f), path.join(outDir, f));
 }
+await rm(stashed, { recursive: true, force: true });
+console.log(`[fetch-docs-index] done -> ${outDir}`);

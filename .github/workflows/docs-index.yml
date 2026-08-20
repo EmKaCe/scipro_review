@@ -1,64 +1,53 @@
 name: build-docs-index
 
-# Builds the offline docs index (all libraries from frontend/scripts/docs-libraries.json)
-# and publishes it as GitHub Release assets under the `docs-index` tag. A fresh
-# clone / teacher deploy consumes it with `node scripts/fetch-docs-index.mjs`.
+# The offline docs index is NOT built on GitHub Actions by default — a full
+# crawl+embed is a ~40-60 min job that would burn monthly Actions minutes for
+# no CI-specific benefit. The canonical path is:
 #
-# Runtime/quota discipline (the build embeds ~20k chunks @ concurrency 2 = a
-# 40-60 min job):
-#   - No periodic schedule. Rebuilds happen only when the corpus config /
-#     build script changes (push path filter) or on manual dispatch.
-#   - On push, if the corpus config fingerprint is UNCHANGED vs the last
-#     published manifest, the job skips the expensive build.
-#   - A single concurrency group + bounded timeout-minutes prevent overlap and
-#     runaway.
+#   1. Build locally:   node scripts/build-docs-index.mjs --fetch-crawls <dir> --out <dir>
+#                       (needs KI_CONNECT_API_KEY; produces docs-index.json + docs-vectors.bin)
+#   2. Publish:         node scripts/publish-docs-index.mjs --dir <dir>
+#                       (uploads to the `docs-index` release via gh; ~2 min, 0 Actions minutes)
+#   3. Consume:         node scripts/fetch-docs-index.mjs
 #
-# Requires the repository secret KI_CONNECT_API_KEY (used only for the one-time
-# corpus embedding; it is never committed).
+# This workflow only runs when manually dispatched (`Rebuild` checkbox). With
+# rebuild=false it is a cheap consistency check; with rebuild=true it runs the
+# full build+embed in CI (the rare case someone explicitly wants CI to do it).
 
 on:
   workflow_dispatch:
     inputs:
-      force:
-        description: "Always rebuild (skip the unchanged-fingerprint gate)"
+      rebuild:
+        description: "Run the full crawl+embed+build+publish in CI (burns ~40-60 Actions minutes)."
         type: boolean
-        default: true
-  push:
-    paths:
-      - "frontend/scripts/docs-libraries.json"
-      - "frontend/scripts/build-docs-index.mjs"
-      - "frontend/scripts/fetch-docs-index.mjs"
-      - ".github/workflows/docs-index.yml"
-    branches: [main, phase-3b]
+        default: false
 
 concurrency:
   group: docs-index
   cancel-in-progress: false
 
 jobs:
-  build:
+  check:
     runs-on: ubuntu-latest
-    timeout-minutes: 180 # bound cost; fail fast if a run hangs
-    permissions:
-      contents: write # publish the release asset
+    timeout-minutes: 10
+    if: github.event.inputs.rebuild != 'true'
     steps:
       - uses: actions/checkout@v7
-
-      # Push path only: if the corpus config is byte-identical to the last
-      # published manifest's fingerprint, skip the costly rebuild. Manual
-      # dispatch always builds (force defaults true).
-      - name: Skip if corpus config unchanged (push only)
-        if: github.event_name == 'push'
-        id: skip
+      - name: Report published index + validate config (no build)
         run: |
-          config_sha=$(cat frontend/scripts/docs-libraries.json frontend/scripts/build-docs-index.mjs | sha256sum | cut -d' ' -f1)
-          manifest=$(curl -sf https://github.com/EmKaCe/svelte_review/releases/download/docs-index/docs-index.manifest.json || true)
-          prev=$([ -n "$manifest" ] && printf '%s' "$manifest" | python3 -c "import sys,json;print(json.load(sys.stdin).get('configSha') or '')" || true)
-          if [ -n "$prev" ] && [ "$config_sha" = "$prev" ]; then
-            echo "Corpus config unchanged (${config_sha}); skipping rebuild."
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-          fi
+          echo "== current docs-index release =="
+          gh release view docs-index --repo EmKaCe/svelte_review --json tagName,assets --jq '{tag:.tagName, assets:[.assets[].name]}' 2>/dev/null || echo "(no docs-index release published yet)"
+          echo "== corpus config parses =="
+          node -e 'const L=require("./frontend/scripts/docs-libraries.json").libraries; const zip=Object.entries(L).filter(([k,v])=>v.source==="zip"); const crawl=Object.entries(L).filter(([k,v])=>v.source==="crawl"); console.log(`${Object.keys(L).length} libraries (${zip.length} zip, ${crawl.length} crawl)`)'
 
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    permissions:
+      contents: write
+    if: github.event.inputs.rebuild == 'true'
+    steps:
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: 11
@@ -67,65 +56,27 @@ jobs:
           node-version: 22
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-
       - name: Install
-        if: steps.skip.outputs.skip != 'true'
         working-directory: frontend
         run: pnpm install --frozen-lockfile
-
-      - name: Build + embed the docs index (zip sha256-verified; crawls fetched from config)
-        if: steps.skip.outputs.skip != 'true'
+      - name: Guard — the API key secret must be present (else no vectors)
+        env:
+          KI_CONNECT_API_KEY: ${{ secrets.KI_CONNECT_API_KEY }}
+        run: |
+          if [ -z "$KI_CONNECT_API_KEY" ]; then
+            echo "::error::KI_CONNECT_API_KEY secret not set — a CI rebuild would publish a vectorless (BM25-only) index. Use the local build + publish-docs-index.mjs path instead."; exit 1
+          fi
+      - name: Build + embed (crawls fetched from config)
         working-directory: frontend
         env:
           KI_CONNECT_API_KEY: ${{ secrets.KI_CONNECT_API_KEY }}
         run: |
           node scripts/build-docs-index.mjs --fetch-crawls /tmp/docs-sources --out /tmp/docs-index
-
-      - name: Verify the index is internally consistent
-        if: steps.skip.outputs.skip != 'true'
+      - name: Verify the index is internally consistent (vectors present)
         run: |
-          node -e 'const d=require("/tmp/docs-index/docs-index.json"); if (d.vectorCount!==d.chunks.length){throw new Error(`vectorCount ${d.vectorCount} != chunks ${d.chunks.length}`)} console.log(`OK: ${d.chunks.length} chunks, ${d.libraries.length} libraries`)'
-
-      - name: Write the integrity manifest
-        if: steps.skip.outputs.skip != 'true'
-        run: |
-          node -e '
-            const {createHash}=require("node:crypto");const fs=require("node:fs");
-            const sha=b=>createHash("sha256").update(b).digest("hex");
-            const j=JSON.parse(fs.readFileSync("/tmp/docs-index/docs-index.json","utf8"));
-            const configSha=sha(Buffer.concat([fs.readFileSync("frontend/scripts/docs-libraries.json"),fs.readFileSync("frontend/scripts/build-docs-index.mjs")]));
-            const fileSha=f=>sha(fs.readFileSync(`/tmp/docs-index/${f}`));
-            const m={format:j.format,formatVersion:j.formatVersion,chunks:j.chunks.length,
-              embeddingModel:j.embeddingModel,libraries:(j.libraries||[]).map(l=>l.library),
-              builtAt:j.builtAt,configSha,
-              sha256:{"docs-index.json":fileSha("docs-index.json"),"docs-vectors.bin":fileSha("docs-vectors.bin")}};
-            fs.writeFileSync("/tmp/docs-index/docs-index.manifest.json",JSON.stringify(m,null,2));
-            console.log("manifest written (configSha "+configSha.slice(0,12)+")");'
-
-      - uses: actions/upload-artifact@v4
-        if: steps.skip.outputs.skip != 'true'
-        with:
-          name: docs-index
-          path: /tmp/docs-index/docs-index.json
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        if: steps.skip.outputs.skip != 'true'
-        with:
-          name: docs-index
-          path: /tmp/docs-index/docs-vectors.bin
-          if-no-files-found: error
-
+          node -e 'const d=require("/tmp/docs-index/docs-index.json"); if (d.vectorCount!==d.chunks.length){throw new Error(`vectorCount ${d.vectorCount} != chunks ${d.chunks.length} — no vectors`) } console.log(`OK: ${d.chunks.length} chunks, ${d.libraries.length} libraries`)'
       - name: Publish to the docs-index release
-        if: steps.skip.outputs.skip != 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: docs-index
-          name: Offline docs index
-          body: |
-            Prebuilt offline docs index from `build-docs-index.mjs` + `docs-libraries.json`.
-            Consume with: `node scripts/fetch-docs-index.mjs`
-          files: |
-            /tmp/docs-index/docs-index.json
-            /tmp/docs-index/docs-vectors.bin
-            /tmp/docs-index/docs-index.manifest.json
-          overwrite: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node frontend/scripts/publish-docs-index.mjs --dir /tmp/docs-index
