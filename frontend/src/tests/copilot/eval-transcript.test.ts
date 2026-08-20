@@ -193,14 +193,14 @@ describe("loadRecordedThreads", () => {
 		await writeFile(path.join(messagesDir, `${threadId}.json`), JSON.stringify(messages));
 	}
 
-	it("loads threads with grading proposals, mapping resourceId → assignmentId", async () => {
+	it("loads threads with grading proposals, resolving assignmentId from thread metadata", async () => {
 		await seedThread("thread-a", {
 			id: "thread-a",
 			title: "Can you do a complete check of the submitted assignment?",
 			resourceId: "2026SS_00",
 			createdAt: "2026-08-09T21:49:00.000Z",
 			updatedAt: "2026-08-09T21:51:00.000Z",
-			metadata: {},
+			metadata: { assignmentId: "soil_contamination" },
 		}, [
 			{ role: "user", content: { format: 2, parts: [textPart("check it")] } },
 			assistantMessage([
@@ -248,7 +248,7 @@ describe("loadRecordedThreads", () => {
 		expect(evals).toEqual([]);
 	});
 
-	it("uses thread metadata assignmentId when present, else the submission map", async () => {
+	it("uses thread metadata assignmentId when present; no fallback guessing without it (privacy: no hard-coded submission map)", async () => {
 		await seedThread("with-meta", {
 			id: "with-meta",
 			title: "meta thread",
@@ -261,21 +261,25 @@ describe("loadRecordedThreads", () => {
 		]);
 		await seedThread("without-meta", {
 			id: "without-meta",
-			title: "mapped thread",
+			title: "no-meta thread",
 			resourceId: "2026SS_00",
 			createdAt: "2026-08-19T10:00:00.000Z",
 			updatedAt: "2026-08-19T10:01:00.000Z",
 			metadata: {},
 		}, [
-			assistantMessage([toolInvocation("write-notes", NOTES_ARGS("notes from mapped thread"))]),
+			assistantMessage([toolInvocation("write-notes", NOTES_ARGS("notes from no-meta thread"))]),
 		]);
 
 		const evals = await loadRecordedThreads(tempDir);
 
 		expect(evals).toHaveLength(2);
 		const byId = Object.fromEntries(evals.map((e) => [e.threadId, e.proposals[0].assignmentId]));
+		// With metadata → metadata wins.
 		expect(byId["with-meta"]).toBe("other_assignment");
-		expect(byId["without-meta"]).toBe("soil_contamination");
+		// Without metadata → assignmentId is undefined (no hard-coded fallback —
+		// real submission IDs were removed from the repo for privacy). The judge
+		// simply lacks an assignment grounding rather than guessing one.
+		expect(byId["without-meta"]).toBeUndefined();
 	});
 
 	it("one proposal per grading turn, in conversation order, with turn numbers", async () => {

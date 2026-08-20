@@ -167,15 +167,17 @@ export interface RecordedTranscriptEval {
 }
 
 /**
- * Hard-coded submission → assignment map for the harness. The recorded
- * threads carry `resourceId` = submissionId (e.g. "2026SS_00"); the judge
- * needs the ASSIGNMENT id to ground against the rubric. Thread metadata
- * wins when it already carries `assignmentId`; otherwise this map is used.
- * New assignments must be added here (or persisted on the thread metadata).
+ * Fallback submission → assignment map for the harness. The recorded
+ * threads carry `resourceId` = submissionId; the judge needs the ASSIGNMENT
+ * id to ground against the rubric. Thread metadata wins when it already
+ * carries `assignmentId`; otherwise this map is used. New assignments must
+ * be added here (or persisted on the thread metadata).
+ *
+ * NOTE (2026-08-20, privacy): no real submission IDs are hard-coded here —
+ * real student IDs were removed from the repo. Prefer persisting
+ * `assignmentId` on thread metadata; rely on metadata, not a hard-coded map.
  */
-const SUBMISSION_TO_ASSIGNMENT: Record<string, string> = {
-	"2026SS_00": "soil_contamination",
-};
+const SUBMISSION_TO_ASSIGNMENT: Record<string, string> = {};
 
 async function readJsonFile<T>(file: string): Promise<T | null> {
 	try {

@@ -85,9 +85,12 @@ change follows the chain:
    `scoring-config.test.ts`. Any change to the prompt template, dimension
    guidance, or anchor substitution breaks the gate — regenerate the fixture
    deliberately, never silently.
-2. **No real student grading data in this repo.** Submission notebooks,
-   grades, cohort norms, and grading-output are excluded (gitignored or
-   removed 2026-08-20 for privacy). Never reintroduce real student data.
+2. **No real student grading data in this repo + keep the synthetic gate green.**
+   Submission notebooks, grades, cohort norms, and grading-output are excluded
+   (gitignored or removed 2026-08-20 for privacy). Never reintroduce real
+   student data. Grading quality is measured by the **synthetic grading gate**
+   (`frontend/scripts/verify-grading-gate.mjs`, vitest
+   `grading-gate.test.ts`) — it must pass (CLI exit 0 / test green).
 3. **KI Connect concurrency ceiling is 2.** Do **not** raise the concurrency
    limit without first measuring against KI Connect's rate limits.
 4. **Student notebook content must be screened** before it enters any prompt.

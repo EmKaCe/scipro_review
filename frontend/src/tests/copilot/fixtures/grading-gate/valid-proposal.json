@@ -1,0 +1,28 @@
+{
+  "id": "valid-proposal",
+  "assignmentId": "soil_contamination",
+  "expectPass": true,
+  "dimensions": {
+    "code_quality_design": 5,
+    "code_execution_results": 5,
+    "assignment_requirements": 5,
+    "scientific_programming": 5,
+    "creativity": 3
+  },
+  "rubric": {
+    "code_formatting": [
+      "blank lines - consistent and good usage",
+      "concise, clean and clearly written code"
+    ],
+    "numpy": [
+      "Abbreviation: good job on using use the community abbreviation of `np`."
+    ],
+    "sklearn": [
+      "Functions: good use of sklearn and its class/functions (e.g., `KMeans`, `k_means`)."
+    ],
+    "following_instructions": [
+      "The solution adhered to all submission requirements.",
+      "Disallowed libraries were not used."
+    ]
+  }
+}

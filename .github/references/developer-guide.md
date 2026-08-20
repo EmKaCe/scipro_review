@@ -95,7 +95,7 @@ of `origin/` until the human reviews and pushes. Never commit runtime state
 | **Pre-analysis** | Deterministic detectors that feed facts into prompts (imports, non-descriptive names, kwarg-assign). |
 | **PreAnalysis / envelope** | The `PreEvaluation` output object (markers, dimensionScores, rubricSelections, feedbackDraft, gradeSuggestion, gradingConfidence, calibrationAdjustments). |
 | **gradingConfidence** | `needs_review` / `review_optional` / `high_confidence` — the human-review flag. |
-| **Karl gate** | The ground-truth comparison against the reference run (dimension/rubric keys per category). |
+| **grading-gate** | The deterministic **synthetic grading gate** (`verify-grading-gate.mjs` / `grading-gate.test.ts`) — validates proposed grading over committed synthetic fixtures against the real rubric + config (no student data). Replaces the removed Karl gate. |
 | **DOCS_FACTS** | The docs-RAG-grounded block in the Phase 2a prompt. |
 | **search-docs** | Copilot tool (docs-rag) the agent must call before flagging API usage. |
 | **Run-state registry** | `run-state.svelte.ts` — single source of truth for batch-run progress (B4). |

@@ -53,9 +53,19 @@ no aspirations.
 
 The earlier quality story measured the pipeline against **real emailed grades**
 (the Karl ground-truth gate) and produced per-student residual tables. That is
-now gone by design (privacy). The pipeline's quality can still be assessed
-without real student data, via:
+now gone by design (privacy). The pipeline's quality is measured without real
+student data, via:
 
+- **Synthetic grading-quality gate (replaces the Karl gate).** A deterministic
+  gate (`frontend/src/lib/server/copilot/grading-gate.ts`, CLI
+  `frontend/scripts/verify-grading-gate.mjs`, vitest
+  `src/tests/copilot/grading-gate.test.ts`) validates proposed grading against
+  the REAL rubric + grading config over committed synthetic fixtures
+  (`src/tests/copilot/fixtures/grading-gate/*.json`). It asserts the invariant
+  classes the old gate surfaced — dimension scores within `[0, max_points]`
+  (the B7 100/1000-vs-6 scale-bug class), no unknown rubric options, no
+  mutual-exclusion violations. No LLM, no network, no student data — as safe to
+  run as a unit test.
 - **Unit/integration tests** — the deterministic phases (cell comparison,
   post-processing passes, scoring-config compile gate) are covered by the vitest
   suite; `pnpm check` (0/0) and the full vitest run are the hard gates.
