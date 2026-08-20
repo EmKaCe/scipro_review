@@ -19,14 +19,16 @@ this file is about **how to work here** and **what things are called**.
    cd frontend
    pnpm check                 # svelte-check — MUST be 0 errors AND 0 warnings
    pnpm vitest run <file>     # one file (see §3 gotcha)
-   cd .. && hermes verify --json   # canonical: install + build + full vitest + preview probe
+   # whole-project canonical verify (from repo root): pnpm install →
+   # pnpm build:student → unset ADAPTER NODE_ENV KI_CONNECT_API_KEY →
+   # pnpm vitest run → preview probe on http://127.0.0.1:4173/svelte_review/ (HTTP 200)
    ```
 4. **Commit per package, locally only.** No push until the human reviews.
 
 > **Important invariants to never break silently:** the Phase 2a golden prompt
-> is **byte-exact**; the Karl ground-truth gate must keep passing; KI Connect
-> concurrency stays at **2** (measured rate limit); student notebook content is
-> **screened** before any prompt.
+> is **byte-exact**; no real student grading data may be reintroduced (privacy);
+> KI Connect concurrency stays at **2** (measured rate limit); student notebook
+> content is **screened** before any prompt.
 
 ---
 
@@ -64,9 +66,8 @@ from the unified `GET /api/pipeline/status`.
   fixtures (`CRITERIA_YAML`, `ASSIGNMENTS_YAML`) — extending them ripples into
   hard-coded occurrence counts and round-trip assertions. Re-check counts when
   a fixture grows.
-- **`hermes verify --json`** is the whole-project gate; report `"ok": true` only
-  when every phase is green. The recipe can vary by manifest — check the
-  `"recipe"` field.
+- **Whole-project gate** is the canonical verify above (`pnpm check` + full
+  `vitest run` + preview probe); report green only when every phase passes.
 
 ---
 

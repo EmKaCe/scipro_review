@@ -1,27 +1,27 @@
-# Pre-Evaluation Quality Statement & the Karl Gate
+# Pre-Evaluation Quality Statement
 
 What the copilot's pre-evaluation actually does, what it does not do, and how to
 tell the difference. This document is the honest baseline: measured facts only,
-no aspirations. Numbers below were measured on **2026-08-17/18** against the
-soil_contamination assignment's ground truth and are a **point-in-time
-snapshot** — deliberately **not** re-measured here.
+no aspirations.
+
+> **Privacy notice (2026-08-20):** real student grading data (submission
+> notebooks, emailed grades, cohort norms, `grading-output/`) has been removed
+> from this repo so it can be open-sourced. The earlier per-student quality
+> numbers and the Karl ground-truth gate that produced them are **gone** — they
+> were anchored in real student grades. This document describes the *design and
+> architecture* of the quality story, not a live measurement against real
+> grades.
 
 ## Purpose & audience
 
-- **Karl** — the teacher whose emailed grades are the authoritative ground
-  truth (zip emailed 2026-08-11, H-BRS Sent 238). This is what your tool
-  currently gets right, where it still needs you, and how the gate that
-  measures it works.
-- **Successor teachers** — what to expect when pre-evaluating new assignments,
-  and what "good" means in measurable terms instead of vibes.
-- **Reviewers** — the residual-gap table below is the current, known error
-  budget. If a change claims to improve quality, this is the baseline it must
-  beat.
+- **Teachers** — what to expect when pre-evaluating an assignment, and what
+  "good" means in measurable terms instead of vibes.
+- **Reviewers** — where the pipeline's known error budget comes from and how to
+  re-establish a quality baseline that doesn't depend on real student data.
+- **Successors** — how the deterministic + calibration machinery works after
+  the student-data removal.
 
-> The golden rule: **the ground truth is the teacher's own grades, not the
-> system.** The numbers below are a snapshot of the gap between the two.
-
-## What the copilot gets right (evidence-backed)
+## What the copilot gets right (design / evidence-backed)
 
 - **Deterministic cell comparison vs the reference key** (Phase 1): every cell
   is marked `same` / `different` / `questionable` against the reference key
@@ -35,90 +35,39 @@ snapshot** — deliberately **not** re-measured here.
   evidence-grounded rubric selections, sync textareas/checkboxes, fill short
   notes, and strip plagiarism/filler. Every correction is a **visible fix
   record** (`PostProcessFix[]`) — nothing is silently rewritten.
-- **Docs grounding is LIVE and verified (2026-08-18)**: the Phase 2a prompt
-  carries a `{DOCS_FACTS}` block citing real docs URLs. Smoke-tested on
-  2026SS_00 + 2026SS_04 — **6 URLs cited** from pandas.pydata.org,
-  docs.scipy.org, scikit-learn.org. The offline index covers **19,109 chunks ×
-  4096 dims** for numpy/pandas/scipy/sklearn/**matplotlib** (matplotlib added
-  2026-08-19 via a crawled api/ tree — plot/scatter/axes queries return real
-  matplotlib.org/stable pages in live probes).
+- **Docs grounding (live)**: the Phase 2a prompt carries a `{DOCS_FACTS}`
+  block citing real docs URLs (pandas.pydata.org, docs.scipy.org,
+  scikit-learn.org, matplotlib.org/stable). The offline index covers tens of
+  thousands of chunks × 4096 dims for numpy/pandas/scipy/sklearn/matplotlib.
+  Loader never throws — any failure degrades to BM25-only.
 - **Detector calibration**: the false "disallowed sklearn" flag was removed
-  (2026-08-17) — sklearn (KMeans) is the assignment's **core library**. After
-  the fix, on a small-batch re-run: `code_quality_design` 2→4,
-  `scientific_programming` 2→4/5, confidence `needs_review`→`review_optional`.
+  (2026-08-17) — sklearn (KMeans) is the soil_contamination assignment's **core
+  library**. Disallowed libraries now live per-assignment in `data/scoring/*.yaml`.
 - **Per-assignment calibration workflow**: scoring configs are per-assignment
   (anchors, evidence patterns, disallowed/allowed libraries, dimension
   guidance). `soil_contamination`'s config carries its own explicit values; new
   assignments get generic fallbacks that **NEVER inherit soil's anchors** (no
   scoring file = no anchors, calibration skipped loudly).
 
-## What needs teacher review (measured residuals)
+## Quality measurement posture after data removal
 
-The gate passes only when the pipeline lands within ±0.5 of the teacher's sent
-grade on every dimension **and** the rubric selections match. Current measured
-residuals:
+The earlier quality story measured the pipeline against **real emailed grades**
+(the Karl ground-truth gate) and produced per-student residual tables. That is
+now gone by design (privacy). The pipeline's quality can still be assessed
+without real student data, via:
 
-| Residual | Measured value | Notes |
-|---|---|---|
-| Karl gate, full batch | **0/19 PASS** (baseline 2026-08-17) | dimensions under-scored 1.0–3.5 before the sklearn fix |
-| Karl gate, docs grounding re-measure | **0/2 PASS** (2026-08-18, 2026SS_00 + 2026SS_04) | unchanged within the known noise floor — not improved, not regressed |
-| `creativity` dimension | consistently **1.5–2.5 under** (max 4) | systematic under-scoring |
-| `coding_concept` / `plotting` | **over-ticking positives** | rubric selection drift |
-| `general-neutral` vs `general-positive` | drift | sentiment-class distinction unreliable |
-| 3 unmapped option texts | `built-in function(s)`, `code cells - good separation of encoded ideas` (YAML: `encode ideas`), `C³` vs `C^3` | string mismatch, one per submission |
-| Single-shot LLM variance | **±2–3 points** | larger than the ±0.5 gate tolerance |
-| 2026SS_00 `code_execution_results` | **2 vs sent 4 (Δ2.0)** | the one dimension outside tolerance, same as baseline |
+- **Unit/integration tests** — the deterministic phases (cell comparison,
+  post-processing passes, scoring-config compile gate) are covered by the vitest
+  suite; `pnpm check` (0/0) and the full vitest run are the hard gates.
+- **Golden prompt contract** — the byte-exact Phase 2a fixture
+  (`frontend/src/tests/copilot/fixtures/phase2a-prompt-golden.txt`) pins the
+  assembled prompt.
+- **Deterministic confidence flags** (below) — tell the teacher which rows to
+  look at first.
 
-The design accepts teacher review as the residual filter: variance is larger
-than the gate tolerance, so the gate **cannot** be the acceptance criterion for
-individual submissions — it is the measurement instrument that tells you where
-the pipeline stands.
-
-## The Karl gate
-
-### What it measures
-
-`frontend/scripts/verify-karl-gate.py` compares the pipeline's output — read
-from the Docker volume's `results.json` (no LLM) — against
-`grading-output/final_2/`, which is **byte-identical** to the zip emailed to
-Karl (2026-08-11). Two tiers:
-
-| Tier | Check | Tolerance |
-|---|---|---|
-| **Dimensions (hard)** | each of the 5 dimensions vs the teacher's sent grade | ±0.5 |
-| **Rubric (soft)** | checked rubric keys per category, mandatory categories present, textareas present and non-filler | ≤ 2 key differences per category |
-
-A submission passes **only when both tiers pass**.
-
-### How to run it
-
-```bash
-cd frontend
-python3 scripts/verify-karl-gate.py            # full batch table + PASS count
-python3 scripts/verify-karl-gate.py --ids 2026SS_00,2026SS_04   # subset
-python3 scripts/verify-karl-gate.py --detail 2026SS_00          # key-level diff
-```
-
-### Current numbers (measured 2026-08-17/18)
-
-- Baseline (2026-08-17): **0/19 PASS**.
-- Docs grounding active (2026-08-18), 2026SS_00 + 2026SS_04: **0/2 PASS** —
-  unchanged within the known noise floor.
-- Representative failure: 2026SS_00 `code_execution_results` **2 vs 4
-  (Δ2.0)** — the one dimension outside tolerance, same as baseline.
-
-## The noise floor — why 0/N is a property, not a bug
-
-0/19 (and 0/2) is a **documented property** of the current design, not a
-defect: the pipeline is a single-shot LLM with ±2–3 point variance against a
-±0.5 gate tolerance, and the teacher is the residual filter by design. The
-gate is a **measurement instrument**, not an acceptance criterion: it exists
-to show where the pipeline stands after each change, and it stays at 0 until
-variance shrinks to gate tolerance or the gate's tolerance is revisited.
-
-The teacher (Karl) is the residual filter — and the calibration loop in the
-[Calibration guide](assignment-calibration.md) is the path to shrinking the
-residuals above.
+The single-shot LLM has real variance (dimensions can land a couple of points
+off a target), so the teacher remains the residual filter by design: the copilot
+produces a well-reviewed draft, the teacher approves the final grade.
 
 ## The confidence flags (deterministic, not an LLM judgement)
 
@@ -137,18 +86,19 @@ These are **not** an LLM judgement; they are a deterministic summary of the
 pipeline's own audit trail. They tell the teacher which rows to look at first,
 not what the grade should be.
 
-## How to re-measure
+## Per-assignment calibration (no real grades required)
 
-1. Run the real pipeline on 2–3 submissions with the small-batch live runner
+The calibration loop that keeps the pipeline honest works on **rubric
+conformance and deterministic evidence**, not necessarily real student grades:
+
+1. Run the real pipeline on a few submissions with the small-batch live runner
    (temp vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the
-   Docker volume; delete the file after). Recipe: the project skill's
-   `references/small-batch-live-runner.md`.
-2. Run the gate: `cd frontend && python3 scripts/verify-karl-gate.py --ids <ids>`.
-3. Compare against the numbers above — same values = unchanged; any delta is
-   the measured effect of the change.
-4. Tune the per-assignment scoring config (anchors, evidence patterns,
-   dimension guidance) and repeat — the full calibration loop is documented in
-   the [Calibration guide](assignment-calibration.md).
+   Docker volume, repo-root `.env` loaded, `preEvaluateSubmission(...)`, delete
+   the file after).
+2. Review the rubric selections and dimension scores in the UI.
+3. Tune the per-assignment scoring config (anchors, evidence patterns,
+   dimension guidance) via the scoring editor and re-run. The full loop is
+   documented in the [Calibration guide](assignment-calibration.md).
 
 > **Volume staleness pitfall:** the Docker volume holds its own copies of
 > `assignments.yaml`, `grading_config.yaml`, and `criteria/*.yaml` and can lag
@@ -162,26 +112,11 @@ lists the grading proposals extracted from the recorded copilot transcripts
 (no LLM; this is what CI/docs run) or, without `--dry-run`, replays them
 through the live rubric-fidelity judge on the copilot's own KI Connect model
 (concurrency 2, the empirical rate-limit ceiling; requires `KI_CONNECT_API_KEY`;
-use `--model <id>` when `data/settings.yaml` lags the deployment — the live
-baseline below was measured with `--model openai-gpt-oss-120b`).
+use `--model <id>` when `data/settings.yaml` lags the deployment).
 Proposals are grouped per assistant turn from the grading WRITE tools
 (`set-rubric-item` → rubric, `update-grade-dimension` → dimensions,
 `write-notes`/`draft-notes` → feedback) recorded under
 `DATA_DIR/copilot/memory/{threads,messages}/`; threads without grading writes
-(e.g. the `e2e-smoke` context-only thread) are skipped. Nothing is written —
-the harness only reads the store and prints a table + JSON report.
-
-Baseline (2026-08-19, dry-run extraction): **2 proposals from 2 recorded
-threads** — `9f4ccf99-b1eb-4a2e-a45a-9e49c2a53812` (turn 2: rubric
-`assignment_requirements`/`code_execution_results` = `complete`, dimensions
-`code_quality_design` 600 / `scientific_programming` 600, feedback present) and
-`46f266bd-56bf-4418-9e54-21dd257e390b` (turn 2: dimension
-`code_quality_design` 500 + feedback), both assignment `soil_contamination`.
-Live fidelity baseline (2026-08-19, `openai-gpt-oss-120b`, concurrency 2):
-**mean 0.00 / 2 proposals** (reproduced on a controller re-run the same night;
-one of three runs scored 0.5 — single-shot judge variance is the dominant
-signal at n=2). The recorded sessions' `update-grade-dimension` writes carry
-slider-scale values (600/500 on the tool's [0,1000] bound) far above the
-rubric's `max_points` (4–6), so the judge tends to flag both proposals as
-over-scoring. Treat any single live score as noise until more recorded
-grading turns exist; the harness (not the number) is the deliverable.
+are skipped. Nothing is written — the harness only reads the store and prints a
+table + JSON report. The harness (not any single score) is the deliverable:
+scores are single-shot judge noise until many more recorded grading turns exist.

@@ -56,19 +56,16 @@ uv run python app.py   # run the notebook-execution backend
 ```
 
 The executor is Python — it is **not** verified with vitest. Canonical
-verification for the whole project:
+verification for the whole project (harness-agnostic — any agent can run it):
 
 ```bash
-hermes verify --json
-```
-
-which runs: `pnpm install` → `build:student` → full `vitest run` → readiness
-probe on `http://127.0.0.1:4173/svelte_review/` expecting HTTP 200.
-
-### Karl ground-truth gate
-
-```bash
-cd frontend && python3 scripts/verify-karl-gate.py
+cd frontend
+pnpm install
+pnpm build:student              # static build → build/
+unset ADAPTER NODE_ENV KI_CONNECT_API_KEY
+pnpm vitest run                  # full suite (≈123 files / ~1488 tests)
+# then serve build/ (e.g. pnpm preview) and probe:
+#   GET http://127.0.0.1:4173/svelte_review/  → expect HTTP 200
 ```
 
 ## The per-package discipline (no direct pushes)
@@ -88,8 +85,9 @@ change follows the chain:
    `scoring-config.test.ts`. Any change to the prompt template, dimension
    guidance, or anchor substitution breaks the gate — regenerate the fixture
    deliberately, never silently.
-2. **Karl ground-truth gate** (`verify-karl-gate.py`) must keep passing — it
-   validates pre-evaluation quality against the Karl reference run.
+2. **No real student grading data in this repo.** Submission notebooks,
+   grades, cohort norms, and grading-output are excluded (gitignored or
+   removed 2026-08-20 for privacy). Never reintroduce real student data.
 3. **KI Connect concurrency ceiling is 2.** Do **not** raise the concurrency
    limit without first measuring against KI Connect's rate limits.
 4. **Student notebook content must be screened** before it enters any prompt.

@@ -31,9 +31,10 @@ run — vitest ignores the positional filter and runs the whole suite. Use
 ## Verification
 
 - Type-check: `pnpm check` (hard gate: 0 errors / 0 warnings).
-- Whole-project canonical verify (install → build → tests → preview probe):
-  `hermes verify --json` (from the repo root).
-- Karl ground-truth gate: `cd frontend && python3 scripts/verify-karl-gate.py`.
+- Whole-project canonical verify (from the repo root): `pnpm install` →
+  `pnpm build:student` → `unset ADAPTER NODE_ENV KI_CONNECT_API_KEY` →
+  `pnpm vitest run` → preview probe on `http://127.0.0.1:4173/svelte_review/`
+  (HTTP 200).
 
 ## Frontend invariants
 

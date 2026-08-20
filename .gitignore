@@ -19,6 +19,10 @@ data/materials/
 # Grading analysis artifacts (student grades) — never committed
 grading-output/
 
+# Student notebook data exposed via the public student build — never committed
+# (dir was removed 2026-08-19; guard stays so it can never resurrect)
+frontend/static/data/
+
 # Hermes agent config (keep local)
 .hermes/*
 !.hermes/plans/

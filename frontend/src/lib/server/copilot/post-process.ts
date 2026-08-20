@@ -5,7 +5,8 @@
  * Takes the pre-evaluation envelope (dimension scores + rubric selections +
  * additional notes) plus the deterministic pre-analysis and the execution
  * record, and applies pure-logic corrections distilled from the manual
- * subagent grading waves (grading-output/final_2 ground truth):
+ * subagent grading waves (reference grading — student grades are removed
+ * from this repo for privacy):
  *
  *   Pass 1 — fill-empty:        mandatory categories (GenAI, callingFunction,
  *                               general, followingInstructions) must have at
@@ -134,13 +135,13 @@ const GENERAL_OKAY = "okay  - there is notable room for improvement";
 /**
  * Weighted-percentage bands for the general_feedback rating checkbox/note.
  *
- * Calibrated 2026-08-17 against the emailed ground truth
- * (grading-output/emailed-sources/2026SS_soil_contamination/): the professor
- * rated 79.0% weighted as "okay" (2026SS_23) and 86.5% as "good"
- * (2026SS_70), while 87.0% was "very good" (2026SS_17/43) — so "good" starts
- * at 80 (matching data/grading_config.yaml grade 2.0/B+) and "very good" at
- * 87. The old >=70/>=85 thresholds drifted into "good"/"very good" where the
- * professor sent "okay"/"good".
+ * Calibrated 2026-08-17 against the professor's reference grading for
+ * soil_contamination (removed 2026-08-20 for privacy — grades are no longer
+ * part of this repo): the thresholds match data/grading_config.yaml grade
+ * bands (grade 2.0/B+ at 80, "very good" at 87). The old >=70/>=85
+ * thresholds drifted into "good"/"very good" where the professor sent
+ * "okay"/"good"; the bands were corrected so the checkbox follows the same
+ * scale as the grade calculator.
  */
 function generalOptionForPercentage(weighted: number): string {
 	if (weighted >= 95) return GENERAL_EXCELLENT;

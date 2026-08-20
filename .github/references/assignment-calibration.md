@@ -28,9 +28,8 @@ Soil contamination reached gate-parity through this loop, repeated:
 1. **Run the real pipeline on 2-3 submissions** — small-batch live runner (a temp
    vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the Docker volume,
    repo-root `.env` loaded, `preEvaluateSubmission(...)`, delete the file after).
-2. **Compare dimension scores against the teacher's OWN grades** for those
-   submissions: `python3 scripts/verify-karl-gate.py --ids <ids>` (from
-   `frontend/`). Tolerance: ±0.5 per dimension.
+2. **Compare dimension scores and rubric selections against a reference grading**
+   for those submissions. Tolerance: ±0.5 per dimension.
 3. **Tune the scoring config**: evidence regexes (`evidence_patterns`) and the
    per-dimension guide text (`prompt_anchor_text.dimension_guidance`) via the
    scoring editor. Re-run until within tolerance.

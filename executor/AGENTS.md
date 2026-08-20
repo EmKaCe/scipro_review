@@ -29,7 +29,10 @@ committed). On Python-only changes you may need `uv sync` to refresh.
 
 The executor is **Python** — it is **not** part of the frontend's vitest
 suite. Verify the whole project, including executor wiring, with the root
-`hermes verify --json` recipe. Never add executor behavior to the vitest run.
+`AGENTS.md` canonical recipe (`pnpm install` → `build:student` → full
+`vitest run` → preview probe on `http://127.0.0.1:4173/svelte_review/`).
+Never add executor behavior to the vitest run. The executor's own tests run
+under pytest: `uv run pytest` (from `executor/`).
 
 ## Notes
 

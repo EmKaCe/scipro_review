@@ -23,8 +23,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------------------
-// Environment bootstrap — must run before the $lib import chain is evaluated
-// (same recipe as scripts/run-milestone.ts).
+// Environment bootstrap — must run before the $lib import chain is evaluated.
 // ---------------------------------------------------------------------------
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");

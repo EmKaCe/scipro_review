@@ -40,7 +40,7 @@ The next implementation must not do any of these.
 Keep a single markdown document per submission in the pipeline state. It contains:
 
 ```markdown
-# Pre-Evaluation Worksheet: 2026SS_00
+# Pre-Evaluation Worksheet: <submission_id>
 
 ## Context
 - Assignment: soil_contamination
@@ -115,10 +115,10 @@ The parser must enforce, and the retry loop must preserve:
 
 Before touching the full 19-submission cohort, implement the new contract for **one submission** and one rubric category.
 
-1. Pick `2026SS_00` and the `code_formatting` category.
+1. Pick a single submission and one rubric category (e.g. `code_formatting`).
 2. Write a standalone script or route that runs the per-category protocol above.
-3. Compare the resulting worksheet section to the corresponding section in `grading-output/final_2/2026SS_00.json`.
-4. Iterate until the section matches the ground truth.
+3. Compare the resulting worksheet section to a reference grading (rubric keys map to "checked", dimension keys, notes) for that submission.
+4. Iterate until the section matches the reference.
 
 Only after that single-category milestone is met should the implementation expand to all categories and all submissions.
 
@@ -130,7 +130,7 @@ Only after that single-category milestone is met should the implementation expan
 - Modify `frontend/src/lib/server/copilot/worksheet.ts` as needed to expose section-level parsing and validation for the retry loop.
 - Add mutual-exclusion pair configuration to the criteria schema or hard-code it for the 14 categories initially.
 - Update tests in `frontend/src/tests/copilot/pre-evaluation.test.ts` to expect per-category calls, not batch calls.
-- Use `grading-output/final_2/*.json` as ground truth for the single-submission milestone.
+- Use a reference grading (rubric keys + dimension scores + notes) as ground truth for the single-submission milestone.
 
 ## 6. What the next Hermes session is NOT allowed to do
 
@@ -147,7 +147,7 @@ Only after that single-category milestone is met should the implementation expan
 The pipeline is correct when:
 
 1. A single submission's pre-evaluation produces a worksheet where **every category section parses cleanly with zero unmatched items and zero mutual-exclusion violations**.
-2. The rubric selections for `2026SS_00` and `2026SS_04` match the `final_2/` ground truth within a small tolerance (≤2 selection differences per category, no missing mandatory categories).
+2. The rubric selections for a reference submission match a reference grading within a small tolerance (≤2 selection differences per category, no missing mandatory categories).
 3. The total number of LLM calls per submission is **≥14 for rubric selection alone** (one per category), not ≤4.
 4. No post-processing pass is needed to make the rubric selections valid — they are valid before post-processing runs.
 
@@ -155,7 +155,6 @@ The pipeline is correct when:
 
 ## 8. References
 
-- `grading-output/final_2/` — ground-truth manually corrected JSONs.
 - `frontend/src/lib/server/copilot/pre-evaluation.ts` — current pipeline.
 - `frontend/src/lib/server/copilot/worksheet.ts` — worksheet generation/parsing.
 - `frontend/src/lib/server/copilot/post-process.ts` — existing deterministic passes (must become unnecessary for rubric validity, still useful for policy rules like stripping plagiarism language).
