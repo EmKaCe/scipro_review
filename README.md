@@ -30,6 +30,103 @@ Both modes share the same SvelteKit codebase. The build adapter (`ADAPTER=static
 
 ---
 
+## Getting Started
+
+Pick the build you need first (see **Which build do you want?** below), then run one of these two paths:
+
+### Teacher mode (grading dashboard + notebook execution)
+
+Fastest path is Docker — it launches the full teacher release (web app + execution backend) on port `4174`:
+
+```bash
+cp .env.example .env       # then edit ORIGIN and set a KI_CONNECT_API_KEY
+docker compose up -d       # open http://localhost:4174
+```
+
+Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
+reaching the app from another machine) — it is required for CSRF-safe file uploads.
+From source instead:
+
+```bash
+cd frontend
+pnpm install
+pnpm dev:teacher      # dev server, teacher/node mode at localhost:5173
+pnpm build:teacher    # Node build → frontend/build/
+pnpm start:teacher    # or run the built server on port 4174
+```
+
+### Student mode (static SPA for GitHub Pages)
+
+```bash
+cd frontend
+pnpm install
+pnpm dev:student      # dev server, student/static mode at localhost:5173
+pnpm build:student    # static build → frontend/build/ (deploy to GitHub Pages)
+pnpm start:student    # serve the static build on port 4173
+```
+
+For the full walkthrough — `.env` variables, first start, uploads, pipeline,
+grading, backup — see the in-app **teacher documentation** at [`/docs`](frontend/src/routes/docs/+page.svelte)
+and the **Documentation** list below.
+
+---
+
+## Which build do you want?
+
+SciPro Review ships **two builds from the same codebase**, selected by the
+`ADAPTER` environment variable. They are not interchangeable — decide before you build:
+
+| | **Teacher build** (`ADAPTER=node`) | **Student build** (`ADAPTER=static`) |
+|---|---|---|
+| What it is | Node server + Python execution backend (`executor/`) | Static SPA — no server |
+| Features | Grading dashboard, notebook upload & execution, pre-eval pipeline, AI copilot, per-submission review | Structured peer review, rubric evaluation, export, undo/redo — all in-browser |
+| Persistence | Server-side (`DATA_DIR`); runs locally or in Docker on port `4174` | IndexedDB in the browser — data stays on the device |
+| Deploy | Local / Docker / your own server | GitHub Pages (see the student URL at the top) |
+
+**Picking:**
+
+- You want to **grade notebook submissions** (upload, execute, pre-evaluate,
+  copilot) → **teacher build**. This is the full tool and what the docs assume.
+- You only need the **student peer-review experience** on a static host — or you
+  are just previewing on GitHub Pages → **student build**.
+
+> ⚠️ Always `rm -rf build` when switching adapters — `frontend/build/` is shared
+> between the two of them.
+
+---
+
+## Honest limitations
+
+SciPro Review is real and works for its documented scope — and we keep the
+boundaries honest. Before you rely on it:
+
+- **The docs-RAG *semantic* leg is the weak leg.** Retrieval has two paths:
+  **BM25** — good at exact API names and identifiers — and a **semantic /
+  paraphrase** path (vector search over a **4096-dim** embedding model,
+  `e5-mistral-7b-instruct`). The semantic leg needs a **live provider key and a
+  matching 4096-dim embedder**, typically the same KI Connect–style endpoint.
+  If the embedder is unavailable or the vector space doesn't match, vector
+  search **degrades to BM25-only** (the index loader never throws; it logs a
+  `loadNote`). That is not a crash — it is a quieter, exact-match search, and
+  paraphrase-style queries are the first thing to degrade when the semantic leg
+  is down.
+- **The executor is localhost-only by design (D4).** The notebook-execution
+  backend is **not hardened sandboxing** — binding it to a network interface is
+  an **accepted, documented security risk**. Keep it on localhost (the Docker
+  default); do not expose it publicly. Treat it as trusted-lan trust only.
+- **The grading copilot is a teacher-accelerator, not an autograder.** The
+  pre-evaluation emits a draft plus a `gradingConfidence` and explicit flags. A
+  human teacher **must** review and Accept/Reject each evaluation before it
+  becomes a grade. See the [Quality statement](.github/references/quality-statement.md)
+  for what it gets right, what still needs review, and the confidence flags.
+- **A provider swap must be validated, not assumed.** The app works with any
+  OpenAI-compatible endpoint, but one that 200s on a ping can still return
+  out-of-spec embeddings or bail on tool calls silently. Verify LLM calls
+  **and** docs-RAG retrieval over real runs before trusting a new provider
+  (see the Configuration section and its Validation note).
+
+---
+
 ## Documentation
 
 The app ships with an in-app **teacher documentation** page at [`/docs`](frontend/src/routes/docs/+page.svelte), covering:
@@ -46,7 +143,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 
 > **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.  
 > **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.  
-> **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.  
+> **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, and the confidence flags.  
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.  
 > **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.  
 > **Why is it structured this way?** Read the [decision records](.github/references/decisions/) (e.g. the monolith-split ADR).
@@ -105,6 +202,46 @@ Deployment-level. Set in `.env` / the environment **before** starting the server
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `PRE_EVAL_CRITIQUE` | on (`1`) | Set to `0` to disable the extra pre-evaluation critique pass (cost/quality tradeoff). |
+
+### Switching LLM/embeddings provider (e.g. OpenRouter)
+
+KI Connect (`chat.kiconnect.nrw`) is the **default** provider, but it is only an
+OpenAI-compatible endpoint — the app works with **any** provider that speaks
+that protocol. External users who cannot reach the NRW gateway can point the app
+at their own provider (OpenRouter is a first-class documented target). Two
+equivalent ways to switch:
+
+| What | Where | Notes |
+| --- | --- | --- |
+| Base URL | `data/settings.yaml` → `llm.base_url`, or `KI_CONNECT_BASE_URL` env | e.g. `https://openrouter.ai/api/v1` |
+| Model | `data/settings.yaml` → `llm.model`, or `KI_CONNECT_MODEL` env | Provider-specific id — use the **`<model-id>`** from the provider's model list (e.g. OpenRouter's `/models`), not an invented name |
+| Timeout | `data/settings.yaml` → `llm.timeout_ms`, or `KI_CONNECT_TIMEOUT_MS` env | Default `60000` |
+| API key | Runtime **Settings → Execution & AI**, or `KI_CONNECT_API_KEY` env | **Never** written to `data/settings.yaml` or committed; replaceable at runtime |
+
+**Precedence:** a value in `data/settings.yaml` wins, then the matching
+environment variable, then the built-in default (see `settings.ts` —
+`fileString`/`fileNumber` over `envString`/`envNumber` over
+`DEFAULT_LLM_*`). The Settings **UI** edits the YAML, so changing it there makes
+the swap apply live (next LLM request); env vars apply on restart and are the
+canonical path for deploy-time / per-instance config.
+
+**Embeddings caveat (docs-RAG).** The query embedder uses the **AI SDK
+provider** (`provider.embeddingModel`, model `e5-mistral-7b-instruct`) — but it
+reads its endpoint and key from the **environment only** (`KI_CONNECT_BASE_URL`,
+`KI_CONNECT_API_KEY` — see `docs-rag.ts`); it does **not** follow
+`data/settings.yaml`'s `llm.base_url`. So an env-var provider swap covers both
+LLM and embeddings, while a Settings-page swap covers the LLM only. Your chosen
+provider must keep the **4096-dimension** contract of `docs-vectors.bin` — on a
+dimension mismatch, vector search **degrades to BM25-only** (the index loader
+never throws; the degradation is logged). Prefer an embedding model that returns
+the same 4096-d vector space.
+
+> **Validation (D2):** a provider swap is accepted **good**, not just
+> *compatible*. After switching, verify end-to-end over real runs — an
+> OpenAI-compatible API that 200s on a ping but returns out-of-spec embeddings
+> or bails on tool calls silently weakens the copilot. Confirm both the LLM
+> calls **and** the docs-RAG retrieval behave correctly (search quality and
+> non-degraded dimension) before treating the swap as done.
 
 ### `data/settings.yaml` — app-level runtime settings
 
@@ -179,7 +316,7 @@ harness (Claude / Codex, Gemini CLI, Cursor, GitHub Copilot):
   [`executor/AGENTS.md`](executor/AGENTS.md), and
   [`data/AGENTS.md`](data/AGENTS.md). Together they encode the build/verify
   commands, the per-package local-commit discipline, and the key invariants
-  (golden-prompt byte-equality, the Karl gate, KI Connect concurrency).
+  (golden-prompt byte-equality, the synthetic grading gate, KI Connect concurrency).
 - `.github/` remains the **GitHub-native complement**: `agents/*.agent.md`,
   `instructions/`, `copilot-instructions.md`, and `skills/` are Copilot-specific
   and never override `AGENTS.md`.
