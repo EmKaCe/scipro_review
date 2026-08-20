@@ -44,30 +44,130 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
 
-> **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.
-> **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.
-> **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.
-> **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.
-> **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.
+> **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.  
+> **New assignment?** Read the [Calibration guide](.github/references/assignment-calibration.md) — how to onboard a new assignment to soil-contamination-quality pre-evaluation and copilot support.  
+> **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, the measured Karl-gate numbers, and the confidence flags.  
+> **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.  
+> **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.  
 > **Why is it structured this way?** Read the [decision records](.github/references/decisions/) (e.g. the monolith-split ADR).
 
-## Settings map
+## Configuration
 
-Configuration lives across **six surfaces**. The Settings page (`/settings`) indexes them all in a
-"Configuration map" card; this is the reference for what goes where.
+For day-to-day use, **nearly all configuration happens on one Settings page** (`/settings`) — Execution
+& AI, Grading, and Appearance. Per-assignment content is edited in the assignment editor. Only
+deployment-level env vars and a few read-only code constants live elsewhere: standing up the webapp is
+*not* a six-place exercise.
 
-| Surface | What it holds | Where it's edited |
+Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`) are edited from the
+Settings page; the tables here are their reference. **Precedence:** a value set in the YAML file wins,
+then the matching environment variable, then the built-in default. Secrets (`KI_CONNECT_API_KEY`) are
+never written to a settings file.
+
+### Environment variables
+
+Deployment-level. Set in `.env` / the environment **before** starting the server; restart to apply.
+[`.env.example`](.env.example) is the canonical template.
+
+**Deployment & build**
+
+| Variable | Default | Purpose |
 | --- | --- | --- |
-| **Environment variables** | Deployment-level: `DATA_DIR`, `DOCS_INDEX_DIR`, `ORIGIN`, `PRE_EVAL_CRITIQUE`, `KI_CONNECT_BASE_URL`, `KI_CONNECT_API_KEY` (secret) | Environment / `.env` — **restart to apply**. The API key can be set at runtime under Settings → Execution & AI (masked, never read back). |
-| **`data/settings.yaml`** | App-level: executor timeouts, LLM provider (base URL / model / timeout), copilot (approval mode, allow/deny tools, TTL, session cap, recall window, auto-compact) | Settings → Execution & AI. Read fresh on every request, so a save applies immediately; LLM endpoint/model changes apply on the next LLM request (copilot agent may need a restart). |
-| **`data/grading_config.yaml`** | **Global** grading config: dimensions (key/title/`max_points`/weight) + grade boundaries | Settings → Grading. Validated and written atomically; read fresh by grading pages on load. |
-| **Assignment editor** | **Per-assignment** (app-vs-assignment rule): rubric criteria (`data/criteria/<id>.yaml`), scoring config (anchors, evidence regexes, disallowed libs, dimension guidance — `data/scoring/<id>.yaml`), assignment metadata (`data/assignments.yaml`) | Assignment editor → Criteria / Scoring. Not on the Settings page. |
-| **localStorage** | Browser-only, per-device: color scheme, autosave (`scipro-settings`) | Settings → Appearance. |
-| **Code constants** | Injection threshold 0.7 (`copilot/agent.ts`), KI Connect concurrency 2 (`routes/api/submissions/pre-evaluate/+server.ts`), `TEXTAREA_MIN_CHARS` 20 (`copilot/post-process.ts`), rich-output caps (`RICH_OUTPUT_MAX_IMAGE_BYTES` / `RICH_OUTPUT_MAX_HTML_CHARS`, env-driven in the executor) | Read-only — edit source (or env) + rebuild / restart. |
+| `ADAPTER` | `node` | Build adapter: `node` (teacher server) or `static` (student SPA). |
+| `NODE_ENV` | `production` | Node runtime mode (`production`/`development`). |
+| `PORT` | `4174` | Port the teacher Node server listens on. |
+| `ORIGIN` | `http://localhost:4174` | Canonical origin teachers use to reach the app. Required for CSRF-safe form POSTs (uploads, materials) over plain HTTP — set it to the address you actually use (e.g. `http://192.168.1.10:4174`). |
+| `DATA_DIR` | `./data` (Docker: `/app/data`) | Data root for all runtime config and state (settings, assignments, grading config, criteria, submissions, docs index). |
+| `DOCS_INDEX_DIR` | `<DATA_DIR>/docs-index` | Docs-RAG index directory holding `docs-index.json` + `docs-vectors.bin`. |
+| `COMPOSE_PROJECT_NAME` | `svelte-review` | Docker Compose project name (container/volume prefix). |
 
-Application-level changes (llm/executor/copilot, env vars, localStorage, in-code) belong in the
-Settings UI; assignment-level changes (per-assignment llm/executor/copilot, criteria, scoring) belong
-in the assignment editor. A global llm/executor/copilot setting goes on the normal settings page.
+**Executor (Python backend)**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `EXECUTOR_URL` | `http://executor:8766` | Base URL the frontend uses to reach the notebook-execution backend. |
+| `EXECUTOR_PORT` | `8766` | Port the FastAPI executor binds. |
+| `EXECUTOR_LOG_LEVEL` | `info` | Executor log verbosity (`debug`/`info`/`warning`/`error`). |
+| `RICH_OUTPUT_MAX_IMAGE_BYTES` | `5242880` (5 MiB) | Cell image outputs larger than this are skipped (not stored) when saving rich results. |
+| `RICH_OUTPUT_MAX_HTML_CHARS` | `200000` | Cell HTML outputs longer than this are truncated. |
+
+**LLM (KI Connect)**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `KI_CONNECT_BASE_URL` | `https://chat.kiconnect.nrw/api/v1` | OpenAI-compatible API base URL (env fallback for `llm.base_url`). |
+| `KI_CONNECT_API_KEY` | — (secret) | Bearer token. Never written to a settings file or sent back to the browser; replaceable at runtime under Settings → Execution & AI. |
+| `KI_CONNECT_MODEL` | `qwen3-30b-a3b-instruct-2507` | Default model (env fallback for `llm.model`). |
+| `KI_CONNECT_TIMEOUT_MS` | `60000` | LLM request timeout (env fallback for `llm.timeout_ms`). |
+| `SCREENING_MODEL` | (small default) | Overrides the model used to screen untrusted notebook content before it reaches a prompt. |
+
+**Pipeline toggle**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PRE_EVAL_CRITIQUE` | on (`1`) | Set to `0` to disable the extra pre-evaluation critique pass (cost/quality tradeoff). |
+
+### `data/settings.yaml` — app-level runtime settings
+
+Edited on **Settings → Execution & AI**. Read fresh on every request, so a save applies immediately
+(LLM endpoint/model apply on the next LLM request; the copilot agent may need a restart). All keys
+optional; defaults shown.
+
+**`executor`** — execution budgets (each falls back to `EXECUTOR_REQUEST_TIMEOUT_MS`,
+`EXECUTOR_NOTEBOOK_TIMEOUT_MS`, `EXECUTOR_CELL_TIMEOUT_S` respectively)
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `executor.request_timeout_ms` | `30000` | HTTP timeout for a single notebook execution. |
+| `executor.notebook_timeout_ms` | `120000` | Per-notebook budget for a batch run. |
+| `executor.cell_timeout_s` | `30` | Per-cell execution timeout sent to the executor. |
+
+**`llm`** — LLM provider
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `llm.base_url` | `https://chat.kiconnect.nrw/api/v1` | LLM provider base URL (env: `KI_CONNECT_BASE_URL`). |
+| `llm.model` | `qwen3-30b-a3b-instruct-2507` | Model id (env: `KI_CONNECT_MODEL`). |
+| `llm.timeout_ms` | `60000` | LLM request timeout (env: `KI_CONNECT_TIMEOUT_MS`). |
+
+**`copilot`** — copilot behavior
+
+| Key | Default | What it does |
+| --- | --- | --- |
+| `copilot.mode` | `ask` | Approval mode: `ask` / `read-only` / `auto-approve-all`. |
+| `copilot.allowed_tools` | `[]` | Tools auto-approvable in `ask` mode (session-capped). |
+| `copilot.deny_tools` | `[]` | Tools that are never callable. |
+| `copilot.approval_ttl_seconds` | `60` | How long an approval card stays valid. |
+| `copilot.session_cap` | `20` | Auto-approvals per session in `ask` mode. |
+| `copilot.last_messages` | model-aware | Recall window (`1`–`50`); omitted → resolved from the LLM's context size. |
+| `copilot.auto_compact` | `true` | Summarize out-of-window messages (cost guard; `false` disables the extra LLM calls). |
+
+### `data/grading_config.yaml` — global grading config
+
+Edited on **Settings → Grading**. Global grading dimensions (key/title/`max_points`/weight) + grade
+boundaries. Validated and written atomically; read fresh on grading-page load.
+
+### Appearance
+
+Color scheme (light/dark/system) and autosave. Stored in browser `localStorage` (per-device, not
+synced). Edited on Settings → Appearance.
+
+### Assignment editor
+
+Per-assignment content (the app-vs-assignment rule): rubric criteria (`data/criteria/<id>.yaml`),
+scoring config (anchors, evidence regexes, disallowed libs, dimension guidance —
+`data/scoring/<id>.yaml`), and assignment metadata (`data/assignments.yaml`). Not on the Settings page.
+
+### Read-only code constants
+
+Engineering defaults a teacher never adjusts: injection threshold 0.7 (`copilot/agent.ts`), KI Connect
+concurrency 2 (`routes/api/submissions/pre-evaluate/+server.ts`), `TEXTAREA_MIN_CHARS` 20
+(`copilot/post-process.ts`).
+
+---
+
+**Rule of thumb:** **app-level** changes (llm/executor/copilot, env, localStorage, in-code) go on the
+Settings page; **assignment-level** changes (criteria, scoring, per-assignment metadata) go in the
+assignment editor. The Settings page shows the full "Configuration map" for reference.
 
 ### Agent Configuration
 
@@ -106,20 +206,50 @@ teacher-mode production release.
 
 ## Tech Stack
 
-| Technology      | Purpose                                            |
-| --------------- | -------------------------------------------------- |
-| SvelteKit 2     | App framework (SPA + Node server)                  |
-| Svelte 5        | UI with runes (`$state`, `$derived`, `$effect`)    |
-| Tailwind CSS v4 | Utility-first styling                              |
-| Dependency-free UI primitives | Hand-rolled tooltip/button/checkbox components |
-| TypeScript 6    | Type-safe source                                   |
-| IndexedDB       | Client-side persistence (student mode)             |
-| js-yaml         | Criteria loading and export                        |
-| Zod 4           | Import validation                                  |
-| marked          | Evaluation Markdown rendering                      |
-| Vitest          | Unit testing                                       |
+The teacher app is a Node/SvelteKit server that orchestrates a Python notebook-execution backend and an
+AI copilot agent over an OpenAI-compatible LLM API (KI Connect).
 
----
+**Frontend**
+
+| Technology | Purpose |
+| --- | --- |
+| SvelteKit 2 | App framework — student SPA (`adapter-static`) + teacher Node server (`adapter-node`) |
+| Svelte 5 | UI with runes (`$state`, `$derived`, `$effect`) |
+| Tailwind CSS v4 | Utility-first styling (+ `@tailwindcss/typography`, `@tailwindcss/forms`) |
+| Hand-rolled UI primitives | Buttons, checkboxes, tooltips built on Tailwind + lucide icons |
+| `@lucide/svelte` | Icons |
+| IndexedDB (`idb`) | Client-side persistence (student mode) |
+| Tiptap, KaTeX, highlight.js | Rich evaluation editor + math/code rendering |
+| marked | Evaluation Markdown rendering |
+
+**Backend & execution** (`executor/`)
+
+| Technology | Purpose |
+| --- | --- |
+| Python 3.12, managed with uv | Notebook-execution backend |
+| FastAPI / uvicorn | Executor HTTP service |
+| nbformat / nbclient / ipykernel | Jupyter notebook parsing and execution |
+| numpy, pandas, scipy, scikit-learn, matplotlib, seaborn, sympy | Course curriculum (scientific Python) |
+
+**AI copilot**
+
+| Technology | Purpose |
+| --- | --- |
+| `@mastra/core` + `@mastra/memory` | Copilot agent harness — plan/act/approve loop, thread memory |
+| `@ai-sdk/openai-compatible` + KI Connect | OpenAI-compatible LLM calls (`ki-connect.ts`, `executor/ki_connect.py`) |
+| minisearch | Local docs-index search (BM25 / RAG retrieval) |
+
+**Dev & test**
+
+| Technology | Purpose |
+| --- | --- |
+| TypeScript 6 | Type-safe source |
+| Zod 4 | Validation (imports, config) |
+| js-yaml | YAML config loading and export |
+| Vitest + `@testing-library/svelte` | Unit / component tests |
+| Playwright | End-to-end tests |
+| `fflate` | Backup / restore ZIP |
+| pnpm | Package manager |
 
 ## Development Setup
 

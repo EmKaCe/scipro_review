@@ -1,25 +1,24 @@
 <script lang="ts">
 	/**
-	 * @file Settings card — a read-only "configuration map" indexing every
-	 * configurable across the six configuration surfaces, where it lives, and
-	 * where each is edited. Keeps the settings page scannable instead of a
-	 * wall of fields.
+	 * @file Settings card — indexes every configurable, where it lives, and
+	 * where each is edited. Groups config by *purpose* rather than by raw
+	 * surface, so the "Configuration map" reads as "nearly everything is here
+	 * on this page" instead of implying a teacher must touch six separate
+	 * places to set up the app.
 	 *
-	 * The six surfaces:
-	 *   1. Environment variables  (deployment; restart to apply)
-	 *   2. data/settings.yaml     (edited on this page → Execution & AI)
-	 *   3. data/grading_config.yaml (edited on this page → Grading)
-	 *   4. Assignment editor      (per-assignment; NOT on the settings page)
-	 *   5. localStorage           (browser; edited on this page → Appearance)
-	 *   6. Code constants         (read-only; edit source + rebuild)
+	 * Groups:
+	 *   1. Settings page         (edited here → Execution & AI / Grading / Appearance)
+	 *   2. Assignment editor     (per-assignment; NOT on the settings page)
+	 *   3. Deployment environment (set once at setup; restart to apply)
+	 *   4. Read-only constants   (engineering defaults; edit source + rebuild)
 	 *
-	 * Reload semantics: surfaces 2 & 3 are read fresh, so a save applies hot.
-	 * Env vars and code constants need a restart. LLM endpoint/model changes
-	 * apply on the next LLM request; the copilot agent's held model may need
-	 * a restart.
+	 * Reload semantics: groups 1's file-backed rows are read fresh, so a save
+	 * applies hot. Groups 3 and 4 need a restart / rebuild. LLM endpoint/model
+	 * apply on the next LLM request; the copilot agent's held model may need a
+	 * restart.
 	 */
 
-	type SurfaceKey = "env" | "settings" | "grading" | "assignment" | "local" | "code";
+	type SectionKey = "settings" | "assignment" | "deploy" | "code";
 	type BadgeTone = "warning" | "success" | "primary" | "muted";
 
 	interface MapRow {
@@ -33,107 +32,68 @@
 
 	interface MapSection {
 		surface: string;
-		key: SurfaceKey;
+		key: SectionKey;
 		intro?: string;
 		rows: MapRow[];
 	}
 
-	const toneClass: Record<SurfaceKey, BadgeTone> = {
-		env: "warning",
+	const toneClass: Record<SectionKey, BadgeTone> = {
 		settings: "success",
-		grading: "success",
 		assignment: "primary",
-		local: "muted",
+		deploy: "warning",
 		code: "muted",
 	};
 
 	const SECTIONS: MapSection[] = [
 		{
-			surface: "Environment variables",
-			key: "env",
-			intro: "Deployment-level. Set in the environment / .env — requires a restart to apply.",
-			rows: [
-				{
-					name: "DATA_DIR",
-					description: "Data root for all runtime config and state (e.g. /app/data in Docker).",
-					affordance: "Set in the environment / .env",
-					note: "Not editable here.",
-				},
-				{
-					name: "DOCS_INDEX_DIR",
-					description: "Docs-RAG index directory (docs-index.json + vectors).",
-					affordance: "Set in the environment / .env",
-					note: "Not editable here.",
-				},
-				{
-					name: "ORIGIN",
-					description: "Canonical origin URL of the deployment.",
-					affordance: "Set in the environment / .env",
-					note: "Not editable here.",
-				},
-				{
-					name: "PRE_EVAL_CRITIQUE",
-					description: "Set to 0 to disable the pre-evaluation critique pass (cost/quality toggle).",
-					affordance: "Set in the environment / .env",
-					note: "Not editable here.",
-				},
-				{
-					name: "KI_CONNECT_BASE_URL",
-					description: "KI Connect base URL fallback. Also overridable in settings.yaml below.",
-					affordance: "Env, or this page → Execution & AI",
-				},
-				{
-					name: "KI_CONNECT_API_KEY",
-					description: "KI Connect bearer token. Stored in the server process only — never sent back to the browser.",
-					affordance: "This page → Execution & AI",
-					note: "Secret — masked; not readable.",
-					secret: true,
-				},
-			],
-		},
-		{
-			surface: "data/settings.yaml",
+			surface: "Settings page",
 			key: "settings",
-			intro: "App-level runtime settings. Read fresh on every request, so a save applies immediately.",
+			intro: "Almost everything is edited here, in one place. Saves apply immediately (LLM endpoint/model changes apply on the next request).",
 			rows: [
-				{
-					name: "Executor timeouts",
-					description: "Request / per-notebook / per-cell execution budgets.",
-					affordance: "This page → Execution & AI",
-				},
 				{
 					name: "LLM provider",
-					description: "Base URL, model, request timeout. Applies on the next LLM request; the copilot agent may need a restart.",
+					description: "Base URL, model, request timeout (data/settings.yaml). Applies on the next LLM request; the copilot agent may need a restart.",
+					affordance: "This page → Execution & AI",
+				},
+				{
+					name: "Executor timeouts",
+					description: "Request / per-notebook / per-cell execution budgets (data/settings.yaml).",
 					affordance: "This page → Execution & AI",
 				},
 				{
 					name: "Copilot",
-					description: "Approval mode, allowed/deny tools, approval TTL, session cap, recall window, auto-compact.",
+					description: "Approval mode, allowed/deny tools, approval TTL, session cap, recall window, auto-compact (data/settings.yaml).",
 					affordance: "This page → Execution & AI",
 				},
-			],
-		},
-		{
-			surface: "data/grading_config.yaml",
-			key: "grading",
-			intro: "Global grading config shared across all assignments. Read fresh on grading-page load.",
-			rows: [
 				{
-					name: "Dimensions",
-					description: "Global grading dimensions (key / title / max_points / weight).",
+					name: "Grading dimensions",
+					description: "Global grading dimensions (key / title / max_points / weight) (data/grading_config.yaml).",
 					affordance: "This page → Grading",
 				},
 				{
 					name: "Grade boundaries",
-					description: "Percentage → German grade / label / US equivalent bands.",
+					description: "Percentage → German grade / label / US equivalent bands (data/grading_config.yaml).",
 					affordance: "This page → Grading",
+				},
+				{
+					name: "KI Connect API key",
+					description: "KI Connect bearer token (also settable via env at deploy). Stored in the server process only — never sent back to the browser.",
+					affordance: "This page → Execution & AI",
+					note: "Secret — masked; not readable.",
+					secret: true,
+				},
+				{
+					name: "Appearance",
+					description: "Color scheme (light / dark / system) and autosave (localStorage).",
+					affordance: "This page → Appearance",
+					note: "Per-device, not shared.",
 				},
 			],
 		},
 		{
 			surface: "Assignment editor",
 			key: "assignment",
-			intro: "Per-assignment config. Per the app-vs-assignment rule these live in the assignment editor, NOT on the settings page.",
+			intro: "Per-assignment content. Per the app-vs-assignment rule these live in the assignment editor, NOT on the settings page.",
 			rows: [
 				{
 					name: "Rubric criteria",
@@ -153,21 +113,45 @@
 			],
 		},
 		{
-			surface: "localStorage",
-			key: "local",
-			intro: "Browser-only, per-device preferences (scipro-settings). Not shared or synced.",
+			surface: "Deployment environment",
+			key: "deploy",
+			intro: "Set once when standing up the server; requires a restart to apply.",
 			rows: [
 				{
-					name: "Appearance",
-					description: "Color scheme (light / dark / system) and autosave preference.",
-					affordance: "This page → Appearance",
+					name: "DATA_DIR",
+					description: "Data root for all runtime config and state (e.g. /app/data in Docker).",
+					affordance: "Environment / .env",
+					note: "Not editable here.",
+				},
+				{
+					name: "DOCS_INDEX_DIR",
+					description: "Docs-RAG index directory (docs-index.json + vectors).",
+					affordance: "Environment / .env",
+					note: "Not editable here.",
+				},
+				{
+					name: "ORIGIN",
+					description: "Canonical origin URL of the deployment.",
+					affordance: "Environment / .env",
+					note: "Not editable here.",
+				},
+				{
+					name: "PRE_EVAL_CRITIQUE",
+					description: "Set to 0 to disable the pre-evaluation critique pass (cost/quality toggle).",
+					affordance: "Environment / .env",
+					note: "Not editable here.",
+				},
+				{
+					name: "KI_CONNECT_BASE_URL",
+					description: "KI Connect base URL fallback. Also overridable in settings.yaml (this page → Execution & AI).",
+					affordance: "Environment / .env",
 				},
 			],
 		},
 		{
-			surface: "Code constants",
+			surface: "Read-only constants",
 			key: "code",
-			intro: "Read-only. Changing these means editing the source (or an env var) and rebuilding / restarting.",
+			intro: "Engineering defaults. Changing these means editing the source (or an env var) and rebuilding / restarting — a teacher never adjusts these.",
 			rows: [
 				{
 					name: "Prompt-injection threshold 0.7",
@@ -190,7 +174,7 @@
 				{
 					name: "Rich-output caps",
 					description: "RICH_OUTPUT_MAX_IMAGE_BYTES (5 MB) / RICH_OUTPUT_MAX_HTML_CHARS (200k).",
-					affordance: "Set in the environment / .env (executor/runner.py)",
+					affordance: "Environment / .env (executor/runner.py)",
 					note: "Env-driven default.",
 				},
 			],
@@ -202,8 +186,9 @@
 	<div class="p-5 pb-3">
 		<h2 class="text-base font-semibold tracking-tight">Configuration map</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Where every setting lives, and where to change it. A no-op save never touches disk; settings are read
-			fresh on load.
+			Where every setting lives, and where to change it — grouped by purpose, so it's clear nearly
+			everything is edited on this page. A no-op save never touches disk; settings are read fresh on
+			load.
 		</p>
 	</div>
 
@@ -230,8 +215,8 @@
 							<div class="min-w-0">
 								<p
 									class="font-mono text-xs font-medium text-foreground {row.secret
-										? 'flex items-center gap-1.5'
-										: ''}"
+									? 'flex items-center gap-1.5'
+									: ''}"
 								>
 									{row.name}
 									{#if row.secret}
