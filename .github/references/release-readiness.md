@@ -1,0 +1,96 @@
+# Release Readiness Roadmap — Public Open-Source Launch
+
+**Date:** 2026-08-20 · **Status:** decisions locked; ready to sequence sessions.
+Companion to `.github/references/concepts.md` (architecture) and
+`quality-statement.md` (quality posture). This is the **decision + sequencing
+record** for taking `svelte-review-copilot` public, published as
+**`scipro_review` / "SciPro Review"**.
+
+---
+
+## 0. Locked context & decisions (owner, 2026-08-20)
+
+| # | Item | Decision |
+|---|------|----------|
+| D1 | `soil_contamination` | It was a **prototyping crutch**, not a permanent anchor. It **stays** as the reference/test fixture (golden prompt + grading gate are keyed to it) but is **framed as a documented example**, never "the assignment". |
+| D2 | LLM/embeddings provider | **KI Connect (`kiconnect.nrw`, H-BRS/NRW)** stays the default, but the goal is **full OpenAI-compatible swap** (e.g. openrouter — newer/cheaper models). Provider-agnostic config is intended; the swap must be *validated good*, not just compatible. |
+| D3 | Institution branding | **H-BRS may be named** openly; keep open-source friendly. Personal/tribal content gets reviewed. |
+| D4 | Hosting / executor | **By-design localhost-only.** External binding is an **accepted, documented security risk — NOT fixed by sandboxing.** Deliverable = a docs warning, not hardening. |
+| D5 | Licensing | **AGPL-3.0** (in repo). Non-profit/open source → no fees; redistributed docstrings need **attribution notices only**. |
+| D6 | **Git history (B1)** | **Do NOT rewrite history.** Develop/verify in this private repo; at release, **create a NEW public repo** with clean/fresh history + secrets/releases/CI-CD set correctly; delete the private repo afterwards. Simple, safe, no archaeology. |
+| D7 | First-run onboarding (T6) | **Guided checklist/onboarding page first** (cheaper, fast); full in-app wizard deferred. |
+| D8 | User guide (T7) | **Both, doc-first:** standalone teacher-facing guide first, in-app help panel later. |
+| D9 | CI scope | **Lean CI:** lib + lint + `check` + vitest + **synthetic grading gate** (+ executor tests). **No Playwright e2e in CI** (cost), e2e stays local. |
+| D10 | Naming | **`scipro_review` / "SciPro Review"**. |
+
+---
+
+## 1. Confirmed state (grounded 2026-08-20)
+
+- License AGPL-3.0 present. Real student data removed **forward** (blocker B1 strategy in D6).
+- `pnpm check` 0/0, full vitest green, synthetic grading gate green, byte-exact golden prompt fixture.
+- Docs index reproducible from pinned PyPI docstrings — **38,380 chunks / 10 libs**, published + consumer-fetch verified.
+- CI (`ci.yml`), `release.yml`, `deploy.yml` exist.
+- Working tree clean: `.env`/`frontend/.env` gitignored; no live key in `settings.yaml`.
+
+---
+
+## 2. BLOCKERS — resolve before publishing anything public
+
+| ID | Item | Why it blocks | Effort | Plan |
+|----|------|----------------|--------|------|
+| **B1** | **Student data still in this repo's git history** | Removal (`13a3817`) was a forward delete, so real grades + cohort norms remain in history. | — | **Resolved by D6:** new public repo with fresh history at release; this private repo never published. No filter-repo needed. |
+| **B2** | History secret audit | Any key ever committed would carry into history. | Fold into B1 | Before copying to the public repo, verify the **current tree** is free of secrets (B2a) and that `git log` history isn't being carried over (it won't, per D6). |
+| **B3** | CI completeness | `ci.yml` runs only `prebuild + lint + check` — no tests → public PRs can merge red. | Low | Add vitest + grading gate + executor tests (D9: lean, no e2e). |
+| **B4** | Provider/config story **+ tested swap** | External users can't reach `kiconnect.nrw`; LLM + embeddings must point at any OpenAI-compatible endpoint; openrouter swap verified. | Low–Med | `.env.example`, baseURL/key/model docs, openrouter validation. |
+
+---
+
+## 3. Tier 1 — do-soon, low-decision (safe to execute)
+
+| ID | Item | Notes |
+|----|------|-------|
+| T1 | **Third-party notices** | `THIRD_PARTY_NOTICES.md` (+ `LICENSES/`): BSD notices for numpy/pandas/scipy/sklearn/matplotlib docstrings, PSF for stdlib/builtins; provenance note in the docstrings build. |
+| T2 | **CI additions** | vitest + synthetic grading gate + executor tests into `ci.yml` (D9: lean, no e2e). |
+| T3 | **`.env.example` + provider docs** | baseURL/key/model for LLM + embeddings; settings-UI-vs-env split; openrouter as a first-class documented target. |
+| T4 | **Docs package** | README quickstart; honest feature/limitation section (disclose weak paraphrase/embedding leg); CONTRIBUTING + CODE_OF_CONDUCT + issue/PR templates; two-build deployment explainer ("which one do you want and how"). |
+| T5 | **Release mechanics** | Verify `release.yml` artifacts; fix `fetch-docs-index.mjs` to plain release download (public) instead of `gh` (private-only); set up the new public repo (D6) with correct secrets/release/CI-CD. |
+
+---
+
+## 4. Tier 2 — scoped, sign-off given
+
+| ID | Item | Scope (locked) |
+|----|------|----------------|
+| T6 | **First-run onboarding** | **Guided checklist/onboarding page** first (create/import assignment → wire criteria + scoring + provider → fetch docs index → first pre-eval). Full wizard deferred. |
+| T7 | **User guide (Karl/new-user)** | **Doc-first** standalone guide (calibrate, pre-evaluate, review copilot worksheet, export grades), **in-app help panel later**. |
+| T8 | **Two-build deployment explainer** | Folded into T4 docs; "which build" guidance. |
+
+---
+
+## 5. Tier 3 — backlog
+
+| ID | Item | Origin |
+|----|------|--------|
+| T9 | **B13 injection hardening** | Existing plan — student notebook content flows **unsanitized** into pre-eval/tool-result prompt paths. Quality + security. |
+| T10 | **Provider-swap results validation (openrouter)** | Confirm "good or better", not merely compatible (D2). |
+| T11 | **Generalization beyond `soil_contamination`** | Lift soil out of the default identity toward a proper demo/example as authoring docs mature. Non-blocking. |
+
+---
+
+## 6. Lighter items
+
+| ID | Item | Status |
+|----|------|--------|
+| N1 | Naming | **Locked: `scipro_review` / "SciPro Review"** (D10). |
+| N2 | Versioning + CHANGELOG | Decide semver + release-note convention before first tagged public release (new public repo). |
+| N3 | New-repo bootstrap (B1/D6) | Part of T5 — set secrets, releases, CI/CD on the fresh public repo. |
+
+---
+
+## 7. Sequencing (suggested sessions)
+
+1. **Session A — Tier 1 (T1–T5):** licensing notices, CI additions (lean), `.env.example` + provider docs, docs package, release mechanics + new-repo bootstrap. Covers all four blockers' code/docs side.
+2. **Session B — Tier 2 (T6–T8):** build the onboarding checklist page; write the teacher guide; two-build explainer.
+3. **Session C — Tier 3 (T9–T11):** injection hardening; openrouter validation; generalization as it matures.
+4. **Session D — cutover (D6/D7/D10, N2):** create the public `scipro_review` repo with clean history, correct secrets/CI-CD, tagged first release; then delete the private repo.
