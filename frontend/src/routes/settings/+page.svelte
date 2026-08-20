@@ -1,5 +1,8 @@
 <script lang="ts">
+	import { base } from "$app/paths";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
+	import { cn } from "$lib/utils.js";
+	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
 	import AppearanceCard from "$lib/components/settings/appearance-card.svelte";
 	import DataManagementCard from "$lib/components/settings/data-management-card.svelte";
 	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
@@ -7,6 +10,8 @@
 	import ConfigurationMapCard from "$lib/components/settings/configuration-map-card.svelte";
 	import AboutCard from "$lib/components/settings/about-card.svelte";
 	import DangerZoneCard from "$lib/components/settings/danger-zone-card.svelte";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import ArrowUpRight from "@lucide/svelte/icons/arrow-up-right";
 
 	// Configure header for this page
 	$effect(() => {
@@ -33,6 +38,29 @@
 		<ExecutionAiCard />
 		<GradingConfigCard />
 		<ConfigurationMapCard />
+		<a
+			href={`${base}/onboarding`}
+			class="group flex items-center justify-between gap-4 rounded-[var(--radius)] border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/40"
+		>
+			<span class="flex items-start gap-3">
+				<ListChecks class="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+				<span>
+					<span class="block text-sm font-medium text-foreground">First-run setup checklist</span>
+					<span class="mt-0.5 block text-xs text-muted-foreground">
+						Guided checklist for getting SciPro Review ready — assignments, scoring, LLM, docs index.
+					</span>
+				</span>
+			</span>
+			<span
+				class={cn(
+					buttonVariants({ variant: "outline", size: "sm" }),
+					"shrink-0 gap-1",
+				)}
+			>
+				Setup
+				<ArrowUpRight class="h-3.5 w-3.5" />
+			</span>
+		</a>
 		<DataManagementCard />
 		<AboutCard />
 		<DangerZoneCard />
