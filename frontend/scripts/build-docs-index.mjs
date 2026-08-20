@@ -3,14 +3,17 @@
  * @file Offline library-docs index builder (v1).
  *
  * Downloads the official HTML doc zips for NumPy / pandas / SciPy /
- * scikit-learn (matplotlib has NO zip — pass a pre-crawled directory via
- * --matplotlib-dir, or it is skipped with a warning), extracts ONLY the
- * API-reference pages, strips nav/script/style, chunks ONE OBJECT PER PAGE
- * (signature block + parameter list + first 1-2 examples; multi-object pages
- * like sklearn classes split per `dt.sig` object), embeds each chunk via the
- * KI Connect embeddings endpoint (e5-mistral-7b-instruct, 4096-dim), and
- * writes `docs-index.json` (chunks + per-library manifest) plus
- * `docs-vectors.bin` (float32 LE vectors) to a configurable output dir.
+ * scikit-learn / the Python 3.12 stdlib (builtins, a curated module set,
+ * typing), extracts ONLY the API-reference pages (matplotlib and seaborn have
+ * NO zip — pass a pre-crawled directory via --matplotlib-dir / --seaborn-dir,
+ * or they are skipped with a warning), strips nav/script/style, chunks ONE
+ * OBJECT PER PAGE (signature block + parameter list + first 1-2 examples;
+ * multi-object pages like sklearn classes split per `dt.sig` object), prunes
+ * private/internal chunks (`_`-prefixed), appends curated cross-library
+ * integration notes, embeds each chunk via the KI Connect embeddings endpoint
+ * (e5-mistral-7b-instruct, 4096-dim), and writes `docs-index.json` (chunks +
+ * per-library manifest) plus `docs-vectors.bin` (float32 LE vectors) to a
+ * configurable output dir.
  *
  * The full corpus is ~5.6M tokens / ~13,100 pages — a one-shot deploy
  * operation (~10 min). For smoke tests use `--limit N` and/or `--skip-embed`.
@@ -59,6 +62,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 // Library config (versions = executor venv pins, measured 2026-08-18)
 // ---------------------------------------------------------------------------
 
+/** Official Python 3.12 docs HTML zip (matches the executor's interpreter). */
+const PYTHON_DOCS_ZIP = "https://docs.python.org/3.12/archives/python-3.12.6-docs-html.zip";
+
 const LIBRARIES = {
 	numpy: {
 		zipUrl: "https://numpy.org/doc/stable/numpy-html.zip",
@@ -90,7 +96,193 @@ const LIBRARIES = {
 		apiPrefix: "api/",
 		urlBase: "https://matplotlib.org/stable/",
 	},
+	seaborn: {
+		zipUrl: null, // no official zip — pre-crawled dir via --seaborn-dir
+		pinnedVersion: "0.13.2",
+		apiPrefix: "generated/",
+		urlBase: "https://seaborn.pydata.org/",
+	},
+	builtins: {
+		zipUrl: PYTHON_DOCS_ZIP,
+		pinnedVersion: "3.12",
+		apiPrefix: "",
+		urlBase: "https://docs.python.org/3.12/",
+		pages: ["library/functions.html", "library/constants.html", "library/builtins.html"],
+	},
+	stdlib: {
+		zipUrl: PYTHON_DOCS_ZIP,
+		pinnedVersion: "3.12",
+		apiPrefix: "",
+		urlBase: "https://docs.python.org/3.12/",
+		pages: [
+			"library/math.html",
+			"library/statistics.html",
+			"library/random.html",
+			"library/os.html",
+			"library/sys.html",
+			"library/re.html",
+			"library/json.html",
+			"library/datetime.html",
+			"library/collections.html",
+			"library/itertools.html",
+			"library/functools.html",
+			"library/pathlib.html",
+			"library/operator.html",
+			"library/copy.html",
+			"library/string.html",
+			"library/decimal.html",
+			"library/fractions.html",
+			"library/heapq.html",
+			"library/bisect.html",
+		],
+	},
+	typing: {
+		zipUrl: PYTHON_DOCS_ZIP,
+		pinnedVersion: "3.12",
+		apiPrefix: "",
+		urlBase: "https://docs.python.org/3.12/",
+		pages: ["library/typing.html"],
+	},
 };
+
+// ---------------------------------------------------------------------------
+// Curated cross-library integration notes
+// ---------------------------------------------------------------------------
+// Authored, high-value facts about how libraries work TOGETHER — e.g. "pandas
+// .plot() renders via matplotlib, so no explicit matplotlib import is needed".
+// These are common student traps (often over-imported or wrongly relied on) and
+// are exactly the kind of cross-library truth a pure per-library crawl misses.
+// Each note is a self-contained chunk; they embed like any other chunk, under
+// the `integration` library.
+
+const INTEGRATION_NOTES = [
+	{
+		title: "pandas .plot() renders via matplotlib — no explicit import needed",
+		url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.plot.html",
+		text: `## pandas .plot() renders via matplotlib (integration: pandas + matplotlib)
+pandas plotting is built ON TOP of matplotlib. Calling df.plot(kind="line") (or Series.plot, or any df.plot.*) creates and returns a matplotlib Axes — pandas imports and drives matplotlib internally. This means:
+- An explicit "import matplotlib.pyplot as plt" is NOT required just to produce a plot from a DataFrame.
+- You can still customize the result: the returned value is a matplotlib Axes, so you can use ax.set_xlabel(...), ax.legend(), and fig.savefig(...) (via ax.figure) on it.
+- "import matplotlib.pyplot as plt; plt.show()" is only needed if you want to display the figure in the pyplot way or make additional standalone plots.
+Common student trap: importing matplotlib explicitly "so that df.plot works" — unnecessary. The inverse trap: calling df.plot() and then plt.plot() expecting the same axes.
+Source: pandas.DataFrame.plot`,
+	},
+	{
+		title: "seaborn is a high-level API on top of matplotlib",
+		url: "https://seaborn.pydata.org/",
+		text: `## seaborn is a high-level API on top of matplotlib (integration: seaborn + matplotlib)
+seaborn is built on matplotlib. Every seaborn plotting function (sns.scatterplot, sns.lineplot, sns.histplot, sns.boxplot, ...) internally constructs a matplotlib Figure/Axes and draws onto it. Implications:
+- import seaborn as sns is enough to use seaborn; you do NOT need to import matplotlib yourself just to make a seaborn plot.
+- The object a seaborn function returns is a matplotlib Axes, so you can call matplotlib methods on it (ax.set_title, fig.savefig).
+- seaborn calls its own set_theme/style on import; you can still control output with matplotlib's plt.show()/savefig.
+- seaborn integrates with pandas: pass data=<DataFrame> and column names as x=, y=, hue=; seaborn hands the underlying arrays to matplotlib.
+Source: seaborn.pydata.org`,
+	},
+	{
+		title: "pandas is built on numpy — DataFrame/Series ↔ ndarray",
+		url: "https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.to_numpy.html",
+		text: `## pandas is built on numpy (integration: pandas + numpy)
+pandas Series and DataFrames store their data in numpy arrays internally. Conversions are trivial and common:
+- Series.to_numpy() / DataFrame.to_numpy() returns a numpy ndarray.
+- np.asarray(df) / np.asarray(series) works directly.
+- numpy ufuncs and functions accept pandas objects: np.log(df) applies elementwise to every column; np.mean(series) works.
+- A Series behaves like a 1-D numpy array for most math; a DataFrame like a 2-D one.
+This is why "mix numpy and pandas" is not two separate worlds: you can compute with numpy and store with pandas, or vice versa, with zero copies in many cases.
+Source: pandas.DataFrame.to_numpy`,
+	},
+	{
+		title: "scipy is built on numpy — scipy functions take/return ndarrays",
+		url: "https://docs.scipy.org/doc/scipy/",
+		text: `## scipy is built on numpy (integration: scipy + numpy)
+SciPy depends on numpy and its functions accept and return numpy ndarrays. Practical consequences:
+- You need numpy imported to create the arrays you pass to scipy (scipy.optimize.curve_fit, scipy.stats.*, scipy.integrate.*).
+- Results come back as numpy arrays (e.g. popt from curve_fit is a numpy array of fitted parameters).
+- scipy.stats functions take array-like x and return objects with .statistic/.pvalue as numpy scalars/arrays.
+Common student pattern: a numpy array x and a model f — curve_fit(f, x, y) → popt, pcov. The "fit the curve x to data y using z" case: z is usually scipy.optimize.curve_fit, and x/y are numpy arrays.
+Source: docs.scipy.org`,
+	},
+	{
+		title: "scikit-learn consumes 2-D numpy array-likes — X must be 2-D",
+		url: "https://scikit-learn.org/stable/glossary.html#term-2Darray",
+		text: `## scikit-learn consumes 2-D numpy array-likes (integration: sklearn + numpy + pandas)
+scikit-learn estimators take X as a 2-D array-like of shape (n_samples, n_features) and y as a 1-D array-like of length n_samples. Practical rules:
+- Pass a numpy ndarray, or a pandas DataFrame/Series — sklearn converts internally (df.to_numpy()).
+- X MUST be 2-D: a single feature column must be reshaped (e.g. X[["col"]]) or passed as a DataFrame column; a bare 1-D array for X is a very common error ("Expected 2D array, got 1D array").
+- Predictions and fitted parameters come back as numpy arrays.
+- sklearn is designed to work well with numpy and pandas pipelines (fit/predict on DataFrames).
+Source: scikit-learn.org glossary "2D array"`,
+	},
+	{
+		title: "matplotlib: pyplot state-machine vs object-oriented API",
+		url: "https://matplotlib.org/stable/tutorials/introductory/pyplot.html",
+		text: `## matplotlib: pyplot vs object-oriented (integration: pyplot + Axes)
+matplotlib offers two complementary styles, both in the same library:
+- Pyplot (state-machine): import matplotlib.pyplot as plt; plt.plot(x, y); plt.show(). Good for quick scripts; pyplot tracks the "current" figure/axes.
+- Object-oriented (OO): fig, ax = plt.subplots(); ax.plot(x, y); fig.savefig("out.png"). Explicit and essential for subplots and fine control.
+Rules of thumb: use plt.subplots() to get fig+ax, then the ax.* methods; call fig.savefig() to write a file. plt.show() to display. The conventional import is "import matplotlib.pyplot as plt". A figure is a canvas, an Axes is one plot area within it.
+Source: matplotlib pyplot tutorial`,
+	},
+	{
+		title: "np.polyfit vs scipy.optimize.curve_fit",
+		url: "https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html",
+		text: `## np.polyfit vs scipy.optimize.curve_fit (integration: numpy + scipy)
+Both fit a model to data, but differ in scope:
+- np.polyfit(x, y, deg) fits a POLYNOMIAL of fixed degree deg and returns the coefficient array (high to low). Fitted values via np.polyval(p, x).
+- scipy.optimize.curve_fit(f, xdata, ydata) fits ANY user-defined model y = f(xdata, *params) by non-linear least squares, returning popt (optimal params) and pcov (covariance).
+Use polyfit for simple polynomials; use curve_fit when the model is e.g. exponential, logistic, a custom formula — anything not a plain polynomial. A student saying "we fit the curve x to data y using z" with an arbitrary model almost always means curve_fit.
+Source: numpy.polyfit / scipy.optimize.curve_fit`,
+	},
+	{
+		title: "datetime: Python datetime ↔ numpy.datetime64 ↔ pandas Timestamp",
+		url: "https://docs.python.org/3.12/library/datetime.html",
+		text: `## datetime types interoperate (integration: Python + numpy + pandas)
+Three datetime representations coexist and convert cleanly:
+- Python datetime.datetime / datetime.date (stdlib) — portable, used in checks and formatting.
+- numpy.datetime64 — numpy's compact representation; created via np.datetime64("2026-08-20").
+- pandas.Timestamp — pandas' datetime scalar; pandas stores datetime columns as datetime64 with a .dt accessor (series.dt.year).
+Convert with pd.to_datetime(...) (parse strings/iterables to pandas datetimes), datetime.datetime objects where the stdlib is required, and .to_pydatetime() to get a Python object from a pandas/numpy one.
+Source: docs.python.org/3.12/library/datetime.html`,
+	},
+	{
+		title: "random: numpy.random vs Python random module",
+		url: "https://docs.python.org/3.12/library/random.html",
+		text: `## two random APIs (integration: Python stdlib + numpy)
+Python's stdlib random module and numpy.random are separate:
+- import random; random.randint(a, b), random.random(), random.choice(seq), random.seed(n) — for lists and Python sequences.
+- numpy.random provides np.random.rand, np.random.randn, np.random.randint, np.random.normal(...), np.random.seed / np.random.default_rng — vectorized, for arrays.
+Use numpy.random when working with arrays (e.g. generating a noise vector added to numpy data); use the stdlib random for plain Python collections. Mixing them (seeding one and expecting the other to be reproducible) is a common trap.
+Source: docs.python.org/3.12/library/random.html`,
+	},
+	{
+		title: "scipy.stats and numpy: statistical functions return arrays/objects",
+		url: "https://docs.scipy.org/doc/scipy/reference/stats.html",
+		text: `## scipy.stats works on numpy arrays (integration: scipy + numpy)
+scipy.stats provides distributions (norm, t) and tests (ttest_ind, pearsonr, linregress) that operate on numpy arrays:
+- Distribution functions like norm.pdf(x), norm.cdf(x), norm.ppf(q) accept numpy arrays and return arrays elementwise.
+- Hypothesis tests return result objects: r = scipy.stats.pearsonr(x, y) → r.statistic (correlation) and r.pvalue. ttest_ind(a, b) → .statistic/.pvalue.
+- linregress(x, y) → slope, intercept, rvalue, pvalue, stderr — a convenient linear fit built on numpy.
+Almost always the input arrays come from numpy/pandas. Source: docs.scipy.org/reference/stats`,
+	},
+];
+
+/**
+ * Drop private/internal chunks — object names that are private either at the
+ * top level (start with `_`, e.g. `_AxesBase`) or anywhere in a dotted path
+ * (contain `._`, e.g. `matplotlib.axes._axes.Axes`, `sklearn.utils._testing`,
+ * `numpy._core`). These are internal submodules/helpers that almost never
+ * appear in student prose or teacher queries; excluding them cuts retrieval
+ * noise and memory with no coverage loss for real usage. Also drops nameless
+ * chunks.
+ */
+function pruneChunks(chunks) {
+	return chunks.filter((c) => {
+		const name = (c.title || "").trim();
+		if (!name) return false;
+		if (name.startsWith("_")) return false;
+		if (name.includes("._")) return false;
+		return true;
+	});
+}
 
 const EMBEDDING_MODEL = "e5-mistral-7b-instruct";
 const EMBEDDING_DIM = 4096;
@@ -108,15 +300,16 @@ const MAX_EXAMPLES = 2; // first 1-2 examples per object
 function usage() {
 	console.log(`Usage: node scripts/build-docs-index.mjs [options]
   --out <dir>          output dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
-  --libraries <list>   comma list: numpy,pandas,scipy,sklearn,matplotlib (default: all)
+  --libraries <list>   comma list: numpy,pandas,scipy,sklearn,matplotlib,seaborn,builtins,stdlib,typing (default: all; integration notes are always included)
   --limit <N>          process only the first N API pages per library (smoke tests)
   --matplotlib-dir <d> pre-crawled matplotlib docs dir (api/ inside); enables matplotlib
+  --seaborn-dir <d>    pre-crawled seaborn docs dir (generated/ inside); enables seaborn
   --skip-embed         write chunks without vectors (no KI Connect call)
   --help               show this help`);
 }
 
 function parseArgs(argv) {
-	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, skipEmbed: false };
+	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, skipEmbed: false };
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		switch (a) {
@@ -131,6 +324,9 @@ function parseArgs(argv) {
 				break;
 			case "--matplotlib-dir":
 				args.matplotlibDir = argv[++i];
+				break;
+			case "--seaborn-dir":
+				args.seabornDir = argv[++i];
 				break;
 			case "--skip-embed":
 				args.skipEmbed = true;
@@ -279,6 +475,14 @@ function extractArticle(html) {
 		const end = html.indexOf("</article>", articleStart);
 		if (end !== -1) return html.slice(articleStart, end);
 	}
+	// Non-`<article>` doc sites (Python's Sphinx-rtd theme uses nested
+	// `<section>`/`<div class="body">`): the content begins at the first
+	// documented object. Slicing from there drops the sidebar/TOC before it,
+	// WITHOUT needing to match a nesting container — matching the first
+	// `<section>…</section>` could clip a page whose first span is an empty
+	// header (a clipped page loses every object after it, as typing.html did).
+	const sigStart = html.indexOf('<dt class="sig sig-object');
+	if (sigStart !== -1) return html.slice(sigStart);
 	const sectionStart = html.indexOf("<section");
 	if (sectionStart !== -1) {
 		const end = html.indexOf("</section>", sectionStart);
@@ -344,7 +548,21 @@ function detectVersion(html, fallback) {
 /** Select API-reference page names from an unzipped file map. */
 function selectApiPages(files, lib) {
 	const names = Object.keys(files).filter((n) => n.endsWith(".html"));
-	const prefix = LIBRARIES[lib].apiPrefix;
+	const cfg = LIBRARIES[lib];
+	// Curated page list (Python stdlib/builtins/typing) — exact pages, no
+	// prefix sweep, so the whole ~200-module stdlib is never pulled in.
+	if (Array.isArray(cfg.pages)) {
+		const pages = cfg.pages.filter((p) => names.includes(p));
+		if (pages.length < cfg.pages.length) {
+			console.warn(
+				`[build-docs-index]   ${lib}: ${cfg.pages.length - pages.length} curated page(s) missing from the docs zip (${cfg.pages
+					.filter((p) => !names.includes(p))
+					.join(", ")})`,
+			);
+		}
+		return pages;
+	}
+	const prefix = cfg.apiPrefix;
 	const direct = names.filter((n) => n.startsWith(prefix));
 	if (lib === "scipy") {
 		// SciPy also has "special" API pages directly under reference/
@@ -421,10 +639,16 @@ function chunkPage(html, relPath, lib, version) {
 // Corpus acquisition
 // ---------------------------------------------------------------------------
 
+// A zip is only downloaded once per build even when several libraries share
+// it (builtins/stdlib/typing all use the Python docs zip).
+const zipCache = new Map();
+
 async function downloadZip(url) {
+	if (zipCache.has(url)) return zipCache.get(url);
 	const resp = await fetch(url, { redirect: "follow" });
 	if (!resp.ok) throw new Error(`download failed (HTTP ${resp.status}): ${url}`);
 	const buf = Buffer.from(await resp.arrayBuffer());
+	zipCache.set(url, buf);
 	return buf;
 }
 
@@ -432,7 +656,7 @@ function sha256(buf) {
 	return createHash("sha256").update(buf).digest("hex");
 }
 
-/** Recursively list .html files under a directory (matplotlib crawl). */
+/** Recursively list .html files under a directory (matplotlib/seaborn crawl). */
 async function listHtmlFiles(dir) {
 	const out = [];
 	async function walk(d) {
@@ -444,6 +668,32 @@ async function listHtmlFiles(dir) {
 		}
 	}
 	await walk(dir);
+	return out;
+}
+
+/** Read a pre-crawled HTML dir into a relPath→Uint8Array file map. */
+async function readCrawlDir(dir) {
+	const htmlFiles = await listHtmlFiles(dir);
+	const files = {};
+	for (const f of htmlFiles) {
+		const rel = path.relative(dir, f).split(path.sep).join("/");
+		files[rel] = new TextEncoder().encode(await readFile(f, "utf-8"));
+	}
+	return files;
+}
+
+/** Some doc zips (Python stdlib) nest everything under a single version
+ *  folder (e.g. `python-3.12.6-docs-html/`). Strip that shared top-level dir so
+ *  page paths match (`library/functions.html`, not
+ *  `python-3.12.6-docs-html/library/functions.html`). No-op for flat zips. */
+function stripCommonTopDir(files) {
+	const keys = Object.keys(files);
+	if (keys.length === 0) return files;
+	const firstSeg = keys[0].split("/")[0];
+	if (!firstSeg) return files;
+	if (!keys.every((k) => k.split("/")[0] === firstSeg)) return files;
+	const out = {};
+	for (const k of keys) out[k.slice(firstSeg.length + 1)] = files[k];
 	return out;
 }
 
@@ -529,21 +779,19 @@ for (const lib of libraries) {
 		zipSha = sha256(buf);
 		console.log(`[build-docs-index]   ${(buf.length / 1024 / 1024).toFixed(1)} MB, sha256 ${zipSha.slice(0, 12)}…`);
 		files = unzipSync(new Uint8Array(buf));
-	} else if (lib === "matplotlib") {
-		if (!args.matplotlibDir) {
+		if (Array.isArray(cfg.pages)) files = stripCommonTopDir(files); // python docs zip nests under a version dir
+	} else if (lib === "matplotlib" || lib === "seaborn") {
+		const dirArgName = lib === "matplotlib" ? "matplotlibDir" : "seabornDir";
+		const dirArg = args[dirArgName];
+		if (!dirArg) {
 			console.warn(
-				"[build-docs-index] matplotlib has no official doc zip — pass --matplotlib-dir <crawled-dir> to include it; skipping for this build",
+				`[build-docs-index] ${lib} has no official doc zip — pass --${dirArgName.replace("Dir", "-dir")} <crawled-dir> to include it; skipping for this build`,
 			);
 			continue;
 		}
-		console.log(`[build-docs-index] reading pre-crawled dir ${args.matplotlibDir} …`);
-		const htmlFiles = await listHtmlFiles(args.matplotlibDir);
-		files = {};
-		for (const f of htmlFiles) {
-			const rel = path.relative(args.matplotlibDir, f).split(path.sep).join("/");
-			files[rel] = new TextEncoder().encode(await readFile(f, "utf-8"));
-		}
-		sourceUrl = "crawled:" + args.matplotlibDir;
+		console.log(`[build-docs-index] reading pre-crawled dir ${dirArg} …`);
+		files = await readCrawlDir(dirArg);
+		sourceUrl = "crawled:" + dirArg;
 	} else {
 		console.warn(`[build-docs-index] no source for ${lib} — skipping`);
 		continue;
@@ -560,6 +808,13 @@ for (const lib of libraries) {
 		if (version === cfg.pinnedVersion) version = detectVersion(html, cfg.pinnedVersion);
 		libChunks.push(...chunkPage(html, relPath, lib, version));
 	}
+	const pruned = pruneChunks(libChunks);
+	if (pruned.length !== libChunks.length) {
+		console.log(
+			`[build-docs-index]   pruned ${libChunks.length - pruned.length} internal/private chunk(s) → ${pruned.length}`,
+		);
+	}
+	libChunks = pruned;
 	console.log(`[build-docs-index]   ${libChunks.length} chunks (docs version ${version})`);
 
 	manifestLibraries.push({
@@ -591,6 +846,47 @@ for (const lib of libraries) {
 	}
 
 	allChunks.push(...libChunks.map((c) => ({ ...c, library: lib, version })));
+}
+
+// Authored cross-library integration notes — always included (tiny, curated).
+if (INTEGRATION_NOTES.length > 0) {
+	const libChunks = INTEGRATION_NOTES.map((n, i) => ({
+		id: `integration:${i}`,
+		title: n.title,
+		url: n.url,
+		text: n.text,
+		library: "integration",
+		version: "curated",
+	}));
+	if (!args.skipEmbed) {
+		if (!process.env.KI_CONNECT_API_KEY) {
+			console.warn("[build-docs-index] KI_CONNECT_API_KEY not set — integration notes written WITHOUT vectors");
+		} else {
+			try {
+				const model = createEmbedder();
+				if (!embeddingModel) embeddingModel = EMBEDDING_MODEL;
+				if (!embeddingDim) embeddingDim = EMBEDDING_DIM;
+				const vectors = await embedAll(model, libChunks.map((c) => c.text), () => {});
+				allVectors.push(...vectors);
+			} catch (err) {
+				console.warn(
+					`[build-docs-index]   embedding integration notes failed (${err instanceof Error ? err.message : String(err)}) — written WITHOUT vectors`,
+				);
+			}
+		}
+	}
+	allChunks.push(...libChunks);
+	manifestLibraries.push({
+		library: "integration",
+		version: "curated",
+		pinnedVersion: "curated",
+		sourceUrl: null,
+		sha256: null,
+		builtAt: new Date().toISOString(),
+	});
+	console.log(
+		`[build-docs-index] === integration ===\n[build-docs-index]   ${libChunks.length} curated cross-library note(s)`,
+	);
 }
 
 if (allChunks.length === 0) {

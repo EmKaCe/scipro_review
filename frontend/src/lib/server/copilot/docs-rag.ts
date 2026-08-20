@@ -5,7 +5,9 @@
  * docs index (`docs-index.json`, produced by
  * `frontend/scripts/build-docs-index.mjs`). The copilot's `search-docs` tool
  * uses this to verify API signatures / parameters / return values of
- * NumPy / pandas / SciPy / scikit-learn / matplotlib WITHOUT web search.
+ * NumPy / pandas / SciPy / scikit-learn / matplotlib / seaborn /
+ * Python builtins & stdlib & typing, plus curated cross-library integration
+ * notes, WITHOUT web search.
  *
  * Design (per .hermes/plans/2026-08-18-offline-docs.md §3):
  *   - BM25 keyword leg (minisearch) is the deterministic, fully-offline
@@ -40,7 +42,18 @@ import { getDataDir } from "$lib/server/metadata";
 // Types
 // ---------------------------------------------------------------------------
 
-export const DOCS_LIBRARIES = ["numpy", "pandas", "scipy", "sklearn", "matplotlib"] as const;
+export const DOCS_LIBRARIES = [
+	"numpy",
+	"pandas",
+	"scipy",
+	"sklearn",
+	"matplotlib",
+	"seaborn",
+	"builtins",
+	"stdlib",
+	"typing",
+	"integration",
+] as const;
 export type DocsLibrary = (typeof DOCS_LIBRARIES)[number];
 
 export interface DocsChunk {
