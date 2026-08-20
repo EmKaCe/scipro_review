@@ -81,6 +81,7 @@ import {
 } from "./pipeline/prompts";
 
 import { searchDocs } from "./docs-rag";
+import type { DocsLibrary } from "./docs-rag";
 
 import {
 	buildExtraAnalysisEvidence,
@@ -223,6 +224,29 @@ async function resolveDisallowedLibraries(assignmentId: string): Promise<string[
  */
 const API_REFERENCE_PATTERN = /(?<!["'])\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*){1,3}\b/g;
 
+/**
+ * Bare (non-dotted) names that are genuinely worth grounding on even though
+ * they have no module prefix — the Python builtins and typing names students
+ * use directly (`len`, `range`, `TypeVar`, `Optional`, …). Each maps to the
+ * library bucket that holds it, so the docs lookup can be scoped precisely
+ * instead of searching the whole corpus for a generic token like `len`.
+ */
+const BARE_DOCS_NAMES: Record<string, DocsLibrary> = {
+	// builtins — commonly called without a module prefix
+	len: "builtins", range: "builtins", sum: "builtins", sorted: "builtins", min: "builtins",
+	max: "builtins", abs: "builtins", round: "builtins", map: "builtins", filter: "builtins",
+	enumerate: "builtins", zip: "builtins", any: "builtins", all: "builtins", print: "builtins",
+	isinstance: "builtins", list: "builtins", dict: "builtins", set: "builtins", tuple: "builtins",
+	str: "builtins", int: "builtins", float: "builtins", bool: "builtins", reversed: "builtins",
+	pow: "builtins", id: "builtins", next: "builtins", iter: "builtins", open: "builtins",
+	// typing — annotation names, usually used bare after `from typing import …`
+	TypeVar: "typing", Optional: "typing", Union: "typing", Callable: "typing", Any: "typing",
+	List: "typing", Dict: "typing", Tuple: "typing", Set: "typing", Iterable: "typing",
+	Sequence: "typing", Literal: "typing", NamedTuple: "typing", Protocol: "typing", Self: "typing",
+	Type: "typing", ClassVar: "typing", Final: "typing", Generic: "typing", cast: "typing",
+	Annotated: "typing", TypedDict: "typing",
+};
+
 /** Cap on distinct APIs looked up per submission (cost control). */
 const MAX_DOCS_APIS = 3;
 /** Chunks retrieved per API (topK). */
@@ -230,23 +254,44 @@ const DOCS_TOP_K = 2;
 /** Hard cap on the assembled docs-facts block (~600 tokens). */
 const DOCS_FACTS_MAX_CHARS = 3000;
 
+export interface DocsApiRef {
+	name: string;
+	/** Library to scope the search to (bare builtin/typing); undefined → search all. */
+	library?: DocsLibrary;
+}
+
 /**
- * Collect the distinct dotted API references used across the student's code
- * cells, deduped and capped at {@link MAX_DOCS_APIS}. References with fewer
- * than two segments (no dot) are ignored.
+ * Collect the distinct API references used across the student's code cells,
+ * deduped and capped at {@link MAX_DOCS_APIS}. Covers:
+ *   - dotted references (`scipy.optimize.curve_fit`, `np.polyfit`) — searched
+ *     across all libraries;
+ *   - bare builtin/typing names from {@link BARE_DOCS_NAMES} used as a call or
+ *     annotation (`len(...)`, `TypeVar("T")`, `Optional[int]`) — scoped to
+ *     their library bucket.
  */
-export function extractApiReferences(cells: readonly { type: string; source: string }[]): string[] {
+export function extractApiReferences(cells: readonly { type: string; source: string }[]): DocsApiRef[] {
+	const apis: DocsApiRef[] = [];
 	const seen = new Set<string>();
-	const apis: string[] = [];
+	const append = (ref: DocsApiRef) => {
+		if (seen.has(ref.name)) return;
+		seen.add(ref.name);
+		apis.push(ref);
+	};
 	for (const cell of cells) {
 		if (cell.type !== "code") continue;
 		for (const match of cell.source.matchAll(API_REFERENCE_PATTERN)) {
-			const ref = match[0];
+			const ref = match[0]!;
 			if (!ref.includes(".")) continue;
-			if (seen.has(ref)) continue;
-			seen.add(ref);
-			apis.push(ref);
+			append({ name: ref });
 			if (apis.length >= MAX_DOCS_APIS) return apis;
+		}
+		for (const [bare, library] of Object.entries(BARE_DOCS_NAMES)) {
+			// A bare name actually used as a call or annotation: `name(`, `name [`.
+			const re = new RegExp(`\\b${bare}\\s*(?=[(\\[])`, "g");
+			if (re.test(cell.source)) {
+				append({ name: bare, library });
+				if (apis.length >= MAX_DOCS_APIS) return apis;
+			}
 		}
 	}
 	return apis;
@@ -268,7 +313,7 @@ export async function buildDocsFactsBlock(cells: readonly { type: string; source
 
 		const lines: string[] = ["<docs_facts>"];
 		for (const api of apis) {
-			const hits = await searchDocs(api, { topK: DOCS_TOP_K });
+			const hits = await searchDocs(api.name, api.library ? { topK: DOCS_TOP_K, library: api.library } : { topK: DOCS_TOP_K });
 			if (hits.length === 0) continue;
 			for (const hit of hits) {
 				// The chunk head carries the signature line ("Signature: ...");

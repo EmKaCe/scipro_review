@@ -249,13 +249,58 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("extracts distinct dotted API references from code cells, capped at 3", () => {
-		// First three distinct dotted refs in source order: scipy.optimize.curve_fit,
-		// pd.read_csv, sklearn.cluster.KMeans. Bare imports (np, pd) have no dot;
-		// the string literal "soil.csv" is excluded by the quote lookbehind.
+	it("extracts distinct API references from code cells (dotted + bare builtins/typing), capped at 3", () => {
+		// First three distinct refs in source order (CODE_CELLS has no bare
+		// builtin calls): scipy.optimize.curve_fit, pd.read_csv, sklearn.cluster.KMeans.
+		// Bare imports (np, pd) have no dot; the string literal "soil.csv" is
+		// excluded by the quote lookbehind. Bare refs carry a scoped library.
 		const apis = extractApiReferences(CODE_CELLS);
-		expect(apis).toEqual(["scipy.optimize.curve_fit", "pd.read_csv", "sklearn.cluster.KMeans"]);
+		expect(apis).toEqual([
+			{ name: "scipy.optimize.curve_fit" },
+			{ name: "pd.read_csv" },
+			{ name: "sklearn.cluster.KMeans" },
+		]);
 		expect(apis.length).toBeLessThanOrEqual(3);
+	});
+
+	it("extracts bare builtin and typing names used as calls/annotations, scoped to their library", () => {
+		const cells = [
+			{ type: "code", source: "n = len(values)\nres = sum(xs)\n" },
+			{ type: "code", source: "from typing import TypeVar\nT = TypeVar(\"T\")\ndef f(x: Optional[int]) -> int: ...\n" },
+			{ type: "markdown", source: "len and TypeVar in prose are not code cells." },
+		];
+		const apis = extractApiReferences(cells);
+		// Dotted pass finds none; bare pass (insertion order) picks len, sum, then
+		// TypeVar — capped at 3. `int` is NOT matched (return-type `-> int:` / the
+		// `int]` inside Optional is not a call/annotation-open).
+		expect(apis).toEqual([
+			{ name: "len", library: "builtins" },
+			{ name: "sum", library: "builtins" },
+			{ name: "TypeVar", library: "typing" },
+		]);
+	});
+
+	it("grounds a bare builtin via a scoped library search in the docs-facts block", async () => {
+		const searchMock = vi
+			.spyOn(docsRag, "searchDocs")
+			.mockImplementation(async (query: string, opts?: { library?: string }) => {
+				if (query === "len" && opts?.library === "builtins") {
+					return [
+						{
+							title: "len",
+							url: "https://docs.python.org/3.12/library/functions.html#len",
+							library: "builtins",
+							version: "3.12.6",
+							snippet: "## len (builtins 3.12.6)\nSignature: len(obj)",
+							score: 1,
+						},
+					];
+				}
+				return [];
+			});
+		const block = await buildDocsFactsBlock([{ type: "code", source: "print(len(values))" }]);
+		expect(block).toContain("API: len (builtins 3.12.6)");
+		expect(searchMock).toHaveBeenCalledWith("len", expect.objectContaining({ library: "builtins" }));
 	});
 
 	it("assembles a docs-facts block with a docs URL when searchDocs returns hits", async () => {
