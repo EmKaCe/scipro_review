@@ -25,10 +25,10 @@ internet.
 
 ```mermaid
 flowchart LR
-    ST[Student<br/>SPA on GitHub Pages] -->|read-only evaluation| API
-    T[Teacher app<br/>localhost:4174] -->|upload / grade / copilot| API
-    API[Frontend server<br/>pre-eval pipeline + copilot] --> EX[Executor<br/>runs notebooks]
-    API --> KI[KI Connect<br/>LLM]
+    ST[Student SPA on GitHub Pages] -->|read-only evaluation| API
+    T[Teacher app on localhost:4174] -->|upload, grade, copilot| API
+    API[Frontend server - pre-eval pipeline and copilot] --> EX[Executor - runs notebooks]
+    API --> KI[KI Connect - LLM]
     API --> IDX[(offline docs index)]
 ```
 
@@ -54,13 +54,13 @@ A student notebook goes through a fixed journey. Follow the numbers:
 flowchart TD
     A[1. Upload notebooks] --> B[2. Executor runs each notebook]
     B --> C[3. Pre-evaluation pipeline]
-    C --> C1[Phase 1: cell markers<br/>is each cell same / different / questionable?]
-    C1 --> C2[Phase 2a: dimension scores<br/>0..max_points per dimension]
-    C2 --> C3[Phase 2b: rubric worksheet<br/>one category per LLM call]
+    C --> C1[Phase 1 - cell markers: same, different, questionable]
+    C1 --> C2[Phase 2a - dimension scores on 0..max_points]
+    C2 --> C3[Phase 2b - rubric worksheet, one category per call]
     C3 --> D[4. 7 deterministic fix passes]
-    D --> E[5. Cohort calibration<br/>re-centers scores]
-    E --> F[Draft grade + confidence flag]
-    F --> G[6. YOU review → accept / fix → save]
+    D --> E[5. Cohort calibration - re-centers scores]
+    E --> F[Draft grade and confidence flag]
+    F --> G[6. YOU review, accept or fix, save]
 ```
 
 **Read the important part now:** steps 1, 2, 4, 5 are **deterministic** —
@@ -114,11 +114,11 @@ assignment is **self-described**:
 
 ```mermaid
 flowchart LR
-    subgraph data[data/ — the config the app reads]
-        A[assignments.yaml<br/>which criteria + scoring per assignment]
-        C[criteria/*.yaml<br/>the rubric: what to check per category]
-        S[scoring/*.yaml<br/>anchors, evidence patterns, disallowed libs]
-        G[grading_config.yaml<br/>global dimensions + grade boundaries]
+    subgraph data[data/ - the config the app reads]
+        A[assignments.yaml - which criteria and scoring per assignment]
+        C[criteria/*.yaml - the rubric: what to check per category]
+        S[scoring/*.yaml - anchors, evidence patterns, disallowed libs]
+        G[grading_config.yaml - global dimensions and grade boundaries]
     end
 ```
 
@@ -135,7 +135,7 @@ flowchart LR
 The intended production path is Docker Compose, **bound to loopback only**:
 
 ```bash
-cd svelte-review-copilot
+cd scipro_review
 cp .env.example .env          # set your KI Connect keys
 docker compose up -d --build
 # open http://localhost:4174   (teacher app; students use the GitHub Pages build separately)
