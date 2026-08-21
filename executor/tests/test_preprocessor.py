@@ -114,11 +114,11 @@ def test_sandbox_subdirectory_preserved(tmp_path):
 @pytest.mark.parametrize(
     "path,expected_file",
     [
-        (r"C:\\Users\\emre\\soil.csv", "soil.csv"),
-        (r"C:/Users/emre/soil.csv", "soil.csv"),
+        (r"C:\\Users\\student\\soil.csv", "soil.csv"),
+        (r"C:/Users/student/soil.csv", "soil.csv"),
         (r"d:\\data\\test.csv", "test.csv"),
         (r"D:/data/test.csv", "test.csv"),
-        (r"C:\Users\emre\soil.csv", "soil.csv"),
+        (r"C:\Users\student\soil.csv", "soil.csv"),
         (r"d:\data\test.csv", "test.csv"),
     ],
 )

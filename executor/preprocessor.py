@@ -73,7 +73,7 @@ COLAB_IMPORT_RE = re.compile(
 # and Windows drive letters (C:\, C:/). Linux prefixes listed explicitly;
 # Windows branch is case-insensitive for lowercase drive letters. The
 # filename group excludes both / and \ so Windows backslash paths normalize
-# to the bare filename (not "Users\emre\soil.csv").
+# to the bare filename (not "Users\student\soil.csv").
 ABSOLUTE_PATH_RE = re.compile(
     r"""(?P<quote>['"])(?P<prefix>
         /content/drive/|
