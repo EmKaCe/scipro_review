@@ -13,10 +13,21 @@
  * persists notes, save-grading merges (untouched fields survive), the
  * ctx.submissionId fallback chain, and the approval permission on all four.
  */
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+/** Repo root — resolves portably so CI (runner user, arbitrary checkout dir) can read committed data. */
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+	"..",
+);
 
 import { registerGradingTools } from "$lib/server/copilot/tools/grading-tools";
 import {
@@ -55,7 +66,7 @@ const ASSIGNMENTS_YAML = `assignments:
 const STUDENT = "2026SS_01";
 
 /** Real global grading config — dimensions carry their max_points (0..max). */
-const GRADING_CONFIG_SOURCE = "/root/projects/svelte-review-copilot/data/grading_config.yaml";
+const GRADING_CONFIG_SOURCE = path.join(REPO_ROOT, "data/grading_config.yaml");
 
 /** Pre-seeded grading state: rubric, dimensions, feedback, and notes. */
 const METADATA: Record<string, SubmissionRecord> = {

@@ -13,6 +13,16 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Repo root — resolves portably so CI (runner user, arbitrary checkout dir) can read committed data. */
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+	"..",
+);
 
 import type { RequestEvent } from "@sveltejs/kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -62,13 +72,11 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 /** The committed soil own-rubric criteria file (grounding rubric). */
-const SOIL_CRITERIA_SOURCE =
-	"/root/projects/svelte-review-copilot/data/criteria/soil_contamination.yaml";
-const ATOM_CRITERIA_SOURCE =
-	"/root/projects/svelte-review-copilot/data/criteria/atom_interaction.yaml";
+const SOIL_CRITERIA_SOURCE = path.join(REPO_ROOT, "data/criteria/soil_contamination.yaml");
+const ATOM_CRITERIA_SOURCE = path.join(REPO_ROOT, "data/criteria/atom_interaction.yaml");
 
 /** The shared general rubric — its category keys must never appear in a draft. */
-const GENERAL_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/general.yaml";
+const GENERAL_CRITERIA_SOURCE = path.join(REPO_ROOT, "data/criteria/general.yaml");
 
 /** A valid full criteria document (passes the validation gate). */
 const VALID_DRAFT: Record<string, unknown> = {

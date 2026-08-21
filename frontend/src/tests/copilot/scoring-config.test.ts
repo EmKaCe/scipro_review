@@ -21,8 +21,25 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+/** Repo root — resolves portably so CI (runner user, arbitrary checkout dir) can read committed data. */
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+	"..",
+);
+/** Machine-local live-data probe paths — absent on CI, handled by the caller. */
+const STORED_RESULTS_DATA =
+	"/var/lib/docker/volumes/svelte-review-data/_data/submissions/soil_contamination/results.json";
+const STORED_RESULTS_MIRROR = path.join(
+	REPO_ROOT,
+	"data/submissions/soil_contamination/results.json",
+);
 
 import {
 	buildEvidenceHaystacks,
@@ -170,7 +187,7 @@ describe("scoring-config loader", () => {
 			await writeFile(
 				path.join(dir, "soil_contamination.yaml"),
 				await readFile(
-					"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
+					path.join(REPO_ROOT, "data/scoring/soil_contamination.yaml"),
 					"utf-8",
 				),
 			);
@@ -179,7 +196,7 @@ describe("scoring-config loader", () => {
 			await writeFile(
 				path.join(dir, "scoring", "soil_contamination.yaml"),
 				await readFile(
-					"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
+					path.join(REPO_ROOT, "data/scoring/soil_contamination.yaml"),
 					"utf-8",
 				),
 			);
@@ -443,10 +460,8 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 });
 
 describe("evidence patterns — golden snapshot vs stored outputs", () => {
-	const DATA =
-		"/var/lib/docker/volumes/svelte-review-data/_data/submissions/soil_contamination/results.json";
-	const MIRROR =
-		"/root/projects/svelte-review-copilot/data/submissions/soil_contamination/results.json";
+	const DATA = STORED_RESULTS_DATA;
+	const MIRROR = STORED_RESULTS_MIRROR;
 
 	function loadResults(): Record<
 		string,
@@ -539,7 +554,7 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 		// Load the REAL committed scoring YAML so every configured pattern
 		// is covered (a partial fixture would silently skip patterns).
 		const rawYaml = await readFile(
-			"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
+			path.join(REPO_ROOT, "data/scoring/soil_contamination.yaml"),
 			"utf-8",
 		);
 		const parsed = (await import("js-yaml")).load(rawYaml) as {

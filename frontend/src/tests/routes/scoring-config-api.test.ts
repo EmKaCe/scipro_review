@@ -12,6 +12,16 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** Repo root — resolves portably so CI (runner user, arbitrary checkout dir) can read committed data. */
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+	"..",
+);
 
 import type { RequestEvent } from "@sveltejs/kit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,8 +54,7 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 /** The committed soil scoring file (byte-equality contract — read-only). */
-const SOIL_SCORING_SOURCE =
-	"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml";
+const SOIL_SCORING_SOURCE = path.join(REPO_ROOT, "data/scoring/soil_contamination.yaml");
 
 /** A valid full scoring document for PUT (passes the compile gate). */
 const VALID_SCORING: Record<string, unknown> = {
