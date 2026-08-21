@@ -66,7 +66,7 @@
 		"@mastra/memory": "^1.24.0",
 		"@tiptap/core": "^3.29.2",
 		"@tiptap/extension-placeholder": "^3.29.2",
-		"@tiptap/starter-kit": "^3.29.2",
+		"@tiptap/starter-kit": "^3.30.2",
 		"fflate": "^0.8.3",
 		"highlight.js": "^11.11.1",
 		"idb": "^8.0.3",
