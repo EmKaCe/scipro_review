@@ -159,13 +159,13 @@ function overallLabel(weighted: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Category registry (internal snake_case key <-> Karl form prefix)
+// Category registry (internal snake_case key <-> legacy form prefix)
 // ---------------------------------------------------------------------------
 
 interface CategoryInfo {
 	/** Internal rubric category key, e.g. "code_formatting". */
 	key: string;
-	/** Karl form element-ID prefix, e.g. "codeFormatting". */
+	/** Legacy form element-ID prefix, e.g. "codeFormatting". */
 	legacy: string;
 }
 
@@ -178,14 +178,14 @@ function normalizeCategoryKey(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-/** Lookup table accepting BOTH internal keys ("genai") and Karl prefixes ("GenAI"). */
+/** Lookup table accepting BOTH internal keys ("genai") and legacy prefixes ("GenAI"). */
 const CATEGORY_LOOKUP = new Map<string, CategoryInfo>();
 for (const cat of CATEGORIES) {
 	CATEGORY_LOOKUP.set(normalizeCategoryKey(cat.key), cat);
 	CATEGORY_LOOKUP.set(normalizeCategoryKey(cat.legacy), cat);
 }
 
-/** Resolve a category from either its internal key or its Karl prefix. */
+/** Resolve a category from either its internal key or its legacy prefix. */
 function resolveCategory(categoryKey: string): CategoryInfo | null {
 	return CATEGORY_LOOKUP.get(normalizeCategoryKey(categoryKey)) ?? null;
 }

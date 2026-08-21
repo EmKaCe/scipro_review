@@ -1,9 +1,9 @@
 /**
- * @file Mapping from internal rubric category keys to Karl's form element-ID
- * prefixes, plus buildLegacyId() — the helper that assembles full Karl element
+ * @file Mapping from internal rubric category keys to the legacy grading form's element-ID
+ * prefixes, plus buildLegacyId() — the helper that assembles full legacy form element
  * IDs for rubric checkboxes.
  *
- * Karl's form (karlkirschner.github.io/scipro_assignments_grading) builds
+ * the downstream peer-review grading form (karlkirschner.github.io/scipro_assignments_grading) builds
  * checkbox IDs at runtime (functions/generate.js line 96):
  *   id = category + "-" + sentiment + "-" + mainPoint + "-" + subPoint
  * where `category` is the camelCase prefix below and sentiment/mainPoint/
@@ -13,8 +13,8 @@
  */
 
 /**
- * Internal snake_case rubric category key → Karl's camelCase element-ID
- * prefix. Exactly 14 entries; provenance: Karl's criteria JSONs
+ * Internal snake_case rubric category key → the legacy form's camelCase element-ID
+ * prefix. Exactly 14 entries; provenance: the downstream form's criteria JSONs
  * (general.json, scipy_sklearn_soil.json, user_function.json,
  * plotting_data.json) via the generate.js ID rule.
  */
@@ -39,10 +39,10 @@ export const LEGACY_CATEGORY_PREFIXES: Readonly<Record<string, string>> = {
 export type LegacyCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
 
 /**
- * Assemble a Karl form element ID for a rubric checkbox.
+ * Assemble a legacy form element ID for a rubric checkbox.
  *
- * Format: `karlPrefix + "-" + sentiment + "-" + mainPoint + "-" + subPoint`
- * (generate.js line 96), where karlPrefix is looked up from
+ * Format: `legacyPrefix + "-" + sentiment + "-" + mainPoint + "-" + subPoint`
+ * (generate.js line 96), where legacyPrefix is looked up from
  * LEGACY_CATEGORY_PREFIXES.
  *
  * Raw text is preserved verbatim — NO cleaning, NO normalization. Spaces,
@@ -50,7 +50,7 @@ export type LegacyCategoryKey = keyof typeof LEGACY_CATEGORY_PREFIXES;
  * matches the form's `getElementById()` lookup exactly.
  *
  * Throws for an unknown category key so a typo fails loudly instead of
- * emitting a silently-broken ID that Karl's form would reject on upload.
+ * emitting a silently-broken ID that the legacy grading form would reject on upload.
  */
 export function buildLegacyId(
 	categoryKey: string,

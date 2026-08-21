@@ -1964,7 +1964,7 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 	});
 
 	// ---------------------------------------------------------------------------
-	// Wave 8 — post-processing, cohort calibration, Karl export wiring
+	// Wave 8 — post-processing, cohort calibration, grade export wiring
 	// ---------------------------------------------------------------------------
 
 	describe("Wave 8 pipeline wiring", () => {

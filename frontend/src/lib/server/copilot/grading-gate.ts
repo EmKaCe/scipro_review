@@ -1,12 +1,12 @@
 /**
- * @file Synthetic grading-quality gate (replaces the removed Karl gate).
+ * @file Synthetic grading-quality gate (replaces the removed ground-truth gate).
  *
  * A DETERMINISTIC safety net that validates proposed grading (dimension
  * scores + rubric selections) against the REAL rubric and grading config,
  * over COMMITTED SYNTHETIC fixtures. No LLM, no network, no student data —
  * as safe to run as a unit test (harness-agnostic CLI + vitest).
  *
- * Why this exists: the old "Karl ground-truth gate" compared the pipeline
+ * Why this exists: the old "ground-truth gate" compared the pipeline
  * against real emailed student grades to surface grading-quality defects
  * (e.g. the B7 bug where `update-grade-dimension` wrote 500/600 on an
  * arbitrary [0,1000] scale while rubric max_points are 4–6, plus over-ticking

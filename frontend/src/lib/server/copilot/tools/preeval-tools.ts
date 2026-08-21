@@ -173,7 +173,7 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 		"Persists each envelope into the stored results and returns a per-submission summary with totals; " +
 		"rows that fail (e.g. not executed yet) are reported with ok:false and do not abort the loop. " +
 		"After the loop, the batch post-stages run: cross-submission cohort calibration (deterministic score adjustments) " +
-		"and Karl-form grading JSON generation for every pre-evaluated submission.",
+		"and legacy grading-form JSON generation for every pre-evaluated submission.",
 	permission: "approval",
 	inputSchema: preEvaluateAllArgsSchema,
 	run: async (args, ctx) => {
@@ -213,7 +213,7 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 			}
 		}
 
-		// ── Wave 8 batch post-stages: cohort calibration then Karl export ──
+		// ── Wave 8 batch post-stages: cohort calibration then grade export ──
 		// Both are deterministic (no LLM calls) and run AFTER every
 		// submission has been pre-evaluated. Failures must not lose the
 		// per-row results already collected — they are logged and the tool
@@ -241,7 +241,7 @@ const preEvaluateAllTool: CopilotTool<PreEvaluateAllArgs, unknown> = {
 			legacyExport = await generateAssignmentExport(assignmentId);
 		} catch (err) {
 			console.warn(
-				`[pre-evaluate-all] Karl export failed for "${assignmentId}": ${
+				`[pre-evaluate-all] grade export failed for "${assignmentId}": ${
 					err instanceof Error ? err.message : String(err)
 				}`,
 			);

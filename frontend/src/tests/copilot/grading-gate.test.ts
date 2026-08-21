@@ -1,6 +1,6 @@
 // @vitest-environment node
 /**
- * @file Synthetic grading-quality gate tests (replaces the removed Karl gate).
+ * @file Synthetic grading-quality gate tests (replaces the removed ground-truth gate).
  *
  * Runs the deterministic grading gate over the committed synthetic fixtures in
  * fixtures/grading-gate/*.json and asserts the gate's contract: a fixture

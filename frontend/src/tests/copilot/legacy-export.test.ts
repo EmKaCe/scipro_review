@@ -1,9 +1,9 @@
 /**
- * @file Unit tests for the Karl-form grading JSON export (legacy-export.ts).
+ * @file Unit tests for the legacy grading-form JSON export (legacy-export.ts).
  *
  * Uses a real temp DATA_DIR fixture (criteria/general.yaml) so the export's
  * criteria loading and sentiment/main-point lookup run against actual YAML.
- * Covers the weighted grade formula, the 5 grading slider keys, Karl element
+ * Covers the weighted grade formula, the 5 grading slider keys, legacy form element
  * IDs for checkboxes (verbatim text — typos and double spaces included),
  * textarea prefixes, the evaluation-textbox summary, and the fail-loud
  * behavior for unmatched rubric selections.
@@ -16,17 +16,17 @@ import path from "node:path";
 
 import {
 	findSentimentAndMainPoint,
-	generateKarlJson,
+	generateLegacyGradeJson,
 	legacyGrade,
 	weightedPercentage,
 } from "$lib/server/copilot/legacy-export";
-import type { GenerateKarlJsonOptions } from "$lib/server/copilot/legacy-export";
+import type { GenerateLegacyGradeJsonOptions } from "$lib/server/copilot/legacy-export";
 
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------
 
-/** Minimal criteria fixture: 3 categories with known Karl prefixes. */
+/** Minimal criteria fixture: 3 categories with known legacy prefixes. */
 const CRITERIA_YAML = `categories:
   code_formatting:
     title: Code Formatting
@@ -84,7 +84,7 @@ const BASE_DIMENSIONS = {
 	creativity: 3.0,
 };
 
-/** Karl's 5 grading slider element IDs. */
+/** The legacy form's 5 grading slider element IDs. */
 const SLIDER_KEYS = [
 	"codequality-grading",
 	"codeexecution-grading",
@@ -93,7 +93,7 @@ const SLIDER_KEYS = [
 	"creativity-grading",
 ];
 
-/** The 14 Karl form prefixes (ground truth, independent of legacy-catalog). */
+/** The 14 legacy form prefixes (ground truth, independent of legacy-catalog). */
 const KNOWN_PREFIXES = [
 	"codeFormatting",
 	"codingConcept",
@@ -111,7 +111,7 @@ const KNOWN_PREFIXES = [
 	"plotting",
 ];
 
-function makeOptions(overrides: Partial<GenerateKarlJsonOptions> = {}): GenerateKarlJsonOptions {
+function makeOptions(overrides: Partial<GenerateLegacyGradeJsonOptions> = {}): GenerateLegacyGradeJsonOptions {
 	return {
 		submissionId: "2026SS_00",
 		dimensions: { ...BASE_DIMENSIONS },
@@ -144,9 +144,9 @@ afterEach(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe("generateKarlJson", () => {
+describe("generateLegacyGradeJson", () => {
 	it("emits the 5 grading slider keys with string score values", async () => {
-		const output = await generateKarlJson(makeOptions());
+		const output = await generateLegacyGradeJson(makeOptions());
 
 		expect(output["codequality-grading"]).toBe("4.5");
 		expect(output["codeexecution-grading"]).toBe("5.5");
@@ -163,7 +163,7 @@ describe("generateKarlJson", () => {
 		expect(weightedPercentage(BASE_DIMENSIONS)).toBe(87.0);
 		expect(legacyGrade(87.0)).toBe(1.7);
 
-		const output = await generateKarlJson(makeOptions());
+		const output = await generateLegacyGradeJson(makeOptions());
 		expect(output["evaluation-textbox"]).toContain("1.7");
 		expect(output["evaluation-textbox"]).toContain("87.0");
 	});
@@ -192,8 +192,8 @@ describe("generateKarlJson", () => {
 		expect(weightedPercentage({})).toBe(0);
 	});
 
-	it('emits "checked" checkbox keys using Karl element IDs (prefix-sentiment-mainPoint-subPoint)', async () => {
-		const output = await generateKarlJson(
+	it('emits "checked" checkbox keys using legacy form element IDs (prefix-sentiment-mainPoint-subPoint)', async () => {
+		const output = await generateLegacyGradeJson(
 			makeOptions({
 				rubricSelections: [
 					{ categoryKey: "pandas", optionKey: "merging - proper usage" },
@@ -218,8 +218,8 @@ describe("generateKarlJson", () => {
 		).toBe("checked");
 	});
 
-	it("preserves Karl's verbatim text (double spaces, typos) in checkbox IDs", async () => {
-		const output = await generateKarlJson(
+	it("preserves verbatim rubric text (double spaces, typos) in checkbox IDs", async () => {
+		const output = await generateLegacyGradeJson(
 			makeOptions({
 				rubricSelections: [
 					{
@@ -237,19 +237,19 @@ describe("generateKarlJson", () => {
 		).toBe("checked");
 	});
 
-	it("emits textarea keys with the Karl category prefix (general_feedback → general-textarea)", async () => {
+	it("emits textarea keys with the legacy category prefix (general_feedback → general-textarea)", async () => {
 		const notes = {
 			code_formatting: "Imports follow stdlib→third-party convention.",
 			general_feedback: "Solid overall work.",
 		};
-		const output = await generateKarlJson(makeOptions({ additionalNotes: notes }));
+		const output = await generateLegacyGradeJson(makeOptions({ additionalNotes: notes }));
 
 		expect(output["codeFormatting-textarea"]).toBe(notes.code_formatting);
 		expect(output["general-textarea"]).toBe(notes.general_feedback);
 	});
 
 	it("includes an evaluation-textbox with the grade summary and key findings", async () => {
-		const output = await generateKarlJson(
+		const output = await generateLegacyGradeJson(
 			makeOptions({
 				additionalNotes: { pandas: "Merges are correct and well documented." },
 			}),
@@ -263,8 +263,8 @@ describe("generateKarlJson", () => {
 		expect(summary).toContain("pandas: Merges are correct and well documented.");
 	});
 
-	it("does not emit keys that do not exist in Karl's rubric", async () => {
-		const output = await generateKarlJson(
+	it("does not emit keys that do not exist in the legacy rubric", async () => {
+		const output = await generateLegacyGradeJson(
 			makeOptions({
 				rubricSelections: [
 					{
@@ -286,7 +286,7 @@ describe("generateKarlJson", () => {
 	});
 
 	it("handles empty rubric selections (no checkbox keys emitted)", async () => {
-		const output = await generateKarlJson(makeOptions());
+		const output = await generateLegacyGradeJson(makeOptions());
 
 		const checkedKeys = Object.entries(output).filter(([, value]) => value === "checked");
 		expect(checkedKeys).toHaveLength(0);
@@ -295,7 +295,7 @@ describe("generateKarlJson", () => {
 	});
 
 	it("omits textareas for categories without notes", async () => {
-		const output = await generateKarlJson(
+		const output = await generateLegacyGradeJson(
 			makeOptions({
 				additionalNotes: {
 					code_formatting: "Imports follow stdlib→third-party convention.",
@@ -312,7 +312,7 @@ describe("generateKarlJson", () => {
 
 	it("throws when a rubric selection cannot be matched to the criteria YAML", async () => {
 		await expect(
-			generateKarlJson(
+			generateLegacyGradeJson(
 				makeOptions({
 					rubricSelections: [
 						{ categoryKey: "code_formatting", optionKey: "made up option" },
@@ -322,7 +322,7 @@ describe("generateKarlJson", () => {
 		).rejects.toThrow(/not found in category "code_formatting"/);
 
 		await expect(
-			generateKarlJson(
+			generateLegacyGradeJson(
 				makeOptions({
 					rubricSelections: [{ categoryKey: "no_such_category", optionKey: "x" }],
 				}),

@@ -1,9 +1,9 @@
 /**
- * @file Convert pre-evaluation results into Karl-form grading JSON.
+ * @file Convert pre-evaluation results into legacy grading-form JSON.
  *
- * Karl's peer-review form (karlkirschner.github.io/scipro_assignments_grading)
+ * the downstream peer-review grading form (karlkirschner.github.io/scipro_assignments_grading)
  * populates elements via `document.getElementById(key)`: a grading JSON
- * uploaded to the form must use Karl's exact element IDs as keys, and every
+ * uploaded to the form must use the legacy grading form's exact element IDs as keys, and every
  * value must be the string the form expects ("checked" for checkboxes, the
  * score string for grading sliders, free text for textareas). A single
  * mismatched key is silently ignored by the form — never emitted.
@@ -16,18 +16,18 @@
  *     incl. "general-textarea" for general_feedback)
  *   - one "evaluation-textbox" summary (grade, weighted %, key findings)
  *
- * The grade applies Karl's weighted formula
+ * The grade applies the weighted grading formula
  *   weighted = CQD×4 + CER×4 + AR×4 + SP×4 + CR×1  (max 100)
  * and maps it to the grade scale required by the pre-eval spec (≥95 → 1.0,
  * ≥90 → 1.3, ≥85 → 1.7, ≥80 → 2.0, ≥75 → 2.3, ≥70 → 2.7, below 70 → 3.0).
  * Note: data/grading_config.yaml carries a finer-grained boundary table for
  * the app's own grade display; the export deliberately uses the simpler
- * Karl-form scale above.
+ * legacy grading-form scale above.
  *
  * Plagiarism language: this module has NO strip pass of its own — the
  * plagiarism-stripping pass (Pass 4 "strip-plagiarism" in post-process.ts)
  * runs before export and removes plagiarism sentences from every textarea,
- * so the notes reaching generateKarlJson are already clean. Plagiarism is
+ * so the notes reaching generateLegacyGradeJson are already clean. Plagiarism is
  * a separate instructor-only deliverable (data/plagiarism/plagiarism-assessment.md)
  * and must never appear in a grading JSON.
  *
@@ -42,7 +42,7 @@ import type { Category, Sentiment } from "$lib/types/criteria";
 // Dimension mapping
 // ---------------------------------------------------------------------------
 
-/** Internal dimension key → Karl form slider element ID. */
+/** Internal dimension key → legacy form slider element ID. */
 const LEGACY_SLIDER_KEYS: Readonly<Record<string, string>> = {
 	code_quality_design: "codequality-grading",
 	code_execution_results: "codeexecution-grading",
@@ -51,7 +51,7 @@ const LEGACY_SLIDER_KEYS: Readonly<Record<string, string>> = {
 	creativity: "creativity-grading",
 };
 
-/** Weight of each dimension in Karl's weighted grade formula (×4 ×4 ×4 ×4 ×1). */
+/** Weight of each dimension in the weighted grading formula (×4 ×4 ×4 ×4 ×1). */
 const DIMENSION_WEIGHTS: Readonly<Record<string, number>> = {
 	code_quality_design: 4,
 	code_execution_results: 4,
@@ -77,21 +77,21 @@ const SENTIMENTS: readonly Sentiment[] = ["positive", "neutral", "negative"];
 // ---------------------------------------------------------------------------
 
 /** One checked rubric item: the category and the sub-point text (optionKey). */
-export interface KarlRubricSelection {
+export interface LegacyRubricSelection {
 	/** Internal category key, e.g. "code_formatting". */
 	categoryKey: string;
 	/** Sub-point text as it appears verbatim in the criteria YAML. */
 	optionKey: string;
 }
 
-/** Options for {@link generateKarlJson}. */
-export interface GenerateKarlJsonOptions {
+/** Options for {@link generateLegacyGradeJson}. */
+export interface GenerateLegacyGradeJsonOptions {
 	/** Student ID, e.g. "2026SS_00" (included in the summary). */
 	submissionId: string;
 	/** Dimension scores keyed by internal dimension key (creativity max 4, others max 6). */
 	dimensions: Record<string, number>;
 	/** Checked rubric items (may be empty). */
-	rubricSelections: readonly KarlRubricSelection[];
+	rubricSelections: readonly LegacyRubricSelection[];
 	/** Free-text notes per category key (may be empty). */
 	additionalNotes: Record<string, string>;
 	/** Criteria YAML paths from the assignment registry, e.g. ["data/criteria/general.yaml"]. */
@@ -103,7 +103,7 @@ export interface GenerateKarlJsonOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Karl's weighted score: CQD×4 + CER×4 + AR×4 + SP×4 + CR×1, capped at 100.
+ * The weighted grading score: CQD×4 + CER×4 + AR×4 + SP×4 + CR×1, capped at 100.
  *
  * With the grading config's maxima (6/6/6/6/4) the formula's natural maximum
  * is exactly 100; the clamp only guards out-of-range input.
@@ -116,7 +116,7 @@ export function weightedPercentage(dimensions: Record<string, number>): number {
 	return Math.min(100, Math.max(0, total));
 }
 
-/** Map a weighted percentage to the grade scale used for the Karl export. */
+/** Map a weighted percentage to the grade scale used for the grade export. */
 export function legacyGrade(weighted: number): number {
 	if (weighted >= 95) return 1.0;
 	if (weighted >= 90) return 1.3;
@@ -179,14 +179,14 @@ export async function findSentimentAndMainPoint(
 }
 
 // ---------------------------------------------------------------------------
-// Karl prefix (derived via buildLegacyId)
+// Legacy prefix (derived via buildLegacyId)
 // ---------------------------------------------------------------------------
 
 const MAIN_POINT_SENTINEL = "__main_point__";
 const SUB_POINT_SENTINEL = "__sub_point__";
 
 /**
- * Derive the Karl element-ID prefix for a category key using only
+ * Derive the legacy element-ID prefix for a category key using only
  * buildLegacyId — the category→prefix mapping itself is internal to
  * legacy-catalog. buildLegacyId returns "prefix-sentiment-mainPoint-subPoint",
  * so stripping the known suffix of a sentinel call yields the prefix.
@@ -212,7 +212,7 @@ function buildEvaluationTextbox(opts: {
 	grade: number;
 	weighted: number;
 	dimensions: Record<string, number>;
-	rubricSelections: readonly KarlRubricSelection[];
+	rubricSelections: readonly LegacyRubricSelection[];
 	additionalNotes: Record<string, string>;
 }): string {
 	const dimensionSummary = Object.entries(LEGACY_SLIDER_KEYS)
@@ -254,16 +254,16 @@ function buildEvaluationTextbox(opts: {
 // ---------------------------------------------------------------------------
 
 /**
- * Convert pre-evaluation results into the flat Karl-form JSON object.
+ * Convert pre-evaluation results into the flat legacy grading-form JSON object.
  *
- * Every key is either a Karl element ID (checkbox via buildLegacyId, slider,
- * textarea, evaluation-textbox) and every value is the string Karl's form
+ * Every key is either a legacy form element ID (checkbox via buildLegacyId, slider,
+ * textarea, evaluation-textbox) and every value is the string the legacy grading form
  * expects. Throws when a rubric selection cannot be matched to the criteria
  * YAML or references an unknown category — failing loudly beats emitting a
  * key the form would silently drop.
  */
-export async function generateKarlJson(
-	options: GenerateKarlJsonOptions,
+export async function generateLegacyGradeJson(
+	options: GenerateLegacyGradeJsonOptions,
 ): Promise<Record<string, string>> {
 	const { submissionId, dimensions, rubricSelections, additionalNotes, criteriaFiles } = options;
 

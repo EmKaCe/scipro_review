@@ -69,7 +69,7 @@ import {
 	extractFitMetricsFromResults,
 	type CalibrationAdjustment,
 } from "$lib/server/copilot/cohort-calibration";
-import { generateKarlJson } from "$lib/server/copilot/legacy-export";
+import { generateLegacyGradeJson } from "$lib/server/copilot/legacy-export";
 
 import {
 	buildPhase2aDimensionGuidance,
@@ -884,9 +884,9 @@ export async function preEvaluateSubmission(
 	// suspected instruction-smuggling attempt is a hard teacher-review
 	// signal. The cell content was already removed before prompting, and the
 	// needs-review tier is what the dashboard flags — deliberately NOT a
-	// "[needs review]" note injected into additionalNotes, because the Karl
+	// "[needs review]" note injected into additionalNotes, because the grade
 	// export iterates additionalNotes keys and would choke on a synthetic
-	// category key (see generateKarlJson — legacyPrefixFor on an unknown key).
+	// category key (see generateLegacyGradeJson — legacyPrefixFor on an unknown key).
 	// The autofix-cell screening folds into the same signal.
 	const gradingConfidence: GradingConfidence =
 		screeningNeedsReview || autofixScreeningNeedsReview
@@ -1013,7 +1013,7 @@ export function derivedGradingConfidence(input: {
 }
 
 // ---------------------------------------------------------------------------
-// Wave 8 — batch operations (cohort calibration + Karl export)
+// Wave 8 — batch operations (cohort calibration + grade export)
 // ---------------------------------------------------------------------------
 
 /**
@@ -1096,7 +1096,7 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 					dimensions: adjustedDims,
 				},
 			},
-			// The gate (and Karl export) reads postProcessed first — keep the
+			// The gate (and grade export) reads postProcessed first — keep the
 			// calibrated scores visible there too.
 			postProcessed: stored.postProcessed
 				? { ...stored.postProcessed, dimensions: adjustedDims }
@@ -1110,19 +1110,19 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 }
 
 /**
- * Generate the Karl-form grading JSON for every pre-evaluated submission of
+ * Generate the legacy grading-form JSON for every pre-evaluated submission of
  * an assignment. Prefers the POST-PROCESSED grading data (corrected
  * dimensions / rubric selections / notes); falls back to the raw envelope
  * when post-processing was not run.
  *
  * Per-submission failures (a rubric selection that no longer matches the
- * criteria files — generateKarlJson's contract) are isolated and returned
+ * criteria files — generateLegacyGradeJson's contract) are isolated and returned
  * in `failed` so one stale selection cannot sink the whole batch export.
  */
 export async function generateAssignmentExport(
 	assignmentId: string,
 ): Promise<{
-	/** studentId → flat Karl-form JSON (element id → value string). */
+	/** studentId → flat legacy grading-form JSON (element id → value string). */
 	exports: Record<string, Record<string, string>>;
 	/** Submissions whose export failed, with the error message. */
 	failed: { submissionId: string; error: string }[];
@@ -1136,7 +1136,7 @@ export async function generateAssignmentExport(
 	for (const [studentId, stored] of Object.entries(results)) {
 		if (!stored.preEval) continue;
 		try {
-			exports[studentId] = await generateKarlJson({
+			exports[studentId] = await generateLegacyGradeJson({
 				submissionId: studentId,
 				dimensions:
 					stored.postProcessed?.dimensions ?? stored.preEval.gradeSuggestion.dimensions,

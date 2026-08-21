@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * @file Verify the synthetic grading-quality gate (replaces verify-karl-gate.py).
+ * @file Verify the synthetic grading-quality gate (replaces the removed ground-truth gate script).
  *
  * A DETERMINISTIC, safe-to-run grader-quality check over committed synthetic
  * fixtures. No LLM, no network, no student data — as safe as a unit test.

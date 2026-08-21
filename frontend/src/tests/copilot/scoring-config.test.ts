@@ -7,7 +7,7 @@
  *   2. Byte-equality golden: the Phase 2a prompt assembled from the config
  *      (soil_contamination) equals the pre-config hardcoded prompt
  *      (fixtures/phase2a-prompt-golden.txt). Prompt byte-equality is a
- *      contract — the Karl gate + calibration findings were tuned against it.
+ *      contract — the removed ground-truth gate + calibration findings were tuned against it.
  *   3. Evidence-count snapshot — config patterns against the stored 19
  *      outputs reproduce the pre-config baseline counts (fit 16/19, std-err
  *      4/19, r2 computed 7/19, r2 discussed 10/19, physical 6/19, builtin

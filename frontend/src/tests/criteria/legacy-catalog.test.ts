@@ -1,17 +1,17 @@
 /**
- * @file Unit tests for legacy-catalog.ts — the category-key → Karl element-ID
+ * @file Unit tests for legacy-catalog.ts — the category-key → legacy element-ID
  * prefix mapping and buildLegacyId() helper.
  *
- * Karl's form rebuilds checkbox IDs at runtime from raw category/sentiment/
+ * The legacy grading form rebuilds checkbox IDs at runtime from raw category/sentiment/
  * mainPoint/subPoint text (generate.js line 96), so the helper must preserve
- * text VERBATIM — including Karl's known typos and double spaces.
+ * text VERBATIM — including the legacy form's known typos and double spaces.
  */
 import { describe, expect, it } from "vitest";
 
 import { buildLegacyId, LEGACY_CATEGORY_PREFIXES } from "$lib/server/criteria/legacy-catalog";
 
 describe("legacy-catalog", () => {
-	it("maps general_feedback to Karl's 'general' prefix", () => {
+	it("maps general_feedback to the legacy 'general' prefix", () => {
 		const id = buildLegacyId("general_feedback", "positive", "Overall", "good");
 		expect(id.startsWith("general-")).toBe(true);
 	});
@@ -21,7 +21,7 @@ describe("legacy-catalog", () => {
 		expect(id.startsWith("followingInstructions-")).toBe(true);
 	});
 
-	it("preserves Karl's double space in the jupyterNotebooks negative mainPoint", () => {
+	it("preserves legacy double space in the jupyterNotebooks negative mainPoint", () => {
 		const id = buildLegacyId(
 			"jupyter_notebooks",
 			"negative",
@@ -31,7 +31,7 @@ describe("legacy-catalog", () => {
 		expect(id).toContain("poorly done,  which");
 	});
 
-	it("preserves Karl's 'separatation' typo", () => {
+	it("preserves the 'separatation' typo", () => {
 		const id = buildLegacyId(
 			"jupyter_notebooks",
 			"negative",
