@@ -1,0 +1,178 @@
+categories:
+  code_formatting:
+    title: Code Formatting
+    additional_notes: true
+    positive:
+      - main_point: Formatting is done well, which includes
+        sub_points:
+          - text: blank lines - consistent and good usage
+          - text: concise, clean and clearly written code
+          - text: commenting - appropriate amount provided (i.e., not excessive or insufficient)
+          - text: f-string - properly used
+          - text: imports - libraries were alphabetized
+          - text: imports - libraries were listed at the notebook's top
+          - text: indentation - consistent and done with 4 spaces
+          - text: line length - properly done (e.g., no scrolling is needed)
+          - text: naming - descriptive objects/variables (i.e., human readable)
+          - text: PEP8 guidelines- followed
+          - text: spacing - consistent and correct usage
+    neutral: []
+    negative:
+      - main_point: The following formatting issues were present in your code
+        sub_points:
+          - text: blank lines - missing the required two blank lines after imports and/or around user-defined functions (PEP8)
+          - text: blank lines - not enough used (e.g., separating ideas and improving readability)
+          - text: blank lines - too many used (i.e., not concise)
+          - text: block commenting - inappropriately done and/or unnecessary (i.e., comments given on their own code line)
+          - text: commenting - excessive amounts done (e.g., for obvious points), or not relevant (i.e. significantly distracts from the solution's main focus)
+          - text: formatting - your code follow a formating style other than what is taught and demonstrated in this course.
+          - text: imports - not alphabetized
+          - text: imports - not listed together at the notebook's top
+          - text: indentation - improperly done (i.e., 4 spaces)
+          - text: inline commenting - usage was unnecessary (i.e., comments given at the end of a code line)
+          - text: f-string - not used (e.g., print statements)
+          - text: f-string - please ensure that proper grammar and syntax are maintained in the print statements
+          - text: line length - too long (i.e., requiring scrolling)
+          - text: naming - object/variable (e.g., df, data, x, y) is not descriptive enough
+          - text: naming - object/variable is too long (i.e., not concise while remaining informative)
+          - text: spacing - inconsistent and/or improperly used
+          - text: PEP8 - not well followed
+
+  coding_concept:
+    title: Coding Concept
+    additional_notes: true
+    positive:
+      - main_point: Data structures done well, which includes using the following
+        sub_points:
+          - text: dictionary
+          - text: list
+          - text: set
+          - text: tuple
+      - main_point: "Coding concepts done well, which includes the following "
+        sub_points:
+          - text: "built-in function(s):"
+            comment: true
+          - text: built-in function - 'enumerate'
+          - text: built-in function - 'range'
+          - text: built-in function - 'reversed'
+          - text: built-in function - 'round'
+          - text: built-in function - 'sorted'
+          - text: list comprehension
+          - text: looping - over a dictionary
+          - text: looping - 'zip' usage to iterate over two lists
+    neutral: []
+    negative:
+      - main_point: Better data structures would have improved the solution, which includes the following
+        sub_points:
+          - text: looping - over a dictionary
+          - text: looping - use 'zip' to loop over two lists of equal length
+          - text: using 'set' - unique elements
+          - text: using 'tuple' - immutable elements
+      - main_point: Coding concepts that were poorly done, which includes the following
+        sub_points:
+          - text: built-in function - 'enumerate'
+          - text: built-in function - 'range'
+          - text: built-in function - 'round'
+          - text: built-in function - 'sorted'
+          - text: "built-in function(s):"
+            comment: true
+          - text: concise coding  - make your code more concise
+          - text: concise coding - unnecessary or redundant code (e.g., duplicate imports, redundant sorting, unnecessary variable assignment)
+          - text: copy-and-pasting code - doing this increases the chances of errors and may introduced confusion
+          - text: file handling - hardcoding file paths; relative paths should be used to promote notebook transferability
+          - text: if-elif-else (e.g. mutually exclusive invalid states) - better informs the reader of the code's intent versus 'if-if-...' (independent (nonexclusive invalid states)
+          - text: imports - libraries were imported, but not used (not concise coding)
+
+  jupyter_notebooks:
+    title: Jupyter Notebooks
+    additional_notes: true
+    positive:
+      - main_point: Notebook is done well, which includes the following
+        sub_points:
+          - text: cell structure - good usage to separate ideas (e.g., thoughts, tasks/subtasks, user-defined functions)
+          - text: code cells - good separation of encode ideas
+          - text: markdown cells - good usage to communicate ideas, thoughts or workflow
+    neutral:
+      - main_point: Notebook could be slightly improved, which includes the following
+        sub_points:
+          - text: cell structure - clearer separation needed for data handling steps (e.g., reading, cleaning, merging)
+          - text: cell structure - some additional separation of ideas (both code and markdown cells)
+          - text: cell type - cell(s) have wrong types (e.g., a cell meant for text was 'Code' cell)
+          - text: code cells - some additional encoded ideas into separate cells would have been logical
+          - text: markdown cells - some additional communication would have been more informative
+    negative:
+      - main_point: Notebook was poorly done,  which includes the following
+        sub_points:
+          - text: cell structure - section headings (e.g., Markdown titles) are inconsistent, misleading, or do not reflect the assignment's structure
+          - text: cell structure - separatation of the tasks, subtasks, or ideas needs to be better
+          - text: cell structure - single code cell solution is not acceptable - does not make good use of a Jupyter-notebook's capability
+          - text: environment - code cells contains direct command execution (e.g., '!pip install') which is bad practice for executing a notebook on a local computer. If done in Colab - comment them out.
+          - text: equations - not properly formatted for viewing in Jupyter notebook (e.g., equations were not displayed/formatted well in Markdown cells)
+          - text: markdown cells - are not used, or there is a significant lack of good, informative communication
+          - text: markdown cells - several comments within code cells that would be better in  Markdown cells, allowing better formatting and communication of ideas.
+          - text: poor useage - poor use of the Jupyter notebook's capabilities.)
+
+  academic_scholarship:
+    title: Academic Scholarship (Citations and Writing)
+    additional_notes: true
+    positive:
+      - main_point: Scholarship done well, which includes
+        sub_points:
+          - text: citing - source of information and knowledge
+          - text: citing - libraries
+          - text: citing - proper ordering within the written text (e.g., ...[1-2]...[3] and not ...[3-4]...[1]...)
+          - text: units - input and output numbers have units (e.g., N, kJ, m/s, Hz)
+      - main_point: Writing and communication done well, which includes
+        sub_points:
+          - text: sentences - clear, concise and provides good context (i.e., C^3)
+          - text: sentences - complete written when appropriate (e.g., within markdown cells, docstrings)
+    neutral:
+      - main_point: Scholarship was done okay, apart from the following issue(s)
+        sub_points:
+          - text: citing - websites should include the date visited
+          - text: citing - when possible cite peer-reviewed papers or academic books, not websites
+          - text: references - inconsistent formatting
+      - main_point: Writing and communication done okay, apart from the following issue(s)
+        sub_points:
+          - text: sentences - ensure proper grammar and punctuation in docstrings and f-strings.
+          - text: words - some incorrect cases (i.e., capitalized vs. lower-cased words)
+          - text: words - a few misspelled
+          - text: words - a few mixed English and German
+    negative:
+      - main_point: No citation of information sources
+        sub_points:
+          - text: As a university student, you should be citing sources of knowledge. This is something that you will need to do for your thesis.
+      - main_point: Plagiarism - classmate
+        sub_points:
+          - text: "Your solution was very similar to another student's solution, with minor differences. Consequently, I was unable to identify whose work it actually was. Points remove:"
+            comment: true
+            point_deduction: true
+          - text: Your solution was similar to another student's solution. Consider this a warning - you need to submit a solution that reflects your own ideas and communication thereof.
+      - main_point: Plagiarism - internet
+        sub_points:
+          - text: "Your solution contains code that is similar to code on the internet (without a citation). Points remove:"
+            comment: true
+            point_deduction: true
+          - text: Your solution contains code that is similar to code on the internet (without a citation). Consider this a warning.
+      - main_point: Scholarship done poorly, which includes the following
+        sub_points:
+          - text: citing - chosen citation format (e.g., numerical) was not correctly applied throughout the text
+          - text: citing - citing only websites is poor scholarship
+          - text: citing - done out-of-order (e.g., the first citation in your text is not to Reference 1)
+          - text: citing - missing references for knowledge (e.g., datasets, equations, libraries)
+          - text: citing - missing reference numbers (e.g., [1, 2]) within your writing
+          - text: "citing - unclear citation (e.g., [cite: 35, 41]"
+          - text: citing - you do not demonstrate that you know how to cite sources of knowledge
+          - text: references - missing important information (e.g., year, author, journal, title, accessed date)
+          - text: units - were not provided when needed
+      - main_point: Writing and communication done poorly, which includes the following
+        sub_points:
+          - text: communication - create your own context description within (e.g., do not copy it from the assignment)
+          - text: communication - no or very little presentation of thoughts or ideas (e.g., context, solution meaning, decisions made)
+          - text: context - poorly provided (e.g., background info, the problem)
+          - text: image - an image from the assignment sheet is not good enough - suggests a lack of effort
+          - text: sentences - not clean, concise and/or context provided (C^3)
+          - text: punctuation - use punctuation when sentences are formed, including in comments, docstrings and TypeError messages
+          - text: sentences - incomplete sentences (e.g., capitalization, subject, verb) when needed (including in f-strings)
+          - text: words - several misspelled
+          - text: words - notably mixed English and German words in the solution

@@ -1,0 +1,16 @@
+categories:
+  following_instructions:
+    title: Following Instructions
+    additional_notes: true
+    positive:
+      - main_point: All instructions were meticulously followed.
+        sub_points:
+          - text: The solution adhered to all submission requirements.
+          - text: Disallowed libraries were not used.
+    neutral: []
+    negative:
+      - main_point: The following instructions were not followed
+        sub_points:
+          - text: imports - using disallowed libraries
+          - text: format - solution was not a Jupyter-notebook
+          - text: ID or name - not included at the top of the solution

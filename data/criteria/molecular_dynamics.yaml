@@ -1,0 +1,57 @@
+categories:
+  molecular_dynamics:
+    title: Molecular Dynamics
+    additional_notes: true
+    positive:
+      - main_point: Molecular dynamics simulation done well, which includes
+        sub_points:
+          - text: correct implementation of the simulation algorithm
+          - text: proper handling of initial conditions
+          - text: appropriate time step selection
+          - text: correct energy conservation verification
+    neutral:
+      - main_point: Molecular dynamics simulation could be improved, which includes
+        sub_points:
+          - text: time step could be better justified
+          - text: initial conditions could be more clearly documented
+    negative:
+      - main_point: Molecular dynamics simulation issues, which includes
+        sub_points:
+          - text: incorrect implementation of the simulation algorithm
+          - text: inappropriate time step (too large or too small)
+          - text: energy conservation not verified
+          - text: units are inconsistent or missing
+
+  openmm_usage:
+    title: OpenMM Usage
+    additional_notes: true
+    positive:
+      - main_point: OpenMM usage done well, which includes
+        sub_points:
+          - text: correct setup of the simulation system
+          - text: proper use of OpenMM API
+          - text: appropriate force field selection
+    neutral: []
+    negative:
+      - main_point: OpenMM issues, which includes
+        sub_points:
+          - text: incorrect system setup
+          - text: improper use of OpenMM API
+          - text: wrong or missing force field parameters
+
+  data_analysis:
+    title: Data Analysis
+    additional_notes: false
+    positive:
+      - main_point: Data analysis done well, which includes
+        sub_points:
+          - text: proper trajectory analysis
+          - text: correct statistical calculations
+          - text: meaningful visualization of results
+    neutral: []
+    negative:
+      - main_point: Data analysis issues, which includes
+        sub_points:
+          - text: incorrect trajectory analysis
+          - text: missing or incorrect statistical calculations
+          - text: poor or missing visualization of results

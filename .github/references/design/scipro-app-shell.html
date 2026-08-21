@@ -1,0 +1,175 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — App Shell</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --header-bg: oklch(1 0 0 / 0.8);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --header-bg: oklch(0.148 0.004 228.8 / 0.8);
+      --card-bg: oklch(0.218 0.008 223.9);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    .toast-enter {
+      animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .toast-exit {
+      animation: fadeOut 0.2s ease-in forwards;
+    }
+
+    /* Custom scrollbar for webkit */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur-md flex items-center px-4">
+    <!-- Left -->
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <button id="back-btn" class="hidden items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0" aria-label="Go back">
+      </button>
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span id="breadcrumb-sep" class="hidden text-[var(--muted)] mx-1 select-none">/</span>
+      <span id="breadcrumb-text" class="hidden text-[var(--muted)] text-sm truncate"></span>
+    </div>
+
+    <!-- Center -->
+    <div id="header-center" class="hidden lg:flex items-center gap-3 absolute left-1/2 -translate-x-1/2"></div>
+
+    <!-- Right -->
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button id="save-btn" title="Save (Ctrl+S)" class="hidden items-center px-3 py-1.5 text-sm font-medium rounded-[var(--radius)] bg-[var(--accent)] text-white hover:opacity-90 transition-opacity shrink-0">
+        Save
+      </button>
+
+      <button id="import-btn" aria-label="Import review" class="hidden items-center justify-center w-8 h-8 rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+      </button>
+
+      <button id="theme-toggle" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+      </button>
+
+      <a href="#" aria-label="Settings" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 flex flex-col">
+    <div id="content-wrapper" class="mx-auto w-full px-4 py-8 flex-1 transition-all duration-300">
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-8 md:p-12 text-center shadow-sm">
+        <p class="text-[var(--muted)] text-sm">Page content goes here</p>
+        <button onclick="openDialog()" class="mt-6 inline-flex items-center gap-2 px-4 py-2 text-sm rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">
+          Open Delete Confirmation
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="mt-auto py-6 text-center border-t border-[var(--border)]">
+      <p class="text-xs text-[var(--footer-text)]">
+        SciPro Review v1.0 · Client-side only · No data leaves your browser
+      </p>
+      <div class="mt-2 flex items-center justify-center gap-2 text-xs text-[var(--footer-text)]">
+        <a href="#" class="hover:text-[var(--fg)] transition-colors underline-offset-2 hover:underline">Documentation</a>
+        <span class="select-none">·</span>
+        <a href="#" class="hover:text-[var(--fg)] transition-colors underline-offset-2 hover:underline">Settings</a>
+      </div>
+    </footer>
+  </main>
+
+  <!-- Confirmation Dialog -->
+  <div id="dialog-overlay" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-200">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-md w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 p-2 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold tracking-tight">Delete Review</h3>
+            <p class="text-sm text-[var(--muted)] mt-1 leading-relaxed">
+              Are you sure you want to delete the review for <span class="font-medium text-[var(--fg)]">2026SS_42</span>? This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeDialog()" class="px-4 py-2 text-sm font-medium rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">
+            Cancel
+          </button>
+          <button onclick="closeDialog()" class="px-4 py-2 text-sm font-medium rounded-[var(--radius)] bg-red-600 text-white hover:bg-red-700 transition-colors">
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Context Switcher (demo control) -->
+  <div id="context-switcher" class="fixed bottom-4 left-4 z-50 bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-lg p-3 flex flex-col gap-1 max-w-[180px]">
+    <p class="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold mb-1 px-2 select-none">Context</p>
+  </div>
+
+  <script>
+    const icons = {
+      arrowLeft: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>`,
+      sun: `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>`,
+      moon: `<svg xmlns="http://www.w3.org/2000/svg" width="

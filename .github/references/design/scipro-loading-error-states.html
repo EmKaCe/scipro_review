@@ -1,0 +1,618 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — States Reference</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --skeleton: oklch(0.963 0.002 197.1);
+      --success: oklch(0.723 0.219 142.5);
+      --warning: oklch(0.795 0.184 86.047);
+      --info: oklch(0.623 0.214 259.815);
+      --destructive: oklch(0.577 0.245 27.325);
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+      --skeleton: oklch(0.275 0.011 216.9);
+      --destructive: oklch(0.704 0.191 22.216);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    @keyframes skeleton-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .skeleton-pulse {
+      animation: skeleton-pulse 2s ease-in-out infinite;
+      background: var(--skeleton);
+      border-radius: calc(var(--radius) / 2);
+    }
+
+    .toast-enter {
+      animation: toastSlide 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    @keyframes toastSlide {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    .toast-exit {
+      animation: toastFade 0.2s ease-in forwards;
+    }
+
+    @keyframes toastFade {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    .dialog-overlay {
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none"></div>
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span class="text-[var(--muted)] mx-1 select-none">/</span>
+      <span class="text-[var(--muted)] text-sm truncate">UI States Reference</span>
+    </div>
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1">
+    <div class="max-w-5xl mx-auto px-4 py-8 space-y-10">
+
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Loading, Error & Empty States</h1>
+        <p class="text-sm text-[var(--muted)] mt-1">Comprehensive UI state reference for SciPro Review. Use the controls at the bottom to trigger dialogs and toasts.</p>
+      </div>
+
+      <!-- ===================== 1. Skeleton Loading — Landing Page ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">01</span>
+          <h2 class="text-lg font-semibold tracking-tight">Skeleton Loading — Landing Page</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <!-- Simulated landing page layout -->
+          <div class="max-w-4xl mx-auto space-y-6">
+            <!-- Start card skeleton -->
+            <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6">
+              <div class="skeleton-pulse w-40 h-6 mb-6"></div>
+              <div class="space-y-5">
+                <div>
+                  <div class="skeleton-pulse w-20 h-4 mb-2"></div>
+                  <div class="skeleton-pulse w-full h-10 rounded-[var(--radius)]"></div>
+                  <div class="skeleton-pulse w-48 h-3 mt-2"></div>
+                </div>
+                <div>
+                  <div class="skeleton-pulse w-24 h-4 mb-2"></div>
+                  <div class="skeleton-pulse w-full h-10 rounded-[var(--radius)]"></div>
+                </div>
+                <div class="skeleton-pulse w-full h-10 rounded-[var(--radius)]"></div>
+              </div>
+            </div>
+            <!-- Saved reviews skeleton -->
+            <div class="space-y-4">
+              <div class="flex items-center gap-3 mb-4">
+                <div class="skeleton-pulse w-28 h-5"></div>
+                <div class="skeleton-pulse w-8 h-5 rounded-full"></div>
+              </div>
+              <div class="flex gap-2 mb-3">
+                <div class="skeleton-pulse w-36 h-9 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-48 h-9 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse flex-1 h-9 rounded-[var(--radius)]"></div>
+              </div>
+              <!-- Table skeleton -->
+              <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+                <div class="bg-[var(--bg)] p-3 border-b border-[var(--border)] flex gap-4">
+                  <div class="skeleton-pulse w-24 h-4"></div>
+                  <div class="skeleton-pulse w-24 h-4"></div>
+                  <div class="skeleton-pulse w-24 h-4"></div>
+                  <div class="skeleton-pulse w-24 h-4"></div>
+                  <div class="skeleton-pulse w-24 h-4"></div>
+                </div>
+                <div class="divide-y divide-[var(--border)]">
+                  <div class="p-3 flex gap-4 items-center"><div class="skeleton-pulse w-20 h-4"></div><div class="skeleton-pulse w-40 h-4"></div><div class="skeleton-pulse w-20 h-3"></div><div class="skeleton-pulse w-10 h-4"></div><div class="skeleton-pulse w-16 h-4"></div></div>
+                  <div class="p-3 flex gap-4 items-center"><div class="skeleton-pulse w-20 h-4"></div><div class="skeleton-pulse w-44 h-4"></div><div class="skeleton-pulse w-20 h-3"></div><div class="skeleton-pulse w-10 h-4"></div><div class="skeleton-pulse w-16 h-4"></div></div>
+                  <div class="p-3 flex gap-4 items-center"><div class="skeleton-pulse w-20 h-4"></div><div class="skeleton-pulse w-36 h-4"></div><div class="skeleton-pulse w-20 h-3"></div><div class="skeleton-pulse w-10 h-4"></div><div class="skeleton-pulse w-16 h-4"></div></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 2. Skeleton Loading — Review Page ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">02</span>
+          <h2 class="text-lg font-semibold tracking-tight">Skeleton Loading — Review Page</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
+            <!-- Left: quick nav + categories -->
+            <div class="space-y-4">
+              <!-- Quick nav skeleton -->
+              <div class="flex items-center gap-2 pb-3 border-b border-[var(--border)]">
+                <div class="skeleton-pulse w-20 h-7 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-24 h-7 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-16 h-7 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-28 h-7 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-20 h-7 rounded-[var(--radius)]"></div>
+                <div class="skeleton-pulse w-24 h-7 rounded-[var(--radius)]"></div>
+              </div>
+              <!-- Category cards skeleton -->
+              <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+                <div class="p-4 border-b border-[var(--border)] flex justify-between">
+                  <div class="space-y-2"><div class="skeleton-pulse w-48 h-6"></div><div class="skeleton-pulse w-24 h-4"></div></div>
+                  <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+                </div>
+                <div class="p-4 space-y-3"><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-3/4 h-4"></div><div class="skeleton-pulse w-5/6 h-4"></div><div class="skeleton-pulse w-2/3 h-4"></div></div>
+              </div>
+              <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+                <div class="p-4 border-b border-[var(--border)] flex justify-between">
+                  <div class="space-y-2"><div class="skeleton-pulse w-40 h-6"></div><div class="skeleton-pulse w-28 h-4"></div></div>
+                  <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+                </div>
+                <div class="p-4 space-y-3"><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-4/5 h-4"></div><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-1/2 h-4"></div></div>
+              </div>
+              <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+                <div class="p-4 border-b border-[var(--border)] flex justify-between">
+                  <div class="space-y-2"><div class="skeleton-pulse w-44 h-6"></div><div class="skeleton-pulse w-20 h-4"></div></div>
+                  <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+                </div>
+                <div class="p-4 space-y-3"><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-3/4 h-4"></div><div class="skeleton-pulse w-5/6 h-4"></div><div class="skeleton-pulse w-full h-4"></div></div>
+              </div>
+            </div>
+            <!-- Right: sidebar skeleton -->
+            <div class="space-y-4">
+              <div class="border border-[var(--border)] rounded-[var(--radius)] p-5 space-y-4">
+                <div class="skeleton-pulse w-24 h-5"></div>
+                <div class="space-y-3"><div class="skeleton-pulse w-full h-3"></div><div class="skeleton-pulse w-full h-3"></div><div class="skeleton-pulse w-full h-3"></div></div>
+                <div class="skeleton-pulse w-full h-20 rounded-[var(--radius)]"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 3. Skeleton Loading — Evaluation Preview ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">03</span>
+          <h2 class="text-lg font-semibold tracking-tight">Skeleton Loading — Evaluation Preview</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="max-w-3xl mx-auto space-y-8">
+            <!-- Metadata skeleton -->
+            <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 space-y-4">
+              <div class="skeleton-pulse w-32 h-8 rounded-[var(--radius)]"></div>
+              <div class="skeleton-pulse w-48 h-4 rounded-[var(--radius)]"></div>
+              <div class="flex items-center gap-4 mt-4"><div class="skeleton-pulse w-24 h-4"></div><div class="skeleton-pulse w-24 h-4"></div></div>
+              <div class="mt-4 p-4 border border-[var(--border)] rounded-[var(--radius)] flex items-center gap-4">
+                <div class="skeleton-pulse w-16 h-12 rounded-[var(--radius)]"></div>
+                <div class="space-y-2"><div class="skeleton-pulse w-24 h-4"></div><div class="skeleton-pulse w-16 h-3"></div></div>
+              </div>
+            </div>
+            <!-- Report sections -->
+            <div class="space-y-6">
+              <div class="space-y-4"><div class="skeleton-pulse w-48 h-6 rounded-[var(--radius)]"></div><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-5/6 h-4"></div><div class="skeleton-pulse w-4/5 h-4"></div><div class="skeleton-pulse w-full h-4"></div></div>
+              <div class="space-y-4"><div class="skeleton-pulse w-56 h-6 rounded-[var(--radius)]"></div><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-3/4 h-4"></div><div class="skeleton-pulse w-5/6 h-4"></div></div>
+              <div class="space-y-4"><div class="skeleton-pulse w-40 h-6 rounded-[var(--radius)]"></div><div class="skeleton-pulse w-full h-4"></div><div class="skeleton-pulse w-4/5 h-4"></div><div class="skeleton-pulse w-1/2 h-4"></div></div>
+            </div>
+            <!-- Action bar skeleton -->
+            <div class="flex items-center gap-2 pt-4 border-t border-[var(--border)]">
+              <div class="skeleton-pulse w-32 h-9 rounded-[var(--radius)]"></div>
+              <div class="skeleton-pulse w-28 h-9 rounded-[var(--radius)]"></div>
+              <div class="skeleton-pulse w-28 h-9 rounded-[var(--radius)]"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 4. Error — Data Load Failure ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">04</span>
+          <h2 class="text-lg font-semibold tracking-tight">Error — Data Load Failure</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-12 shadow-sm flex items-center justify-center">
+          <div class="text-center max-w-md">
+            <div class="w-14 h-14 rounded-full bg-red-50 dark:bg-red-900/20 flex items-center justify-center mx-auto mb-4">
+              <svg class="text-[var(--destructive)]" xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+            </div>
+            <h3 class="text-lg font-semibold tracking-tight mb-2">Failed to Load Data</h3>
+            <p class="text-sm text-[var(--muted)] mb-6 leading-relaxed">Could not load review data. This may be caused by a corrupted file or browser storage issue.</p>
+            <div class="flex items-center justify-center gap-2">
+              <button class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity">Try Again</button>
+              <button class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Go Home</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 5. Error — Save Failure (Toast) ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">05</span>
+          <h2 class="text-lg font-semibold tracking-tight">Error — Save Failure (Toast)</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <p class="text-sm text-[var(--muted)] mb-4">Shown as fixed top-right toast. Click to trigger:</p>
+          <button onclick="showToast('error')" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            Trigger Save Error Toast
+          </button>
+        </div>
+      </section>
+
+      <!-- ===================== 6. Error — Import Parse Error ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">06</span>
+          <h2 class="text-lg font-semibold tracking-tight">Error — Import Parse Error</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm max-w-lg mx-auto">
+          <div class="rounded-[var(--radius)] border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2.5 mb-4">
+            <svg class="text-red-600 dark:text-red-400 mt-0.5 shrink-0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+            <div>
+              <p class="text-sm font-medium text-red-700 dark:text-red-300">Import failed</p>
+              <p class="text-xs text-red-600 dark:text-red-400 mt-0.5 leading-relaxed">Unable to parse file. Ensure it follows the v2 evaluation YAML schema or legacy JSON format.</p>
+            </div>
+          </div>
+          <!-- File selected state -->
+          <div class="rounded-[var(--radius)] border border-[var(--border)] p-4 flex items-center gap-3 mb-4">
+            <div class="w-9 h-9 rounded-[var(--radius)] bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
+              <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2">
+                <p class="text-sm font-medium text-[var(--fg)] truncate">corrupted_file.json</p>
+                <span class="inline-flex items-center rounded-full bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400 shrink-0">Parse Error</span>
+              </div>
+              <p class="text-xs text-[var(--muted)]">0 KB</p>
+            </div>
+            <button class="p-1.5 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+          <div class="flex justify-end gap-2">
+            <button class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+            <button disabled class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium opacity-50 cursor-not-allowed">Import</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 7. Empty — No Saved Reviews ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">07</span>
+          <h2 class="text-lg font-semibold tracking-tight">Empty — No Saved Reviews</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="max-w-4xl mx-auto">
+            <div class="flex items-center gap-3 mb-4">
+              <span class="text-lg font-semibold tracking-tight">Saved Reviews</span>
+              <span class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs font-medium bg-[var(--bg)] text-[var(--fg)]">0</span>
+            </div>
+            <!-- Empty state -->
+            <div class="flex flex-col items-center justify-center py-12 text-center border border-dashed border-[var(--border)] rounded-[var(--radius)]">
+              <svg class="text-[var(--muted)] mb-3" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+              <p class="font-medium text-[var(--fg)] mb-1">No saved reviews yet</p>
+              <p class="text-sm text-[var(--muted)]">Start a new review to see it here.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 8. Empty — No Evaluation to Preview ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">08</span>
+          <h2 class="text-lg font-semibold tracking-tight">Empty — No Evaluation to Preview</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="max-w-3xl mx-auto">
+            <div class="flex flex-col items-center justify-center py-20 text-center">
+              <svg class="text-[var(--muted)] mb-4" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" x2="15" y1="15" y2="15"/></svg>
+              <p class="font-medium text-[var(--fg)] mb-1 text-lg">No evaluation to preview</p>
+              <p class="text-sm text-[var(--muted)] max-w-sm mb-6">Complete at least one category to generate an evaluation.</p>
+              <button class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Back to Review</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 9. Empty — No Search Results ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">09</span>
+          <h2 class="text-lg font-semibold tracking-tight">Empty — No Search Results</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="max-w-4xl mx-auto">
+            <!-- Filter bar -->
+            <div class="flex flex-col sm:flex-row gap-3 mb-4">
+              <div class="h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 flex items-center text-sm text-[var(--fg)] sm:w-36">All Semesters</div>
+              <div class="h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 flex items-center text-sm text-[var(--fg)] sm:w-56">All Assignments</div>
+              <div class="relative flex-1"><div class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)]"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] pl-9 pr-3 text-sm flex items-center text-[var(--fg)]">quantumxyz</div></div>
+            </div>
+            <!-- Empty state -->
+            <div class="flex flex-col items-center justify-center py-12 text-center border border-dashed border-[var(--border)] rounded-[var(--radius)]">
+              <svg class="text-[var(--muted)] mb-3" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/></svg>
+              <p class="font-medium text-[var(--fg)] mb-1">No reviews match your search</p>
+              <p class="text-sm text-[var(--muted)] mb-4">Try adjusting your filters or search terms.</p>
+              <button class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Clear Filters</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 10 & 11. Confirmation Dialogs ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">10–11</span>
+          <h2 class="text-lg font-semibold tracking-tight">Confirmation Dialogs</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <p class="text-sm text-[var(--muted)] mb-4">Click to trigger dialog overlays:</p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="openDialog('delete-review')" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              Delete Review Dialog
+            </button>
+            <button onclick="openDialog('delete-all')" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              Delete All Data Dialog
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===================== 12. Toast Notifications ===================== -->
+      <section>
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-xs font-semibold text-[var(--accent)] uppercase tracking-wider">12</span>
+          <h2 class="text-lg font-semibold tracking-tight">Toast Notifications</h2>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <p class="text-sm text-[var(--muted)] mb-4">Click to trigger toast stack (top-right):</p>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="showToast('success')" class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              Success Toast
+            </button>
+            <button onclick="showToast('error')" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>
+              Error Toast
+            </button>
+            <button onclick="showToast('warning')" class="h-9 px-4 rounded-[var(--radius)] bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 transition-colors flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+              Warning Toast
+            </button>
+            <button onclick="showToast('info')" class="h-9 px-4 rounded-[var(--radius)] bg-blue-500 text-white text-sm font-medium hover:bg-blue-600 transition-colors flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
+              Info Toast
+            </button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-6 text-center border-t border-[var(--border)]">
+    <p class="text-xs text-[var(--muted)]">SciPro Review v1.2.3 · UI States Reference</p>
+  </footer>
+
+  <!-- ===================== DIALOGS ===================== -->
+
+  <!-- Dialog 10: Delete Review -->
+  <div id="dialog-delete-review" class="fixed inset-0 z-50 hidden items-center justify-center dialog-overlay opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-md w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 p-2 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold tracking-tight">Delete Review</h3>
+            <p class="text-sm text-[var(--muted)] mt-1 leading-relaxed">Are you sure you want to delete the review for <span class="font-medium text-[var(--fg)]">2026SS_42</span>? This cannot be undone.</p>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeDialog('delete-review')" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+          <button onclick="closeDialog('delete-review')" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dialog 11: Delete All Data -->
+  <div id="dialog-delete-all" class="fixed inset-0 z-50 hidden items-center justify-center dialog-overlay opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-md w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 p-2 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold tracking-tight">Delete All Data</h3>
+            <p class="text-sm text-[var(--muted)] mt-1 leading-relaxed">This will permanently delete <strong class="text-[var(--fg)]">ALL</strong> saved reviews, sessions, and preferences. This cannot be undone.</p>
+          </div>
+        </div>
+        <div class="mt-4 space-y-2">
+          <label class="text-xs font-medium text-[var(--fg)]">Type <strong>DELETE</strong> to confirm</label>
+          <input type="text" id="confirm-delete-input" oninput="checkDeleteConfirm()" placeholder="DELETE" class="w-full h-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 text-[var(--fg)] uppercase">
+        </div>
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeDialog('delete-all')" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+          <button id="btn-delete-all" disabled onclick="closeDialog('delete-all')" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium opacity-50 cursor-not-allowed transition-opacity">Delete All</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+    });
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    // Dialogs
+    function openDialog(id) {
+      const dialog = document.getElementById('dialog-' + id);
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+      void dialog.offsetWidth;
+      dialog.classList.remove('opacity-0');
+      dialog.querySelector('div').classList.remove('scale-95');
+      dialog.querySelector('div').classList.add('scale-100');
+      if (id === 'delete-all') {
+        document.getElementById('confirm-delete-input').value = '';
+        document.getElementById('btn-delete-all').disabled = true;
+        document.getElementById('btn-delete-all').classList.add('opacity-50', 'cursor-not-allowed');
+      }
+    }
+
+    function closeDialog(id) {
+      const dialog = document.getElementById('dialog-' + id);
+      dialog.classList.add('opacity-0');
+      dialog.querySelector('div').classList.add('scale-95');
+      dialog.querySelector('div').classList.remove('scale-100');
+      setTimeout(() => {
+        dialog.classList.add('hidden');
+        dialog.classList.remove('flex');
+      }, 200);
+    }
+
+    function checkDeleteConfirm() {
+      const input = document.getElementById('confirm-delete-input').value.trim();
+      const btn = document.getElementById('btn-delete-all');
+      if (input === 'DELETE') {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.classList.add('hover:bg-red-700');
+      } else {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.classList.remove('hover:bg-red-700');
+      }
+    }
+
+    // Toasts
+    function showToast(type) {
+      const container = document.getElementById('toast-container');
+      const configs = {
+        success: {
+          icon: '<svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
+          message: 'Review saved',
+          duration: 3000,
+          border: 'border-[var(--accent)]/20'
+        },
+        error: {
+          icon: '<svg class="text-red-500" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" x2="9" y1="9" y2="15"/><line x1="9" x2="15" y1="9" y2="15"/></svg>',
+          message: 'Save failed. Your changes may not be preserved.',
+          duration: 5000,
+          border: 'border-red-200 dark:border-red-800',
+          extra: '<button onclick="this.closest(\'.toast-item\').remove()" class="text-xs font-medium text-red-600 dark:text-red-400 hover:underline ml-2">Retry</button>'
+        },
+        warning: {
+          icon: '<svg class="text-amber-500" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>',
+          message: 'Cannot edit in read-only mode',
+          duration: 5000,
+          border: 'border-amber-200 dark:border-amber-800'
+        },
+        info: {
+          icon: '<svg class="text-blue-500" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>',
+          message: 'Review auto-saved',
+          duration: 2000,
+          border: 'border-blue-200 dark:border-blue-800'
+        }
+      };
+
+      const config = configs[type];
+      const toast = document.createElement('div');
+      toast.className = `toast-item pointer-events-auto flex items-center gap-2.5 px-4 py-3 rounded-[var(--radius)] bg-[var(--card-bg)] border shadow-lg text-sm text-[var(--fg)] toast-enter ${config.border}`;
+      toast.innerHTML = `${config.icon}<span class="flex-1">${config.message}</span>${config.extra || ''}`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('toast-enter');
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 200);
+      }, config.duration);
+    }
+  </script>
+</body>
+</html>

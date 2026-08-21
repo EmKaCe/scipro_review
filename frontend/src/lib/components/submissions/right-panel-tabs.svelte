@@ -1,0 +1,409 @@
+<script lang="ts">
+	import type { GradeDimension, GradingInputs, GradeResult } from "$lib/types/grading.js";
+	import type { MergedRubric, SentimentCounts } from "$lib/types/criteria.js";
+	import type { CategorySelections } from "$lib/types/session.js";
+	import GradingSidebar from "$lib/components/grading-sidebar.svelte";
+	import RubricCategory from "$lib/components/rubric-category.svelte";
+	import CopilotPanel from "./copilot-panel.svelte";
+	import PlagiarismTab from "./plagiarism-tab.svelte";
+	import type { CopilotSuggestion } from "./copilot-store.svelte.js";
+	import { plagiarismStore } from "$lib/services/plagiarism-store.svelte.js";
+	import ShieldCheck from "@lucide/svelte/icons/shield-check";
+	import ListChecks from "@lucide/svelte/icons/list-checks";
+	import Gauge from "@lucide/svelte/icons/gauge";
+	import Bot from "@lucide/svelte/icons/bot";
+	import { findCategoryEntry } from "$lib/types/criteria.js";
+	import { SvelteSet } from "svelte/reactivity";
+
+	type Tab = "rubric" | "grading" | "plagiarism" | "copilot";
+
+	interface Props {
+		/** Currently active tab. */
+		activeTab: Tab;
+		/** Callback when a tab is selected. */
+		onTabChange: (tab: Tab) => void;
+		/** Grading dimension definitions. */
+		dimensions: readonly GradeDimension[];
+		/** Current grading inputs. */
+		grading: GradingInputs;
+		/** Computed grade result. */
+		gradeResult: GradeResult | null;
+		/** Total deduction points. */
+		totalDeductions: number;
+		/** Callback when a dimension score changes. */
+		onUpdateDimension: (key: string, value: number) => void;
+		/** Merged rubric with categories. */
+		rubric: MergedRubric | null;
+		/**
+		 * Live sentiment counts of checked rubric items (P3-2). Computed by the
+		 * PAGE from its own `categorySelections` state and passed down.
+		 */
+		sentimentCounts: SentimentCounts;
+		/**
+		 * Current category selections — controlled prop owned by the page.
+		 * Edits are reported up via `onSelectionsChange` (the page then passes
+		 * the new value back down). NOT a bindable: a `$bindable` + `$derived`
+		 * combination here did not re-render on child-side assignments (Svelte
+		 * 5.56.8 prop-tracking quirk — checkbox clicks
+		 * updated state but never re-rendered the tab header).
+		 */
+		categorySelections: Record<string, CategorySelections>;
+		/** Report a full new selections map (immutable update). */
+		onSelectionsChange: (selections: Record<string, CategorySelections>) => void;
+		/** Current submission id — plagiarism badge/pairs are scoped to it. */
+		studentId: string;
+		/** Assignment the submission belongs to. */
+		assignmentId: string;
+		/** Whether grading is read-only. */
+		disabled?: boolean;
+		/** Hide the component's own tab bar (the parent renders it — mobile). */
+		hideTabBar?: boolean;
+		/**
+		 * Fired when the teacher applies a pending copilot suggestion
+		 * (forwarded to CopilotPanel). The PAGE applies it to grading
+		 * inputs / notes draft via applySuggestionToState.
+		 */
+		onapply?: (suggestion: CopilotSuggestion) => void;
+		/**
+		 * Teacher-mode gate for the inline "Ask copilot" chips in rubric
+		 * categories — the page sets it from the copilot apiMode
+		 * holder; forwarded to RubricCategory.
+		 */
+		showAskCopilot?: boolean;
+		/**
+		 * Prompt delivered from the page's inline "Ask copilot" chips —
+		 * forwarded to CopilotPanel. $bindable so the panel's
+		 * consume-and-reset round-trip propagates back through this wrapper
+		 * to the page's queuedPrompt state.
+		 */
+		incomingPrompt?: string;
+	}
+
+	let {
+		activeTab,
+		onTabChange,
+		dimensions,
+		grading,
+		gradeResult,
+		totalDeductions,
+		onUpdateDimension,
+		rubric,
+		sentimentCounts,
+		categorySelections,
+		onSelectionsChange,
+		studentId,
+		assignmentId,
+		disabled = false,
+		hideTabBar = false,
+		onapply,
+		showAskCopilot = false,
+		incomingPrompt = $bindable(""),
+	}: Props = $props();
+
+	let gradePct = $derived(gradeResult?.percentage ?? 0);
+	let expandedCategories = $state<Record<string, boolean>>({});
+
+	/** Unreviewed pairs involving this submission — tab badge (P3-1). */
+	let unreviewed = $derived(plagiarismStore.unreviewedCount(studentId));
+
+	function handleToggle(categoryKey: string) {
+		expandedCategories = {
+			...expandedCategories,
+			[categoryKey]: !expandedCategories[categoryKey],
+		};
+	}
+
+	/** Empty per-category selection state (SvelteSet + empty maps). */
+	function emptySelections(): CategorySelections {
+		return {
+			checked_items: new SvelteSet<string>(),
+			notes: "",
+			comments: {},
+			deductions: {},
+		};
+	}
+
+	/** Immutably set one category's selections and report the new map up. */
+	function updateSelections(
+		key: string,
+		updater: (current: CategorySelections) => CategorySelections,
+	) {
+		const current = categorySelections[key] ?? emptySelections();
+		onSelectionsChange({
+			...categorySelections,
+			[key]: updater(current),
+		});
+	}
+
+	/**
+	 * Toggle a rubric checkbox (key = sub-point text). Updates the owning
+	 * category's `checked_items` immutably — this drives the live sentiment
+	 * counts (P3-2) in the tab header.
+	 */
+	function handleToggleCheckbox(key: string, checked: boolean) {
+		const entry = findCategoryEntry(rubric, key);
+		if (!entry) return;
+		updateSelections(entry.key, (current) => {
+			const nextItems = new SvelteSet(current.checked_items);
+			if (checked) {
+				nextItems.add(key);
+			} else {
+				nextItems.delete(key);
+			}
+			return { ...current, checked_items: nextItems };
+		});
+	}
+
+	/**
+	 * Update an inline comment for a sub-point (key = sub-point text),
+	 * writing into the owning category's `comments` map immutably.
+	 */
+	function handleUpdateComment(key: string, value: string) {
+		const entry = findCategoryEntry(rubric, key);
+		if (!entry) return;
+		updateSelections(entry.key, (current) => ({
+			...current,
+			comments: { ...current.comments, [key]: value },
+		}));
+	}
+
+	/**
+	 * Update a point deduction for a sub-point (key = sub-point text),
+	 * writing into the owning category's `deductions` map immutably.
+	 */
+	function handleUpdateDeduction(key: string, value: number) {
+		const entry = findCategoryEntry(rubric, key);
+		if (!entry) return;
+		updateSelections(entry.key, (current) => ({
+			...current,
+			deductions: { ...current.deductions, [key]: value },
+		}));
+	}
+
+	/**
+	 * Update a category's additional notes (key = category key — the
+	 * RubricCategory call site binds `entry.key` before forwarding).
+	 */
+	function handleUpdateNotes(categoryKey: string, value: string) {
+		const current = categorySelections[categoryKey] ?? emptySelections();
+		// No-op guard: the TipTap editor can echo content updates that are
+		// already in state (init/setContent echo); writing anyway would
+		// re-render → sync effect → setContent → onUpdate → ... loop.
+		if (current.notes === value) return;
+		updateSelections(categoryKey, () => ({ ...current, notes: value }));
+	}
+</script>
+
+<div class="right-panel-tabs">
+	{#if !hideTabBar}
+		<div class="tab-bar">
+			<button
+				class="tab"
+				class:active={activeTab === "rubric"}
+				aria-pressed={activeTab === "rubric"}
+				onclick={() => onTabChange("rubric")}
+			>
+				<ListChecks size={12} />
+				Rubric
+				<!-- Sentiment counts: positive / neutral / negative items flagged
+				     (checked) for this submission — live from checkbox state (P3-2). -->
+				<span class="tab-sent" title="Flagged rubric items by sentiment">
+					<span class="sent-item sent-pos"
+						><span class="sent-num">{sentimentCounts.positive}</span></span
+					>
+					<span class="sent-item sent-neu"
+						><span class="sent-num">{sentimentCounts.neutral}</span></span
+					>
+					<span class="sent-item sent-neg"
+						><span class="sent-num">{sentimentCounts.negative}</span></span
+					>
+				</span>
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "grading"}
+				aria-pressed={activeTab === "grading"}
+				onclick={() => onTabChange("grading")}
+			>
+				<Gauge size={12} />
+				Grading
+				{#if gradeResult}
+					<span class="tab-badge">{gradePct.toFixed(0)}%</span>
+				{/if}
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "plagiarism"}
+				aria-pressed={activeTab === "plagiarism"}
+				onclick={() => onTabChange("plagiarism")}
+			>
+				<ShieldCheck size={12} />
+				Plagiarism
+				{#if unreviewed > 0}
+					<span class="tab-badge tab-badge-warn">{unreviewed}</span>
+				{/if}
+			</button>
+			<button
+				class="tab"
+				class:active={activeTab === "copilot"}
+				aria-pressed={activeTab === "copilot"}
+				onclick={() => onTabChange("copilot")}
+			>
+				<Bot size={12} />
+				Copilot
+			</button>
+		</div>
+	{/if}
+
+	<div class="tab-content">
+		{#if activeTab === "rubric"}
+			<div class="rubric-scroll">
+				{#if rubric && rubric.categories.length > 0}
+					{#each rubric.categories as entry (entry.key)}
+						{@const expanded = expandedCategories[entry.key] ?? false}
+						<RubricCategory
+							{entry}
+							selections={categorySelections[entry.key] ?? emptySelections()}
+							{expanded}
+							onToggle={() => handleToggle(entry.key)}
+							onToggleCheckbox={handleToggleCheckbox}
+							onUpdateComment={handleUpdateComment}
+							onUpdateDeduction={handleUpdateDeduction}
+							onUpdateNotes={(v) => handleUpdateNotes(entry.key, v)}
+							{disabled}
+							{showAskCopilot}
+						/>
+					{/each}
+				{:else}
+					<p class="empty-rubric">No rubric loaded for this assignment.</p>
+				{/if}
+			</div>
+		{:else if activeTab === "grading"}
+			<div class="grading-wrapper">
+				<GradingSidebar
+					{dimensions}
+					{grading}
+					{gradeResult}
+					{totalDeductions}
+					{disabled}
+					{onUpdateDimension}
+				/>
+			</div>
+		{:else if activeTab === "plagiarism"}
+			<PlagiarismTab {studentId} {assignmentId} />
+		{:else if activeTab === "copilot"}
+			<CopilotPanel submissionId={studentId} {onapply} bind:incomingPrompt />
+		{/if}
+	</div>
+</div>
+
+<style>
+	.right-panel-tabs {
+		display: flex;
+		flex-direction: column;
+		flex: 1;
+		min-height: 0;
+		overflow: hidden;
+	}
+	.tab-bar {
+		display: flex;
+		border-bottom: 1px solid var(--border);
+		flex-shrink: 0;
+		background: var(--card);
+	}
+	.tab {
+		flex: 1;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		padding: 10px 8px;
+		font-size: 13px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		background: none;
+		border: none;
+		cursor: pointer;
+		transition:
+			color 0.15s,
+			background 0.15s;
+		position: relative;
+	}
+	.tab:hover {
+		color: var(--foreground);
+		background: var(--muted);
+	}
+	.tab.active {
+		color: var(--primary);
+		font-weight: 600;
+	}
+	.tab.active::after {
+		content: "";
+		position: absolute;
+		bottom: -1px;
+		left: 0;
+		right: 0;
+		height: 2px;
+		background: var(--primary);
+	}
+	.tab-badge {
+		font-size: 10px;
+		padding: 1px 5px;
+		border-radius: 999px;
+		background: color-mix(in oklch, var(--accent) 60%, transparent);
+		color: var(--accent-foreground);
+		font-weight: 600;
+	}
+	/* Plagiarism badge: destructive tint (unreviewed count, P3-1). */
+	.tab-badge-warn {
+		background: color-mix(in oklch, var(--destructive) 14%, transparent);
+		color: var(--destructive);
+		border: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
+	}
+	/* Sentiment counts in the Rubric tab header (P3-2). */
+	.tab-sent {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		margin-left: 2px;
+	}
+	.sent-item {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+	}
+	.sent-num {
+		font-size: 10px;
+		font-weight: 700;
+		font-variant-numeric: tabular-nums;
+		line-height: 1;
+	}
+	.sent-pos .sent-num {
+		color: var(--success);
+	}
+	.sent-neu .sent-num {
+		color: var(--muted-foreground);
+	}
+	.sent-neg .sent-num {
+		color: var(--destructive);
+	}
+	.tab-content {
+		flex: 1;
+		overflow-y: auto;
+	}
+	.rubric-scroll {
+		padding: 4px;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.empty-rubric {
+		text-align: center;
+		padding: 40px 16px;
+		color: var(--muted-foreground);
+		font-size: 13px;
+	}
+	.grading-wrapper {
+		padding: 12px;
+	}
+</style>

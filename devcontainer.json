@@ -1,0 +1,35 @@
+{
+  "name": "svelte-review-copilot",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22",
+      "pnpmVersion": "11"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/astral-sh/uv-devcontainer:1": {},
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true,
+      "version": "latest"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "svelte.svelte-vscode",
+        "bradlc.vscode-tailwindcss",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "eamodio.gitlens"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "tailwindCSS.experimental.classRegex": [["class:([\\w-]+)", "([\\w-]+)"]]
+      }
+    }
+  },
+  "postCreateCommand": "cd frontend && pnpm install && cd ../executor && uv sync && cd ..",
+  "remoteUser": "vscode"
+}

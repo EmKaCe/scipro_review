@@ -1,0 +1,47 @@
+reviews/**
+# Student submissions — never committed
+data/submissions/
+
+# Plagiarism results cache (per-assignment runtime state) — never committed
+data/plagiarism/
+
+# Copilot audit log (append-only JSONL runtime trail) — never committed
+data/copilot/
+
+# Assignment materials — keys, PDFs, input data — never committed
+data/materials/
+
+# Exception: criteria, grading config, and registry stay in git
+!data/assignments.yaml
+!data/grading_config.yaml
+!data/criteria/
+
+# Grading analysis artifacts (student grades) — never committed
+grading-output/
+
+# Student notebook data exposed via the public student build — never committed
+# (dir was removed 2026-08-19; guard stays so it can never resurrect)
+frontend/static/data/
+
+# Hermes agent config (keep local)
+.hermes/*
+!.hermes/plans/
+!.hermes/plans/**
+
+# Environment variables — secrets
+.env
+.env.*
+!.env.example
+
+# Python virtual environment (local dev only)
+executor/.venv/
+__pycache__/
+executor/*.egg-info/
+
+# Python lockfile (uv) — committed for reproducible CI (update via `uv lock`)
+
+# Research artifacts (transient, not code) — tracked docs live in .github/references/
+docs/
+
+# Hermes agent plans (local session planning only)
+.hermes/

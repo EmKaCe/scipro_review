@@ -1,0 +1,16 @@
+executor:
+  request_timeout_ms: 30000
+  notebook_timeout_ms: 120000
+  cell_timeout_s: 30
+llm:
+  base_url: https://chat.kiconnect.nrw/api/v1
+  model: gpt-oss-120b
+  timeout_ms: 60000
+copilot:
+  mode: ask
+  allowed_tools: []
+  deny_tools: []
+  approval_ttl_seconds: 60
+  session_cap: 20
+  last_messages: 50  # recall window for gpt-oss-120b (128K ctx); auto-default is 50 anyway
+  auto_compact: true

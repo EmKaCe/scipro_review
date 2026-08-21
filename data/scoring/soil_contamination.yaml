@@ -1,0 +1,140 @@
+# Per-assignment scoring semantics for soil_contamination.
+# Referenced from data/assignments.yaml via `scoring_file`.
+#
+# Signed off 2026-08-18 (design: .hermes/plans/2026-08-18-scoring-config-schema.md).
+# Contract rules enforced by frontend/src/lib/server/copilot/scoring-config.ts:
+#   - every `pattern` must compile (`new RegExp(p, 'i')`) at load time — a bad
+#     regex surfaces as a 500/test failure, never silent degradation
+#   - `reference_anchors` is all-or-nothing (partial anchors are a hard error)
+#   - anchors are FACTS used only to identify the reference-fit cluster —
+#     never injected into prompts as score targets (cohort-calibration header)
+#   - {A} {B} {L} in prompt_anchor_text are substituted from reference_anchors
+#     so each reference value exists in exactly one place
+scoring:
+  # ── 1. Calibration anchors (Phase 2c cohort clustering) ────────────────
+  # Derived band (unchanged from code): r_squared floor = floor(r*100)/100
+  # (0.9794 → 0.97); rmse ceil = ceil(rmse/10)*10 (25.18 → 30).
+  reference_anchors:
+    A: 1210.91          # slope (mg/kg)
+    B: -484.95          # intercept (mg/kg)
+    x0: -4.8            # inflection (m)
+    y0: 986.98          # asymptote (m)
+    L: 684.48           # length scale (m)
+    r_squared: 0.9794
+    rmse: 25.18         # mg/kg
+
+  # ── 2. Evidence regexes (deterministic extra-analysis evidence, Phase 2a) ──
+  # Values are the EXACT regexes formerly hardcoded in
+  # buildExtraAnalysisEvidence (context.ts) / cohort-calibration.ts — moved
+  # verbatim so evidence counts are unchanged (golden snapshot in
+  # scoring-config.test.ts).
+  # Semantics:
+  #   test           → RegExp.test(haystack) → boolean bullet
+  #   capture_value  → first capture group → value (e.g. parsed R²)
+  #   distinct_count → matchAll + collect capture group → count bullet
+  #   test_all       → a LIST of patterns, ALL must match (fit reproduction
+  #                    requires A, B, AND L each near the anchor)
+  # Haystack: output | code | markdown (per pattern; + combines both).
+  evidence_patterns:
+    std_err_from_covariance:
+      pattern: 'np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error'
+      semantics: test
+      haystack: output+code
+    r2_or_rmse_computed:
+      pattern: '\bR\s*(?:\^2|²|2)\s*[=:]\s*[\d.]+|\bRMSE\s*[=:]\s*[\d.]+'
+      semantics: test
+      haystack: output
+    r2_or_rmse_discussed:
+      pattern: '\bR\s*(?:\^2|²|2)\b|\bRMSE\b'
+      semantics: test
+      haystack: markdown
+    plot_family_counter:
+      pattern: '(?:plt|ax)\.(\w+)\s*\('
+      semantics: distinct_count
+      capture_group: 1
+      haystack: code
+    physical_insight:
+      pattern: 'non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation'
+      semantics: test
+      haystack: markdown+code
+    fit_reproduces_reference:
+      pattern:
+        - '\bA\b[^\n]{0,60}?1210\.9\d*'
+        - '\bB\b[^\n]{0,60}?-?484\.9\d*'
+        - '\bL\b[^\n]{0,60}?684\.4\d*'
+      semantics: test_all
+      haystack: output
+    std_err_signal:
+      pattern: '(?:±|\+\/-|\+-\s*|standard error|uncertaint)'
+      semantics: test
+      haystack: output
+    std_err_signal_with_param:
+      pattern: '\b(?:A|B|x0|y0|L)\b[^.\n]*[±]'
+      semantics: test
+      haystack: output
+    builtin_metrics_call:
+      pattern: '\b(?:r2_score|mean_squared_error|mean_absolute_error)\s*\('
+      semantics: test
+      haystack: code
+    bounds_assignment:
+      pattern: '\bbounds\s*='
+      semantics: test
+      haystack: code
+    unit_aware:
+      pattern: '\b(?:mg\/kg|kg|g|m|km|cm|mm|s|min|h|°C|K|N|J|kJ|Pa|bar|%)\b'
+      semantics: test
+      haystack: markdown
+    # Fit-metric parsers — canonical forms shared with cohort clustering
+    # (formerly FIT_R2_PATTERN / FIT_RMSE_PATTERN / FIT_RMSE_PAREN_PATTERN).
+    fit_metrics_r2:
+      pattern: '\bR\s*(?:\^2|²|2)\s*[=:]\s*([\d.]+)'
+      semantics: capture_value
+      capture_group: 1
+      haystack: output
+    fit_metrics_rmse:
+      pattern: '\bRMSE\s*[=:]\s*([\d.]+)'
+      semantics: capture_value
+      capture_group: 1
+      haystack: output
+    fit_metrics_rmse_paren:
+      pattern: '\bRMSE\s*\(\s*([\d.]+)'
+      semantics: capture_value
+      capture_group: 1
+      haystack: output
+
+  # ── 3. Disallowed libraries (pre-analysis flag, Phase 0) ────────────────
+  # sklearn deliberately NOT listed — it is the assignment's core library
+  # (b014ec1 fixed a false flag that poisoned 16/19 justifications).
+  disallowed_libraries:
+    - tensorflow
+    - torch
+    - keras
+    - xgboost
+    - lightgbm
+
+  # ── 3b. Allowed libraries (post-process Pass 3 import allow-list) ───────
+  # Exactly the seven default libraries — an explicit data copy of the
+  # hardcoded default so the allow-list is per-assignment data, not a code
+  # constant. Soil behavior is byte-identical to the default.
+  allowed_libraries:
+    - numpy
+    - pandas
+    - scipy
+    - sklearn
+    - matplotlib
+    - pathlib
+    - typing
+
+  # ── 4. Prompt anchor text (Phase 2a per-dimension guide) ────────────────
+  # The PHASE2A_SCORING_PROMPT template owns the generic raw-points scale,
+  # the `- <key>: <text>` prefix, the self-check list, and the example. The
+  # SUFFIX TEXT per dimension comes from here; unlisted dimensions fall back
+  # to DEFAULT_DIMENSION_GUIDANCE in prompts.ts.
+  # {A} {B} {L} are substituted from reference_anchors — byte-identical to
+  # the former hardcoded prompt text when substituted (golden test).
+  prompt_anchor_text:
+    dimension_guidance:
+      scientific_programming: |-
+        scientific methodology. Anchor scale (6-point dimension, FIT-QUALITY driven — the professor's actual grading pattern): 5-5.5 = the fit reproduces the reference solution (A≈{A}, B≈{B}, L≈{L}) AND parameter standard errors are reported from the covariance matrix AND results are discussed in context; 4-4.5 = correct fit reproducing the reference, metrics computed, some discussion (built-in metrics are a suggestion, NOT a requirement — hand-rolled RMSE still earns 4.5), OR a constrained/bounded fit that is sub-reference (e.g. RMSE 42.58 vs 25.18) but whose metrics are computed AND discussed in context — the professor awards 4.5 to correct methodology with computed+discussed metrics even when the constrained fit is worse than the reference; 3 = correct fit but covariance never used, or metrics computed but never discussed; 2 = major methodology gaps (no metrics, no physical bounds, no unit awareness). A submission whose fit reproduces the reference values deserves 4+ — do not anchor it at 3.
+      creativity: |-
+        original thought beyond the reference. Anchor scale: 4 = genuinely novel approach beyond the reference; 3 = clear original contributions (e.g. double-checking the cluster count with the elbow technique, computing/reporting parameter standard errors from the covariance matrix, any extra meaningful analysis, or physically insightful interpretation of surprising results — e.g. explaining WHY a fitted parameter is non-physical or discussing parameter correlation); 2.5 = some original thought (extra visualization, alternative framing); 1-2 = strictly follows the reference with no original contributions. Most submissions that do ANY extra analysis or use a non-standard approach should land 2.5-4; 1 is reserved for literally nothing beyond the reference.

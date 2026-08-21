@@ -1,0 +1,26 @@
+{
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "explicit"
+  },
+  "files.associations": {
+    "frontend/**/*.css": "tailwindcss",
+    "**/*.svelte": "svelte",
+    "**/*.ts": "typescript",
+    "**/*.js": "javascript",
+    "**/*.json": "json",
+    "**/*.html": "html",
+    "**/*.md": "markdown",
+    "**/*.yaml": "yaml"
+  },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "search.exclude": {
+    "**/node_modules": true,
+    "**/build": true,
+    "**/.svelte-kit": true,
+    "**/pnpm-lock.yaml": true
+  },
+  "files.exclude": {
+    "**/.svelte-kit": true
+  }
+}

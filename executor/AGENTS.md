@@ -1,0 +1,41 @@
+# AGENTS.md — executor/ (Python notebook-execution backend)
+
+Executor-specific conventions for the Python backend. Read the
+[root `AGENTS.md`](../AGENTS.md) first — the root file's layout, per-package
+discipline, and invariants apply here too.
+
+## What this is
+
+The **notebook-execution backend** for SciPro Review: a FastAPI service that
+executes Jupyter notebooks (`runner.py`), preprocesses them, applies
+`auto_fix.py`, and calls the model via `ki_connect.py`. It speaks Python
+(pinned via `.python-version`, currently 3.12; `requires-python` is `>=3.11`)
+and is managed with **uv**.
+
+## Commands
+
+```bash
+cd executor
+uv sync                 # create the virtual env and install deps (uses uv.lock)
+uv run python app.py    # run the backend
+```
+
+Under `uv`, use `uv run <cmd>` rather than activating a venv. Dependencies are
+declared in `pyproject.toml`; `uv.lock` is **committed** (for reproducible CI
+builds — the `executor-tests` CI job runs `uv sync --frozen`). On dependency
+changes, regenerate it deliberately: `uv lock` then commit.
+
+## Verification
+
+The executor is **Python** — it is **not** part of the frontend's vitest
+suite. Verify the whole project, including executor wiring, with the root
+`AGENTS.md` canonical recipe (`pnpm install` → `build:student` → full
+`vitest run` → preview probe on `http://127.0.0.1:4173/scipro_review/`).
+Never add executor behavior to the vitest run. The executor's own tests run
+under pytest: `uv run pytest` (from `executor/`).
+
+## Notes
+
+- Student notebook content is untrusted input — screen it before it reaches
+  any prompt (see root `AGENTS.md` invariants).
+- `.venv/` and `*.egg-info/` are gitignored.

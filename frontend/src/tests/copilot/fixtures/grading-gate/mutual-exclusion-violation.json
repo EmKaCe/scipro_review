@@ -1,0 +1,19 @@
+{
+	"id": "mutual-exclusion-violation",
+	"assignmentId": "soil_contamination",
+	"expectPass": false,
+	"dimensions": {
+		"code_quality_design": 5,
+		"code_execution_results": 5,
+		"assignment_requirements": 5,
+		"scientific_programming": 5,
+		"creativity": 3
+	},
+	"rubric": {
+		"academic_scholarship": [
+			"citing - source of information and knowledge",
+			"citing - missing references for knowledge (e.g., datasets, equations, libraries)"
+		],
+		"code_formatting": ["blank lines - consistent and good usage"]
+	}
+}

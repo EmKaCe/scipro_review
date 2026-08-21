@@ -1,0 +1,632 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    @keyframes slideInRight {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+
+    @keyframes fadeOut {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    .toast-enter {
+      animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    .toast-exit {
+      animation: fadeOut 0.2s ease-in forwards;
+    }
+
+    .custom-switch[data-state="checked"] {
+      background-color: var(--accent);
+    }
+
+    .custom-switch[data-state="checked"] span {
+      transform: translateX(1.25rem);
+    }
+
+    /* Remove default select arrow in favor of custom */
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.75rem center;
+      padding-right: 2.5rem;
+    }
+
+    .dark select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Toast Container -->
+  <div id="toast-container" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-full max-w-sm pointer-events-none"></div>
+
+  <!-- Header (App Shell Context) -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <!-- Left -->
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+    </div>
+
+    <!-- Right -->
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="openImportDialog()" aria-label="Import review" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+      </button>
+
+      <button onclick="toggleTheme()" id="theme-toggle" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a href="#" aria-label="Settings" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1">
+    <div class="max-w-4xl mx-auto px-4 py-8 space-y-8">
+
+      <!-- Section 1: Start a New Review -->
+      <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+        <h2 class="text-lg font-semibold tracking-tight mb-6">Start a New Review</h2>
+        <div class="space-y-5">
+          <!-- Student ID -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Student ID</label>
+            <div class="flex items-center gap-3 flex-wrap sm:flex-nowrap">
+              <div class="relative flex-1 min-w-0">
+                <span id="prefix-badge" class="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--muted)] bg-[var(--bg)] border border-[var(--border)] rounded-[0.35rem] px-1.5 py-0.5 select-none z-10">2026SS_</span>
+                <input
+                  type="text"
+                  id="student-id"
+                  placeholder="e.g., 42"
+                  class="w-full h-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-shadow pl-[4.5rem]"
+                >
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <button
+                  id="custom-id-switch"
+                  class="custom-switch relative w-11 h-6 rounded-full bg-[var(--border)] transition-colors"
+                  data-state="unchecked"
+                  onclick="toggleCustomId()"
+                  aria-checked="false"
+                  role="switch"
+                >
+                  <span class="absolute left-0.5 top-0.5 w-5 h-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-out translate-x-0"></span>
+                </button>
+                <span class="text-sm text-[var(--muted)] select-none">Custom ID</span>
+              </div>
+            </div>
+            <p id="helper-text" class="text-xs text-[var(--muted)] mt-1.5">Auto-prefixed with current semester (2026SS_)</p>
+          </div>
+
+          <!-- Assignment -->
+          <div>
+            <label class="block text-sm font-medium mb-1.5">Assignment</label>
+            <select id="assignment" class="w-full h-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-shadow text-[var(--fg)]">
+              <option value="">Select an assignment...</option>
+              <option value="atom">Atom Interaction (Lennard-Jones / Pandas)</option>
+              <option value="md">Molecular Dynamics (OpenMM / NumPy)</option>
+              <option value="quantum">Quantum Chemistry (PySCF / Matplotlib)</option>
+            </select>
+          </div>
+
+          <!-- Start Button -->
+          <button
+            id="start-btn"
+            disabled
+            onclick="startReview()"
+            class="w-full h-10 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium flex items-center justify-center gap-2 opacity-50 cursor-not-allowed transition-all"
+          >
+            Start Review
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Section 2: Saved Reviews -->
+      <div>
+        <!-- Header -->
+        <div class="flex items-center gap-3 mb-4">
+          <h2 class="text-lg font-semibold tracking-tight">Saved Reviews</h2>
+          <span id="review-count" class="inline-flex items-center rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs font-medium bg-[var(--bg)] text-[var(--fg)]">3</span>
+          <button onclick="toggleSection('reviews-body')" class="ml-auto p-1 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors" aria-label="Toggle section">
+            <svg id="reviews-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>
+          </button>
+        </div>
+
+        <div id="reviews-body" class="space-y-4">
+          <!-- Filter Bar -->
+          <div class="flex flex-col sm:flex-row gap-3">
+            <select id="filter-semester" onchange="filterTable()" class="h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--fg)] sm:w-36">
+              <option value="">All Semesters</option>
+              <option value="2026SS">2026SS</option>
+              <option value="2025WS">2025WS</option>
+            </select>
+            <select id="filter-assignment" onchange="filterTable()" class="h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--fg)] sm:w-56">
+              <option value="">All Assignments</option>
+              <option value="atom">Atom Interaction</option>
+              <option value="md">Molecular Dynamics</option>
+              <option value="quantum">Quantum Chemistry</option>
+            </select>
+            <div class="relative flex-1">
+              <svg class="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <input
+                type="text"
+                id="search-input"
+                placeholder="Search..."
+                oninput="filterTable()"
+                class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--fg)]"
+              >
+            </div>
+          </div>
+
+          <!-- Bulk Actions Bar -->
+          <div id="bulk-actions" class="hidden flex items-center justify-between p-3 bg-[var(--bg)] border border-[var(--border)] rounded-[var(--radius)]">
+            <span class="text-sm"><span id="selected-count">0</span> reviews selected</span>
+            <button onclick="deleteSelected()" class="h-8 px-3 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Delete selected</button>
+          </div>
+
+          <!-- Table -->
+          <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm text-left">
+                <thead class="bg-[var(--bg)] border-b border-[var(--border)]">
+                  <tr>
+                    <th class="w-10 p-3">
+                      <input type="checkbox" id="select-all" onchange="toggleSelectAll(this)" class="rounded border-[var(--border)] bg-[var(--bg)] text-[var(--accent)] focus:ring-[var(--accent)]">
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)] cursor-pointer select-none group" onclick="sortTable('id')">
+                      <div class="flex items-center gap-1">Student ID <span class="text-[var(--muted)] group-hover:text-[var(--fg)]">↕</span></div>
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)] cursor-pointer select-none group" onclick="sortTable('assignment')">
+                      <div class="flex items-center gap-1">Assignment <span class="text-[var(--muted)] group-hover:text-[var(--fg)]">↕</span></div>
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)] cursor-pointer select-none group" onclick="sortTable('progress')">
+                      <div class="flex items-center gap-1">Progress <span class="text-[var(--muted)] group-hover:text-[var(--fg)]">↕</span></div>
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)] cursor-pointer select-none group" onclick="sortTable('grade')">
+                      <div class="flex items-center gap-1">Grade <span class="text-[var(--muted)] group-hover:text-[var(--fg)]">↕</span></div>
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)] cursor-pointer select-none group" onclick="sortTable('updated')">
+                      <div class="flex items-center gap-1">Updated <span class="text-[var(--muted)] group-hover:text-[var(--fg)]">↕</span></div>
+                    </th>
+                    <th class="p-3 font-medium text-[var(--fg)]">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="reviews-table-body" class="divide-y divide-[var(--border)] bg-[var(--card-bg)]">
+                  <!-- Rows rendered by JS -->
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="hidden flex-col items-center justify-center py-12 text-center">
+              <svg class="text-[var(--muted)] mb-3" xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>
+              <p class="font-medium text-[var(--fg)] mb-1">No saved reviews yet</p>
+              <p class="text-sm text-[var(--muted)]">Start a new review to see it here.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-6 text-center border-t border-[var(--border)]">
+    <p class="text-xs text-[var(--muted)]">
+      SciPro Review v1.2.3 · Client-side only · No data leaves your browser
+    </p>
+    <div class="mt-2 flex items-center justify-center gap-2 text-xs text-[var(--muted)]">
+      <a href="#" class="hover:text-[var(--fg)] transition-colors underline-offset-2 hover:underline">Documentation</a>
+      <span class="select-none">·</span>
+      <a href="#" class="hover:text-[var(--fg)] transition-colors underline-offset-2 hover:underline">Settings</a>
+    </div>
+  </footer>
+
+  <!-- Import Dialog -->
+  <div id="import-dialog" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-md w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-lg font-semibold tracking-tight">Import Review</h3>
+            <p class="text-sm text-[var(--muted)] mt-1">Upload a previously exported review file.</p>
+          </div>
+          <button onclick="closeImportDialog()" class="p-1 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <div
+          id="drop-zone"
+          class="border-2 border-dashed border-[var(--border)] rounded-[var(--radius)] p-8 text-center hover:border-[var(--accent)] transition-colors cursor-pointer bg-[var(--bg)]"
+          onclick="document.getElementById('file-input').click()"
+        >
+          <svg class="mx-auto text-[var(--muted)] mb-2" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <p class="text-sm font-medium text-[var(--fg)] mb-1">Click to upload or drag and drop</p>
+          <p class="text-xs text-[var(--muted)]">JSON, YAML up to 10 MB</p>
+          <input type="file" id="file-input" class="hidden" accept=".json,.yaml,.yml" onchange="handleFileSelect(this)">
+        </div>
+
+        <div id="file-selected" class="hidden mt-4 p-3 bg-[var(--bg)] border border-[var(--border)] rounded-[var(--radius)] flex items-center gap-3">
+          <svg class="text-[var(--accent)] shrink-0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <div class="flex-1 min-w-0">
+            <p id="file-name" class="text-sm font-medium truncate">review.json</p>
+            <p id="file-size" class="text-xs text-[var(--muted)]">24 KB</p>
+          </div>
+          <button onclick="clearFile()" class="text-[var(--muted)] hover:text-[var(--fg)]">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeImportDialog()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+          <button onclick="confirmImport()" id="import-btn" disabled class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium opacity-50 cursor-not-allowed">Import</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Confirmation Dialog -->
+  <div id="delete-dialog" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 backdrop-blur-sm opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-sm w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200">
+      <div class="p-6">
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 p-2 rounded-full bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+          </div>
+          <div class="flex-1">
+            <h3 class="text-lg font-semibold tracking-tight">Delete Review</h3>
+            <p class="text-sm text-[var(--muted)] mt-1 leading-relaxed">
+              Are you sure you want to delete the review for <span id="delete-target" class="font-medium text-[var(--fg)]">2026SS_42</span>? This cannot be undone.
+            </p>
+          </div>
+        </div>
+        <div class="flex justify-end gap-2 mt-6">
+          <button onclick="closeDeleteDialog()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+          <button onclick="confirmDelete()" class="h-9 px-4 rounded-[var(--radius)] bg-red-600 text-white text-sm font-medium hover:bg-red-700 transition-colors">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Data
+    let reviews = [
+      { id: '2026SS_03', assignment: 'Atom Interaction (Lennard-Jones / Pandas)', assignmentKey: 'atom', semester: '2026SS', progress: 75, grade: 1.3, usGrade: 'A', updated: '2 hours ago', updatedSort: 2 },
+      { id: '2026SS_07', assignment: 'Molecular Dynamics (OpenMM / NumPy)', assignmentKey: 'md', semester: '2026SS', progress: 40, grade: 2.7, usGrade: 'C+', updated: '1 day ago', updatedSort: 24 },
+      { id: '2026SS_12', assignment: 'Quantum Chemistry (PySCF / Matplotlib)', assignmentKey: 'quantum', semester: '2026SS', progress: 100, grade: 1.0, usGrade: 'A+', updated: '3 days ago', updatedSort: 72 }
+    ];
+
+    let filteredReviews = [...reviews];
+    let selectedRows = new Set();
+    let currentSort = { column: null, direction: 'asc' };
+    let deleteTargetId = null;
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      renderTable();
+      validateStartForm();
+      showToast('success', 'Review saved', 3000);
+      setTimeout(() => showToast('error', 'Save failed. Please try again.', 5000), 400);
+      setTimeout(() => showToast('warning', 'Cannot edit in read-only mode', 5000), 800);
+
+      // Student ID input listener
+      document.getElementById('student-id').addEventListener('input', validateStartForm);
+      document.getElementById('assignment').addEventListener('change', validateStartForm);
+
+      // Dark mode init
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+    });
+
+    // Theme Toggle
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    // Custom ID Toggle
+    function toggleCustomId() {
+      const switchEl = document.getElementById('custom-id-switch');
+      const badge = document.getElementById('prefix-badge');
+      const input = document.getElementById('student-id');
+      const helper = document.getElementById('helper-text');
+      const isChecked = switchEl.getAttribute('data-state') === 'checked';
+
+      if (isChecked) {
+        switchEl.setAttribute('data-state', 'unchecked');
+        switchEl.setAttribute('aria-checked', 'false');
+        badge.classList.remove('hidden');
+        input.style.paddingLeft = '4.5rem';
+        helper.textContent = 'Auto-prefixed with current semester (2026SS_)';
+      } else {
+        switchEl.setAttribute('data-state', 'checked');
+        switchEl.setAttribute('aria-checked', 'true');
+        badge.classList.add('hidden');
+        input.style.paddingLeft = '0.75rem';
+        helper.textContent = 'Full manual entry enabled';
+      }
+    }
+
+    // Validate Start Form
+    function validateStartForm() {
+      const id = document.getElementById('student-id').value.trim();
+      const assignment = document.getElementById('assignment').value;
+      const btn = document.getElementById('start-btn');
+
+      if (id && assignment) {
+        btn.disabled = false;
+        btn.classList.remove('opacity-50', 'cursor-not-allowed');
+        btn.classList.add('hover:opacity-90');
+      } else {
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        btn.classList.remove('hover:opacity-90');
+      }
+    }
+
+    // Start Review
+    function startReview() {
+      showToast('success', 'Starting review...', 3000);
+    }
+
+    // Toggle Section Collapse
+    function toggleSection(id) {
+      const el = document.getElementById(id);
+      const chevron = document.getElementById('reviews-chevron');
+      if (el.classList.contains('hidden')) {
+        el.classList.remove('hidden');
+        chevron.style.transform = 'rotate(0deg)';
+      } else {
+        el.classList.add('hidden');
+        chevron.style.transform = 'rotate(180deg)';
+      }
+    }
+
+    // Render Table
+    function renderTable() {
+      const tbody = document.getElementById('reviews-table-body');
+      const emptyState = document.getElementById('empty-state');
+      const tableContainer = tbody.closest('table');
+
+      if (filteredReviews.length === 0) {
+        tbody.innerHTML = '';
+        emptyState.classList.remove('hidden');
+        emptyState.classList.add('flex');
+        if (tableContainer) tableContainer.classList.add('hidden');
+        document.getElementById('review-count').textContent = '0';
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      emptyState.classList.remove('flex');
+      if (tableContainer) tableContainer.classList.remove('hidden');
+      document.getElementById('review-count').textContent = filteredReviews.length;
+
+      tbody.innerHTML = filteredReviews.map(r => `
+        <tr class="hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors">
+          <td class="p-3">
+            <input type="checkbox" value="${r.id}" onchange="toggleRowSelection('${r.id}')" ${selectedRows.has(r.id) ? 'checked' : ''} class="rounded border-[var(--border)] bg-[var(--bg)] text-[var(--accent)] focus:ring-[var(--accent)]">
+          </td>
+          <td class="p-3 font-medium text-[var(--fg)] whitespace-nowrap">${r.id}</td>
+          <td class="p-3 text-[var(--fg)] whitespace-nowrap">${r.assignment}</td>
+          <td class="p-3">
+            <div class="flex items-center gap-2">
+              <div class="w-24 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+                <div class="h-full bg-[var(--accent)] rounded-full transition-all duration-500" style="width: ${r.progress}%"></div>
+              </div>
+              <span class="text-xs text-[var(--muted)] w-8 text-right">${r.progress}%</span>
+            </div>
+          </td>
+          <td class="p-3">
+            <div class="flex items-center gap-2">
+              <span class="text-[var(--fg)] whitespace-nowrap">${r.grade.toFixed(1)}</span>
+              <span class="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium bg-[var(--bg)] text-[var(--muted)]">${r.usGrade}</span>
+            </div>
+          </td>
+          <td class="p-3 text-[var(--muted)] whitespace-nowrap">${r.updated}</td>
+          <td class="p-3">
+            <div class="flex items-center gap-1">
+              <button class="h-7 px-2.5 rounded-[var(--radius)] border border-[var(--accent)] text-[var(--accent)] text-xs font-medium hover:bg-[var(--accent)]/5 transition-colors">Open</button>
+              <button onclick="openDeleteDialog('${r.id}')" class="h-7 w-7 flex items-center justify-center rounded-[var(--radius)] text-[var(--muted)] hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+
+      // Update select-all checkbox
+      const selectAll = document.getElementById('select-all');
+      if (selectAll) {
+        selectAll.checked = filteredReviews.length > 0 && filteredReviews.every(r => selectedRows.has(r.id));
+      }
+    }
+
+    // Sorting
+    function sortTable(column) {
+      if (currentSort.column === column) {
+        currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
+      } else {
+        currentSort.column = column;
+        currentSort.direction = 'asc';
+      }
+
+      filteredReviews.sort((a, b) => {
+        let aVal = a[column];
+        let bVal = b[column];
+
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
+
+        if (aVal < bVal) return currentSort.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return currentSort.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+
+      renderTable();
+    }
+
+    // Filtering
+    function filterTable() {
+      const semester = document.getElementById('filter-semester').value;
+      const assignment = document.getElementById('filter-assignment').value;
+      const search = document.getElementById('search-input').value.toLowerCase();
+
+      filteredReviews = reviews.filter(r => {
+        const matchSemester = !semester || r.semester === semester;
+        const matchAssignment = !assignment || r.assignmentKey === assignment;
+        const matchSearch = !search ||
+          r.id.toLowerCase().includes(search) ||
+          r.assignment.toLowerCase().includes(search);
+        return matchSemester && matchAssignment && matchSearch;
+      });
+
+      renderTable();
+    }
+
+    // Row Selection
+    function toggleRowSelection(id) {
+      if (selectedRows.has(id)) {
+        selectedRows.delete(id);
+      } else {
+        selectedRows.add(id);
+      }
+      updateBulkActions();
+    }
+
+    function toggleSelectAll(checkbox) {
+      if (checkbox.checked) {
+        filteredReviews.forEach(r => selectedRows.add(r.id));
+      } else {
+        filteredReviews.forEach(r => selectedRows.delete(r.id));
+      }
+      renderTable();
+      updateBulkActions();
+    }
+
+    function updateBulkActions() {
+      const bar = document.getElementById('bulk-actions');
+      const count = document.getElementById('selected-count');
+      const selected = Array.from(selectedRows).filter(id => filteredReviews.some(r => r.id === id));
+
+      if (selected.length > 0) {
+        bar.classList.remove('hidden');
+        bar.classList.add('flex');
+        count.textContent = selected.length;
+      } else {
+        bar.classList.add('hidden');
+        bar.classList.remove('flex');
+      }
+    }
+
+    // Delete Dialog
+    function openDeleteDialog(id) {
+      deleteTargetId = id;
+      document.getElementById('delete-target').textContent = id;
+      const dialog = document.getElementById('delete-dialog');
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+      // Trigger reflow for transition
+      void dialog.offsetWidth;
+      dialog.classList.remove('opacity-0');
+      dialog.querySelector('div').classList.remove('scale-95');
+      dialog.querySelector('div').classList.add('scale-100');
+    }
+
+    function closeDeleteDialog() {
+      const dialog = document.getElementById('delete-dialog');
+      dialog.classList.add('opacity-0');
+      dialog.querySelector('div').classList.add('scale-95');
+      dialog.querySelector('div').classList.remove('scale-100');
+      setTimeout(() => {
+        dialog.classList.add('hidden');
+        dialog.classList.remove('flex');
+      }, 200);
+    }
+
+    function confirmDelete() {
+      if (deleteTargetId) {
+        reviews = reviews.filter(r => r.id !== deleteTargetId);
+        selectedRows.delete(deleteTargetId);
+        filterTable();
+        showToast('success', `Deleted review ${deleteTargetId}`, 3000);
+      }
+      closeDeleteDialog();
+    }
+
+    function deleteSelected() {
+      const toDelete = Array.from(selectedRows).filter(id => reviews.some(r => r.id === id));
+      reviews = reviews.filter(r => !selectedRows.has(r.id));
+      selectedRows.clear();
+      filterTable();
+      showToast('success', `Deleted ${toDelete.length}

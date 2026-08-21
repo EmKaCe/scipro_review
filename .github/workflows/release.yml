@@ -1,0 +1,95 @@
+name: Create GitHub Release
+
+# Creates or updates a GitHub Release for a pushed v* tag.
+#
+# Triggers:
+#   - push of a tag matching the v*.*.* convention (e.g. v2.3.2)
+#   - manual dispatch from the Actions tab (for back-filling or re-releasing)
+#
+# The release version is read from frontend/package.json so the tag and the
+# published package stay in lockstep. Release notes are auto-generated from
+# the commits between the previous v* tag and this one.
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v2.3.2). Defaults to the latest v* tag."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Read package version
+        id: pkg
+        working-directory: frontend
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          # On tag push, GITHUB_REF_NAME is the tag (e.g. v2.3.2).
+          # On manual dispatch, prefer the provided input; otherwise use the
+          # most recent v* tag reachable from HEAD.
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            TAG="${GITHUB_REF_NAME}"
+          elif [[ -n "${{ inputs.tag }}" ]]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="$(git tag --sort=-v:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)"
+          fi
+          if [[ -z "${TAG}" ]]; then
+            echo "::error::No v*.*.* tag found to release." >&2
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify tag matches package version
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          VERSION="${{ steps.pkg.outputs.version }}"
+          # Strip the leading 'v' so we compare apples to apples.
+          TAG_VERSION="${TAG#v}"
+          if [[ "${TAG_VERSION}" != "${VERSION}" ]]; then
+            echo "::error::Tag ${TAG} (v${TAG_VERSION}) does not match frontend/package.json version (${VERSION})." >&2
+            echo "::error::Bump the version in frontend/package.json and re-tag, or fix the tag." >&2
+            exit 1
+          fi
+          echo "Tag ${TAG} matches package version ${VERSION}."
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

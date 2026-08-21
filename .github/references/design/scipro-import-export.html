@@ -1,0 +1,545 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — Import & Export</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --destructive: oklch(0.577 0.245 27.325);
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+      --destructive: oklch(0.704 0.191 22.216);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Dialog overlay */
+    .dialog-overlay {
+      background: rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(4px);
+    }
+
+    /* Drop zone states */
+    .drop-zone {
+      transition: all 0.2s ease;
+    }
+    .drop-zone.drag-over {
+      border-color: var(--accent);
+      background: oklch(0.98 0.02 165 / 0.3);
+    }
+    .dark .drop-zone.drag-over {
+      background: oklch(0.3 0.05 165 / 0.2);
+    }
+
+    /* Format card radio */
+    .format-radio:checked + .format-card {
+      border-color: var(--accent);
+      background: oklch(0.98 0.02 165 / 0.3);
+    }
+    .dark .format-radio:checked + .format-card {
+      background: oklch(0.3 0.05 165 / 0.2);
+    }
+    .format-radio:checked + .format-card .check-indicator {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    /* Custom checkbox */
+    .custom-checkbox {
+      appearance: none;
+      width: 1rem;
+      height: 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 0.25rem;
+      background: var(--card-bg);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+    }
+    .custom-checkbox:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+    .custom-checkbox:checked::after {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 0px;
+      width: 5px;
+      height: 9px;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    /* Code preview */
+    .code-preview {
+      font-family: 'Fira Code', ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.6;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-30 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+    </div>
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="openImport()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+      </button>
+      <button onclick="openExport()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+      </button>
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="flex-1 flex items-center justify-center p-8">
+    <p class="text-sm text-[var(--muted)]">Click Import or Export in the header to open dialogs.</p>
+  </main>
+
+  <!-- =========================
+       IMPORT DIALOG
+       ========================= -->
+  <div id="import-dialog" class="fixed inset-0 z-50 hidden items-center justify-center dialog-overlay opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-lg w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200 flex flex-col max-h-[90vh]">
+      
+      <!-- Dialog Header -->
+      <div class="flex items-center justify-between p-6 pb-4 shrink-0">
+        <div>
+          <h3 class="text-lg font-semibold tracking-tight">Import Review</h3>
+          <p class="text-sm text-[var(--muted)] mt-0.5">Import a review file to view or continue editing.</p>
+        </div>
+        <button onclick="closeImport()" class="p-1 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Dialog Body -->
+      <div class="px-6 pb-6 space-y-4 overflow-y-auto">
+
+        <!-- Error State -->
+        <div id="import-error" class="hidden rounded-[var(--radius)] border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-3 flex items-start gap-2.5">
+          <svg class="text-red-600 dark:text-red-400 mt-0.5 shrink-0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+          <div>
+            <p class="text-sm font-medium text-red-700 dark:text-red-300">Import failed</p>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-0.5 leading-relaxed">Unable to parse file. Ensure it follows the v2 evaluation YAML schema or legacy JSON format.</p>
+          </div>
+        </div>
+
+        <!-- Success State -->
+        <div id="import-success" class="hidden rounded-[var(--radius)] border border-[var(--accent)]/20 bg-[var(--accent)]/5 p-3 flex items-start gap-2.5">
+          <svg class="text-[var(--accent)] mt-0.5 shrink-0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <div>
+            <p class="text-sm font-medium text-[var(--fg)]">Review imported successfully</p>
+            <p class="text-xs text-[var(--muted)] mt-0.5">Redirecting to review page...</p>
+          </div>
+        </div>
+
+        <!-- Drop Zone (shown when no file selected) -->
+        <div id="import-drop-zone" class="drop-zone border-2 border-dashed border-[var(--border)] rounded-[var(--radius)] p-6 text-center cursor-pointer min-h-[120px] flex flex-col items-center justify-center" ondragover="event.preventDefault(); this.classList.add('drag-over');" ondragleave="this.classList.remove('drag-over');" ondrop="handleDrop(event)" onclick="document.getElementById('import-file-input').click()">
+          <svg class="text-[var(--muted)] mb-2" xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+          <p class="text-sm font-medium text-[var(--fg)]">Drag and drop a file here</p>
+          <p class="text-xs text-[var(--muted)] mt-1">or <span class="text-[var(--accent)] font-medium">browse files</span></p>
+          <p class="text-[10px] text-[var(--muted)] mt-2 uppercase tracking-wider">.yaml, .yml, .json</p>
+          <input type="file" id="import-file-input" class="hidden" accept=".yaml,.yml,.json" onchange="handleImportFile(this)">
+        </div>
+
+        <!-- File Selected State -->
+        <div id="import-file-selected" class="hidden rounded-[var(--radius)] border border-[var(--border)] p-4 flex items-center gap-3">
+          <div class="w-9 h-9 rounded-[var(--radius)] bg-[var(--accent)]/10 flex items-center justify-center shrink-0">
+            <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2">
+              <p id="import-file-name" class="text-sm font-medium text-[var(--fg)] truncate">2026SS_42_eval.yaml</p>
+              <span id="import-format-badge" class="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)] shrink-0">YAML v2</span>
+            </div>
+            <p id="import-file-size" class="text-xs text-[var(--muted)]">14 KB</p>
+          </div>
+          <button onclick="clearImportFile()" class="p-1.5 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+
+        <!-- Options -->
+        <div class="flex items-start gap-2.5">
+          <input type="checkbox" id="import-readonly" checked class="custom-checkbox mt-0.5 shrink-0">
+          <div>
+            <label for="import-readonly" class="text-sm font-medium text-[var(--fg)] cursor-pointer select-none">Open as read-only</label>
+            <p class="text-xs text-[var(--muted)] mt-0.5 leading-relaxed">Imported reviews open in read-only mode by default. Click "Edit" on the review page to modify.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dialog Footer -->
+      <div class="flex justify-end gap-2 p-6 pt-0 shrink-0">
+        <button onclick="closeImport()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+        <button id="import-btn" onclick="doImport()" disabled class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium opacity-50 cursor-not-allowed transition-opacity">Import</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =========================
+       EXPORT DIALOG
+       ========================= -->
+  <div id="export-dialog" class="fixed inset-0 z-50 hidden items-center justify-center dialog-overlay opacity-0 transition-opacity duration-200" role="dialog" aria-modal="true">
+    <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] max-w-lg w-full mx-4 shadow-xl transform scale-95 transition-transform duration-200 flex flex-col max-h-[90vh]">
+      
+      <!-- Dialog Header -->
+      <div class="flex items-center justify-between p-6 pb-4 shrink-0">
+        <div>
+          <h3 class="text-lg font-semibold tracking-tight">Export Review</h3>
+          <p class="text-sm text-[var(--muted)] mt-0.5">Choose a format to export the review for <span class="font-medium text-[var(--fg)]">2026SS_42 — Atom Interaction</span>.</p>
+        </div>
+        <button onclick="closeExport()" class="p-1 rounded-[var(--radius)] text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Dialog Body -->
+      <div class="px-6 pb-6 space-y-4 overflow-y-auto">
+        
+        <!-- Format Selection -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <!-- YAML Option -->
+          <label class="relative cursor-pointer">
+            <input type="radio" name="export-format" value="yaml" class="format-radio sr-only" checked onchange="updateExportPreview()">
+            <div class="format-card h-full rounded-[var(--radius)] border border-[var(--border)] p-4 hover:border-[var(--accent)]/50 transition-colors">
+              <div class="flex items-start justify-between mb-2">
+                <div class="w-8 h-8 rounded-[var(--radius)] bg-[var(--accent)]/10 flex items-center justify-center">
+                  <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h14a2 2 0 0 0 2-2V7.5L14.5 2H6a2 2 0 0 0-2 2v4"/><polyline points="14 2 14 8 20 8"/><path d="m9 15 2 2 4-4"/></svg>
+                </div>
+                <div class="check-indicator opacity-0 transform scale-50 transition-all duration-200">
+                  <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 10 12 14 8 10"/></svg>
+                </div>
+              </div>
+              <p class="text-sm font-medium text-[var(--fg)]">YAML (v2 Evaluation)</p>
+              <p class="text-xs text-[var(--muted)] mt-1 leading-relaxed">Structured data format. Can be re-imported to restore the full review state.</p>
+              <div class="mt-2">
+                <span class="inline-flex items-center rounded-full bg-[var(--accent)]/10 px-1.5 py-0.5 text-[10px] font-medium text-[var(--accent)]">Recommended</span>
+              </div>
+            </div>
+          </label>
+
+          <!-- Markdown Option -->
+          <label class="relative cursor-pointer">
+            <input type="radio" name="export-format" value="md" class="format-radio sr-only" onchange="updateExportPreview()">
+            <div class="format-card h-full rounded-[var(--radius)] border border-[var(--border)] p-4 hover:border-[var(--accent)]/50 transition-colors">
+              <div class="flex items-start justify-between mb-2">
+                <div class="w-8 h-8 rounded-[var(--radius)] bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center">
+                  <svg class="text-[var(--muted)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+                </div>
+                <div class="check-indicator opacity-0 transform scale-50 transition-all duration-200">
+                  <svg class="text-[var(--accent)]" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 10 12 14 8 10"/></svg>
+                </div>
+              </div>
+              <p class="text-sm font-medium text-[var(--fg)]">Markdown (Evaluation Report)</p>
+              <p class="text-xs text-[var(--muted)] mt-1 leading-relaxed">Human-readable report with YAML frontmatter and checkbox sections.</p>
+              <div class="mt-2">
+                <span class="inline-flex items-center rounded-full border border-[var(--border)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted)]">.md</span>
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <!-- Filename -->
+        <div>
+          <label class="block text-xs font-medium text-[var(--fg)] mb-1.5">Filename</label>
+          <input type="text" id="export-filename" value="2026SS_42_atom_interaction_eval.yaml" class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--fg)]">
+        </div>
+
+        <!-- Preview Section -->
+        <div>
+          <button onclick="togglePreview()" class="flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline mb-2">
+            <span id="preview-label">Show preview</span>
+            <svg id="preview-chevron" class="transition-transform duration-200" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          <div id="export-preview" class="hidden rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] p-3 overflow-x-auto">
+            <pre id="preview-content" class="code-preview text-[var(--fg)] whitespace-pre"></pre>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Dialog Footer -->
+      <div class="flex justify-end gap-2 p-6 pt-0 shrink-0">
+        <button onclick="closeExport()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">Cancel</button>
+        <button onclick="doExport()" class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Demo Controls -->
+  <div class="fixed bottom-4 left-4 z-50 bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-lg p-3">
+    <p class="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold mb-2">Import States</p>
+    <div class="flex flex-wrap gap-1">
+      <button onclick="setImportState('empty')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Empty</button>
+      <button onclick="setImportState('selected')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Selected</button>
+      <button onclick="setImportState('error')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">Error</button>
+      <button onclick="setImportState('success')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-[var(--accent)] hover:bg-[var(--accent)]/5">Success</button>
+    </div>
+    <p class="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold mt-3 mb-2">Export States</p>
+    <div class="flex flex-wrap gap-1">
+      <button onclick="setExportFormat('yaml')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">YAML</button>
+      <button onclick="setExportFormat('md')" class="h-6 px-2 rounded-[var(--radius)] text-[10px] font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Markdown</button>
+    </div>
+  </div>
+
+  <script>
+    let importHasFile = false;
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+    });
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    // Import Dialog
+    function openImport() {
+      const dialog = document.getElementById('import-dialog');
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+      void dialog.offsetWidth;
+      dialog.classList.remove('opacity-0');
+      dialog.querySelector('div').classList.remove('scale-95');
+      dialog.querySelector('div').classList.add('scale-100');
+    }
+
+    function closeImport() {
+      const dialog = document.getElementById('import-dialog');
+      dialog.classList.add('opacity-0');
+      dialog.querySelector('div').classList.add('scale-95');
+      dialog.querySelector('div').classList.remove('scale-100');
+      setTimeout(() => {
+        dialog.classList.add('hidden');
+        dialog.classList.remove('flex');
+      }, 200);
+    }
+
+    function handleDrop(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over');
+      // Simulate file selection
+      setImportState('selected');
+    }
+
+    function handleImportFile(input) {
+      if (input.files.length > 0) {
+        setImportState('selected');
+      }
+    }
+
+    function clearImportFile() {
+      document.getElementById('import-file-input').value = '';
+      setImportState('empty');
+    }
+
+    function doImport() {
+      if (document.getElementById('import-error').classList.contains('hidden')) {
+        setImportState('success');
+        setTimeout(() => closeImport(), 1500);
+      }
+    }
+
+    function setImportState(state) {
+      const dropZone = document.getElementById('import-drop-zone');
+      const fileSelected = document.getElementById('import-file-selected');
+      const error = document.getElementById('import-error');
+      const success = document.getElementById('import-success');
+      const importBtn = document.getElementById('import-btn');
+
+      // Reset all
+      dropZone.classList.remove('hidden');
+      fileSelected.classList.add('hidden');
+      error.classList.add('hidden');
+      success.classList.add('hidden');
+      importBtn.disabled = true;
+      importBtn.classList.add('opacity-50', 'cursor-not-allowed');
+
+      switch (state) {
+        case 'empty':
+          break;
+        case 'selected':
+          dropZone.classList.add('hidden');
+          fileSelected.classList.remove('hidden');
+          importBtn.disabled = false;
+          importBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+          importBtn.classList.add('hover:opacity-90');
+          break;
+        case 'error':
+          dropZone.classList.add('hidden');
+          fileSelected.classList.remove('hidden');
+          error.classList.remove('hidden');
+          break;
+        case 'success':
+          dropZone.classList.add('hidden');
+          fileSelected.classList.add('hidden');
+          success.classList.remove('hidden');
+          break;
+      }
+    }
+
+    // Export Dialog
+    function openExport() {
+      const dialog = document.getElementById('export-dialog');
+      dialog.classList.remove('hidden');
+      dialog.classList.add('flex');
+      void dialog.offsetWidth;
+      dialog.classList.remove('opacity-0');
+      dialog.querySelector('div').classList.remove('scale-95');
+      dialog.querySelector('div').classList.add('scale-100');
+      updateExportPreview();
+    }
+
+    function closeExport() {
+      const dialog = document.getElementById('export-dialog');
+      dialog.classList.add('opacity-0');
+      dialog.querySelector('div').classList.add('scale-95');
+      dialog.querySelector('div').classList.remove('scale-100');
+      setTimeout(() => {
+        dialog.classList.add('hidden');
+        dialog.classList.remove('flex');
+      }, 200);
+    }
+
+    function setExportFormat(fmt) {
+      document.querySelector(`input[name="export-format"][value="${fmt}"]`).checked = true;
+      updateExportPreview();
+    }
+
+    function updateExportPreview() {
+      const fmt = document.querySelector('input[name="export-format"]:checked').value;
+      const filenameInput = document.getElementById('export-filename');
+      const baseName = '2026SS_42_atom_interaction_eval';
+
+      filenameInput.value = fmt === 'yaml' ? `${baseName}.yaml` : `${baseName}.md`;
+
+      const yamlPreview = `student_id: 2026SS_42
+assignment: Atom Interaction
+created: 2025-06-14T09:23:17Z
+rubric_version: "2.1"
+categories:
+  formatting:
+    positive:
+      - "Variables use descriptive snake_case names"
+      - "Consistent indentation"
+    negative:
+      - item: "Magic numbers used without constants"
+        deduction: 0.5
+      - item: "Overly long functions"
+        deduction: 0.0
+grading:
+  code_quality: 5.0
+  execution: 5.5`;
+
+      const mdPreview = `---
+student: 2026SS_42
+assignment: Atom Interaction (Lennard-Jones / Pandas)
+date: 2025-06-14
+grade: 2.0
+us_grade: B+
+percentage: 82.0%
+---
+
+## Positive Observations
+
+### Code Formatting & Style
+- [x] Variables use descriptive snake_case names
+- [x] Consistent indentation (4 spaces)
+
+> Could use more type hints.
+
+## Areas for Improvement
+- [ ] Magic numbers used without constants (−0.5 pts)
+`;
+
+      const content = document.getElementById('preview-content');
+      content.textContent = fmt === 'yaml' ? yamlPreview : mdPreview;
+    }
+
+    function togglePreview() {
+      const preview = document.getElementById('export-preview');
+      const label = document.getElementById('preview-label');
+      const chevron = document.getElementById('preview-chevron');
+      const isHidden = preview.classList.contains('hidden');
+
+      if (isHidden) {
+        preview.classList.remove('hidden');
+        label.textContent = 'Hide preview';
+        chevron.style.transform = 'rotate(180deg)';
+      } else {
+        preview.classList.add('hidden');
+        label.textContent = 'Show preview';
+        chevron.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function doExport() {
+      const fmt = document.querySelector('input[name="export-format"]:checked').value;
+      const filename = document.getElementById('export-filename').value;
+      console.log(`Exporting as ${fmt}: ${filename}`);
+      closeExport();
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,630 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — Evaluation Preview</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --skeleton: oklch(0.963 0.002 197.1);
+      --destructive: oklch(0.577 0.245 27.325);
+      --prose-headings: oklch(0.148 0.004 228.8);
+      --prose-body: oklch(0.37 0.013 285.805);
+      --prose-muted: oklch(0.56 0.021 213.5);
+      --prose-links: oklch(0.508 0.118 165.612);
+      --prose-bullets: oklch(0.925 0.005 214.3);
+      --prose-blockquote: oklch(0.963 0.002 197.1);
+      --prose-blockquote-border: oklch(0.925 0.005 214.3);
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+      --skeleton: oklch(0.275 0.011 216.9);
+      --destructive: oklch(0.704 0.191 22.216);
+      --prose-headings: oklch(0.987 0.002 197.1);
+      --prose-body: oklch(0.85 0.01 240);
+      --prose-muted: oklch(0.723 0.014 214.4);
+      --prose-links: oklch(0.432 0.095 166.913);
+      --prose-bullets: oklch(0.4 0.01 240);
+      --prose-blockquote: oklch(0.218 0.008 223.9);
+      --prose-blockquote-border: oklch(1 0 0 / 10%);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Prose-like styling */
+    .prose h1 { font-size: 1.875rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.025em; margin-bottom: 1rem; color: var(--prose-headings); }
+    .prose h2 { font-size: 1.25rem; font-weight: 600; line-height: 1.3; letter-spacing: -0.025em; margin-top: 2.5rem; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border); color: var(--prose-headings); }
+    .prose h3 { font-size: 1rem; font-weight: 600; line-height: 1.4; margin-top: 1.5rem; margin-bottom: 0.5rem; color: var(--prose-headings); }
+    .prose p { margin-bottom: 0.75rem; line-height: 1.7; color: var(--prose-body); }
+    .prose ul { list-style-type: none; padding-left: 0; margin-bottom: 1rem; }
+    .prose ul li { position: relative; padding-left: 1.25rem; margin-bottom: 0.5rem; color: var(--prose-body); line-height: 1.6; }
+    .prose ul li::before { content: ''; position: absolute; left: 0.25rem; top: 0.6rem; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
+    .prose ul ul { margin-top: 0.25rem; }
+    .prose ul ul li { padding-left: 1rem; font-size: 0.875rem; color: var(--prose-muted); }
+    .prose ul ul li::before { display: none; }
+    .prose blockquote { border-left: 3px solid var(--accent); padding-left: 1rem; margin: 1rem 0; font-style: italic; color: var(--prose-muted); background: var(--prose-blockquote); padding: 0.75rem 1rem; border-radius: 0 var(--radius) var(--radius) 0; }
+    .prose strong { font-weight: 600; color: var(--prose-headings); }
+    .prose table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }
+    .prose th { text-align: left; padding: 0.625rem 0.75rem; font-weight: 600; border-bottom: 2px solid var(--border); color: var(--prose-headings); }
+    .prose td { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--border); color: var(--prose-body); }
+    .prose tr:last-child td { border-bottom-width: 2px; border-color: var(--border); }
+
+    @keyframes skeleton-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.35; }
+    }
+
+    .skeleton-pulse {
+      animation: skeleton-pulse 2s ease-in-out infinite;
+      background: var(--skeleton);
+      border-radius: calc(var(--radius) / 2);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+
+    .deduction-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+      color: var(--destructive);
+      margin-left: 0.5rem;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header (App Shell Context) -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <!-- Left -->
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <button onclick="goBack()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </button>
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span class="text-[var(--muted)] mx-1 select-none">/</span>
+      <span class="text-[var(--muted)] text-sm truncate">Evaluation — 2026SS_42</span>
+    </div>
+
+    <!-- Right -->
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      <a href="#" aria-label="Settings" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1">
+    <div class="max-w-3xl mx-auto px-4 py-8 space-y-8">
+
+      <!-- STATE: Loading -->
+      <div id="loading-state" class="hidden space-y-8">
+        <!-- Metadata skeleton -->
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 space-y-4">
+          <div class="skeleton-pulse w-32 h-8 rounded-[var(--radius)]"></div>
+          <div class="skeleton-pulse w-48 h-4 rounded-[var(--radius)]"></div>
+          <div class="flex items-center gap-4 mt-4">
+            <div class="skeleton-pulse w-24 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-24 h-4 rounded-[var(--radius)]"></div>
+          </div>
+          <!-- Grade card skeleton -->
+          <div class="mt-4 p-4 border border-[var(--border)] rounded-[var(--radius)] flex items-center gap-4">
+            <div class="skeleton-pulse w-16 h-12 rounded-[var(--radius)]"></div>
+            <div class="space-y-2">
+              <div class="skeleton-pulse w-24 h-4 rounded-[var(--radius)]"></div>
+              <div class="skeleton-pulse w-16 h-3 rounded-[var(--radius)]"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report skeleton -->
+        <div class="space-y-6">
+          <!-- Section 1 -->
+          <div class="space-y-4">
+            <div class="skeleton-pulse w-48 h-6 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-5/6 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-4/5 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-2/3 h-4 rounded-[var(--radius)]"></div>
+          </div>
+          <!-- Section 2 -->
+          <div class="space-y-4">
+            <div class="skeleton-pulse w-56 h-6 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-3/4 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-5/6 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+          </div>
+          <!-- Section 3 -->
+          <div class="space-y-4">
+            <div class="skeleton-pulse w-40 h-6 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-4/5 h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-full h-4 rounded-[var(--radius)]"></div>
+            <div class="skeleton-pulse w-1/2 h-4 rounded-[var(--radius)]"></div>
+          </div>
+        </div>
+
+        <!-- Action bar skeleton -->
+        <div class="flex items-center gap-2 pt-4 border-t border-[var(--border)]">
+          <div class="skeleton-pulse w-32 h-9 rounded-[var(--radius)]"></div>
+          <div class="skeleton-pulse w-28 h-9 rounded-[var(--radius)]"></div>
+          <div class="skeleton-pulse w-28 h-9 rounded-[var(--radius)]"></div>
+        </div>
+      </div>
+
+      <!-- STATE: Empty -->
+      <div id="empty-state" class="hidden flex-col items-center justify-center py-20 text-center">
+        <svg class="text-[var(--muted)] mb-4" xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="9" x2="15" y1="15" y2="15"/></svg>
+        <p class="font-medium text-[var(--fg)] mb-1 text-lg">No evaluation to preview</p>
+        <p class="text-sm text-[var(--muted)] max-w-sm mb-6">Complete at least one category to generate an evaluation.</p>
+        <button onclick="goBack()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)]">
+          Back to Review
+        </button>
+      </div>
+
+      <!-- STATE: Loaded -->
+      <div id="loaded-state" class="space-y-8">
+
+        <!-- Metadata Header -->
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-6 shadow-sm">
+          <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div class="space-y-1">
+              <div class="flex items-baseline gap-2">
+                <span class="text-xs text-[var(--muted)] uppercase tracking-wider font-medium">Student</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight">2026SS_42</p>
+              <p class="text-sm text-[var(--muted)]">Atom Interaction (Lennard-Jones / Pandas)</p>
+              <div class="flex items-center gap-3 mt-3 text-xs text-[var(--muted)]">
+                <span class="flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                  Prof. Dr. Müller
+                </span>
+                <span class="flex items-center gap-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg>
+                  14 June 2025
+                </span>
+              </div>
+            </div>
+
+            <!-- Grade Result Card (Teacher Mode) -->
+            <div id="grade-card" class="flex items-center gap-4 bg-[var(--bg)] border border-[var(--border)] rounded-[var(--radius)] p-4 shrink-0">
+              <div class="text-right">
+                <div class="text-3xl font-bold tracking-tight text-[var(--accent)]">82.0%</div>
+                <div class="text-xs text-[var(--muted)] mt-0.5">of 100 pts</div>
+              </div>
+              <div class="w-px h-10 bg-[var(--border)]"></div>
+              <div class="text-right">
+                <div class="text-2xl font-bold tracking-tight">2.0</div>
+                <div class="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium bg-[var(--bg)] text-[var(--muted)] mt-0.5">B+</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report Content -->
+        <article class="prose">
+
+          <!-- Positive Observations -->
+          <h2>Positive Observations</h2>
+          <div id="positive-sections"></div>
+
+          <!-- General Observations -->
+          <h2>General Observations</h2>
+          <div id="neutral-sections"></div>
+
+          <!-- Areas for Improvement -->
+          <h2>Areas for Improvement</h2>
+          <div id="negative-sections"></div>
+
+          <!-- Grading Summary (Teacher Mode) -->
+          <div id="grading-summary" class="mt-8">
+            <h2>Grading Summary</h2>
+            <div class="overflow-x-auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Dimension</th>
+                    <th>Score</th>
+                    <th>Max</th>
+                    <th>Weight</th>
+                  </tr>
+                </thead>
+                <tbody id="grading-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </article>
+
+      </div>
+
+      <!-- Action Bar -->
+      <div id="action-bar" class="sticky bottom-4 z-30 bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-3 shadow-lg flex items-center gap-2 flex-wrap">
+        <button onclick="copyToClipboard()" id="copy-btn" class="h-9 px-4 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center gap-2">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/><path d="M8 8h.01"/><path d="M12 8h.01"/><path d="M16 8h.01"/></svg>
+          Copy to Clipboard
+        </button>
+        <button onclick="exportYAML()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center gap-2">
+          Export YAML
+        </button>
+        <button onclick="exportMarkdown()" class="h-9 px-4 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center gap-2">
+          Export Markdown
+        </button>
+        <div class="flex-1"></div>
+        <button onclick="goBack()" class="h-9 px-4 rounded-[var(--radius)] text-sm font-medium text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors flex items-center gap-2">
+          Back to Review
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Toast -->
+  <div id="toast" class="fixed top-4 right-4 z-50 hidden items-center gap-2 px-4 py-3 rounded-[var(--radius)] bg-[var(--card-bg)] border border-[var(--border)] shadow-lg text-sm text-[var(--fg)]">
+    <span id="toast-message"></span>
+  </div>
+
+  <!-- Demo Controls -->
+  <div class="fixed bottom-4 left-4 z-50 bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-lg p-3">
+    <p class="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold mb-2">Demo</p>
+    <div class="flex items-center gap-2">
+      <button onclick="setState('loading')" id="btn-loading" class="h-7 px-2.5 rounded-[var(--radius)] text-xs font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Loading</button>
+      <button onclick="setState('loaded')" id="btn-loaded" class="h-7 px-2.5 rounded-[var(--radius)] text-xs font-medium bg-[var(--accent)] text-white">Loaded</button>
+      <button onclick="setState('empty')" id="btn-empty" class="h-7 px-2.5 rounded-[var(--radius)] text-xs font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Empty</button>
+    </div>
+    <div class="mt-2 flex items-center gap-2">
+      <span class="text-[10px] text-[var(--muted)]">Mode:</span>
+      <button onclick="toggleTeacherMode()" id="demo-mode-toggle" class="text-[10px] font-medium text-[var(--accent)] hover:underline">Switch to Student</button>
+    </div>
+  </div>
+
+  <script>
+    // Demo data
+    const evaluationData = {
+      studentId: '2026SS_42',
+      assignment: 'Atom Interaction (Lennard-Jones / Pandas)',
+      reviewer: 'Prof. Dr. Müller',
+      date: '14 June 2025',
+      percentage: 82.0,
+      germanGrade: '2.0',
+      usGrade: 'B+',
+      positive: [
+        {
+          category: 'Code Formatting & Style',
+          items: [
+            { text: 'Variables use descriptive snake_case names', comment: 'Well named throughout' },
+            { text: 'Functions are named with action verbs', comment: '' },
+            { text: 'Consistent indentation (4 spaces)', comment: '' },
+            { text: 'Appropriate blank lines between logical sections', comment: '' }
+          ],
+          notes: 'Could use more type hints.'
+        },
+        {
+          category: 'Code Execution',
+          items: [
+            { text: 'Cells execute in correct order', comment: '' },
+            { text: 'No orphaned variables from deleted cells', comment: '' }
+          ],
+          notes: ''
+        },
+        {
+          category: 'Results & Visualization',
+          items: [
+            { text: 'Plots have labels, titles, and legends', comment: 'Excellent figure captions with clear descriptions of the Lennard-Jones potential curves.' },
+            { text: 'Color choices are colorblind-friendly', comment: '' }
+          ],
+          notes: 'Consider adding error bars to the interaction energy plot.'
+        }
+      ],
+      neutral: [
+        {
+          category: 'Code Formatting & Style',
+          items: [
+            { text: 'Functions have docstrings', comment: 'Present but inconsistent style.' }
+          ],
+          notes: ''
+        },
+        {
+          category: 'Results & Visualization',
+          items: [
+            { text: 'Tables are readable and well-formatted', comment: '' }
+          ],
+          notes: ''
+        }
+      ],
+      negative: [
+        {
+          category: 'Code Formatting & Style',
+          items: [
+            { text: 'Magic numbers used without constants', deduction: 0.5, comment: '' },
+            { text: 'Overly long functions (>50 lines)', deduction: 0, comment: '' }
+          ],
+          notes: ''
+        },
+        {
+          category: 'Results & Visualization',
+          items: [
+            { text: 'No excessive or truncated output', deduction: 0, comment: '' }
+          ],
+          notes: ''
+        }
+      ],
+      grading: [
+        { name: 'Code Quality & Design', score: 5.0, max: 6.0, weight: 4 },
+        { name: 'Code Execution & Results', score: 5.5, max: 6.0, weight: 4 },
+        { name: 'Assignment Requirements', score: 4.5, max: 6.0, weight: 4 },
+        { name: 'Scientific Programming', score: 5.0, max: 6.0, weight: 4 },
+        { name: 'Creativity', score: 3.0, max: 4.0, weight: 1 }
+      ],
+      totalDeductions: 0.5
+    };
+
+    let isTeacherMode = true;
+    let currentState = 'loaded';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+      renderContent();
+    });
+
+    function setState(state) {
+      currentState = state;
+      document.getElementById('loading-state').classList.toggle('hidden', state !== 'loading');
+      document.getElementById('empty-state').classList.toggle('hidden', state !== 'empty');
+      document.getElementById('loaded-state').classList.toggle('hidden', state !== 'loaded');
+      document.getElementById('action-bar').classList.toggle('hidden', state !== 'loaded');
+
+      document.getElementById('btn-loading').classList.toggle('bg-[var(--accent)]', state === 'loading');
+      document.getElementById('btn-loading').classList.toggle('text-white', state === 'loading');
+      document.getElementById('btn-loaded').classList.toggle('bg-[var(--accent)]', state === 'loaded');
+      document.getElementById('btn-loaded').classList.toggle('text-white', state === 'loaded');
+      document.getElementById('btn-empty').classList.toggle('bg-[var(--accent)]', state === 'empty');
+      document.getElementById('btn-empty').classList.toggle('text-white', state === 'empty');
+
+      ['btn-loading', 'btn-loaded', 'btn-empty'].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el.classList.contains('bg-[var(--accent)]')) {
+          el.classList.add('border', 'border-[var(--border)]');
+          el.classList.remove('text-white');
+        } else {
+          el.classList.remove('border', 'border-[var(--border)]');
+        }
+      });
+
+      if (state === 'loaded') renderContent();
+    }
+
+    function renderContent() {
+      renderSection('positive-sections', evaluationData.positive, true);
+      renderSection('neutral-sections', evaluationData.neutral, false);
+      renderSection('negative-sections', evaluationData.negative, false, true);
+      renderGradingTable();
+
+      // Show/hide teacher-only elements
+      document.getElementById('grade-card').style.display = isTeacherMode ? 'flex' : 'none';
+      document.getElementById('grading-summary').style.display = isTeacherMode ? 'block' : 'none';
+    }
+
+    function renderSection(containerId, sections, isPositive, showDeductions = false) {
+      const container = document.getElementById(containerId);
+      if (!sections || sections.length === 0) {
+        container.innerHTML = '<p class="text-sm text-[var(--muted)] italic">No items in this section.</p>';
+        return;
+      }
+
+      container.innerHTML = sections.map(section => {
+        const itemsHtml = section.items.filter(item => item.text).map(item => {
+          let html = `<li>${item.text}`;
+          if (showDeductions && item.deduction) {
+            html += `<span class="deduction-badge">−${item.deduction.toFixed(1)} pts</span>`;
+          }
+          html += `</li>`;
+          if (item.comment) {
+            html += `<li style="list-style: none; margin-top: 0.25rem; margin-bottom: 0.75rem; padding-left: 1.25rem; font-size: 0.875rem; color: var(--prose-muted); font-style: italic;">"${item.comment}"</li>`;
+          }
+          return html;
+        }).join('');
+
+        const notesHtml = section.notes
+          ? `<blockquote>${section.notes}</blockquote>`
+          : '';
+
+        return `
+          <h3>${section.category}</h3>
+          <ul>${itemsHtml}</ul>
+          ${notesHtml}
+        `;
+      }).join('');
+    }
+
+    function renderGradingTable() {
+      const tbody = document.getElementById('grading-table-body');
+      let totalScore = 0;
+      let totalMax = 0;
+      let totalWeight = 0;
+
+      let rows = evaluationData.grading.map(dim => {
+        totalScore += dim.score * dim.weight;
+        totalMax += dim.max * dim.weight;
+        totalWeight += dim.weight;
+        return `
+          <tr>
+            <td>${dim.name}</td>
+            <td>${dim.score.toFixed(1)}</td>
+            <td>${dim.max.toFixed(1)}</td>
+            <td>${dim.weight}</td>
+          </tr>
+        `;
+      }).join('');
+
+      rows += `
+        <tr>
+          <td class="font-medium">Total Deductions</td>
+          <td class="text-red-600 dark:text-red-400">−${evaluationData.totalDeductions.toFixed(1)}</td>
+          <td>—</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td class="font-semibold">Final Result</td>
+          <td class="font-semibold">${(totalScore - evaluationData.totalDeductions).toFixed(1)}</td>
+          <td class="font-semibold">${totalMax.toFixed(1)}</td>
+          <td class="font-semibold">${totalWeight}</td>
+        </tr>
+      `;
+
+      tbody.innerHTML = rows;
+    }
+
+    function toggleTeacherMode() {
+      isTeacherMode = !isTeacherMode;
+      document.getElementById('demo-mode-toggle').textContent = isTeacherMode ? 'Switch to Student' : 'Switch to Teacher';
+      if (currentState === 'loaded') renderContent();
+    }
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById('toast');
+      const msg = document.getElementById('toast-message');
+      msg.textContent = message;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+      setTimeout(() => {
+        toast.classList.add('hidden');
+        toast.classList.remove('flex');
+      }, 3000);
+    }
+
+    function copyToClipboard() {
+      const text = generateMarkdownText();
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => showToast('Copied to clipboard'));
+      } else {
+        showToast('Clipboard API not available');
+      }
+    }
+
+    function generateMarkdownText() {
+      let md = `# Evaluation Report: ${evaluationData.studentId}\n\n`;
+      md += `**Assignment:** ${evaluationData.assignment}  \n`;
+      md += `**Reviewer:** ${evaluationData.reviewer}  \n`;
+      md += `**Date:** ${evaluationData.date}  \n\n`;
+      md += `**Grade:** ${evaluationData.germanGrade} (${evaluationData.usGrade}) — ${evaluationData.percentage}%\n\n`;
+      md += `---\n\n`;
+
+      md += `## Positive Observations\n\n`;
+      evaluationData.positive.forEach(s => {
+        md += `### ${s.category}\n`;
+        s.items.forEach(i => {
+          md += `- ${i.text}${i.comment ? `\n  > "${i.comment}"` : ''}\n`;
+        });
+        if (s.notes) md += `> ${s.notes}\n\n`;
+      });
+
+      md += `## General Observations\n\n`;
+      evaluationData.neutral.forEach(s => {
+        md += `### ${s.category}\n`;
+        s.items.forEach(i => {
+          md += `- ${i.text}${i.comment ? `\n  > "${i.comment}"` : ''}\n`;
+        });
+      });
+
+      md += `## Areas for Improvement\n\n`;
+      evaluationData.negative.forEach(s => {
+        md += `### ${s.category}\n`;
+        s.items.forEach(i => {
+          md += `- ${i.text}${i.deduction ? ` (−${i.deduction} pts)` : ''}\n`;
+        });
+      });
+
+      md += `\n## Grading Summary\n\n`;
+      md += `| Dimension | Score | Max | Weight |\n`;
+      md += `|-----------|-------|-----|--------|\n`;
+      evaluationData.grading.forEach(d => {
+        md += `| ${d.name} | ${d.score.toFixed(1)} | ${d.max.toFixed(1)} | ${d.weight} |\n`;
+      });
+      md += `| **Total Deductions** | **−${evaluationData.totalDeductions.toFixed(1)}** | — | — |\n`;
+      const totalScore = evaluationData.grading.reduce((s, d) => s + d.score * d.weight, 0);
+      const totalMax = evaluationData.grading.reduce((s, d) => s + d.max * d.weight, 0);
+      md += `| **Final Result** | **${(totalScore - evaluationData.totalDeductions).toFixed(1)}** | **${totalMax.toFixed(1)}** | **${evaluationData.grading.reduce((s, d) => s + d.weight, 0)}** |\n`;
+
+      return md;
+    }
+
+    function exportYAML() {
+      showToast('Export YAML triggered');
+    }
+
+    function exportMarkdown() {
+      const blob = new Blob([generateMarkdownText()], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `evaluation-${evaluationData.studentId}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Markdown downloaded');
+    }
+
+    function goBack() {
+      console.log('Navigating back to review page...');
+    }
+  </script>
+</body>
+</html>

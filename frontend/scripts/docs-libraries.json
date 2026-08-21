@@ -1,0 +1,102 @@
+{
+	"//": "Single source of truth for the offline docs index corpus. To add a library or bump a version: edit this file (source, url, pinnedVersion, sha256, pages) and commit — CI rebuilds the index from it. sha256 is the expected digest of the downloaded source zip (hard reproducibility guard: a mismatched download fails the build). source='crawl' libraries (matplotlib, seaborn) have no official zip and are fetched by a pinned crawl of `crawlSeedUrl`.",
+	"libraries": {
+		"numpy": {
+			"source": "docstrings",
+			"url": "https://numpy.org/doc/stable/numpy-html.zip",
+			"sha256": "42fe2b5d198db7f13669d7b51e849199afcb8c0a338d63fd70bf0dc4a93a15bb",
+			"pinnedVersion": "2.5.1",
+			"apiPrefix": "reference/generated/",
+			"urlBase": "https://numpy.org/doc/stable/"
+		},
+		"pandas": {
+			"source": "docstrings",
+			"url": "https://pandas.pydata.org/docs/pandas.zip",
+			"sha256": "e008bf2716ecda2c3c80e94710cdb8a566b6aa3dd0682a2fd264121edcd9c4e8",
+			"pinnedVersion": "3.0.5",
+			"apiPrefix": "reference/api/",
+			"urlBase": "https://pandas.pydata.org/docs/"
+		},
+		"scipy": {
+			"source": "docstrings",
+			"url": "https://docs.scipy.org/doc/scipy-1.18.0/scipy-html-1.18.0.zip",
+			"sha256": "104a6fb25067eb7c75f26ba931cb36b9bb9f05b3624b575e2d8496a0783c4400",
+			"pinnedVersion": "1.18.0",
+			"apiPrefix": "reference/generated/",
+			"urlBase": "https://docs.scipy.org/doc/scipy/"
+		},
+		"sklearn": {
+			"source": "docstrings",
+			"url": "https://scikit-learn.org/stable/_downloads/scikit-learn-docs.zip",
+			"sha256": "d48af828cbb74ea1d67b55eb0be7f51989e993441c554480923292f9633b6a1d",
+			"pinnedVersion": "1.9.0",
+			"apiPrefix": "modules/generated/",
+			"urlBase": "https://scikit-learn.org/stable/"
+		},
+		"matplotlib": {
+			"source": "docstrings",
+			"crawlSeedUrl": "https://matplotlib.org/stable/api/",
+			"crawlDepth": 2,
+			"pinnedVersion": "3.11.1",
+			"apiPrefix": "api/",
+			"urlBase": "https://matplotlib.org/stable/",
+			"dirArg": "matplotlibDir"
+		},
+		"seaborn": {
+			"source": "docstrings",
+			"crawlSeedUrl": "https://seaborn.pydata.org/api.html",
+			"crawlDepth": 2,
+			"pinnedVersion": "0.13.2",
+			"apiPrefix": "generated/",
+			"urlBase": "https://seaborn.pydata.org/",
+			"dirArg": "seabornDir"
+		},
+		"builtins": {
+			"source": "zip",
+			"url": "https://docs.python.org/3.12/archives/python-3.12.6-docs-html.zip",
+			"sha256": "96522240bc5ab86febd1448b7d800a05f7b884d8071c958803d0bf5d271209c8",
+			"pinnedVersion": "3.12",
+			"apiPrefix": "",
+			"urlBase": "https://docs.python.org/3.12/",
+			"pages": ["library/functions.html", "library/constants.html", "library/builtins.html"]
+		},
+		"stdlib": {
+			"source": "zip",
+			"url": "https://docs.python.org/3.12/archives/python-3.12.6-docs-html.zip",
+			"sha256": "96522240bc5ab86febd1448b7d800a05f7b884d8071c958803d0bf5d271209c8",
+			"pinnedVersion": "3.12",
+			"apiPrefix": "",
+			"urlBase": "https://docs.python.org/3.12/",
+			"pages": [
+				"library/math.html",
+				"library/statistics.html",
+				"library/random.html",
+				"library/os.html",
+				"library/sys.html",
+				"library/re.html",
+				"library/json.html",
+				"library/datetime.html",
+				"library/collections.html",
+				"library/itertools.html",
+				"library/functools.html",
+				"library/pathlib.html",
+				"library/operator.html",
+				"library/copy.html",
+				"library/string.html",
+				"library/decimal.html",
+				"library/fractions.html",
+				"library/heapq.html",
+				"library/bisect.html"
+			]
+		},
+		"typing": {
+			"source": "zip",
+			"url": "https://docs.python.org/3.12/archives/python-3.12.6-docs-html.zip",
+			"sha256": "96522240bc5ab86febd1448b7d800a05f7b884d8071c958803d0bf5d271209c8",
+			"pinnedVersion": "3.12",
+			"apiPrefix": "",
+			"urlBase": "https://docs.python.org/3.12/",
+			"pages": ["library/typing.html"]
+		}
+	}
+}

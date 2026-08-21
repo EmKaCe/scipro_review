@@ -1,0 +1,618 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — Documentation</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Prose docs styling */
+    .doc-content h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: -0.025em;
+      margin-top: 2.5rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--fg);
+    }
+
+    .doc-content h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.4;
+      margin-top: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--fg);
+    }
+
+    .doc-content p {
+      margin-bottom: 0.75rem;
+      line-height: 1.7;
+      color: var(--muted);
+      font-size: 0.9375rem;
+    }
+
+    .doc-content ul {
+      list-style-type: none;
+      padding-left: 0;
+      margin-bottom: 1rem;
+    }
+
+    .doc-content ul li {
+      position: relative;
+      padding-left: 1.25rem;
+      margin-bottom: 0.5rem;
+      color: var(--muted);
+      line-height: 1.6;
+      font-size: 0.9375rem;
+    }
+
+    .doc-content ul li::before {
+      content: '';
+      position: absolute;
+      left: 0.25rem;
+      top: 0.6rem;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .doc-content ol {
+      padding-left: 1.25rem;
+      margin-bottom: 1rem;
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 0.9375rem;
+    }
+
+    .doc-content ol li {
+      margin-bottom: 0.5rem;
+      padding-left: 0.25rem;
+    }
+
+    .doc-content kbd {
+      display: inline-block;
+      padding: 0.125rem 0.375rem;
+      border-radius: 0.25rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      font-family: ui-monospace, 'Fira Code', monospace;
+      font-size: 0.8125rem;
+      color: var(--fg);
+    }
+
+    .doc-content table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.875rem;
+    }
+
+    .doc-content th {
+      text-align: left;
+      padding: 0.625rem 0.75rem;
+      font-weight: 600;
+      border-bottom: 2px solid var(--border);
+      color: var(--fg);
+    }
+
+    .doc-content td {
+      padding: 0.625rem 0.75rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+    }
+
+    .doc-content tr:last-child td {
+      border-bottom-width: 2px;
+      border-color: var(--border);
+    }
+
+    /* Sidebar active state */
+    .nav-link {
+      position: relative;
+      padding-left: 1rem;
+      transition: all 0.15s ease;
+    }
+
+    .nav-link::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 2px;
+      height: 0;
+      background: var(--accent);
+      border-radius: 999px;
+      transition: height 0.2s ease;
+    }
+
+    .nav-link.active {
+      color: var(--fg);
+      font-weight: 500;
+    }
+
+    .nav-link.active::before {
+      height: 1.25rem;
+    }
+
+    /* Accordion */
+    .accordion-item {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .accordion-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 1rem 0;
+      text-align: left;
+      font-weight: 500;
+      color: var(--fg);
+      cursor: pointer;
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 0.9375rem;
+    }
+
+    .accordion-trigger:hover {
+      color: var(--accent);
+    }
+
+    .accordion-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+
+    .accordion-item.open .accordion-content {
+      max-height: 500px;
+      padding-bottom: 1rem;
+    }
+
+    .accordion-item.open .accordion-chevron {
+      transform: rotate(180deg);
+    }
+
+    .accordion-chevron {
+      transition: transform 0.2s ease;
+      color: var(--muted);
+    }
+
+    /* Placecard for screenshots */
+    .screenshot-placeholder {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.875rem;
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <button onclick="goBack()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </button>
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span class="text-[var(--muted)] mx-1 select-none">/</span>
+      <span class="text-[var(--muted)] text-sm truncate">Documentation</span>
+    </div>
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      <a href="#" aria-label="Settings" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-1">
+    <div class="max-w-6xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-[16rem_1fr] gap-8">
+
+      <!-- Sidebar Navigation (Desktop) -->
+      <aside class="hidden lg:block">
+        <nav class="sticky top-[5rem] max-h-[calc(100vh-6rem)] overflow-y-auto pr-2 space-y-0.5">
+          <a href="#getting-started" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Getting Started</a>
+          <a href="#starting-review" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Starting a Review</a>
+          <a href="#completing-review" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Completing a Review</a>
+          <a href="#saving" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Saving &amp; Resuming</a>
+          <a href="#importing" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Importing Reviews</a>
+          <a href="#exporting" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Exporting Reviews</a>
+          <a href="#previewing" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Previewing Evaluations</a>
+          <a href="#teacher-mode" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] flex items-center gap-1.5">
+            Teacher Mode
+            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </a>
+          <a href="#shortcuts" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">Keyboard Shortcuts</a>
+          <a href="#faq" class="nav-link block py-1.5 text-sm text-[var(--muted)] hover:text-[var(--fg)] rounded-[var(--radius)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02]">FAQ</a>
+        </nav>
+      </aside>
+
+      <!-- Mobile Nav -->
+      <div class="lg:hidden mb-4">
+        <select onchange="scrollToSection(this.value)" class="w-full h-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm text-[var(--fg)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
+          <option value="#getting-started">Getting Started</option>
+          <option value="#starting-review">Starting a Review</option>
+          <option value="#completing-review">Completing a Review</option>
+          <option value="#saving">Saving &amp; Resuming</option>
+          <option value="#importing">Importing Reviews</option>
+          <option value="#exporting">Exporting Reviews</option>
+          <option value="#previewing">Previewing Evaluations</option>
+          <option value="#teacher-mode">Teacher Mode</option>
+          <option value="#shortcuts">Keyboard Shortcuts</option>
+          <option value="#faq">FAQ</option>
+        </select>
+      </div>
+
+      <!-- Documentation Content -->
+      <div class="doc-content max-w-3xl">
+        <div class="mb-8">
+          <h1 class="text-2xl font-bold tracking-tight mb-2">Documentation</h1>
+          <p class="text-[var(--muted)]">Learn how to use SciPro Review effectively.</p>
+        </div>
+
+        <!-- Getting Started -->
+        <section id="getting-started">
+          <h2>Getting Started</h2>
+          <p>
+            SciPro Review is a peer-review and grading tool for Jupyter notebook submissions in computational physics courses. It is designed as a client-side application: <strong>all data stays in your browser</strong> and nothing is ever sent to a server.
+          </p>
+          <ol>
+            <li>Open the app in any modern browser (Chrome, Firefox, Safari, Edge).</li>
+            <li>Start a new review by entering a student ID and selecting an assignment.</li>
+            <li>Use the rubric to evaluate the submission across multiple categories.</li>
+            <li>Generate an evaluation report when you're done.</li>
+            <li>Export your review as YAML or Markdown for backup or sharing.</li>
+          </ol>
+          <div class="p-4 bg-[var(--accent)]/5 border border-[var(--accent)]/10 rounded-[var(--radius)] flex items-start gap-3 mt-4">
+            <svg class="text-[var(--accent)] mt-0.5 shrink-0" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="16" y2="12"/><line x1="12" x2="12.01" y1="8" y2="8"/></svg>
+            <p class="text-sm text-[var(--fg)] m-0">
+              <strong>Privacy first:</strong> All data is stored locally using IndexedDB. Clearing your browser data will erase all saved reviews. Export important reviews regularly.
+            </p>
+          </div>
+        </section>
+
+        <!-- Starting a Review -->
+        <section id="starting-review">
+          <h2>Starting a Review</h2>
+          <p>From the landing page, enter the required information to begin:</p>
+          <ul>
+            <li><strong>Student ID</strong> — Automatically prefixed with the current semester (e.g., <code class="text-sm font-mono bg-[var(--bg)] border border-[var(--border)] px-1 py-0.5 rounded">2026SS_</code>). Toggle "Custom ID" if you need a non-standard format.</li>
+            <li><strong>Assignment</strong> — Select from the dropdown populated from <code class="text-sm font-mono bg-[var(--bg)] border border-[var(--border)] px-1 py-0.5 rounded">assignments.yaml</code>. Only enabled assignments are shown.</li>
+            <li><strong>Start Review</strong> — Click the primary button to open the review page.</li>
+          </ul>
+          <div class="screenshot-placeholder h-48 mt-4">
+            <span class="flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              Landing page form illustration
+            </span>
+          </div>
+        </section>
+
+        <!-- Completing a Review -->
+        <section id="completing-review">
+          <h2>Completing a Review</h2>
+          <p>
+            The review interface is organized into <strong>categories</strong>. Each category contains three sentiment sections: <strong>Positive</strong>, <strong>Neutral</strong>, and <strong>Negative</strong>.
+          </p>
+          <h3>Rubric Structure</h3>
+          <ul>
+            <li><strong>Main points</strong> are bold headings that group related criteria.</li>
+            <li><strong>Sub-points</strong> are individual checkboxes you toggle to indicate whether the criterion is met.</li>
+            <li>When a sub-point has a comment enabled and is checked, a <strong>comment textarea</strong> appears below it.</li>
+            <li>When a sub-point has point deduction enabled and is checked, a <strong>numeric deduction input</strong> appears.</li>
+            <li>Some categories offer an <strong>Additional Notes</strong> textarea for free-form feedback.</li>
+          </ul>
+          <h3>Navigation</h3>
+          <p>
+            Use the <strong>Category Quick-Nav</strong> bar below the header to jump between categories. Completed categories show a green dot; incomplete categories show a gray circle. Click <strong>Expand All / Collapse All</strong> to toggle all category cards.
+          </p>
+          <h3>Progress</h3>
+          <p>
+            The header shows a progress indicator like <span class="text-sm font-medium">4/11 categories</span> with a mini progress bar. Categories are considered complete when all required sub-points have been evaluated.
+          </p>
+        </section>
+
+        <!-- Saving & Resuming -->
+        <section id="saving">
+          <h2>Saving &amp; Resuming</h2>
+          <p>
+            Your review is automatically saved to IndexedDB as you work. A debounced save fires after each interaction, so you rarely need to manually save.
+          </p>
+          <ul>
+            <li><strong>Auto-save</strong> — Triggered automatically after changes. Look for the subtle save indicator in the header.</li>
+            <li><strong>Manual Save</strong> — Press <kbd>Ctrl+S</kbd> (or <kbd>Cmd+S</kbd> on macOS) to force an immediate save.</li>
+            <li><strong>Resuming</strong> — Return to the landing page and click <strong>Open</strong> on any saved review in the table.</li>
+            <li><strong>Multiple Reviews</strong> — You can work on multiple reviews concurrently. Each is saved independently.</li>
+          </ul>
+        </section>
+
+        <!-- Importing -->
+        <section id="importing">
+          <h2>Importing Reviews</h2>
+          <p>
+            You can import previously exported reviews to continue working or to view another reviewer's evaluation.
+          </p>
+          <ul>
+            <li><strong>Supported formats</strong> — YAML v2 Evaluation format and legacy JSON.</li>
+            <li><strong>Trigger</strong> — Click the <strong>Import</strong> button (Upload icon) in the app header.</li>
+            <li><strong>Read-only</strong> — Imported reviews open in read-only mode by default. To edit, click <strong>Edit</strong> on the review page.</li>
+            <li><strong>Validation</strong> — The app validates the file against the expected schema and shows an error if parsing fails.</li>
+          </ul>
+        </section>
+
+        <!-- Exporting -->
+        <section id="exporting">
+          <h2>Exporting Reviews</h2>
+          <p>
+            Export your review to share it, back it up, or archive it.
+          </p>
+          <ul>
+            <li><strong>YAML (v2 Evaluation)</strong> — A structured data file that preserves the full review state. Can be re-imported later.</li>
+            <li><strong>Markdown (Evaluation Report)</strong> — A human-readable report with YAML frontmatter and checkbox sections. Ideal for sharing with students.</li>
+            <li><strong>File naming</strong> — The default filename follows the pattern <code class="text-sm font-mono bg-[var(--bg)] border border-[var(--border)] px-1 py-0.5 rounded">{student_id}_{assignment}_eval.{ext}</code>.</li>
+          </ul>
+        </section>
+
+        <!-- Previewing Evaluations -->
+        <section id="previewing">
+          <h2>Previewing Evaluations</h2>
+          <p>
+            Once you have completed enough categories, click <strong>Generate Evaluation</strong> to produce a formatted report.
+          </p>
+          <ul>
+            <li><strong>Positive Observations</strong> — All checked positive sub-points, grouped by category, with comments.</li>
+            <li><strong>General Observations</strong> — Neutral items and general notes.</li>
+            <li><strong>Areas for Improvement</strong> — Negative items, with point deductions shown inline.</li>
+            <li><strong>Copy to Clipboard</strong> — Use the action bar to copy the report as Markdown.</li>
+            <li><strong>Grading Summary</strong> — In Teacher Mode, a detailed breakdown of dimension scores is included.</li>
+          </ul>
+        </section>
+
+        <!-- Teacher Mode -->
+        <section id="teacher-mode">
+          <h2>Teacher Mode</h2>
+          <p>
+            Teacher Mode unlocks grading controls that are hidden in Student Mode.
+          </p>
+          <div class="flex items-center gap-2 mb-4">
+            <span class="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted)]">Advanced feature</span>
+          </div>
+          <ul>
+            <li><strong>Activation</strong> — Go to <strong>Settings</strong> and toggle mode, or press <kbd>Alt+Shift+G</kbd>.</li>
+            <li><strong>Grading Sidebar</strong> — Five dimension sliders appear on the right side of the review page.</li>
+            <li><strong>Dimensions</strong> — Code Quality, Execution, Requirements, Scientific Programming, and Creativity.</li>
+            <li><strong>Grade Calculation</strong> — The app computes a weighted percentage and maps it to the German grading scale (1.0–5.0) with a corresponding US label.</li>
+            <li><strong>Near-Fence Warnings</strong> — If a score is within 2% of a higher grade boundary, an amber warning appears.</li>
+            <li><strong>Point Deductions</strong> — All checked negative sub-point deductions are summed and subtracted from the total.</li>
+          </ul>
+        </section>
+
+        <!-- Keyboard Shortcuts -->
+        <section id="shortcuts">
+          <h2>Keyboard Shortcuts</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>S</kbd></td>
+                <td>Save the current review</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Z</kbd></td>
+                <td>Undo last action</td>
+              </tr>
+              <tr>
+                <td><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd></td>
+                <td>Redo last undone action</td>
+              </tr>
+              <tr>
+                <td><kbd>Alt</kbd> + <kbd>Shift</kbd> + <kbd>G</kbd></td>
+                <td>Toggle Teacher Mode</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- FAQ -->
+        <section id="faq">
+          <h2>FAQ</h2>
+          <div class="border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+
+            <div class="accordion-item">
+              <button class="accordion-trigger" onclick="toggleAccordion(this)">
+                <span>Where is my data stored?</span>
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="accordion-content">
+                <p class="text-sm text-[var(--muted)] leading-relaxed m-0">
+                  All data is stored locally in your browser using IndexedDB. Nothing is sent to a server. This ensures complete privacy, but also means your data is tied to this browser profile.
+                </p>
+              </div>
+            </div>
+
+            <div class="accordion-item">
+              <button class="accordion-trigger" onclick="toggleAccordion(this)">
+                <span>Can I use this on my phone?</span>
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="accordion-content">
+                <p class="text-sm text-[var(--muted)] leading-relaxed m-0">
+                  The app is responsive and works on mobile devices, but it is optimized for desktop use. The review page in particular benefits from a larger screen for the two-column layout and category navigation.
+                </p>
+              </div>
+            </div>
+
+            <div class="accordion-item">
+              <button class="accordion-trigger" onclick="toggleAccordion(this)">
+                <span>How do I share a review with someone else?</span>
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="accordion-content">
+                <p class="text-sm text-[var(--muted)] leading-relaxed m-0">
+                  Export the review as YAML or Markdown and share the file. The recipient can import the YAML file into their own SciPro Review instance to view or continue the review.
+                </p>
+              </div>
+            </div>
+
+            <div class="accordion-item" style="border-bottom: none;">
+              <button class="accordion-trigger" onclick="toggleAccordion(this)">
+                <span>What happens if I clear my browser data?</span>
+                <svg class="accordion-chevron" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="accordion-content">
+                <p class="text-sm text-[var(--muted)] leading-relaxed m-0">
+                  All saved reviews will be permanently lost. Consider exporting important reviews as YAML files to your local file system before clearing browser data.
+                </p>
+              </div>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- Footer spacer -->
+        <div class="h-16"></div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="mt-auto py-6 text-center border-t border-[var(--border)]">
+    <p class="text-xs text-[var(--muted)]">
+      SciPro Review v1.2.3 · Client-side only · No data leaves your browser
+    </p>
+  </footer>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+      initActiveNav();
+    });
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    function goBack() {
+      console.log('Navigating back...');
+    }
+
+    function scrollToSection(id) {
+      const el = document.querySelector(id);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }
+
+    // Accordion
+    function toggleAccordion(trigger) {
+      const item = trigger.closest('.accordion-item');
+      const isOpen = item.classList.contains('open');
+
+      // Close all others
+      document.querySelectorAll('.accordion-item.open').forEach(el => {
+        if (el !== item) el.classList.remove('open');
+      });
+
+      item.classList.toggle('open', !isOpen);
+    }
+
+    // Active nav via IntersectionObserver
+    function initActiveNav() {
+      const sections = document.querySelectorAll('section[id]');
+      const navLinks = document.querySelectorAll('.nav-link');
+
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            navLinks.forEach(link => link.classList.remove('active'));
+            const activeLink = document.querySelector(`.nav-link[href="#${entry.target.id}"]`);
+            if (activeLink) activeLink.classList.add('active');
+          }
+        });
+      }, {
+        rootMargin: '-20% 0px -60% 0px'
+      });
+
+      sections.forEach(section => observer.observe(section));
+    }
+  </script>
+</body>
+</html>

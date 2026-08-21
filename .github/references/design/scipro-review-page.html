@@ -1,0 +1,1324 @@
+
+<!DOCTYPE html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SciPro Review — Review</title>
+  <link href="https://cdn.jsdelivr.net/npm/geist@1.2.0/dist/font/geist-variable/style.css" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    :root {
+      --bg: oklch(1 0 0);
+      --surface: oklch(1 0 0);
+      --fg: oklch(0.148 0.004 228.8);
+      --muted: oklch(0.56 0.021 213.5);
+      --border: oklch(0.925 0.005 214.3);
+      --accent: oklch(0.508 0.118 165.612);
+      --card-bg: oklch(1 0 0);
+      --radius: 0.625rem;
+      --font-geist: 'Geist Variable', 'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+      --skeleton: oklch(0.963 0.002 197.1);
+      --positive-border: oklch(0.723 0.219 142.5);
+      --negative-border: oklch(0.577 0.245 27.325);
+
+      /* Grade bar colors — traffic light: teal → green → yellow → orange → red
+         Hue mapped to score/max ratio: 0%=25°(red) → 50%=90°(yellow) → 75%=150°(green) → 100%=165°(teal) */
+      --grade-0:   oklch(0.63 0.24 25);     /* 0/6 0%   — red */
+      --grade-8:   oklch(0.68 0.22 40);     /* 0.5/6 8% — red-orange */
+      --grade-17:  oklch(0.72 0.20 55);     /* 1/6 17%  — orange */
+      --grade-25:  oklch(0.76 0.18 70);     /* 1.5/6 25% — amber */
+      --grade-33:  oklch(0.79 0.17 85);     /* 2/6 33%  — amber-yellow */
+      --grade-42:  oklch(0.80 0.17 100);    /* 2.5/6 42% — yellow */
+      --grade-50:  oklch(0.80 0.16 115);    /* 3/6 50%  — yellow-green */
+      --grade-58:  oklch(0.79 0.16 130);    /* 3.5/6 58% — lime */
+      --grade-67:  oklch(0.77 0.17 140);    /* 4/6 67%  — lime-green */
+      --grade-75:  oklch(0.75 0.18 148);    /* 4.5/6 75% — green */
+      --grade-83:  oklch(0.74 0.18 155);    /* 5/6 83%  — green-teal */
+      --grade-92:  oklch(0.73 0.19 160);    /* 5.5/6 92% — teal-green */
+      --grade-100: oklch(0.72 0.19 165);    /* 6/6 100% — teal (accent) */
+    }
+
+    .dark {
+      --bg: oklch(0.148 0.004 228.8);
+      --surface: oklch(0.218 0.008 223.9);
+      --fg: oklch(0.987 0.002 197.1);
+      --muted: oklch(0.723 0.014 214.4);
+      --border: oklch(1 0 0 / 10%);
+      --accent: oklch(0.432 0.095 166.913);
+      --card-bg: oklch(0.218 0.008 223.9);
+      --skeleton: oklch(0.275 0.011 216.9);
+      --positive-border: oklch(0.723 0.219 142.5);
+      --negative-border: oklch(0.704 0.191 22.216);
+
+      /* Grade bar colors — dark mode (brighter, slightly less chroma) */
+      --grade-0:   oklch(0.65 0.21 25);
+      --grade-8:   oklch(0.70 0.19 40);
+      --grade-17:  oklch(0.74 0.17 55);
+      --grade-25:  oklch(0.78 0.15 70);
+      --grade-33:  oklch(0.81 0.14 85);
+      --grade-42:  oklch(0.82 0.14 100);
+      --grade-50:  oklch(0.82 0.13 115);
+      --grade-58:  oklch(0.81 0.13 130);
+      --grade-67:  oklch(0.79 0.14 140);
+      --grade-75:  oklch(0.77 0.15 148);
+      --grade-83:  oklch(0.76 0.16 155);
+      --grade-92:  oklch(0.75 0.16 160);
+      --grade-100: oklch(0.75 0.16 165);
+    }
+
+    body {
+      font-family: var(--font-geist);
+      background-color: var(--bg);
+      color: var(--fg);
+    }
+
+    /* Custom range slider styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--border);
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid white;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+
+    .dark input[type="range"]::-webkit-slider-thumb {
+      border-color: oklch(0.3 0.01 250);
+    }
+
+    /* Sticky card header within scroll */
+    .sticky-card-header {
+      position: sticky;
+      top: 3.5rem;
+      z-index: 10;
+    }
+
+    /* Card must not have overflow:hidden for sticky headers to work */
+    .review-card {
+      overflow: visible;
+    }
+
+    /* Checkbox styling */
+    .custom-checkbox {
+      appearance: none;
+      width: 1rem;
+      height: 1rem;
+      border: 1.5px solid var(--border);
+      border-radius: 0.25rem;
+      background: var(--card-bg);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s;
+    }
+
+    .custom-checkbox:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .custom-checkbox:checked::after {
+      content: '';
+      position: absolute;
+      left: 3px;
+      top: 0px;
+      width: 5px;
+      height: 9px;
+      border: solid white;
+      border-width: 0 2px 2px 0;
+      transform: rotate(45deg);
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: oklch(0.7 0.01 250 / 0.3);
+      border-radius: 4px;
+    }
+
+    .dark ::-webkit-scrollbar-thumb {
+      background: oklch(0.5 0.01 250 / 0.4);
+    }
+
+    @keyframes skeleton-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .skeleton-pulse {
+      animation: skeleton-pulse 2s ease-in-out infinite;
+      background: var(--skeleton);
+      border-radius: calc(var(--radius) / 2);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- Header (App Shell Context) -->
+  <header class="sticky top-0 z-40 h-14 border-b border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md flex items-center px-4">
+    <!-- Left -->
+    <div class="flex items-center gap-2 min-w-0 flex-1">
+      <button onclick="goBack()" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+      </button>
+      <span class="font-semibold text-[1.125rem] tracking-tight shrink-0">SciPro Review</span>
+      <span class="text-[var(--muted)] mx-1 select-none">/</span>
+      <span class="text-[var(--muted)] text-sm truncate">Review — 2026SS_42 · Atom Interaction</span>
+    </div>
+
+    <!-- Center -->
+    <div class="hidden lg:flex items-center gap-3 absolute left-1/2 -translate-x-1/2">
+      <div class="flex items-center gap-2">
+        <span class="text-xs text-[var(--muted)] whitespace-nowrap">4/11 categories</span>
+        <div class="w-24 h-1.5 bg-[var(--border)] rounded-full overflow-hidden">
+          <div class="h-full bg-[var(--accent)] rounded-full transition-all" style="width: 36.4%"></div>
+        </div>
+      </div>
+      <span class="inline-flex items-center rounded-full border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400 whitespace-nowrap">Read-only</span>
+    </div>
+
+    <!-- Right -->
+    <div class="flex items-center gap-1 justify-end flex-1">
+      <button onclick="saveReview()" title="Save (Ctrl+S)" class="hidden sm:flex items-center px-3 py-1.5 text-sm font-medium rounded-[var(--radius)] bg-[var(--accent)] text-white hover:opacity-90 transition-opacity shrink-0 gap-1.5">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save
+      </button>
+
+      <button onclick="openImport()" aria-label="Import review" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] border border-[var(--border)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+      </button>
+
+      <button onclick="toggleTheme()" aria-label="Toggle theme" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg id="icon-sun" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="icon-moon" class="block" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+
+      <a href="#" aria-label="Settings" class="flex items-center justify-center w-8 h-8 rounded-[var(--radius)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors shrink-0 text-[var(--fg)]">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1">
+    <div class="max-w-7xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
+
+      <!-- Left Column: Rubric Categories -->
+      <div id="categories-container" class="space-y-4 pb-24"></div>
+
+      <!-- Loading Skeleton for Categories -->
+      <div id="categories-skeleton" class="space-y-4 hidden">
+        <!-- 3 skeleton cards -->
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+          <div class="p-4 border-b border-[var(--border)] flex items-center justify-between">
+            <div class="space-y-2">
+              <div class="skeleton-pulse w-48 h-6"></div>
+              <div class="skeleton-pulse w-24 h-4"></div>
+            </div>
+            <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="skeleton-pulse w-full h-4"></div>
+            <div class="skeleton-pulse w-3/4 h-4"></div>
+            <div class="skeleton-pulse w-5/6 h-4"></div>
+            <div class="skeleton-pulse w-2/3 h-4"></div>
+            <div class="skeleton-pulse w-full h-4"></div>
+            <div class="skeleton-pulse w-1/2 h-4"></div>
+          </div>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+          <div class="p-4 border-b border-[var(--border)] flex items-center justify-between">
+            <div class="space-y-2">
+              <div class="skeleton-pulse w-40 h-6"></div>
+              <div class="skeleton-pulse w-28 h-4"></div>
+            </div>
+            <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="skeleton-pulse w-full h-4"></div>
+            <div class="skeleton-pulse w-4/5 h-4"></div>
+            <div class="skeleton-pulse w-3/4 h-4"></div>
+            <div class="skeleton-pulse w-2/3 h-4"></div>
+          </div>
+        </div>
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] overflow-hidden">
+          <div class="p-4 border-b border-[var(--border)] flex items-center justify-between">
+            <div class="space-y-2">
+              <div class="skeleton-pulse w-44 h-6"></div>
+              <div class="skeleton-pulse w-20 h-4"></div>
+            </div>
+            <div class="skeleton-pulse w-8 h-8 rounded-[var(--radius)]"></div>
+          </div>
+          <div class="p-4 space-y-3">
+            <div class="skeleton-pulse w-full h-4"></div>
+            <div class="skeleton-pulse w-3/4 h-4"></div>
+            <div class="skeleton-pulse w-5/6 h-4"></div>
+            <div class="skeleton-pulse w-full h-4"></div>
+            <div class="skeleton-pulse w-1/2 h-4"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Column: Sidebar -->
+      <aside class="lg:sticky lg:top-[3.5rem] lg:self-start space-y-4">
+        <!-- Sidebar Skeleton -->
+        <div id="sidebar-skeleton" class="space-y-4 hidden">
+          <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-5 space-y-4">
+            <div class="skeleton-pulse w-24 h-5"></div>
+            <div class="space-y-3">
+              <div class="skeleton-pulse w-full h-3"></div>
+              <div class="skeleton-pulse w-full h-3"></div>
+              <div class="skeleton-pulse w-full h-3"></div>
+            </div>
+            <div class="skeleton-pulse w-full h-20 rounded-[var(--radius)] mt-4"></div>
+          </div>
+        </div>
+
+        <!-- Grading Sidebar (Teacher Mode) -->
+        <div id="grading-sidebar" class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-5 space-y-5">
+          <div class="flex items-center justify-between">
+            <h3 class="font-semibold text-sm tracking-tight">Grading</h3>
+            <button onclick="toggleTeacherMode()" id="mode-badge" class="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium text-[var(--muted)] hover:text-[var(--fg)] transition-colors">Teacher</button>
+          </div>
+
+          <div id="grading-dimensions" class="space-y-4">
+            <!-- Dimensions rendered by JS -->
+          </div>
+
+          <!-- Result Card -->
+          <div class="border-t border-[var(--border)] pt-4 space-y-3">
+            <div class="flex items-baseline justify-between">
+              <span class="text-2xl font-bold tracking-tight tabular-nums" id="score-display">83.0 / 100</span>
+              <div class="flex items-center gap-2">
+                <span class="text-lg font-semibold" id="german-grade">2.0</span>
+                <span class="inline-flex items-center rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] font-medium bg-[var(--bg)] text-[var(--muted)]" id="us-grade">B+</span>
+              </div>
+            </div>
+            <p id="boundary-warning" class="hidden text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1">
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+              Close to grade boundary <span id="boundary-target">1.7 / A-</span>
+            </p>
+
+            <!-- Per-dimension breakdown -->
+            <div id="dimension-breakdown" class="space-y-1.5 pt-1">
+              <!-- Rendered by JS -->
+            </div>
+
+            <div class="flex items-center justify-between text-xs text-[var(--muted)] pt-2 border-t border-[var(--border)]">
+              <span>Total deductions</span>
+              <span id="total-deductions" class="font-medium text-[var(--fg)]">-0.0</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions Card -->
+        <div class="bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] p-5 space-y-2">
+          <button onclick="generateEvaluation()" class="w-full h-9 rounded-[var(--radius)] bg-[var(--accent)] text-white text-sm font-medium hover:opacity-90 transition-opacity flex items-center justify-center gap-2">
+            Generate Evaluation
+          </button>
+          <button onclick="exportYAML()" class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center justify-center gap-2">
+            Export YAML
+          </button>
+          <button onclick="exportMarkdown()" class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] text-sm font-medium hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-[var(--fg)] flex items-center justify-center gap-2">
+            Export Markdown
+          </button>
+
+          <div class="flex items-center gap-2 pt-2 border-t border-[var(--border)]">
+            <button onclick="undo()" class="flex-1 h-8 rounded-[var(--radius)] text-xs font-medium text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors">Undo</button>
+            <button onclick="redo()" class="flex-1 h-8 rounded-[var(--radius)] text-xs font-medium text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors">Redo</button>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Footer: Quick Nav + Keyboard Shortcuts -->
+  <footer class="sticky bottom-0 z-30 border-t border-[var(--border)] bg-[var(--bg)]/80 backdrop-blur-md">
+    <!-- Quick Nav -->
+    <div class="max-w-7xl mx-auto px-4 py-2 flex items-center gap-2">
+      <!-- Desktop: horizontal tabs -->
+      <div class="hidden lg:flex items-center gap-1 flex-1 overflow-x-auto no-scrollbar" id="quick-nav-desktop"></div>
+      
+      <!-- Mobile: select -->
+      <div class="lg:hidden flex-1">
+        <select id="quick-nav-mobile" onchange="scrollToCategory(this.value)" class="w-full h-9 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 text-sm text-[var(--fg)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]">
+          <option>Jump to category...</option>
+        </select>
+      </div>
+
+      <div class="flex items-center gap-2 shrink-0 pl-2 border-l border-[var(--border)]">
+        <button onclick="toggleAllCategories()" class="h-8 px-2.5 rounded-[var(--radius)] text-xs font-medium text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10 transition-colors whitespace-nowrap">
+          Collapse All
+        </button>
+        <span class="text-xs text-[var(--muted)] hidden sm:inline">4/11</span>
+      </div>
+    </div>
+    <!-- Keyboard Shortcuts -->
+    <div class="py-1.5 text-center border-t border-[var(--border)]/50">
+      <div class="flex items-center justify-center gap-4 text-[10px] text-[var(--muted)] uppercase tracking-wider">
+        <span>Ctrl+S Save</span>
+        <span class="select-none">·</span>
+        <span>Ctrl+Z Undo</span>
+        <span class="select-none">·</span>
+        <span>Ctrl+Shift+Z Redo</span>
+      </div>
+    </div>
+  </footer>
+
+  <!-- State Toggle (demo control) -->
+  <div class="fixed bottom-4 left-4 z-50 bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)] shadow-lg p-3">
+    <p class="text-[10px] uppercase tracking-wider text-[var(--muted)] font-semibold mb-2">Demo</p>
+    <div class="flex items-center gap-2">
+      <button onclick="setLoading(true)" id="btn-loading" class="h-7 px-2.5 rounded-[var(--radius)] text-xs font-medium bg-[var(--accent)] text-white">Loading</button>
+      <button onclick="setLoading(false)" id="btn-loaded" class="h-7 px-2.5 rounded-[var(--radius)] text-xs font-medium border border-[var(--border)] text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/10">Loaded</button>
+    </div>
+    <div class="mt-2 flex items-center gap-2">
+      <span class="text-[10px] text-[var(--muted)]">Mode:</span>
+      <button onclick="toggleTeacherMode()" id="demo-mode-toggle" class="text-[10px] font-medium text-[var(--accent)] hover:underline">Switch to Student</button>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let isLoading = true;
+    let isTeacherMode = true;
+    let allExpanded = true;
+    let categoryStates = {}; // expanded: boolean, checked: Set, comments: {}, deductions: {}
+
+    // Rubric data
+    const categories = [
+      {
+        id: 'formatting',
+        name: 'Code Formatting & Style',
+        shortName: 'Formatting',
+        completed: true,
+        sections: {
+          positive: [
+            { label: 'Naming Conventions', items: [
+              { text: 'Variables use descriptive snake_case names', checked: true, comment: true, commentText: 'Well named throughout' },
+              { text: 'Functions are named with action verbs', checked: true }
+            ]},
+            { label: 'Code Layout', items: [
+              { text: 'Consistent indentation (4 spaces)', checked: true },
+              { text: 'Appropriate blank lines between logical sections', checked: true, comment: true, commentText: '' }
+            ]}
+          ],
+          neutral: [
+            { label: 'Docstrings', items: [
+              { text: 'Functions have docstrings', checked: false, comment: true, commentText: '' }
+            ]}
+          ],
+          negative: [
+            { label: 'Anti-patterns', items: [
+              { text: 'Magic numbers used without constants', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Overly long functions (>50 lines)', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true,
+        notesText: 'Could use more type hints.'
+      },
+      {
+        id: 'execution',
+        name: 'Code Execution',
+        shortName: 'Execution',
+        completed: true,
+        sections: {
+          positive: [
+            { label: 'Kernel Usage', items: [
+              { text: 'Cells execute in correct order', checked: true },
+              { text: 'No orphaned variables from deleted cells', checked: true }
+            ]}
+          ],
+          neutral: [
+            { label: 'Runtime', items: [
+              { text: 'Execution completes within reasonable time', checked: true }
+            ]}
+          ],
+          negative: [
+            { label: 'Errors', items: [
+              { text: 'No unhandled exceptions', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'No deprecation warnings', checked: false }
+            ]}
+          ]
+        },
+        additionalNotes: false
+      },
+      {
+        id: 'results',
+        name: 'Results & Visualization',
+        shortName: 'Results',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Figures', items: [
+              { text: 'Plots have labels, titles, and legends', checked: true, comment: true, commentText: 'Excellent figure captions' },
+              { text: 'Color choices are colorblind-friendly', checked: true }
+            ]}
+          ],
+          neutral: [
+            { label: 'Data Tables', items: [
+              { text: 'Tables are readable and well-formatted', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Output Quality', items: [
+              { text: 'No excessive or truncated output', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true,
+        notesText: ''
+      },
+      {
+        id: 'documentation',
+        name: 'Scientific Documentation',
+        shortName: 'Documentation',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Markdown Cells', items: [
+              { text: 'Introduction explains the scientific context', checked: false },
+              { text: 'Methodology section describes the approach', checked: false }
+            ]},
+            { label: 'Explanations', items: [
+              { text: 'Key results are interpreted in context', checked: false },
+              { text: 'Conclusions summarize findings clearly', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Annotations', items: [
+              { text: 'Code cells have inline comments for non-obvious logic', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Missing Documentation', items: [
+              { text: 'No explanation of assumptions or limitations', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Results presented without interpretation', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true
+      },
+      {
+        id: 'structure',
+        name: 'Notebook Structure',
+        shortName: 'Structure',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Organization', items: [
+              { text: 'Logical flow from setup to analysis to conclusion', checked: false },
+              { text: 'Cells are appropriately sized (not too long)', checked: false }
+            ]},
+            { label: 'Separation of Concerns', items: [
+              { text: 'Import, data loading, processing, and visualization are separated', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Headings', items: [
+              { text: 'Markdown headings create a clear table of contents', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Structural Issues', items: [
+              { text: 'Notebook is a single monolithic cell', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Out-of-order cell execution required', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: false
+      },
+      {
+        id: 'handling',
+        name: 'Error Handling',
+        shortName: 'Errors',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Exception Handling', items: [
+              { text: 'try/except blocks handle potential failures', checked: false },
+              { text: 'Informative error messages are provided', checked: false }
+            ]},
+            { label: 'Input Validation', items: [
+              { text: 'User inputs are validated before processing', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Warnings', items: [
+              { text: 'Deprecation warnings are addressed or suppressed intentionally', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Unhandled Cases', items: [
+              { text: 'Silent failures or bare except clauses', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'No handling of edge cases (empty data, NaN, division by zero)', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: false
+      },
+      {
+        id: 'reproducibility',
+        name: 'Reproducibility',
+        shortName: 'Repro',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Environment', items: [
+              { text: 'Required packages are listed (requirements.txt or environment.yml)', checked: false },
+              { text: 'Random seeds are set for reproducible results', checked: false }
+            ]},
+            { label: 'Data Provenance', items: [
+              { text: 'Data sources are documented with URLs or file paths', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Versioning', items: [
+              { text: 'Library versions are pinned or noted', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Reproducibility Issues', items: [
+              { text: 'Hardcoded paths that only work on the author\'s machine', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Missing dependencies not listed', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true
+      },
+      {
+        id: 'efficiency',
+        name: 'Code Efficiency',
+        shortName: 'Efficiency',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Performance', items: [
+              { text: 'Vectorized operations used instead of loops where possible', checked: false },
+              { text: 'Unnecessary recomputation is avoided (caching, memoization)', checked: false }
+            ]},
+            { label: 'Resource Usage', items: [
+              { text: 'Memory usage is reasonable for the dataset size', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Optimization', items: [
+              { text: 'Algorithmic complexity is appropriate for the problem size', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Inefficiencies', items: [
+              { text: 'O(n²) algorithm used where O(n) is possible', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Redundant data copies or unnecessary I/O operations', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: false
+      },
+      {
+        id: 'data',
+        name: 'Data Handling',
+        shortName: 'Data',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Data Loading', items: [
+              { text: 'Data is loaded and inspected before processing', checked: false },
+              { text: 'Missing or invalid data is handled appropriately', checked: false }
+            ]},
+            { label: 'Transformations', items: [
+              { text: 'Data transformations are documented and reversible', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Data Types', items: [
+              { text: 'Column types are correct after loading (no mixed types)', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Data Issues', items: [
+              { text: 'Data is modified in-place without copying (side effects)', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'No sanity checks on data ranges or distributions', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: false
+      },
+      {
+        id: 'plots',
+        name: 'Plotting & Figures',
+        shortName: 'Plots',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Figure Quality', items: [
+              { text: 'Figures have appropriate resolution (DPI)', checked: false },
+              { text: 'Color maps are perceptually uniform (viridis, plasma, etc.)', checked: false }
+            ]},
+            { label: 'Annotations', items: [
+              { text: 'Key features in plots are annotated or highlighted', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Layout', items: [
+              { text: 'Subplots are used effectively for comparisons', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Plotting Issues', items: [
+              { text: 'Misleading axis scales or truncated baselines', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Overplotting obscures data (no jitter, transparency, or binning)', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true
+      },
+      {
+        id: 'overall',
+        name: 'Overall Quality',
+        shortName: 'Overall',
+        completed: false,
+        sections: {
+          positive: [
+            { label: 'Scientific Rigor', items: [
+              { text: 'Analysis follows sound scientific methodology', checked: false },
+              { text: 'Results are presented honestly without cherry-picking', checked: false }
+            ]},
+            { label: 'Completeness', items: [
+              { text: 'All required sections of the assignment are present', checked: false }
+            ]}
+          ],
+          neutral: [
+            { label: 'Presentation', items: [
+              { text: 'Notebook tells a coherent story from start to finish', checked: false }
+            ]}
+          ],
+          negative: [
+            { label: 'Critical Issues', items: [
+              { text: 'Fundamental misunderstanding of the physics or math', checked: false, deduction: true, deductionValue: 0 },
+              { text: 'Plagiarized or unattributed code from other sources', checked: false, deduction: true, deductionValue: 0 }
+            ]}
+          ]
+        },
+        additionalNotes: true
+      }
+    ];
+
+    // Grading dimensions
+    const dimensions = [
+      { id: 'quality', name: 'Code Quality & Design', max: 6.0, weight: 4, value: 5.0 },
+      { id: 'execution', name: 'Code Execution & Results', max: 6.0, weight: 4, value: 5.5 },
+      { id: 'requirements', name: 'Assignment Requirements', max: 6.0, weight: 4, value: 4.5 },
+      { id: 'scientific', name: 'Scientific Programming', max: 6.0, weight: 4, value: 5.0 },
+      { id: 'creativity', name: 'Creativity', max: 4.0, weight: 1, value: 3.0 }
+    ];
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+      // Dark mode init
+      if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        toggleTheme();
+      }
+
+      // Start in loading state
+      setLoading(true);
+      setTimeout(() => setLoading(false), 2000);
+    });
+
+    function setLoading(loading) {
+      isLoading = loading;
+      document.getElementById('categories-container').classList.toggle('hidden', loading);
+      document.getElementById('categories-skeleton').classList.toggle('hidden', !loading);
+      document.getElementById('grading-sidebar').classList.toggle('hidden', loading);
+      document.getElementById('sidebar-skeleton').classList.toggle('hidden', !loading);
+
+      document.getElementById('btn-loading').classList.toggle('bg-[var(--accent)]', loading);
+      document.getElementById('btn-loading').classList.toggle('text-white', loading);
+      document.getElementById('btn-loading').classList.toggle('border', !loading);
+      document.getElementById('btn-loading').classList.toggle('border-[var(--border)]', !loading);
+
+      document.getElementById('btn-loaded').classList.toggle('bg-[var(--accent)]', !loading);
+      document.getElementById('btn-loaded').classList.toggle('text-white', !loading);
+      document.getElementById('btn-loaded').classList.toggle('border', loading);
+      document.getElementById('btn-loaded').classList.toggle('border-[var(--border)]', loading);
+
+      if (!loading) {
+        initCategoryStates();
+        renderQuickNav();
+        renderCategories();
+        renderGrading();
+        updateGrades();
+      }
+    }
+
+    function initCategoryStates() {
+      categories.forEach(cat => {
+        if (!categoryStates[cat.id]) {
+          categoryStates[cat.id] = {
+            expanded: true,
+            comments: {},
+            deductions: {},
+            notes: cat.notesText || ''
+          };
+          // Track checked items
+          cat.sections.positive.forEach(sec => {
+            sec.items.forEach((item, i) => {
+              if (item.checked) {
+                categoryStates[cat.id].comments[`pos-${i}`] = item.commentText || '';
+              }
+            });
+          });
+        }
+      });
+    }
+
+    // Theme
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+      const isDark = document.documentElement.classList.contains('dark');
+      document.getElementById('icon-sun').classList.toggle('hidden', !isDark);
+      document.getElementById('icon-sun').classList.toggle('block', isDark);
+      document.getElementById('icon-moon').classList.toggle('hidden', isDark);
+      document.getElementById('icon-moon').classList.toggle('block', !isDark);
+    }
+
+    // Quick Nav
+    let activeCategoryId = null;
+    let scrollSpyObserver = null;
+
+    function renderQuickNav() {
+      const desktop = document.getElementById('quick-nav-desktop');
+      const mobile = document.getElementById('quick-nav-mobile');
+      
+      desktop.innerHTML = '';
+      mobile.innerHTML = '<option>Jump to category...</option>';
+
+      categories.forEach((cat, i) => {
+        const isCompleted = i < 4; // First 4 marked as completed for demo
+        const dot = isCompleted 
+          ? `<span class="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"></span>`
+          : `<span class="w-1.5 h-1.5 rounded-full bg-[var(--border)] shrink-0"></span>`;
+
+        const btn = document.createElement('button');
+        btn.id = `nav-btn-${cat.id}`;
+        btn.className = `flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius)] text-xs font-medium whitespace-nowrap transition-colors ${i === 0 ? 'text-[var(--accent)] bg-[var(--accent)]/10' : 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/5'}`;
+        btn.innerHTML = `${dot} ${cat.shortName}`;
+        btn.onclick = () => scrollToCategory(cat.id);
+        desktop.appendChild(btn);
+
+        const opt = document.createElement('option');
+        opt.value = cat.id;
+        opt.textContent = `${isCompleted ? '✓ ' : '○ '} ${cat.name}`;
+        mobile.appendChild(opt);
+      });
+
+      // Set up scroll-spy observer
+      setupScrollSpy();
+    }
+
+    function setupScrollSpy() {
+      // Disconnect previous observer if any
+      if (scrollSpyObserver) scrollSpyObserver.disconnect();
+
+      scrollSpyObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            const catId = entry.target.id.replace('category-', '');
+            if (catId !== activeCategoryId) {
+              activeCategoryId = catId;
+              updateActiveNav(catId);
+            }
+          }
+        });
+      }, {
+        rootMargin: '-80px 0px -70% 0px',
+        threshold: 0
+      });
+
+      // Observe all category cards
+      categories.forEach(cat => {
+        const el = document.getElementById(`category-${cat.id}`);
+        if (el) scrollSpyObserver.observe(el);
+      });
+    }
+
+    // Fallback: scroll-based spy for when IntersectionObserver doesn't fire
+    let scrollSpyTicking = false;
+    window.addEventListener('scroll', () => {
+      if (!scrollSpyTicking) {
+        requestAnimationFrame(() => {
+          const headerHeight = 56; // h-14
+          let closest = null;
+          let closestDist = Infinity;
+          categories.forEach(cat => {
+            const el = document.getElementById(`category-${cat.id}`);
+            if (el) {
+              const rect = el.getBoundingClientRect();
+              const dist = Math.abs(rect.top - headerHeight);
+              if (dist < closestDist && rect.bottom > headerHeight) {
+                closestDist = dist;
+                closest = cat.id;
+              }
+            }
+          });
+          if (closest && closest !== activeCategoryId) {
+            activeCategoryId = closest;
+            updateActiveNav(closest);
+          }
+          scrollSpyTicking = false;
+        });
+        scrollSpyTicking = true;
+      }
+    });
+
+    function updateActiveNav(catId) {
+      // Update desktop nav buttons by rebuilding className
+      categories.forEach(cat => {
+        const btn = document.getElementById(`nav-btn-${cat.id}`);
+        if (btn) {
+          const isActive = cat.id === catId;
+          // Preserve the dot HTML, just update the wrapper classes
+          const baseClasses = 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-[var(--radius)] text-xs font-medium whitespace-nowrap transition-colors';
+          const activeClasses = 'text-[var(--accent)] bg-[var(--accent)]/10';
+          const inactiveClasses = 'text-[var(--muted)] hover:text-[var(--fg)] hover:bg-black/5 dark:hover:bg-white/5';
+          btn.className = `${baseClasses} ${isActive ? activeClasses : inactiveClasses}`;
+        }
+      });
+
+      // Update mobile select
+      const mobileSelect = document.getElementById('quick-nav-mobile');
+      if (mobileSelect) {
+        mobileSelect.value = catId;
+      }
+    }
+
+    function scrollToCategory(id) {
+      const el = document.getElementById(`category-${id}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // Immediately highlight the nav button
+        activeCategoryId = id;
+        updateActiveNav(id);
+      }
+    }
+
+    // Categories
+    function renderCategories() {
+      const container = document.getElementById('categories-container');
+      container.innerHTML = categories.map(cat => renderCategory(cat)).join('');
+    }
+
+    function renderCategory(cat) {
+      const state = categoryStates[cat.id] || { expanded: true, comments: {}, deductions: {}, notes: '' };
+      const isExpanded = state.expanded;
+
+      return `
+        <div id="category-${cat.id}" class="review-card bg-[var(--card-bg)] border border-[var(--border)] rounded-[var(--radius)]">
+          <button onclick="toggleCategory('${cat.id}')" class="sticky-card-header w-full p-4 flex items-center justify-between bg-[var(--card-bg)] border-b border-[var(--border)] hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors text-left rounded-t-[var(--radius)]">
+            <div class="flex items-center gap-2">
+              <span class="text-sm font-semibold text-[var(--fg)]">${cat.name}</span>
+              ${cat.completed ? '<span class="w-1.5 h-1.5 rounded-full bg-green-500"></span>' : ''}
+            </div>
+            <svg class="text-[var(--muted)] transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+          
+          <div class="${isExpanded ? 'block' : 'hidden'} p-5 space-y-5">
+            ${renderSection(cat, 'positive', 'Positive', 'var(--positive-border)')}
+            ${renderSection(cat, 'neutral', 'Neutral', 'var(--border)')}
+            ${renderSection(cat, 'negative', 'Negative', 'var(--negative-border)')}
+            ${cat.additionalNotes ? renderNotes(cat, state) : ''}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderSection(cat, sectionKey, label, borderColor) {
+      const section = cat.sections[sectionKey];
+      if (!section || section.length === 0) return '';
+
+      return `
+        <div class="space-y-3">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] pl-3 border-l-2" style="border-color: ${borderColor}">${label}</h4>
+          <div class="space-y-4 pl-3" style="border-left: 2px solid ${borderColor}">
+            ${section.map((point, pi) => `
+              <div class="space-y-2">
+                <p class="text-sm font-medium text-[var(--fg)]">${point.label}</p>
+                <div class="space-y-2">
+                  ${point.items.map((item, ii) => {
+                    const checked = item.checked ? 'checked' : '';
+                    const key = `${sectionKey}-${pi}-${ii}`;
+                    return `
+                      <div class="space-y-2">
+                        <label class="flex items-start gap-2.5 cursor-pointer group">
+                          <input type="checkbox" ${checked} onchange="toggleCheckbox('${cat.id}', '${key}', this.checked, ${item.comment || false}, ${item.deduction || false})" class="custom-checkbox mt-0.5 shrink-0">
+                          <span class="text-sm text-[var(--fg)] group-hover:text-[var(--accent)] transition-colors leading-relaxed">${item.text}</span>
+                        </label>
+                        ${item.checked && item.comment ? `
+                          <div class="ml-6">
+                            <textarea 
+                              placeholder="Add a comment..." 
+                              oninput="updateComment('${cat.id}', '${key}', this.value)"
+                              class="w-full min-h-[3rem] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y text-[var(--fg)] placeholder:text-[var(--muted)]"
+                            >${categoryStates[cat.id]?.comments?.[key] || ''}</textarea>
+                          </div>
+                        ` : ''}
+                        ${item.checked && item.deduction ? `
+                          <div class="ml-6 flex items-center gap-2">
+                            <label class="text-xs text-[var(--muted)]">Deduction:</label>
+                            <input 
+                              type="number" 
+                              min="0" 
+                              step="0.5" 
+                              value="${categoryStates[cat.id]?.deductions?.[key] || 0}"
+                              oninput="updateDeduction('${cat.id}', '${key}', this.value)"
+                              class="w-20 h-8 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] text-[var(--fg)]"
+                            >
+                          </div>
+                        ` : ''}
+                      </div>
+                    `;
+                  }).join('')}
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderNotes(cat, state) {
+      return `
+        <div class="space-y-2 pt-2">
+          <h4 class="text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">Notes</h4>
+          <textarea 
+            placeholder="Additional notes for this category..."
+            oninput="updateNotes('${cat.id}', this.value)"
+            class="w-full min-h-[4.5rem] rounded-[var(--radius)] border border-[var(--border)] bg-[var(--bg)] px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] resize-y text-[var(--fg)] placeholder:text-[var(--muted)]"
+          >${state.notes || ''}</textarea>
+        </div>
+      `;
+    }
+
+    function toggleCategory(id) {
+      if (!categoryStates[id]) categoryStates[id] = { expanded: true, comments: {}, deductions: {}, notes: '' };
+      categoryStates[id].expanded = !categoryStates[id].expanded;
+      renderCategories();
+    }
+
+    function toggleAllCategories() {
+      allExpanded = !allExpanded;
+      categories.forEach(cat => {
+        if (!categoryStates[cat.id]) categoryStates[cat.id] = { expanded: true, comments: {}, deductions: {}, notes: '' };
+        categoryStates[cat.id].expanded = allExpanded;
+      });
+      const btn = document.querySelector('button[onclick="toggleAllCategories()"]');
+      btn.textContent = allExpanded ? 'Collapse All' : 'Expand All';
+      renderCategories();
+    }
+
+    function toggleCheckbox(catId, key, checked, hasComment, hasDeduction) {
+      // Update the data model
+      const cat = categories.find(c => c.id === catId);
+      if (cat) {
+        // Find and update the item in the data structure
+        ['positive', 'neutral', 'negative'].forEach(sk => {
+          const sec = cat.sections[sk];
+          if (sec) {
+            sec.forEach(point => {
+              point.items.forEach((item, ii) => {
+                const itemKey = `${sk}-${sec.indexOf(point)}-${ii}`;
+                if (itemKey === key) {
+                  item.checked = checked;
+                }
+              });
+            });
+          }
+        });
+      }
+      renderCategories();
+    }
+
+    function updateComment(catId, key, value) {
+      if (!categoryStates[catId]) categoryStates[catId] = { expanded: true, comments: {}, deductions: {}, notes: '' };
+      categoryStates[catId].comments[key] = value;
+    }
+
+    function updateDeduction(catId, key, value) {
+      if (!categoryStates[catId]) categoryStates[catId] = { expanded: true, comments: {}, deductions: {}, notes: '' };
+      categoryStates[catId].deductions[key] = parseFloat(value) || 0;
+      updateGrades();
+    }
+
+    function updateNotes(catId, value) {
+      if (!categoryStates[catId]) categoryStates[catId] = { expanded: true, comments: {}, deductions: {}, notes: '' };
+      categoryStates[catId].notes = value;
+    }
+
+    // Grading Sidebar
+    const totalWeight = dimensions.reduce((s, d) => s + d.weight, 0);
+
+    function weightPercentage(weight) {
+      return (weight / totalWeight) * 100;
+    }
+
+    // Map a score percentage (0–100) to a grade bar color CSS variable.
+    // Steps align with 0.5 increments on a 6-point scale (0,8,17,25,33,42,50,58,67,75,83,92,100).
+    function getGradeBarColor(pct) {
+      const steps = [
+        { max: 4,  var: 'var(--grade-0)' },
+        { max: 12, var: 'var(--grade-8)' },
+        { max: 21, var: 'var(--grade-17)' },
+        { max: 29, var: 'var(--grade-25)' },
+        { max: 37, var: 'var(--grade-33)' },
+        { max: 46, var: 'var(--grade-42)' },
+        { max: 54, var: 'var(--grade-50)' },
+        { max: 62, var: 'var(--grade-58)' },
+        { max: 71, var: 'var(--grade-67)' },
+        { max: 79, var: 'var(--grade-75)' },
+        { max: 87, var: 'var(--grade-83)' },
+        { max: 96, var: 'var(--grade-92)' },
+        { max: 100, var: 'var(--grade-100)' }
+      ];
+      const match = steps.find(s => pct <= s.max);
+      return match ? match.var : 'var(--grade-0)';
+    }
+
+    function renderGrading() {
+      const container = document.getElementById('grading-dimensions');
+      container.innerHTML = dimensions.map(dim => {
+        const contribution = dim.value * dim.weight;
+        const maxContribution = dim.max * dim.weight;
+        const scorePct = Math.round((dim.value / dim.max) * 100);
+        const barColor = getGradeBarColor(scorePct);
+        return `
+        <div>
+          <div class="flex items-center justify-between mb-1.5">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <label class="text-xs font-medium text-[var(--fg)] truncate">${dim.name}</label>
+            </div>
+            <div class="flex items-center gap-2 shrink-0" id="dim-val-${dim.id}">
+              <span class="text-xs tabular-nums"><span class="font-medium text-[var(--fg)]">${dim.value.toFixed(1)}</span><span class="text-[var(--muted)]">/${dim.max.toFixed(0)}</span></span>
+              <span class="text-[10px] text-[var(--muted)]">→</span>
+              <span class="text-xs tabular-nums font-medium" style="color: ${barColor}">${contribution.toFixed(0)}<span class="text-[var(--muted)] font-normal">/${maxContribution}</span></span>
+            </div>
+          </div>
+          <input 
+            type="range" 
+            min="0" 
+            max="${dim.max}" 
+            step="0.5" 
+            value="${dim.value}"
+            oninput="updateSlider('${dim.id}', this.value)"
+            class="w-full"
+          >
+        </div>
+      `}).join('');
+    }
+
+    function updateSlider(id, value) {
+      const dim = dimensions.find(d => d.id === id);
+      if (dim) {
+        dim.value = parseFloat(value);
+        const contribution = dim.value * dim.weight;
+        const maxContribution = dim.max * dim.weight;
+        const scorePct = Math.round((dim.value / dim.max) * 100);
+        const barColor = getGradeBarColor(scorePct);
+        const valEl = document.getElementById(`dim-val-${id}`);
+        if (valEl) {
+          valEl.innerHTML = `<span class="text-xs tabular-nums"><span class="font-medium text-[var(--fg)]">${dim.value.toFixed(1)}</span><span class="text-[var(--muted)]">/${dim.max.toFixed(0)}</span></span><span class="text-[10px] text-[var(--muted)]">→</span><span class="text-xs tabular-nums font-medium" style="color: ${barColor}">${contribution.toFixed(0)}<span class="text-[var(--muted)] font-normal">/${maxContribution}</span></span>`;
+        }
+      }
+      updateGrades();
+    }
+
+    function updateGrades() {
+      // Calculate total
+      let total = 0;
+      let maxTotal = 0;
+      dimensions.forEach(d => {
+        total += d.value * d.weight;
+        maxTotal += d.max * d.weight;
+      });
+
+      const percentage = (total / maxTotal) * 100;
+      document.getElementById('score-display').textContent = `${total.toFixed(1)} / ${maxTotal}`;
+
+      // Per-dimension breakdown
+      const breakdownEl = document.getElementById('dimension-breakdown');
+      if (breakdownEl) {
+        const shortLabels = { quality: 'Quality', execution: 'Execution', requirements: 'Requirements', scientific: 'Scientific', creativity: 'Creativity' };
+        breakdownEl.innerHTML = dimensions.map(dim => {
+          const contribution = dim.value * dim.weight;
+          const maxC = dim.max * dim.weight;
+          const pct = (contribution / maxC) * 100;
+          const scorePct = Math.round((dim.value / dim.max) * 100);
+          const barColor = getGradeBarColor(scorePct);
+          return `
+            <div class="flex flex-col gap-0.5">
+              <div class="flex items-center justify-between text-[11px]">
+                <span class="text-[var(--muted)] truncate">${shortLabels[dim.id] || dim.name}</span>
+                <div class="flex items-center gap-1.5 shrink-0 ml-2 tabular-nums">
+                  <span class="text-[var(--muted)]">${dim.value.toFixed(1)}/${dim.max.toFixed(0)}</span>
+                  <span class="text-[var(--muted)]">→</span>
+                  <span class="font-medium" style="color: ${barColor}">${contribution.toFixed(0)}/${maxC}</span>
+                </div>
+              </div>
+              <div class="h-1.5 w-full bg-[var(--border)] rounded-full overflow-hidden">
+                <div class="h-full rounded-full transition-all" style="width: ${pct}%; background: ${barColor}"></div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // German grade mapping
+      const gradeMap = [
+        { min: 95, grade: '1.0', us: 'A+' },
+        { min: 90, grade: '1.3', us: 'A' },
+        { min: 85, grade: '1.7', us: 'A-' },
+        { min: 80, grade: '2.0', us: 'B+' },
+        { min: 75, grade: '2.3', us: 'B' },
+        { min: 70, grade: '2.7', us: 'B-' },
+        { min: 65, grade: '3.0', us: 'C+' },
+        { min: 60, grade: '3.3', us: 'C' },
+        { min: 55, grade: '3.7', us: 'C-' },
+        { min: 50, grade: '4.0', us: 'D+' },
+        { min: 45, grade: '4.3', us: 'D' },
+        { min: 40, grade: '4.7', us: 'D-' },
+        { min: 0, grade: '5.0', us: 'F' }
+      ];
+
+      let germanGrade = '5.0';
+      let usGrade = 'F';
+      for (const g of gradeMap) {
+        if (percentage >= g.min) {
+          germanGrade = g.grade;
+          usGrade = g.us;
+          break;
+        }
+      }
+
+      document.getElementById('german-grade').textContent = germanGrade;
+      document.getElementById('us-grade').textContent = usGrade;
+
+      // Boundary warning: within 2% of any higher boundary
+      const warningEl = document.getElementById('boundary-warning');
+      let nearBoundary = false;
+      let boundaryText = '';
+
+      for (const g of gradeMap) {
+        if (g.min > percentage && g.min - percentage <= 2) {
+          nearBoundary = true;
+          boundaryText = `${g.grade} / ${g.us}`;
+          break;
+        }
+      }
+
+      if (nearBoundary) {
+        warningEl.classList.remove('hidden');
+        warningEl.classList.add('flex');
+        document.getElementById('boundary-target').textContent = boundaryText;
+      } else {
+        warningEl.classList.add('hidden');
+        warningEl.classList.remove('flex');
+      }
+
+      // Total deductions
+      let totalDeductions = 0;
+      Object.values(categoryStates).forEach(state => {
+        Object.values(state.deductions || {}).forEach(v => {
+          totalDeductions += parseFloat(v) || 0;
+        });
+      });
+      document.getElementById('total-deductions').textContent = `-${totalDeductions.toFixed(1)}`;
+    }
+
+    // Teacher mode
+    function toggleTeacherMode() {
+      isTeacherMode = !isTeacherMode;
+      const sidebar = document.getElementById('grading-sidebar');
+      const badge = document.getElementById('mode-badge');
+      const demoToggle = document.getElementById('demo-mode-toggle');
+
+      if (isTeacherMode) {
+        sidebar.classList.remove('hidden');
+        badge.textContent = 'Teacher';
+        demoToggle.textContent = 'Switch to Student';
+      } else {
+        sidebar.classList.add('hidden');
+        badge.textContent = 'Student';
+        demoToggle.textContent = 'Switch to Teacher';
+      }
+    }
+
+    // Actions
+    function saveReview() {
+      console.log('Saving review...');
+    }
+
+    function goBack() {
+      console.log('Going back to landing...');
+    }
+
+    function openImport() {
+      console.log('Opening import dialog...');
+    }
+
+    function generateEvaluation() {
+      console.log('Generating evaluation...');
+    }
+
+    function exportYAML() {
+      console.log('Exporting YAML...');
+    }
+
+    function exportMarkdown() {
+      console.log('Exporting Markdown...');
+    }
+
+    function undo() {
+      console.log('Undo');
+    }
+
+    function redo() {
+      console.log('Redo');
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        saveReview();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'z') {
+        e.preventDefault();
+        redo();
+      }
+    });
+  </script>
+</body>
+</html>

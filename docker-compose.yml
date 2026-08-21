@@ -1,0 +1,146 @@
+# =============================================================================
+# SciPro Review — Teacher Machine
+# =============================================================================
+# Default Docker Compose configuration for the teacher's grading machine.
+#
+# Usage:
+#   Teacher:   docker compose up -d                           (this file)
+#   Dev:       docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+#
+# Services:
+#   frontend   — SvelteKit Node server (adapter-node)   :4174  (teacher accesses this)
+#   executor   — Python FastAPI notebook executor       :8766  (internal only)
+#
+# Shared named volume:
+#   data       — Persisted at /app/data/ in both containers
+# =============================================================================
+
+name: svelte-review
+
+services:
+  # ── SvelteKit Frontend ─────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: svelte-review-frontend:latest
+    container_name: svelte-review-frontend
+    ports:
+      # Loopback-only by default: the teacher's grading app is a trusted,
+      # single-operator tool that should not be reachable from the LAN/internet.
+      # The `127.0.0.1:` prefix binds only on the teacher's own machine. If you
+      # ever need remote/team access, add auth FIRST, then change this to
+      # "4174:4174" (and set ORIGIN accordingly).
+      - "127.0.0.1:4174:4174"
+    volumes:
+      - data:/app/data
+    environment:
+      - ADAPTER=node
+      - PORT=4174
+      - NODE_ENV=production
+      # adapter-node derives the request base URL from ORIGIN. Without it the
+      # protocol defaults to https, so plain-http deployments reject form
+      # POSTs (uploads, materials) with a CSRF 403 in real browsers. For the
+      # default loopback deployment use http://localhost:4174. (Only if you
+      # deliberately expose on the LAN — after adding auth — would you set it
+      # to e.g. ORIGIN=http://192.168.1.10:4174.)
+      - ORIGIN=${ORIGIN:-http://localhost:4174}
+      # Internal URL to reach the executor via Docker DNS
+      - EXECUTOR_URL=http://executor:8766
+    env_file:
+      - .env
+    depends_on:
+      executor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:4174/"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 128M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-net
+
+  # ── Python Notebook Executor ────────────────────────────────────────────────
+  executor:
+    build:
+      context: ./executor
+      dockerfile: Dockerfile
+    image: svelte-review-executor:latest
+    container_name: svelte-review-executor
+    # Not exposed to the host — frontend reaches it via Docker DNS
+    expose:
+      - "8766"
+    volumes:
+      - data:/app/data
+    # P1 executor hardening (2026-08-18): student notebooks are untrusted
+    # code. The executor runs with NO Linux capabilities, no new privileges,
+    # a pids cap (fork bombs), and a read-only rootfs (only /tmp and the
+    # data volume are writable). Student code needs no network — the only
+    # outbound call in the executor's own code is the KI Connect auto-fix
+    # path (executor/ki_connect.py), which is a server-side feature, not a
+    # student-notebook capability. Residual vector (documented): the
+    # executor still shares the app-net bridge, so a malicious notebook
+    # could reach the frontend container. Acceptable for the localhost-only
+    # deployment model (user confirmed); revisit if the app is ever shared.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    environment:
+      - PORT=8766
+      - EXECUTOR_LOG_LEVEL=info
+      - DATA_DIR=/app/data
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8766/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+          pids: 256
+        reservations:
+          cpus: "0.5"
+          memory: 256M
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-net
+
+# ── Persistent Volumes ──────────────────────────────────────────────────────
+volumes:
+  data:
+    name: svelte-review-data
+
+# ── Network ──────────────────────────────────────────────────────────────────
+networks:
+  app-net:
+    name: svelte-review-net
+    driver: bridge
