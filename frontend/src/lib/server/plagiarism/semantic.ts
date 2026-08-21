@@ -15,6 +15,7 @@
  */
 
 import { getKiConnectClient } from "$lib/server/ki-connect";
+import { screenStudentContent } from "$lib/server/copilot/screening";
 
 import type { NotebookInput, PlagiarismPair } from "./structural";
 
@@ -100,6 +101,31 @@ function buildSemanticPrompt(a: NotebookInput, b: NotebookInput, opts: SemanticO
 	);
 }
 
+/**
+ * Screen one notebook's prompt payload for instruction-smuggling (injection)
+ * BEFORE it enters the semantic LLM prompt. Student notebook content is
+ * untrusted input; reusing {@link screenStudentContent} here mirrors the
+ * cell-screening the pre-evaluation pipeline already applies.
+ *
+ * FAIL-OPEN is the contract (same as the rest of this module): a positive
+ * "injection" verdict returns true (skip the pair); a screening API error
+ * OR an unexpected throw returns false so the semantic pass still proceeds.
+ * A guard failure must never block the comparison — only a positive verdict
+ * skips the pair.
+ */
+async function screensAsInjection(nb: NotebookInput, maxChars: number): Promise<boolean> {
+	try {
+		const verdict = await screenStudentContent(formatNotebookForPrompt(nb, maxChars));
+		return verdict === "injection";
+	} catch (err) {
+		console.warn(
+			`[plagiarism] semantic screening failed — failing open for ${nb.studentId}`,
+			err instanceof Error ? err.message : err,
+		);
+		return false;
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Response parsing
 // ---------------------------------------------------------------------------
@@ -129,8 +155,9 @@ function parseSemanticResponse(
 
 /**
  * Compare two submissions semantically via KI Connect.
- * Returns null when the API key is unset, the request fails, or the
- * response is malformed (graceful degradation).
+ * Returns null when the API key is unset, the request fails, the
+ * response is malformed (graceful degradation), or when either notebook's
+ * content screens as an injection attempt (skip the pair).
  */
 export async function compareNotebooks(
 	a: NotebookInput,
@@ -143,6 +170,20 @@ export async function compareNotebooks(
 	}
 
 	try {
+		const maxChars = opts.maxCharsPerNotebook ?? MAX_CHARS_PER_NOTEBOOK;
+		// Screen each notebook's content before it enters the LLM. Untrusted
+		// student input must not reach the semantic prompt unscreened. A
+		// positive injection verdict on EITHER notebook skips the pair (the
+		// structural result stands); screening failures degrade to proceeding.
+		if (await screensAsInjection(a, maxChars)) {
+			console.warn(`[plagiarism] semantic pair skipped: injection detected in ${a.studentId}`);
+			return null;
+		}
+		if (await screensAsInjection(b, maxChars)) {
+			console.warn(`[plagiarism] semantic pair skipped: injection detected in ${b.studentId}`);
+			return null;
+		}
+
 		const response = await getKiConnectClient().chatCompletion(
 			SEMANTIC_SYSTEM_PROMPT,
 			buildSemanticPrompt(a, b, opts),

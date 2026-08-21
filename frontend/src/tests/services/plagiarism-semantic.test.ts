@@ -29,6 +29,15 @@ vi.mock("$lib/server/ki-connect", async (importOriginal) => {
 	};
 });
 
+// (B13) Student-content screening is stubbed so the tests stay hermetic (no
+// network). Defaults to "clean" so existing degradation/parsing tests are
+// unaffected; per-test overrides exercise the injection/error paths.
+const screeningMock = vi.hoisted(() => ({ screenStudentContent: vi.fn() }));
+
+vi.mock("$lib/server/copilot/screening", () => ({
+	screenStudentContent: screeningMock.screenStudentContent,
+}));
+
 // ---------------------------------------------------------------------------
 // Fixtures & helpers
 // ---------------------------------------------------------------------------
@@ -61,6 +70,8 @@ const NB_C = notebook("2026SS_03", "radius = 5\narea = 3.14159 * radius ** 2");
 beforeEach(() => {
 	process.env.KI_CONNECT_API_KEY = "test-key";
 	mockClient.chatCompletion.mockReset();
+	screeningMock.screenStudentContent.mockReset();
+	screeningMock.screenStudentContent.mockResolvedValue("clean");
 });
 
 afterEach(() => {
@@ -135,6 +146,58 @@ describe("compareNotebooks", () => {
 		const result = await compareNotebooks(NB_A, NB_B);
 
 		expect(result).toBeNull();
+	});
+
+	it("skips the pair when notebook A screens as injection", async () => {
+		screeningMock.screenStudentContent.mockResolvedValueOnce("injection");
+		mockClient.chatCompletion.mockResolvedValue({ similarity: 0.9, verdict: "same" });
+
+		const result = await compareNotebooks(NB_A, NB_B);
+
+		expect(result).toBeNull();
+		expect(mockClient.chatCompletion).not.toHaveBeenCalled();
+	});
+
+	it("skips the pair when notebook B screens as injection", async () => {
+		screeningMock.screenStudentContent
+			.mockResolvedValueOnce("clean")
+			.mockResolvedValueOnce("injection");
+		mockClient.chatCompletion.mockResolvedValue({ similarity: 0.9, verdict: "same" });
+
+		const result = await compareNotebooks(NB_A, NB_B);
+
+		expect(result).toBeNull();
+		expect(mockClient.chatCompletion).not.toHaveBeenCalled();
+	});
+
+	it("fails open: a screening API error still proceeds with the comparison", async () => {
+		screeningMock.screenStudentContent.mockRejectedValue(new Error("screening backend down"));
+		mockClient.chatCompletion.mockResolvedValue({ similarity: 0.6, verdict: "similar" });
+
+		const result = await compareNotebooks(NB_A, NB_B);
+
+		expect(result).toEqual({
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			semanticScore: 0.6,
+			verdict: "similar",
+		});
+		expect(mockClient.chatCompletion).toHaveBeenCalledTimes(1);
+	});
+
+	it("proceeds unchanged when both notebooks screen as clean", async () => {
+		// beforeEach defaults screenStudentContent to resolve "clean".
+		mockClient.chatCompletion.mockResolvedValue({ similarity: 0.7, verdict: "similar" });
+
+		const result = await compareNotebooks(NB_A, NB_B);
+
+		expect(result).toEqual({
+			studentA: "2026SS_01",
+			studentB: "2026SS_02",
+			semanticScore: 0.7,
+			verdict: "similar",
+		});
+		expect(mockClient.chatCompletion).toHaveBeenCalledTimes(1);
 	});
 });
 
