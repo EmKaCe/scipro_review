@@ -18,8 +18,17 @@ eliminates fragile text-matching and makes the output self-describing.
 
 ## File
 
-- **YAML**: `data/evaluations/2026SS_03.yaml`
-- **JSON**: `data/evaluations/2026SS_03.json` (auto-generated from YAML)
+The evaluation is not written to a `data/evaluations/` directory (that v1-era
+layout is gone). Both serializations are produced on demand:
+
+- **YAML/JSON**: `generateEvaluation` (`frontend/src/lib/services/text-generator.ts`)
+  builds the `Evaluation` object; `exportSession` / `exportAsYaml`
+  (`frontend/src/lib/services/session-persistence.ts`) serialize it for
+  download.
+- **JSON**: identical structure — `exportSession` with `format: "json"`.
+- **Server-side per-submission export**: `frontend/src/lib/server/export-service.ts`
+  emits a flattened `GradingExport` (student_id / assignment / scores / rubric /
+  notes) from a `SubmissionRecord` + grading state (`GET /api/submissions/[id]/export`).
 
 ## Structure
 
@@ -208,7 +217,6 @@ Grading Session ──app──► YAML Output ──serialize──► JSON Out
 The app produces the YAML output as the canonical format. JSON is derived
 via serialization. The evaluation Markdown file is a separate human-readable
 rendering of the same data (see `evaluation-md-schema.md`).
-script maps all variants to the same JSON key.
 
 ## Example
 
@@ -233,9 +241,9 @@ script maps all variants to the same JSON key.
 }
 ```
 
-## Internal Svelte App Format
+## Internal Session Format (v1.5 prototype, historical)
 
-Within the Svelte Review App, the session is stored differently:
+Within the legacy Svelte Review App, the session was stored differently:
 
 ```typescript
 // Scoped key format for checked items (uses :: separator, no mainPoint)
@@ -249,7 +257,7 @@ The Svelte app uses `::` as separator and does not include `mainPoint` in the
 scoped key. This is different from the JSON export format which uses `-` as
 separator and includes `mainPoint`.
 
-## Conversion Pipeline
+## Conversion Pipeline (v1, historical)
 
 ```
 Evaluation MD ──md_to_json.py──► JSON Export ──web app──► Grade Calculation
@@ -257,19 +265,21 @@ Evaluation MD ──md_to_json.py──► JSON Export ──web app──► Gr
                                     └──► grading_summary.md
 ```
 
-The `md_to_json.py` script:
-1. Loads criteria JSON files as the source of truth for text matching
-2. Parses YAML frontmatter for scores and student ID
-3. Parses checkbox sections for checked/unchecked items
-4. Uses fuzzy matching to handle minor text differences between MD and criteria
-5. Produces a flat JSON object with scoped keys
-
-The `validate_json.py` script can be used to verify JSON exports against
-the expected format.
+The v1 converter scripts **no longer exist** — `md_to_json.py`,
+`validate_json.py`, the `grading_summary.md` aggregation, and the legacy
+`scipro_assignments_grading/` web app were removed with the 2026-08-20
+student-data strip. The current app never parses Markdown or flat JSON
+back into grades: review data is kept structured in the session, exported
+via `exportSession` (`frontend/src/lib/services/session-persistence.ts`),
+and imported back as YAML/JSON only (`parseImport`).
 
 ## Related Files
 
-- `md_to_json.py` — Converts MD evaluations to JSON
-- `validate_json.py` — Validates JSON exports
-- `scipro_assignments_grading/criteria/*.json` — Criteria source of truth
-- `scipro_assignments_grading/references.json` — Enabled criteria configuration
+- `frontend/src/lib/services/session-persistence.ts` — session serialization,
+  YAML/MD/JSON export (`exportSession`), YAML/JSON import (`parseImport`)
+- `frontend/src/lib/services/text-generator.ts` — `generateEvaluation` /
+  `generateEvaluationMarkdown` (the Evaluation object + MD rendering)
+- `frontend/src/lib/services/db.ts` — IndexedDB persistence
+  (`exportAll` / `importAll` / `listReviews`), `DbExport` bulk format
+- `frontend/src/lib/server/export-service.ts` — server-side per-submission
+  grading export (`GradingExport`)

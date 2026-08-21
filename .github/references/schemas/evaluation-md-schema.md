@@ -5,14 +5,21 @@
 
 ## File
 
-`data/evaluations/2026SS_03.md`
+Not a file in a `data/evaluations/` directory (the v1-era layout is gone): the
+Markdown evaluation is generated on demand by `generateEvaluationMarkdown`
+(`frontend/src/lib/services/text-generator.ts`) and exported as a download via
+`exportSession` / `exportAsMarkdown` (`frontend/src/lib/services/session-persistence.ts`).
 
 ## Overview
 
-Each student evaluation is stored as a Markdown file with YAML frontmatter
-and structured checkbox sections. This is the human-readable format that
-graders write and read. It is a rendering of the same data stored in the
-structured evaluation output (see `evaluation-output-schema.md`).
+Each student evaluation can be rendered as a Markdown document with YAML
+frontmatter and structured checkbox sections. This is the human-readable
+format that graders write and read. It is a rendering of the same data stored
+in the structured evaluation output (see `evaluation-output-schema.md`).
+
+Round-trip note: only the **YAML/JSON** exports are parsed back into a review
+session (`parseImport` in `session-persistence.ts`). The Markdown format is
+render-only; the app does not parse MD back into structured data.
 
 ## Structure
 
@@ -20,8 +27,7 @@ structured evaluation output (see `evaluation-output-schema.md`).
 ---
 student_id: <string>
 assignment: <string>
-reviewer: <string>
-date: <YYYY-MM-DD>
+date: <ISO timestamp>
 scores:
     code_quality_design: <number>
     code_execution_results: <number>
@@ -34,24 +40,25 @@ result:
     label: <string>
 ---
 
-# Evaluation — <student_id>
+## Positive Observations
+<!-- sentiment:positive -->
+### <Category Title>
+**<Main Point Text>**
+- [x] <checked sub-point text>
+  > <grader comment>        (when the sub-point has comment: true)
+  (-1.5 points)             (when the sub-point has point_deduction: true)
+<!-- /sentiment:positive -->
 
-## <Category Title>
-### Positive
-- **<Main Point Text>**
-    - [x] <checked sub-point text>
-    - [ ] <unchecked sub-point text>
-### Neutral
-- **<Main Point Text>**
-    - [ ] <sub-point text>
-### Negative
-- **<Main Point Text>**
-    - [x] <checked sub-point text>
-### Notes
-> <free-text notes>
-
-## <Next Category Title>
+## General Observations
+<!-- sentiment:neutral -->
 ...
+
+## Areas for Improvement
+<!-- sentiment:negative -->
+...
+
+## Additional Notes
+**<Category Title>**: <free-text notes>
 ```
 
 ## YAML Frontmatter
@@ -60,10 +67,12 @@ result:
 |-------|------|----------|-------------|
 | `student_id` | string | ✅ | Student identifier (e.g., `2026SS_03`) |
 | `assignment` | string | ✅ | Assignment key from `assignments.yaml` |
-| `reviewer` | string | ✅ | Grader name or identifier |
-| `date` | string | ✅ | ISO date of the review |
+| `date` | string | ✅ | ISO timestamp of the review's last update |
 | `scores` | object | ✅ | One entry per grading dimension |
 | `result` | object | ✅ | Computed grade information |
+
+Note: the YAML/JSON evaluation export adds a `reviewer` field; the Markdown
+frontmatter emitted by `generateMarkdownFrontmatter` does not include it.
 
 ### Scores Keys
 
@@ -85,88 +94,82 @@ result:
 
 ## Section Layout
 
-### v2 Changes from v1
+### Sentiment Sections
 
-| v1 | v2 | Reason |
-|----|-----|--------|
-| `## General Feedback` / `## Assignment-Specific Feedback` | No section split | All categories are equal under `categories:` |
-| `### Category Title:` (trailing colon) | `## Category Title` (no colon) | Cleaner Markdown |
-| `#### Positive:` / `#### Negative:` | `### Positive` / `### Negative` | Less nesting |
-| `- Main Point:` (trailing colon) | `- **Main Point**` | Bold, not colon-terminated |
-| `#### Additional Notes:` | `### Notes` with `>` blockquote | Clearer visual separation |
-| `id` | `student_id` | More descriptive |
-| `grading_table` | `scores` | Simpler name |
-| `code_quality_and_design` | `code_quality_design` | Consistent snake_case |
+The body is grouped **by sentiment first**, then by category, then by main
+point (`generateMarkdownBody` in `text-generator.ts`). Each sentiment section
+carries `<!-- sentiment:... -->` / `<!-- /sentiment:... -->` comment markers;
+empty sentiments are omitted entirely.
+
+| Sentiment | Heading |
+|-----------|---------|
+| positive | `## Positive Observations` |
+| neutral | `## General Observations` |
+| negative | `## Areas for Improvement` |
 
 ### Category Format
 
-Each category is a `##` heading with three sentiment subsections and a notes
-section:
-
 ```markdown
-## Code Formatting
-### Positive
-- **Formatting is done well, which includes**
-    - [x] concise, clean and clearly written code
-    - [x] commenting - appropriate amount provided
-### Neutral
-- **Okay formatting, but the following could be improved**
-    - [ ] blank lines - could be more consistent
-### Negative
-- **The following formatting issues were present**
-    - [x] naming - variable names not descriptive enough
-### Notes
-> Generally well-written code. Minor PEP8 issues.
+## Positive Observations
+<!-- sentiment:positive -->
+### Code Formatting
+**Formatting is done well, which includes**
+- [x] concise, clean and clearly written code
+- [x] commenting - appropriate amount provided (i.e., not excessive or insufficient)
+<!-- /sentiment:positive -->
 ```
 
 ### Checkbox Format
 
-- **Checked**: `- [x] <text>` (lowercase `x`)
-- **Unchecked**: `- [ ] <text>` (space between brackets)
+- **Only checked items are emitted**: `- [x] <text>` (lowercase `x`). An
+  unchecked sub-point never appears in the export.
+- **Comment**: the grader comment follows the item as an indented blockquote:
+  ```
+  - [x] execution - the code does not run because of the following problem(s):
+    > Missing import for pandas. Cell 3 raises NameError.
+  ```
+- **Point deduction**: the amount follows in parentheses:
+  ```
+  - [x] Your solution was very similar to another student's solution
+    (-1.5 points)
+  ```
 
 ### Indentation
 
-- Category headings: `##` (level 2)
-- Sentiment headings: `###` (level 3)
-- Main points: `- **text**` (list item, bold)
-- Sub-points: `    - [x] text` (4-space indent under main point)
-- Notes: `> text` (blockquote under `### Notes`)
+- Sentiment headings: `##` (level 2)
+- Category headings: `###` (level 3), per sentiment section
+- Main points: `**text**` (bold, own line)
+- Sub-points: `- [x] text` (list item at the top level of the section)
+- Comments/deductions: two-space indented lines directly under the item
+
+### Additional Notes
+
+Non-empty per-category notes are collected into a trailing section:
+
+```markdown
+## Additional Notes
+**Code Formatting**: The code is generally well-written. Minor PEP8 issues.
+```
 
 ### Special Cases
 
 1. **Empty main point**: When `main_point` is `""`, sub-points appear directly
-   without a bold heading:
-   ```markdown
-   ### Negative
-   - formatting - placing each parameter on a new line is not necessary
-   - keyword arguments - include the parameter name
-   ```
-
-2. **Comment sub-points**: When a sub-point has `comment: true`, the grader's
-   comment follows the checked item as an indented blockquote:
-   ```markdown
-   - [x] execution - the code does not run because of the following problem(s):
-       > Missing import for pandas. Cell 3 raises NameError.
-   ```
-
-3. **Point deduction sub-points**: When a sub-point has `point_deduction: true`,
-   the deduction amount follows in parentheses:
-   ```markdown
-   - [x] Your solution was very similar to another student's solution (-1.5)
-       > Code structure and variable names matched 2026SS_07 almost exactly.
-   ```
+   under the category heading without a bold heading.
+2. **Empty sentiment**: sections with no checked items are skipped (no empty
+   `## Areas for Improvement` block when nothing was checked there).
+3. **No title heading**: the document starts with the frontmatter fence; there
+   is no `# Evaluation` title line.
 
 ## Full Example
 
 ```markdown
 ---
 student_id: "2026SS_03"
-assignment: atom_interaction
-reviewer: Cetin
-date: "2026-07-15"
+assignment: soil_contamination
+date: "2026-07-15T14:30:00.000Z"
 scores:
-    code_quality_design: 4.5
-    code_execution_results: 5.5
+    code_quality_design: 5.5
+    code_execution_results: 4.5
     assignment_requirements: 5.0
     scientific_programming: 4.5
     creativity: 2.0
@@ -176,46 +179,30 @@ result:
     label: B+
 ---
 
-# Evaluation — 2026SS_03
+## Positive Observations
+<!-- sentiment:positive -->
+### Code Formatting
+**Formatting is done well, which includes**
+- [x] concise, clean and clearly written code
+- [x] commenting - appropriate amount provided (i.e., not excessive or insufficient)
+### Pandas
+**Overall Pandas feedback**
+- [x] Effective use of Pandas and its built-in functions
+<!-- /sentiment:positive -->
 
-## Code Formatting
-### Positive
-- **Formatting is done well, which includes**
-    - [x] concise, clean and clearly written code
-    - [x] commenting - appropriate amount provided (i.e., not excessive or insufficient)
-    - [x] imports - libraries were alphabetized
-### Neutral
-### Negative
-- **The following formatting issues were present in your code**
-    - [x] blank lines - missing the required two blank lines after imports and/or around user-defined functions (PEP8)
-### Notes
-> The code is generally well-written. PEP8 blank line issues around functions.
+## Areas for Improvement
+<!-- sentiment:negative -->
+### Code Formatting
+**The following formatting issues were present in your code**
+- [x] blank lines - missing the required two blank lines after imports and/or around user-defined functions (PEP8)
+### Academic Scholarship
+**Scholarship done poorly, which includes the following**
+- [x] citing - missing references for knowledge (e.g., datasets, equations, libraries)
+<!-- /sentiment:negative -->
 
-## Coding Concept
-### Positive
-### Neutral
-### Negative
-### Notes
-> Good use of Pandas vectorized operations.
-
-## Academic Scholarship
-### Positive
-- **Scholarship done well, which includes**
-    - [x] citing - source of information and knowledge
-### Neutral
-### Negative
-- **Scholarship done poorly, which includes the following**
-    - [x] citing - missing references for knowledge (e.g., datasets, equations, libraries)
-### Notes
-
-## Pandas
-### Positive
-- **Overall Pandas feedback**
-    - [x] Effective use of Pandas and its built-in functions
-### Neutral
-### Negative
-### Notes
-> Good use of dropna and drop_duplicates for data cleaning.
+## Additional Notes
+**Code Formatting**: The code is generally well-written. Minor PEP8 blank line issues around functions.
+**Coding Concept**: Good use of Pandas vectorized operations.
 ```
 
 ## Relationship to Evaluation Output
@@ -228,33 +215,26 @@ Evaluation Output (YAML/JSON)  ←──app──►  Evaluation MD
      (structured)                           (human-readable)
 ```
 
-The app can render the structured output as MD for display, and parse MD
-back into structured data. The structured YAML/JSON is the canonical format;
-the MD is a rendering.
+The app renders the structured output as MD for display
+(`generateEvaluationMarkdown`), and imports YAML/JSON exports back into a
+review session (`parseImport` in `session-persistence.ts`). The structured
+YAML/JSON is the canonical format; the MD is a rendering.
 
 ## Conversion to JSON
 
-The `md_to_json.py` script converts these MD files to JSON format. It:
-1. Parses the YAML frontmatter for scores and student ID
-2. Parses the checkbox sections for checked/unchecked items
-3. Uses the criteria JSON files as the source of truth for exact text matching
-4. Produces a flat JSON object with scoped keys
+There is no separate MD-to-JSON converter anymore (the v1 `md_to_json.py`
+script was removed with the 2026-08-20 student-data strip): YAML and JSON are
+both serialized from the same `Evaluation` object (`exportSession` with
+`format: "yaml"` / `"json"` in `frontend/src/lib/services/session-persistence.ts`).
+The output format is documented in
+[evaluation-output-schema.md](evaluation-output-schema.md).
 
-See [json-export-schema.md](json-export-schema.md) for the output format.
+## Example (v1 format, historical)
 
-## Example
+For reference, the v1 Markdown format (flat `grading_table`, `## General
+Feedback` sections, trailing-colon headings) that `md_to_json.py` parsed:
 
 ```markdown
----
-id: 2026SS_03
-grading_table:
-    code_quality_and_design: 4.5
-    code_execution_and_results: 5.5
-    assignment_requirements: 5.0
-    scientific_programming: 4.5
-    creativity: 2.0
----
-
 # Evaluation
 
 ## General Feedback

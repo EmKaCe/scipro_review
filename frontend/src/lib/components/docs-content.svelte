@@ -257,10 +257,10 @@ grade_boundaries:
 			Both batch actions live in the dashboard toolbar on the
 			<a href="/submissions">submissions page</a>.
 		</p>
-		<h3>Process All</h3>
+		<h3>Process</h3>
 		<p>
-			<strong>Process All</strong> executes all pending submissions through the Python executor
-			(each notebook in its own sandbox with the assignment's input data). A batch runs notebook-by-notebook
+			<strong>Process</strong> executes all pending submissions through the Python executor (each
+			notebook in its own sandbox with the assignment's input data). A batch runs notebook-by-notebook
 			— one failing or timing-out notebook does not block the rest; per-row status updates as each
 			submission finishes.
 		</p>
@@ -372,58 +372,15 @@ grade_boundaries:
 				to that student's notebook
 			</li>
 		</ul>
-		<h3>Slash Commands</h3>
-		<p>Type a slash command in the chat input to trigger a specific capability:</p>
-		<table>
-			<thead>
-				<tr>
-					<th>Command</th>
-					<th>Action</th>
-				</tr>
-			</thead>
-			<tbody>
-				<tr>
-					<td><code>/suggest</code></td>
-					<td>Suggest grades and rubric selections for this submission</td>
-				</tr>
-				<tr>
-					<td><code>/grade</code></td>
-					<td>Show the current grading status</td>
-				</tr>
-				<tr>
-					<td><code>/draft</code></td>
-					<td>Draft feedback for the student</td>
-				</tr>
-				<tr>
-					<td><code>/summary</code></td>
-					<td>Summarize this submission</td>
-				</tr>
-				<tr>
-					<td><code>/audit</code></td>
-					<td>Audit the notebook for common issues</td>
-				</tr>
-				<tr>
-					<td><code>/plagiarism</code></td>
-					<td>Check for plagiarism against other submissions</td>
-				</tr>
-				<tr>
-					<td><code>/explain</code></td>
-					<td>Explain a concept from the assignment</td>
-				</tr>
-				<tr>
-					<td><code>/compare</code></td>
-					<td>Compare this submission to the reference key</td>
-				</tr>
-				<tr>
-					<td><code>/fix</code></td>
-					<td>Suggest fixes for broken cells</td>
-				</tr>
-				<tr>
-					<td><code>/help</code></td>
-					<td>Show available commands and tools</td>
-				</tr>
-			</tbody>
-		</table>
+		<h3>How to Ask</h3>
+		<p>
+			The copilot is a chat assistant that picks the right tools automatically — there are no
+			slash commands to memorize. Just ask in plain language, e.g.
+			<em>“suggest grades and rubric selections for this submission”</em>,
+			<em>“draft feedback for the student”</em>, or
+			<em>“check this submission for plagiarism”</em>. A context meter shows how much of the
+			conversation window is in use so you can steer long sessions.
+		</p>
 		<h3>Approval Modes</h3>
 		<ul>
 			<li>
@@ -519,14 +476,14 @@ grade_boundaries:
 				<tr>
 					<td>LLM requests time out</td>
 					<td>
-						Increase <code>llm.timeoutMs</code> on the settings page — larger models can need
-						longer to respond
+						Increase <code>llm.timeout_ms</code> on the settings page — larger models can
+						need longer to respond
 					</td>
 				</tr>
 				<tr>
 					<td>Notebook execution timeout</td>
 					<td>
-						Increase <code>executor.notebookTimeoutMs</code> in settings; the budget must
+						Increase <code>executor.notebook_timeout_ms</code> in settings; the budget must
 						also cover auto-fix re-runs
 					</td>
 				</tr>

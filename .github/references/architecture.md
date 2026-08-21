@@ -66,7 +66,9 @@ The same codebase produces two builds via the `ADAPTER` build flag. Teacher
 mode (`ADAPTER=node`) serves the full server app; the student build
 (`adapter-static`) is a pre-rendered SPA where teacher-only **surfaces are
 hidden at runtime** (e.g. the Settings page gates its cards on `base === ""`).
-The student build ships the `review/` + `review/[id]/evaluation` routes.
+A compile-time `__TEACHER_MODE__` boolean (`ADAPTER === "node"`) is available
+and currently unused. The student build ships the `review/` +
+`review/[id]/evaluation` routes.
 
 Relevant route trees:
 

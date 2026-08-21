@@ -37,9 +37,10 @@ no aspirations.
   record** (`PostProcessFix[]`) — nothing is silently rewritten.
 - **Docs grounding (live)**: the Phase 2a prompt carries a `{DOCS_FACTS}`
   block citing real docs URLs (pandas.pydata.org, docs.scipy.org,
-  scikit-learn.org, matplotlib.org/stable). The offline index covers tens of
-  thousands of chunks × 4096 dims for numpy/pandas/scipy/sklearn/matplotlib.
-  Loader never throws — any failure degrades to BM25-only.
+  scikit-learn.org, matplotlib.org/stable). The offline index covers
+  **38,380 chunks across 10 libraries** (numpy, pandas, scipy, scikit-learn,
+  matplotlib, seaborn + stdlib/builtins/typing + curated integration notes) at
+  4096 dims. Loader never throws — any failure degrades to BM25-only.
 - **Detector calibration**: the false "disallowed sklearn" flag was removed
   (2026-08-17) — sklearn (KMeans) is the soil_contamination assignment's **core
   library**. Disallowed libraries now live per-assignment in `data/scoring/*.yaml`.
@@ -63,7 +64,8 @@ student data, via:
   the REAL rubric + grading config over committed synthetic fixtures
   (`src/tests/copilot/fixtures/grading-gate/*.json`). It asserts the invariant
   classes the old gate surfaced — dimension scores within `[0, max_points]`
-  (the B7 100/1000-vs-6 scale-bug class), no unknown rubric options, no
+  (the B7 scale-bug class — an arbitrary [0,1000] scale vs real `max_points` of
+  4–6), no unknown rubric options, no
   mutual-exclusion violations. No LLM, no network, no student data — as safe to
   run as a unit test.
 - **Unit/integration tests** — the deterministic phases (cell comparison,
