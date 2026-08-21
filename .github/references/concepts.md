@@ -17,7 +17,7 @@ There are **two separate worlds** running from one codebase:
 | World | Who uses it | Where it runs | What it does |
 | --- | --- | --- | --- |
 | **Student** | students | GitHub Pages (public static site) | read-only: view their evaluation |
-| **Teacher** | the grader (Karl) | **your own machine** (`127.0.0.1`) | upload, run, grade, draft with the copilot |
+| **Teacher** | the grader | **your own machine** (`127.0.0.1`) | upload, run, grade, draft with the copilot |
 
 The teacher app is **loopback-only by default** (`127.0.0.1:4174`) — a trusted,
 single-operator tool on a teacher's machine. It is not meant to sit on the
@@ -36,7 +36,7 @@ flowchart LR
 
 ## 2. The only two "characters" that matter
 
-1. **The teacher (you / Karl)** — the authority. You import notebooks, run the
+1. **The teacher (you, the instructor)** — the authority. You import notebooks, run the
    pipeline, review the draft, and decide the final grade.
 2. **The copilot** — an AI assistant that *drives the same UI you do*, by
    calling the same tools, and proposes a draft. It never bypasses your review.

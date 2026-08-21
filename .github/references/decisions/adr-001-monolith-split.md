@@ -17,8 +17,8 @@ Two goals drove the question, and they pull in opposite directions here:
 
 - **Maintainability / fast onboarding** — new maintainers should get up to
   speed quickly without tripping over tooling.
-- **Karl can actually use it for grading** — the primary user (the teacher
-  taking over) does **not** write code; they run and grade.
+- **The teacher can actually use it for grading** — the primary user, the instructor
+  taking over, does **not** write code; they run and grade.
 
 ## Decision
 
@@ -39,7 +39,7 @@ Concretely:
 
 ## Why
 
-- **Zero benefit to the actual user.** Karl grades; he does not consume
+- **Zero benefit to the actual user.** The teacher grades; they do not consume
   packages. A split is invisible to the grading experience.
 - **Real cost / risk.** A workspace adds build config, new import boundaries,
   package-manifest churn, and a bigger CI/build surface — exactly the

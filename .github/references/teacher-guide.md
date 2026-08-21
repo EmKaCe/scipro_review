@@ -1,6 +1,6 @@
 # Teacher Guide — SciPro Review
 
-This guide walks a teacher (Karl's job) from first setup to exported grades, one
+This guide walks a teacher from first setup to exported grades, one
 task at a time. It is the *task-oriented* companion to the in-app
 **Documentation** page (`/docs`), which is the full reference. It does not repeat
 everything the in-app docs say — it tells you the order to do things, links the
@@ -184,7 +184,7 @@ regexes against real executed output before trusting it.
 | What | How |
 |---|---|
 | **Single review** | Open the submission → **Export** → YAML / Markdown / JSON |
-| **Batch / Karl-compatible** | Use the JSON export; the app emits **Karl-compatible** export keys for the downstream workflow |
+| **Batch / legacy format** | Use the JSON export; the app emits **legacy format** export keys for the downstream workflow |
 | **Save semantics** | Saving persists to the server (per-submission results); exporting downloads a file — they are separate actions |
 
 ### Backup & restore

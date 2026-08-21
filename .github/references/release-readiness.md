@@ -65,7 +65,7 @@ record** for taking `svelte-review-copilot` public, published as
 | ID | Item | Scope (locked) |
 |----|------|----------------|
 | T6 | **First-run onboarding** | **Guided checklist/onboarding page** first (create/import assignment → wire criteria + scoring + provider → fetch docs index → first pre-eval). Full wizard deferred. |
-| T7 | **User guide (Karl/new-user)** | **Doc-first** standalone guide (calibrate, pre-evaluate, review copilot worksheet, export grades), **in-app help panel later**. |
+| T7 | **User guide (teacher/new-user)** | **Doc-first** standalone guide (calibrate, pre-evaluate, review copilot worksheet, export grades), **in-app help panel later**. |
 | T8 | **Two-build deployment explainer** | Folded into T4 docs; "which build" guidance. |
 
 ---

@@ -2,7 +2,7 @@
 
 **Status:** Required reading for the next Hermes session that touches `frontend/src/lib/server/copilot/pre-evaluation.ts` or the rubric-selection pipeline.
 
-**Background:** Three iterations of pipeline hardening have produced excellent supporting modules (post-processing, cohort calibration, deterministic pre-analysis, Karl-form export), but the core LLM contract for rubric selection is still single-shot. The user explicitly wants an unlimited-call, turn-based, living-document architecture. Previous sessions re-interpreted "turn-based" as "more phases inside one response." This directive removes that ambiguity.
+**Background:** Three iterations of pipeline hardening have produced excellent supporting modules (post-processing, cohort calibration, deterministic pre-analysis, legacy grading-form export), but the core LLM contract for rubric selection is still single-shot. The user explicitly wants an unlimited-call, turn-based, living-document architecture. Previous sessions re-interpreted "turn-based" as "more phases inside one response." This directive removes that ambiguity.
 
 ---
 

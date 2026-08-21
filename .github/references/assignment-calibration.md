@@ -2,7 +2,7 @@
 
 How to take a brand-new assignment from "registered" to soil-contamination-quality
 pre-evaluation and copilot support. Written for the teacher who will maintain the
-system after the original author (Karl or anyone else).
+system after the original author (anyone).
 
 > The golden rule: **the ground truth is the teacher's own grades, not the system.**
 > The pipeline reaches soil-like quality only through the calibration loop below —
@@ -93,7 +93,7 @@ in the calibration loop (this is how the soil `sklearn` false-flag bug happened)
   silent degradation.
 - **No-op saves** keep the tracked YAML byte-identical when nothing changed.
 - **Do not touch** `data/scoring/soil_contamination.yaml` or the golden fixture
-  unless deliberately retuning soil — the Karl gate + calibration findings were
+  unless deliberately retuning soil — the removed ground-truth gate + calibration findings were
   tuned against them.
 - **The reference key** (layer 3) is the comparison ground truth for Phase 1 —
   without it, markers are null and pre-evaluation quality collapses.

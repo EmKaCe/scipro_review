@@ -548,7 +548,7 @@ flowchart TD
     D --> E[post-process 7 passes + cohort calibration]
     E --> F[PreEvaluation envelope + gradingConfidence + calibrationAdjustments]
     F --> G[Teacher reviews + Accept/Reject]
-    G --> H[saveGrading → export (Karl-compatible)]
+    G --> H[saveGrading → export (legacy format)]
 ```
 
 ### Pre-evaluation inside

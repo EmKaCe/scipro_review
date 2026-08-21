@@ -130,7 +130,7 @@ persisted through `saveGrading` (`metadata.ts` / `grading-persistence.ts`):
 
 **Rules:**
 - **Worksheet option texts are verbatim from `data/criteria/*.yaml`** — not from
-  `legacy-catalog.ts` (which maps category → Karl prefix only). A checkbox must
+  `legacy-catalog.ts` (which maps category → legacy prefix only). A checkbox must
   match the YAML text byte-for-byte (typos included: "separatation",
   "encode ideas", "PEP8 guidelines- followed").
 - An assignment **without** a scoring file must never inherit soil's anchors —

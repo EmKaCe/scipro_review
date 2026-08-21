@@ -134,7 +134,7 @@ worksheet.ts               turn-based worksheet: generate, validate sections (ex
 worksheet-json-schema.ts   JSON schema for worksheet parsing
 post-process.ts            7 deterministic correction passes (see below)
 cohort-calibration.ts      cross-submission dimension recalibration (reference anchors)
-legacy-export.ts           buildLegacyId / generateKarlJson — Karl-compatible export keys
+legacy-export.ts           buildLegacyId / generateLegacyGradeJson — legacy-format export keys
 docs-rag.ts                hybrid BM25 + embeddings retrieval over the offline docs index
 screening.ts               screen student cell content before it enters any prompt (B13)
 over-tick.ts               over-tick guard (Signal A/B/C advisory flags)

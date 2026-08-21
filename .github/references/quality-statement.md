@@ -7,7 +7,7 @@ no aspirations.
 > **Privacy notice (2026-08-20):** real student grading data (submission
 > notebooks, emailed grades, cohort norms, `grading-output/`) has been removed
 > from this repo so it can be open-sourced. The earlier per-student quality
-> numbers and the Karl ground-truth gate that produced them are **gone** — they
+> numbers and the removed ground-truth gate that produced them are **gone** — they
 > were anchored in real student grades. This document describes the *design and
 > architecture* of the quality story, not a live measurement against real
 > grades.
@@ -52,11 +52,11 @@ no aspirations.
 ## Quality measurement posture after data removal
 
 The earlier quality story measured the pipeline against **real emailed grades**
-(the Karl ground-truth gate) and produced per-student residual tables. That is
+(the removed ground-truth gate) and produced per-student residual tables. That is
 now gone by design (privacy). The pipeline's quality is measured without real
 student data, via:
 
-- **Synthetic grading-quality gate (replaces the Karl gate).** A deterministic
+- **Synthetic grading-quality gate (replaces the removed ground-truth gate).** A deterministic
   gate (`frontend/src/lib/server/copilot/grading-gate.ts`, CLI
   `frontend/scripts/verify-grading-gate.mjs`, vitest
   `src/tests/copilot/grading-gate.test.ts`) validates proposed grading against
