@@ -11,20 +11,24 @@ literal that builds it (test helpers included).
 ## 1. Submission record & the executed notebook
 
 **`SubmissionRecord`** (server) — one metadata entry per submission, read/written
-by `frontend/src/lib/server/metadata.ts`:
+by `frontend/src/lib/server/metadata.ts` (`metadata.json`, keyed by studentId):
 
 ```ts
 {
-  id: string;            // === studentId, e.g. "2026SS_01"
+  id: string;              // === studentId, e.g. "2026SS_01"
   studentId: string;
-  semester: string;      // e.g. "2026SS"
   assignmentId: string;
-  fileName: string;
-  relativePath: string;  // e.g. "submissions/soil/2026SS_01.ipynb"
-  status: "pending" | "executing" | "executed" | "error" | "pre-evaluated" | "graded" | "archived";
-  error?: string;
-  executedAt?: string;
-  preEvalId?: string;
+  semester: string;        // derived from the student ID prefix, e.g. "2026SS"
+  fileName: string;        // original uploaded file name
+  notebookPath: string;    // notebook path relative to DATA_DIR, e.g. "submissions/soil/2026SS_01.ipynb"
+  status: SubmissionStatus; // "pending" | "executing" | "executed" | "error" | "pre-evaluated" | "graded" | "archived"
+  cellSummary?: string;    // e.g. "6 cells, 1 diff"
+  teacherGrade?: number;
+  error?: string | null;
+  grading?: GradingState;  // rubric / dimensions / feedback / notes
+  archivedFrom?: SubmissionStatus;
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
@@ -46,57 +50,63 @@ rendered in a **sandboxed iframe**, and **filtered out before any prompt**.
 
 ## 2. The `PreEvaluation` envelope
 
-The pipeline's output is a single envelope per submission (type in
-`pre-evaluation.ts`, mirrors on the client in `types/submissions.ts`):
+The pipeline's output is a single envelope per submission (server type in
+`pre-evaluation.ts`, client mirror in `types/submissions.ts`):
 
 ```ts
+// server — `PreEvaluation` (frontend/src/lib/server/copilot/pre-evaluation.ts)
 {
-  markers: CellMarker[];                 // Phase 1
-  dimensionScores: Record<dimensionKey, number>;   // points, 0..max_points
-  rubricSelections: Record<categoryKey, string[]>; // checked option keys (verbatim YAML texts)
-  additionalNotes: Record<categoryKey, string>;
-  feedbackDraft: CategoryFeedback[];
+  markers: PreEvaluationMarker[] | null;       // Phase 1; null = no reference key available
   gradeSuggestion: {
-    dimensions: Record<string, number>;
-    percentage: number;
-    grade: string;                       // e.g. "2.3"
-    rubric: Record<string, string>;
-    feedback: Record<string, CategoryFeedback>;
-    notes: string;
-    weightedPercentage?: number;
+    dimensions: Record<string, number>;        // dimension id -> points (0..max_points)
+    justification: string;                     // free-form rationale for the suggested grade
   };
-  evaluatedAt: string;
-  gradingConfidence?: "needs_review" | "review_optional" | "high_confidence";  // optional on legacy
-  calibrationAdjustments?: CalibrationAdjustment[];  // [{ submissionId, dimension, oldScore, newScore, reason }]
-  overTick?: OverTickResult;              // advisory Signals A/B/C
+  rubricSelections?: { categoryKey: string; optionKey: string }[];  // LLM-selected rubric items
+  additionalNotes?: Record<string, string>;    // per-category worksheet notes
+  feedbackDraft: string;                       // draft worksheet feedback text
+  notebookSummary: string;                     // prose summary for the teacher
+  gradingConfidence?: "needs_review" | "review_optional" | "high_confidence"; // optional on legacy
 }
 ```
 
 **Wiring / translation:**
 - The **client mirror** `PreEvalData` (`types/submissions.ts`) is what the UI
-  reads. The detail endpoint (`api/submissions/[id]/+server.ts`) translates the
-  server snake_case → client camelCase (e.g. `cell_index` → `cellIndex`).
+  reads. The detail endpoint (`api/submissions/[id]/+server.ts`) maps each
+  stored marker's `cell_index` → `cellIndex` and passes through
+  `gradeSuggestion` / `rubricSelections` / `additionalNotes` /
+  `feedbackDraft` / `notebookSummary` / `gradingConfidence` / `evaluatedAt`.
 - `gradingConfidence` is **optional** on the stored envelope (legacy rows lack
-  it) but **required** on the pipeline return; the list endpoint enriches rows
+  it) but the pipeline return always sets it; the list endpoint enriches rows
   with `stored?.preEval?.gradingConfidence`, and legacy rows without it only
   match the "All" confidence filter.
-- `calibrationAdjustments` is passed through on the detail response so the UI
-  can show the old→new recalibration note (B3).
+- `calibrationAdjustments` and `overTick` are advisory siblings on the detail
+  response: the old→new recalibration notes (B3) and the over-tick flags
+  computed from the committed cohort norms (`over-tick.ts`).
+- The corrected grading data travels alongside the raw envelope as
+  `PreEvaluationWithPostProcess` = `PreEvaluation` & `{ postProcessed:
+  PostProcessData, postProcessFixes: PostProcessFix[] }`.
+  `PostProcessData` holds `dimensions` (points, 0..max_points),
+  `rubricSelections`, and `additionalNotes` after the 7 deterministic passes.
 
 ### 2.1 Envelope persist order
 
-`preEvaluateSubmission → setPreEvaluation` (results-store) → `results.json`
-holds `{ preEval, postProcessed, postProcessFixes, calibrationAdjustments }`.
-`runCohortCalibration` overwrites **both** `preEval` and `postProcessed`
-dimensions (calibration is the final authority); the adjustments keep the
-old→new audit trail.
+`preEvaluateSubmission → setPreEvaluation` (`results-store.ts`) →
+`results.json` holds per student: `{ preEval, postProcessed,
+postProcessFixes, calibrationAdjustments }` (the raw `preEval` envelope stays
+the untouched LLM output; the corrected view is stored as siblings).
+`runCohortCalibration` (`pre-evaluation.ts`) overwrites the dimensions in
+**both** `preEval.gradeSuggestion.dimensions` and `postProcessed.dimensions`
+(calibration is the final authority); the adjustments keep the old→new audit
+trail.
 
 ---
 
 ## 3. Grading state (what the teacher + copilot edit)
 
 Grading is a **merge** of the pre-eval draft with teacher/copilot edits, all
-persisted through `saveGrading` (`metadata.ts` / `grading-persistence.ts`):
+persisted through `saveGrading` (server `frontend/src/lib/server/metadata.ts`;
+the client calls it via `frontend/src/lib/services/submissions-api.ts`). The
+`GradingState` shape is a subset of the pre-eval merge:
 
 ```ts
 {
@@ -111,6 +121,9 @@ persisted through `saveGrading` (`metadata.ts` / `grading-persistence.ts`):
   `save-grading` reject out-of-range values against `grading_config.yaml`
   `max_points` at run time (B7). The UI slider max is `dimension.max_points`;
   `calculateGrade` clamps and computes weighted percentage/grade.
+- `frontend/src/lib/services/grading-persistence.ts` bridges the live
+  `CategorySelections` (Sets) and the persisted `CategoryFeedback` shape
+  (`selectionsToFeedback` / `feedbackToSelections`), losslessly.
 - The **change ledger** shows teacher-facing accept/reject diffs (previous →
   new) and **turn checkpoints** allow reverting a whole copilot turn.
 
@@ -121,10 +134,10 @@ persisted through `saveGrading` (`metadata.ts` / `grading-persistence.ts`):
 | File | Holds | Loaded by |
 | --- | --- | --- |
 | `data/assignments.yaml` | `assignments:` list (id, title, enabled, criteria_files, dimensions) | `assignments.ts` |
-| `data/grading_config.yaml` | **Global** dimensions (key, title, `max_points`, weight) + grade boundaries | `grading-config.ts` (read fresh) |
+| `data/grading_config.yaml` | **Global** dimensions (key, title, `max_points`, weight) + grade boundaries | `services/grading-config.ts` (teacher mode via `GET /api/config/grading`); read directly by copilot modules (grading-gate, tools, pipeline `validate`/`context`) |
 | `data/criteria/<id>.yaml` | Rubric categories + verbatim option texts (sub-points) | `criteria.ts`, `worksheet.ts` |
 | `data/scoring/<id>.yaml` | **Per-assignment** scoring: `reference_anchors`, evidence regexes, `disallowed_libraries`, `allowed_libraries` (Pass 3), Phase 2a dimension guidance | `scoring-config.ts`, `cohort-calibration.ts`, post-process Pass 3 |
-| `data/cohort_norms/<id>.yaml` | Cohort norm references for the over-tick guard | `over-tick.ts` |
+| `data/cohort_norms/<id>.yaml` | Cohort norm references for the over-tick guard. **No longer tracked** (removed 2026-08-20 with the student-data strip) — `over-tick.ts` still reads `DATA_DIR/cohort_norms/<assignment>.yaml` at runtime; absent → no flags (best-effort guard) | `over-tick.ts` |
 | `data/settings.yaml` | llm (base_url/model/timeout), executor, copilot (approval mode, tool allow/deny, TTL…) | `settings.ts` (read fresh every request) |
 | `frontend/src/routes/layout.css` | Design tokens (colors/radii) — **the only place literals live** | every component via `var(--…)` |
 
@@ -148,7 +161,7 @@ persisted through `saveGrading` (`metadata.ts` / `grading-persistence.ts`):
 | `plagiarism-store.svelte.ts` | `result`, `assignmentId`; **sequence-guarded** `load` (BUG-019) | dashboard badge, plagiarism modal, per-submission tab |
 | `run-state.svelte.ts` | **shared registry** of process + pre-eval run state (`markRunStarted`/`markRunFinished`/`setRunSummary`) | list page (progress bar, Reset-disable, log live), dashboard, store polling (B4) |
 | `autofix-store.svelte.ts` | autofix dispositions / fixed-view set | detail page |
-| legacy teacher-side | `review/selection/session/grading/rubric/export` | student routes + old review flows |
+| review-side stores (`stores/`) | `review` / `selection` / `session` / `grading` / `rubric` / `export` — review worksheet, selections, and export flows; `header` / `settings` / `toast` — app chrome | review + export UI |
 
 **Wiring rule of thumb:** the **API client** (`submissions-api.ts`) is the only
 place that knows URL/JSON contracts; the **stores** own reactive state; the

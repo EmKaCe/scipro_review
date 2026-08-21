@@ -172,7 +172,8 @@ Improvements in v2:
 assignments.yaml ──► criteria_files ──► criteria/*.yaml (Criteria Schema)
                  ──► scoring_file ──► scoring/*.yaml (Scoring Config Schema)
                  ──► dimensions ──► grading_config.yaml (Grading Config Schema)
-                 ──► id ──► evaluations/*.yaml (Evaluation Output Schema)
+                 ──► id ──► Evaluation export (Evaluation Output Schema; exports are
+                            downloads, there is no evaluations/ directory in the repo)
 ```
 
 The assignments registry is the entry point that ties together criteria,

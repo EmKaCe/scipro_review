@@ -31,7 +31,7 @@ Do these in order. Each step maps to one place in the app (or one file).
 | 1 | **Create or import the assignment** | Assignments UI (`/settings/assignments`) → `data/assignments.yaml` | id, title, enabled, grading dimensions |
 | 2 | **Wire the criteria + scoring** | Assignment editor → `data/criteria/<id>.yaml` + `data/scoring/<id>.yaml` | The rubric checklist + scoring config (anchors, evidence, dimension guidance) |
 | 3 | **Configure the LLM provider** | `.env` (start-up) or Settings → Execution & AI (runtime) | Base URL, model id, API key |
-| 4 | **Fetch the offline docs index** *(optional)* | `frontend/scripts/fetch-docs-index.mjs` or `build-docs-index.mjs` | Grounds API-fact checks; without it, search is BM25-only (see below) |
+| 4 | **Fetch the offline docs index** *(optional)* | `frontend/scripts/fetch-docs-index.mjs --public` (plain HTTPS, no gh CLI needed) or `build-docs-index.mjs` to rebuild | Grounds API-fact checks; without it, search is BM25-only (see below) |
 | 5 | **Upload the first submission** | Submissions page (`/submissions`) upload bar | Drag-and-drop; classified automatically |
 
 ### Where each one lives
@@ -47,8 +47,10 @@ Do these in order. Each step maps to one place in the app (or one file).
   endpoint** (KI Connect is the default; OpenRouter is a first-class target) —
   set the base URL, the provider-specific **model id**, and the key.
 - **Docs index** — the prebuilt offline index
-  (`<DATA_DIR>/docs-index/`) covers numpy / pandas / scipy / sklearn /
-  matplotlib / seaborn. Fetching it is **optional**: the index loader never throws — if the
+  (`<DATA_DIR>/docs-index/`) covers **38,380 chunks across 10 libraries** —
+  numpy, pandas, scipy, scikit-learn, matplotlib and seaborn, plus the Python
+  stdlib/builtins/typing and curated integration notes (4096-dim vectors).
+  Fetching it is **optional**: the index loader never throws — if the
   index is missing or the semantic (vector) leg is unavailable, retrieval
   **degrades to BM25-only** (exact-name matching) and logs a `loadNote`. That is
   quieter, not broken.
@@ -66,7 +68,7 @@ Do these in order. Each step maps to one place in the app (or one file).
 1. On the **submissions page** (`/submissions`), upload one or more notebooks
    (drag-and-drop onto the upload bar; files are classified automatically —
    notebooks become submissions, data files become assignment materials).
-2. Click **Process All** in the toolbar — the executor runs every notebook in its
+2. Click **Process** in the toolbar — the executor runs every notebook in its
    own sandbox with the assignment's input data. A failing or timing-out notebook
    does not block the batch; row status updates as each finishes. Watch the
    **progress bar** and the **pipeline log** panel.
@@ -146,18 +148,24 @@ produce, the pipeline flags it for your review.
   `/audit` (common issues), `/plagiarism` (check others), `/compare` (vs.
   reference key), `/fix` (broken cells), `/explain`, `/grade`, `/help`. Use
   `/help` to list the available commands.
-- **Approval modes** (set in Settings → Execution & AI): **Ask** (default —
-  every tool action asks you first), **Auto-approve all** (trusted, low-cost
-  ops), **Read-only** (can look and reason but change nothing). There are also
-  per-mode **allow/deny lists** for tools, and some actions are hard-blocked
-  regardless of mode.
+- **Approval modes**: **Ask** (default — approval-class tools pause for your
+  confirmation), **Auto-approve all** (unattended bulk runs; destructive and
+  costly bulk tools still ask), **Read-only** (can look and reason but change
+  nothing). The **Ask ↔ Auto-approve all** toggle lives in the copilot panel
+  header; the persistent mode is `data/settings.yaml` (`copilot.mode`), not
+  the Settings page. Per-tool **allow/deny lists** (`allowed_tools` /
+  `deny_tools`) refine the mode — deny-listed tools are never callable, and
+  destructive tools (`delete-assignment`, `archive-submission`) always require
+  your explicit confirmation in every mode.
 
 ### Save & export
 
 - **Save** — grading data persists to the server per submission, so you can close
   the page and resume later.
-- **Export** — download the graded review as **YAML**, **Markdown**, or **JSON**
-  for delivery to students or archiving.
+- **Export** — download the graded review as **YAML**: the **student** format
+  (`<studentId>.yaml` — v2 evaluation-output, what the student web app
+  imports) or the **teacher** format (`<studentId>-teacher.yaml` — full record
+  incl. rubric, scores, notes, plagiarism audit).
 
 ---
 
@@ -183,8 +191,8 @@ regexes against real executed output before trusting it.
 
 | What | How |
 |---|---|
-| **Single review** | Open the submission → **Export** → YAML / Markdown / JSON |
-| **Batch / legacy format** | Use the JSON export; the app emits **legacy format** export keys for the downstream workflow |
+| **Single review** | Open the submission → **Export** → student YAML or teacher YAML |
+| **Batch** | Submissions page → bulk export of the selected rows — a single YAML when one row, a **ZIP bundle** when many (student or teacher copies) |
 | **Save semantics** | Saving persists to the server (per-submission results); exporting downloads a file — they are separate actions |
 
 ### Backup & restore

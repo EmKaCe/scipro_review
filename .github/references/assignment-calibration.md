@@ -19,7 +19,7 @@ works at every layer without any of them, but quality comes from filling them.
 | 2 | Rubric (criteria) | Criteria editor + upload (`/settings/assignments/<id>/criteria`) → `data/criteria/<id>.yaml` | The checklist + option texts. Phase 2b rubric selection and the **copilot** read these | Feedback quality, copilot grounding |
 | 3 | Reference key + materials | Materials upload (`/api/assignments/[id]/materials`) | What Phase 1 compares cells against; input data | Cell markers ("same/different/questionable") |
 | 4 | Scoring config | Scoring editor (`/settings/assignments/<id>/scoring`) → `data/scoring/<id>.yaml` | Anchors, evidence patterns, disallowed/allowed libraries, Phase 2a dimension guidance | Dimension-score quality, calibration |
-| 5 | Docs index coverage | Prebuilt offline index (`docs-index/`) | Docs grounding (signatures/params) for API-fact checks | Grounded API verification — only for numpy/pandas/scipy/sklearn/matplotlib; other libraries degrade to BM25-only |
+| 5 | Docs index coverage | Prebuilt offline index (`docs-index/`) | Docs grounding (signatures/params) for API-fact checks | Grounded API verification — only for the 10-library corpus (numpy, pandas, scipy, scikit-learn, matplotlib, seaborn + stdlib/builtins/typing + curated integration notes; 38,380 chunks); other libraries degrade to BM25-only |
 
 ## 2. The calibration loop (the only way to reach soil-like quality)
 

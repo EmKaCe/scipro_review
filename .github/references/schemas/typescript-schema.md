@@ -1,7 +1,10 @@
 # TypeScript Type Schema
 
 > **Status**: v2 — Complete TypeScript type definitions for the SciPro Review
-> application. Aligned with the YAML schema specification in `docs/schema/`.
+> application. Aligned with the YAML schema specification in
+> `.github/references/schemas/`. The files described here live in
+> `frontend/src/lib/types/`; a barrel (`index.ts`) re-exports the domain
+> types and helpers.
 
 ## Overview
 
@@ -10,17 +13,26 @@ Types are organized into four domains:
 
 | Domain | Source | Types File |
 |--------|--------|------------|
-| **Criteria** | `criteria/*.yaml` | `types/criteria.ts` |
-| **Grading** | `grading_config.yaml` | `types/grading.ts` |
-| **Evaluation** | `evaluations/*.yaml` | `types/evaluation.ts` |
-| **Assignments** | `assignments.yaml` | `types/assignments.ts` |
+| **Criteria** | `criteria/*.yaml` | `frontend/src/lib/types/criteria.ts` |
+| **Grading** | `grading_config.yaml` | `frontend/src/lib/types/grading.ts` |
+| **Evaluation** | `evaluations/*.yaml` | `frontend/src/lib/types/evaluation.ts` |
+| **Assignments** | `assignments.yaml` | `frontend/src/lib/types/assignments.ts` |
 
 Plus two supporting modules:
 
 | Module | Purpose | Types File |
 |--------|---------|------------|
-| **Session** | In-progress review state | `types/session.ts` |
-| **Persistence** | IndexedDB / file storage | `types/persistence.ts` |
+| **Session** | In-progress review state | `frontend/src/lib/types/session.ts` |
+| **Persistence** | IndexedDB / file storage | `frontend/src/lib/types/persistence.ts` |
+
+> The **pipeline envelope types** (pre-evaluation wire contract) live
+> separately in `frontend/src/lib/types/submissions.ts`: `PreEvalData`,
+> `PreEvalGradeSuggestion`, `GradingConfidence`, `CalibrationAdjustment`,
+> `OverTickResult`, `SubmissionMeta`, `SubmissionDetail`. Their server-side
+> counterparts (`PreEvaluation`, `PreEvaluationWithPostProcess`,
+> `StoredPreEvaluation`) are defined in
+> `frontend/src/lib/server/copilot/pre-evaluation.ts` /
+> `frontend/src/lib/server/results-store.ts`. See data-structures.md §2.
 
 ## Design Principles
 
@@ -39,7 +51,7 @@ Plus two supporting modules:
 
 ---
 
-## `types/criteria.ts` — Rubric Criteria
+## `frontend/src/lib/types/criteria.ts` — Rubric Criteria
 
 ```typescript
 /**
@@ -59,8 +71,8 @@ export type Sentiment = "positive" | "neutral" | "negative";
 /**
  * Branded category key — a snake_case string identifying a rubric category.
  *
- * Use `CategoryKey.parse()` to create from untrusted input, or
- * `CategoryKey.of()` for known-literal values.
+ * Use `parseCategoryKey()` to create from untrusted input, or
+ * `categoryKeyOf()` for known-literal values.
  */
 export type CategoryKey = string & { readonly __brand: "CategoryKey" };
 
@@ -120,7 +132,7 @@ export interface Category {
  */
 export interface CriteriaFile {
   /** Rubric categories keyed by snake_case identifier. */
-  readonly categories: Readonly<Record<CategoryKey, Category>>;
+  readonly categories: Readonly<Record<string, Category>>;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,7 +192,7 @@ export function hasDeductionItems(category: Category): boolean {
 
 ---
 
-## `types/grading.ts` — Grading Configuration & Calculation
+## `frontend/src/lib/types/grading.ts` — Grading Configuration & Calculation
 
 ```typescript
 /**
@@ -216,6 +228,8 @@ export interface GradeDimension {
   readonly max_points: number;
   /** Weight multiplier for percentage calculation. */
   readonly weight: number;
+  /** Optional per-score-range descriptions for tooltip display. */
+  readonly descriptions?: Record<string, string>;
 }
 
 /** A grade boundary in the German grading scale. */
@@ -224,8 +238,10 @@ export interface GradeBoundary {
   readonly min_percentage: number;
   /** German grade value (1.0 = best, 5.0 = fail). */
   readonly grade: number;
-  /** US letter-grade equivalent (e.g., "A+", "B-", "F"). */
+  /** German grade descriptor (e.g., "excellent", "good"). */
   readonly label: string;
+  /** US letter-grade equivalent (e.g., "A+", "B-"). */
+  readonly us_equiv: string;
 }
 
 /** Full grading configuration parsed from grading_config.yaml. */
@@ -283,8 +299,10 @@ export interface GradeResult {
   readonly percentage: number;
   /** German grade (1.0–5.0). */
   readonly grade: number;
-  /** US letter-grade label. */
+  /** German grade descriptor (e.g., "excellent", "good"). */
   readonly label: string;
+  /** US letter-grade equivalent (e.g., "A+", "B-"). */
+  readonly us_equiv: string;
   /** Points needed to reach the next better grade band. Null at 1.0. */
   readonly points_to_next_grade: number | null;
   /** Points above the current grade boundary. */
@@ -317,7 +335,7 @@ export interface GradeStatistics {
 
 ---
 
-## `types/evaluation.ts` — Evaluation Output
+## `frontend/src/lib/types/evaluation.ts` — Evaluation Output
 
 ```typescript
 /**
@@ -325,10 +343,11 @@ export interface GradeStatistics {
  * a grader completes a review.
  *
  * This is the v2 nested format that replaces the legacy flat key-value export.
- * See docs/schema/evaluation-output-schema.md for the full specification.
+ * See .github/references/schemas/evaluation-output-schema.md for the full specification.
  */
 
-import type { CategoryKey, DimensionKey } from "./grading";
+import type { CategoryKey } from "./criteria.js";
+import type { DimensionKey } from "./grading.js";
 
 // ---------------------------------------------------------------------------
 // Branded student ID
@@ -389,8 +408,7 @@ export interface EvaluationResult {
 /**
  * Complete evaluation output — the canonical format for a graded review.
  *
- * Serialized as YAML (`data/evaluations/2026SS_03.yaml`) or JSON.
- * Also rendered as Markdown (`data/evaluations/2026SS_03.md`).
+ * Serialized as YAML or JSON for export. Also rendered as Markdown.
  */
 export interface Evaluation {
   /** Student identifier. */
@@ -405,14 +423,16 @@ export interface Evaluation {
   readonly scores: EvaluationScores;
   /** Feedback for each rubric category. */
   readonly feedback: Readonly<Record<CategoryKey, CategoryFeedback>>;
-  /** Computed grade result. */
-  readonly result: EvaluationResult;
+  /** Computed grade result (optional for backward compatibility). */
+  readonly result?: EvaluationResult;
+  /** Free-text feedback notes (top-level, teacher-written). */
+  readonly notes?: string;
 }
 ```
 
 ---
 
-## `types/assignments.ts` — Assignment Registry
+## `frontend/src/lib/types/assignments.ts` — Assignment Registry
 
 ```typescript
 /**
@@ -422,8 +442,7 @@ export interface Evaluation {
  * Loaded from data/assignments.yaml.
  */
 
-import type { CategoryKey } from "./criteria";
-import type { DimensionKey } from "./grading";
+import type { DimensionKey } from "./grading.js";
 
 // ---------------------------------------------------------------------------
 // Assignment
@@ -439,6 +458,8 @@ export interface Assignment {
   readonly enabled: boolean;
   /** Ordered list of criteria YAML files (relative to data/criteria/). */
   readonly criteria_files: readonly string[];
+  /** Optional per-assignment scoring config (data/scoring/<id>.yaml). */
+  readonly scoring_file?: string;
   /** Dimension keys that apply to this assignment. */
   readonly dimensions: readonly DimensionKey[];
 }
@@ -475,7 +496,7 @@ export function enabledAssignments(
 
 ---
 
-## `types/session.ts` — In-Progress Review State
+## `frontend/src/lib/types/session.ts` — In-Progress Review State
 
 ```typescript
 /**
@@ -487,8 +508,8 @@ export function enabledAssignments(
  * Contrast with `types/evaluation.ts` which represents the immutable output.
  */
 
-import type { CategoryKey, SubPoint } from "./criteria";
-import type { GradingInputs } from "./grading";
+import type { CategoryKey } from "./criteria.js";
+import type { GradingInputs } from "./grading.js";
 
 // ---------------------------------------------------------------------------
 // Category selection state
@@ -515,9 +536,6 @@ export interface CategorySelections {
 // Review session
 // ---------------------------------------------------------------------------
 
-/** View mode for the review interface. */
-export type ReviewMode = "student" | "teacher";
-
 /**
  * Complete in-progress review session.
  *
@@ -529,14 +547,16 @@ export interface ReviewSession {
   student_id: string;
   /** Assignment key. */
   assignment_id: string;
-  /** Review mode. */
-  mode: ReviewMode;
+  /** Review mode (for backward compatibility with persisted sessions). */
+  mode: string;
   /** Per-category selections keyed by category key. */
   category_selections: Record<CategoryKey, CategorySelections>;
   /** Raw scores for each grading dimension. */
   grading: GradingInputs;
   /** Generated evaluation text (Markdown). */
   generated_text: string;
+  /** Free-text feedback notes (top-level, teacher-written; optional). */
+  notes?: string;
   /** ISO timestamp when the session was started. */
   started_at: string;
   /** ISO timestamp of the last update. */
@@ -548,22 +568,16 @@ export interface ReviewSession {
 // ---------------------------------------------------------------------------
 
 /**
- * Convert a ReviewSession to an Evaluation (immutable output).
+ * Convert category selections to category feedback (immutable output).
  *
- * This is called when the grader finalizes the review. The session's
- * mutable state is frozen into the canonical output format.
+ * This is called when the grader finalizes the review.
  */
-export interface SessionToEvaluationOptions {
-  /** Reviewer name to include in the evaluation. */
-  reviewer: string;
-  /** Computed grade result. */
-  result: import("./evaluation").EvaluationResult;
-}
-
-/** Convert category selections to category feedback. */
-export function categorySelectionsToFeedback(
-  selections: CategorySelections
-): import("./evaluation").CategoryFeedback {
+export function categorySelectionsToFeedback(selections: CategorySelections): {
+  checked: string[];
+  comments: Record<string, string>;
+  deductions: Record<string, number>;
+  notes: string;
+} {
   return {
     checked: [...selections.checked_items],
     comments: { ...selections.comments },
@@ -575,15 +589,14 @@ export function categorySelectionsToFeedback(
 
 ---
 
-## `types/persistence.ts` — Storage & Export
+## `frontend/src/lib/types/persistence.ts` — Storage & Export
 
 ```typescript
 /**
  * Types for IndexedDB persistence and file export.
  */
 
-import type { ReviewSession } from "./session";
-import type { Evaluation } from "./evaluation";
+import type { ReviewSession } from "./session.js";
 
 // ---------------------------------------------------------------------------
 // IndexedDB records
@@ -606,7 +619,7 @@ export interface ReviewRecord {
   /** ISO timestamp of the last update. */
   readonly updated_at: string;
   /** Full serialized session state. */
-  readonly data: ReviewSession;
+  data: ReviewSession;
 }
 
 /** Auto-save sentinel record for the current in-progress session. */
@@ -665,36 +678,37 @@ export const SESSION_STORE = "reviews" as const;
 ## Type Dependency Graph
 
 ```
-types/criteria.ts
+frontend/src/lib/types/criteria.ts
   ├── CategoryKey (branded)
   ├── SubPoint, MainPoint, Category
   ├── CriteriaFile, MergedRubric, CategoryEntry
   └── Sentiment
 
-types/grading.ts
+frontend/src/lib/types/grading.ts
   ├── DimensionKey (branded)
   ├── GradeDimension, GradeBoundary, GradingConfig  ← read-only config
   ├── GradingInputs                                ← mutable grader input
   └── GradeResult, DimensionResult                 ← computed output
 
-types/evaluation.ts
+frontend/src/lib/types/evaluation.ts
   ├── StudentId (branded)
   ├── CategoryFeedback                             ← per-category output
   ├── EvaluationScores, EvaluationResult           ← scores + grade
-  └── Evaluation                                    ← canonical output format
+  ├── Evaluation                                   ← canonical output format
+  └── imports CategoryKey (criteria), DimensionKey (grading)
 
-types/assignments.ts
+frontend/src/lib/types/assignments.ts
   ├── Assignment, AssignmentsRegistry               ← read-only config
-  └── imports CategoryKey, DimensionKey
+  └── imports DimensionKey
 
-types/session.ts
+frontend/src/lib/types/session.ts
   ├── CategorySelections, ReviewSession              ← mutable state
-  └── imports CategoryKey, SubPoint, GradingInputs
+  └── imports CategoryKey, GradingInputs
 
-types/persistence.ts
+frontend/src/lib/types/persistence.ts
   ├── ReviewRecord, CurrentSessionRecord             ← IndexedDB
   ├── BulkExport, ExportOptions                      ← file export
-  └── imports ReviewSession, Evaluation
+  └── imports ReviewSession
 ```
 
 ## Key Naming Convention
@@ -729,34 +743,32 @@ grade("code_formatting", "2026SS_03");  // Oops! Swapped args, no error
 
 // With branding — compiler catches the mistake:
 function grade(studentId: StudentId, categoryKey: CategoryKey) { ... }
-grade(CategoryKey.of("code_formatting"), StudentId.of("2026SS_03"));  // OK
-grade(StudentId.of("2026SS_03"), CategoryKey.of("code_formatting"));  // Error!
+grade(categoryKeyOf("code_formatting"), studentIdOf("2026SS_03"));  // OK
+grade(studentIdOf("2026SS_03"), categoryKeyOf("code_formatting"));  // Error!
 ```
 
 ### Brand Helpers
 
-```typescript
-// In a shared types/helpers.ts file:
+The brand factories are **per-module plain functions**, not a shared
+`types/helpers.ts` object:
 
-/** Create a branded type factory. */
-function brand<T extends string>(brand: T) {
-  return {
-    of(value: string): string & { readonly __brand: T } {
-      return value as string & { readonly __brand: T };
-    },
-    parse(value: string): string & { readonly __brand: T } | undefined {
-      return value as string & { readonly __brand: T };
-    },
-    is(value: string & { readonly __brand?: string }): value is string & { readonly __brand: T } {
-      return (value as any).__brand === brand;
-    },
-  };
+```typescript
+// in frontend/src/lib/types/criteria.ts
+/** Create a CategoryKey from an untrusted string. Trims whitespace. */
+export function parseCategoryKey(value: string): CategoryKey {
+  return value.trim() as CategoryKey;
 }
 
-export const CategoryKey = brand<"CategoryKey">("CategoryKey");
-export const DimensionKey = brand<"DimensionKey">("DimensionKey");
-export const StudentId = brand<"StudentId">("StudentId");
+/** Create a CategoryKey from a known-literal value (no validation). */
+export function categoryKeyOf(value: string): CategoryKey {
+  return value as unknown as CategoryKey;
+}
+
+// grading.ts / evaluation.ts provide the same pair for their brands:
+// parseDimensionKey / dimensionKeyOf, parseStudentId / studentIdOf
 ```
+
+All three modules are re-exported together from the `index.ts` barrel.
 
 ## Migration from v1.5 Svelte Prototype Types
 
@@ -767,7 +779,7 @@ export const StudentId = brand<"StudentId">("StudentId");
 | `AssignmentConfig` | `Assignment` | Added `dimensions` field |
 | `GradingConfig` (no boundaries) | `GradingConfig` (with `grade_boundaries`) | Boundaries in config |
 | `GradeBoundary.min_pct` | `GradeBoundary.min_percentage` | snake_case |
-| `GradeBoundary.us_equiv` | `GradeBoundary.label` | Renamed |
+| `GradeBoundary.us_equiv` | `GradeBoundary.us_equiv` (kept) | Now alongside `label` (German descriptor) — both fields exist |
 | `CategorySelections.additional_notes` | `CategorySelections.notes` | Renamed |
 | `ReviewSession.subpoint_comments` | `CategorySelections.comments` | Moved into category |
 | `ReviewSession.subpoint_deductions` | `CategorySelections.deductions` | Moved into category |

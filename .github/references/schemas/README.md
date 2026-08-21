@@ -25,11 +25,10 @@
 ```mermaid
 graph TD
     A[assignments.yaml] -->|select assignment| B[criteria files + scoring file]
-    B -->|load & merge| C[CriteriaBundle + ScoringConfig]
+    B -->|load & merge| C[MergedRubric + ScoringConfigDocument]
     C -->|grader selects| D[ReviewSession]
     D -->|export| E[Evaluation YAML]
     D -->|export| F[Evaluation MD]
-    E -->|aggregate| G[grading_summary.yaml]
 ```
 
 ## File Layout
@@ -94,7 +93,7 @@ data/
 | `sklearn` | sklearn | soil_contamination |
 | `genai` | GenAI | soil_contamination |
 | `plotting_visualization` | Plotting / Visualization | soil_contamination |
-| `valid_values` / `wrong_numbers` / `atom_interaction` / `user_function` / `plotting_data` | Atom Interaction categories | atom_interaction (see [criteria-schema.md](criteria-schema.md)) |
+| `valid_values` / `wrong_numbers` / `atom_interaction` / `user_function` / `calling_function` / `pandas` / `plotting_data` | Atom Interaction categories | atom_interaction (see [criteria-schema.md](criteria-schema.md)) |
 
 ### Grading Dimensions
 
