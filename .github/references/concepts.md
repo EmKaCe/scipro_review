@@ -181,5 +181,5 @@ reload); it may bind on the LAN since it's developer-only.
 | Understand the data shapes | [Data structures](data-structures.md) |
 | Onboard a new assignment | [Calibration guide](assignment-calibration.md) |
 | Know what it gets right / needs review | [Quality statement](quality-statement.md) |
-| Understand a recent decision | [Decision record: monolith split](decisions/adr-001-monolith-split.md) |
+| Understand the layout choices | See [Architecture](architecture.md) — past design decisions live in git history |
 | Follow the developer workflow + glossary | [Developer guide](developer-guide.md) |

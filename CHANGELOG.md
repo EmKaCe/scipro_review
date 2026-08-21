@@ -9,6 +9,11 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+### Docs
+
+- Removed the closed monolith-split ADR (decision is stable; git history keeps
+  it) and its pointers; corrected the README's CI and Dependabot claims.
+
 ## [2.5.1] - 2026-08-21
 
 ### Added
