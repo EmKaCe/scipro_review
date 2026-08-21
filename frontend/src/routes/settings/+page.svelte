@@ -35,32 +35,49 @@
 <div class="mx-auto max-w-2xl px-4 py-8">
 	<div class="space-y-6">
 		<AppearanceCard />
-		<ExecutionAiCard />
-		<GradingConfigCard />
-		<ConfigurationMapCard />
-		<a
-			href={`${base}/onboarding`}
-			class="group flex items-center justify-between gap-4 rounded-[var(--radius)] border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/40"
-		>
-			<span class="flex items-start gap-3">
-				<ListChecks class="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-				<span>
-					<span class="block text-sm font-medium text-foreground"
-						>First-run setup checklist</span
-					>
-					<span class="mt-0.5 block text-xs text-muted-foreground">
-						Guided checklist for getting SciPro Review ready — assignments, scoring,
-						LLM, docs index.
+		{#if base === ""}
+			<ExecutionAiCard />
+			<GradingConfigCard />
+			<ConfigurationMapCard />
+			<a
+				href={`${base}/onboarding`}
+				class="group flex items-center justify-between gap-4 rounded-[var(--radius)] border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/40"
+			>
+				<span class="flex items-start gap-3">
+					<ListChecks class="mt-0.5 h-5 w-5 shrink-0 text-primary" />
+					<span>
+						<span class="block text-sm font-medium text-foreground"
+							>First-run setup checklist</span
+						>
+						<span class="mt-0.5 block text-xs text-muted-foreground">
+							Guided checklist for getting SciPro Review ready — assignments, scoring,
+							LLM, docs index.
+						</span>
 					</span>
 				</span>
-			</span>
-			<span class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}>
-				Setup
-				<ArrowUpRight class="h-3.5 w-3.5" />
-			</span>
-		</a>
-		<DataManagementCard />
+				<span class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}>
+					Setup
+					<ArrowUpRight class="h-3.5 w-3.5" />
+				</span>
+			</a>
+			<DataManagementCard />
+			<DangerZoneCard />
+		{:else}
+			<div
+				class="rounded-[var(--radius)] border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground"
+			>
+				Teacher-only settings (LLM provider, scoring config, data management, and the
+				first-run setup checklist) are available in the self-hosted teacher build of
+				SciPro Review — see the <a
+					class="text-primary hover:underline"
+					href="https://github.com/EmKaCe/scipro_review"
+					target="_blank"
+					rel="noopener noreferrer"
+					>README</a
+				>
+				for setup instructions.
+			</div>
+		{/if}
 		<AboutCard />
-		<DangerZoneCard />
 	</div>
 </div>

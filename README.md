@@ -542,22 +542,22 @@ The canonical, current reference is
 
 ```mermaid
 flowchart TD
-    A[Upload notebooks] --> B[executor runs them<br/>hardened container]
-    B --> C[results.json: cells + rich outputs]
-    C --> D[Pre-evaluation pipeline<br/>markers → dim scores → turn-based rubric → feedback]
-    D --> E[post-process 7 passes + cohort calibration]
-    E --> F[PreEvaluation envelope + gradingConfidence + calibrationAdjustments]
-    F --> G[Teacher reviews + Accept/Reject]
-    G --> H[saveGrading → export (legacy format)]
+    A[Upload notebooks] --> B[executor - hardened container]
+    B --> C[results.json - cells and rich outputs]
+    C --> D[pre-eval - markers, dim scores, rubric, feedback]
+    D --> E[post-process - 7 passes and calibration]
+    E --> F[PreEvaluation envelope + confidence]
+    F --> G[teacher review - accept or reject]
+    G --> H[export grades]
 ```
 
 ### Pre-evaluation inside
 
 ```mermaid
 flowchart LR
-    P1[Phase 1<br/>cell markers] --> P2A[Phase 2a<br/>dimension scores<br/>docs-RAG grounded]
-    P2A --> P2B[Phase 2b<br/>turn-based rubric<br/>1 category per call]
-    P2B --> PP[post-process<br/>7 passes]
+    P1[Phase 1 - cell markers] --> P2A[Phase 2a - dimension scores + docs-RAG]
+    P2A --> P2B[Phase 2b - turn-based rubric, one category per call]
+    P2B --> PP[post-process - 7 passes]
     PP --> CAL[cohort calibration]
 ```
 
@@ -565,7 +565,7 @@ flowchart LR
 
 The same codebase produces two builds via the `ADAPTER` environment variable:
 
-- `ADAPTER=static` (default): `adapter-static` — pre-rendered SPA for GitHub Pages. Student features only; teacher routes render stubs (student mode is the only deployed public build).
+- `ADAPTER=static` (default): `adapter-static` — pre-rendered SPA for GitHub Pages. Student features only; teacher-only surfaces are hidden in the static build (student mode is the only deployed public build).
 - `ADAPTER=node`: `adapter-node` — Node server for Docker/teacher mode. Full teacher routes with SSR, file upload, notebook execution, the pre-eval pipeline, and the copilot harness.
 
 ### State management
