@@ -91,6 +91,73 @@ function previewOutput(output: string): { text: string; truncated: boolean } {
 	};
 }
 
+/** A single screened, bounded cell preview surfaced to the model as a tool result. */
+interface ScreenedCellPreview {
+	index: number;
+	cell_type: string;
+	error: string | null;
+	sourcePreview: string;
+	outputPreview: string;
+}
+
+/** Result of screening one list of cells (counts feed the truncation notice). */
+interface CellPreviewPass {
+	previews: ScreenedCellPreview[];
+	truncatedSources: number;
+	truncatedOutputs: number;
+	injectionCells: number;
+}
+
+/**
+ * Screen + bound a list of executed cells into preview entries, one per cell.
+ * Cell source + text output are UNTRUSTED student/LLM content flowing into the
+ * model as a tool result — screen each cell before returning it.
+ * FAIL-OPEN: screenStudentContent degrades to "clean" on any API/parse
+ * failure, so a guard failure never breaks the tool.
+ */
+async function screenCellPreviews(
+	cells: Array<{
+		index: number;
+		type: string;
+		original_source?: string;
+		source: string;
+		output?: string;
+		error?: string | null;
+	}>,
+): Promise<CellPreviewPass> {
+	let truncatedSources = 0;
+	let truncatedOutputs = 0;
+	let injectionCells = 0;
+	const previews: ScreenedCellPreview[] = [];
+	for (const cell of cells) {
+		// What the student actually wrote (what the teacher sees); the
+		// cleaned as-executed source is the fallback when absent.
+		const source = cell.original_source?.trim() ? cell.original_source : cell.source;
+		const sourcePreview = previewSource(source);
+		const outputPreview = previewOutput(cell.output ?? "");
+		if (sourcePreview.truncated) truncatedSources += 1;
+		if (outputPreview.truncated) truncatedOutputs += 1;
+
+		let sourceText = sourcePreview.text;
+		let outputText = outputPreview.text;
+		const verdict = await screenStudentContent(`${sourceText}\n\n${outputText}`);
+		if (verdict === "injection") {
+			injectionCells += 1;
+			sourceText = INJECTION_CELL_PLACEHOLDER;
+			outputText = "";
+		}
+
+		previews.push({
+			index: cell.index,
+			cell_type: cell.type,
+			error: cell.error ?? null,
+			sourcePreview: sourceText,
+			outputPreview: outputText,
+		});
+	}
+	return { previews, truncatedSources, truncatedOutputs, injectionCells };
+}
+
 /** True for key.ipynb or the <name>_key.ipynb convention used in sample data. */
 function isKeyNotebook(name: string): boolean {
 	const lower = name.toLowerCase();
@@ -168,7 +235,7 @@ function isNodeError(err: unknown): err is NodeJS.ErrnoException {
 const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = {
 	name: "get-submission-context",
 	description:
-		"Load ground-truth context for one submission: student metadata, execution status, per-cell errors with bounded source/output previews, and the teacher's grading state (rubric, dimensions, feedback, notes, autofix dispositions).",
+		"Load ground-truth context for one submission: student metadata, execution status, per-cell errors with bounded source/output previews, the verified autofixed re-run (fixedCells) with the same bounded previews, and the teacher's grading state (rubric, dimensions, feedback, notes, autofix dispositions).",
 	permission: "auto",
 	inputSchema: submissionIdArgs,
 	run: async (args, ctx) => {
@@ -197,62 +264,49 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 		const stored = results[record.id];
 
 		const cells = stored?.cells ?? [];
-		let truncatedSources = 0;
-		let truncatedOutputs = 0;
-		let injectionCells = 0;
+		const fixedCells = stored?.fixedCells ?? null;
+
 		// (B13) Cell source + text output are UNTRUSTED student content flowing
 		// into the model as a tool result — screen each cell before returning it.
-		// FAIL-OPEN: screenStudentContent degrades to "clean" on any API/parse
-		// failure, so a guard failure never breaks the tool.
-		const executedCells: {
-			index: number;
-			cell_type: string;
-			error: string | null;
-			sourcePreview: string;
-			outputPreview: string;
-		}[] = [];
-		for (const cell of cells) {
-			// What the student actually wrote (what the teacher sees); the
-			// cleaned as-executed source is the fallback when absent.
-			const source = cell.original_source?.trim() ? cell.original_source : cell.source;
-			const sourcePreview = previewSource(source);
-			const outputPreview = previewOutput(cell.output ?? "");
-			if (sourcePreview.truncated) truncatedSources += 1;
-			if (outputPreview.truncated) truncatedOutputs += 1;
+		const executed = await screenCellPreviews(cells);
 
-			let sourceText = sourcePreview.text;
-			let outputText = outputPreview.text;
-			const verdict = await screenStudentContent(`${sourceText}\n\n${outputText}`);
-			if (verdict === "injection") {
-				injectionCells += 1;
-				sourceText = INJECTION_CELL_PLACEHOLDER;
-				outputText = "";
-			}
-
-			executedCells.push({
-				index: cell.index,
-				cell_type: cell.type,
-				error: cell.error ?? null,
-				sourcePreview: sourceText,
-				outputPreview: outputText,
-			});
-		}
+		// fixedCells is the verified clean re-run produced by the autofix stage.
+		// Its patched source is LLM-generated from student content and is equally
+		// untrusted — give it the SAME per-cell screening treatment.
+		const fixed = fixedCells && fixedCells.length > 0 ? await screenCellPreviews(fixedCells) : null;
 
 		const noticeParts: string[] = [];
-		if (truncatedSources > 0) {
+		if (executed.truncatedSources > 0) {
 			noticeParts.push(
-				`${truncatedSources} of ${executedCells.length} cell sources truncated at ${SOURCE_PREVIEW_LINES} lines`,
+				`${executed.truncatedSources} of ${executed.previews.length} cell sources truncated at ${SOURCE_PREVIEW_LINES} lines`,
 			);
 		}
-		if (truncatedOutputs > 0) {
+		if (executed.truncatedOutputs > 0) {
 			noticeParts.push(
-				`${truncatedOutputs} of ${executedCells.length} cell outputs truncated at ${OUTPUT_PREVIEW_CHARS} chars`,
+				`${executed.truncatedOutputs} of ${executed.previews.length} cell outputs truncated at ${OUTPUT_PREVIEW_CHARS} chars`,
 			);
 		}
-		if (injectionCells > 0) {
+		if (executed.injectionCells > 0) {
 			noticeParts.push(
-				`${injectionCells} of ${executedCells.length} cells flagged for possible injection — content removed`,
+				`${executed.injectionCells} of ${executed.previews.length} cells flagged for possible injection — content removed`,
 			);
+		}
+		if (fixed) {
+			if (fixed.truncatedSources > 0) {
+				noticeParts.push(
+					`${fixed.truncatedSources} of ${fixed.previews.length} fixed cell sources truncated at ${SOURCE_PREVIEW_LINES} lines`,
+				);
+			}
+			if (fixed.truncatedOutputs > 0) {
+				noticeParts.push(
+					`${fixed.truncatedOutputs} of ${fixed.previews.length} fixed cell outputs truncated at ${OUTPUT_PREVIEW_CHARS} chars`,
+				);
+			}
+			if (fixed.injectionCells > 0) {
+				noticeParts.push(
+					`${fixed.injectionCells} of ${fixed.previews.length} fixed cells flagged for possible injection — content removed`,
+				);
+			}
 		}
 
 		const grading = record.grading;
@@ -269,7 +323,8 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 			uploadedAt: record.createdAt,
 			error: record.error ?? null,
 			cellCount: stored ? (stored.totalCells ?? cells.length) : 0,
-			executedCells,
+			executedCells: executed.previews,
+			fixedCells: fixed ? fixed.previews : null,
 			rubric: grading?.rubric ?? {},
 			feedback: grading?.feedback ?? {},
 			gradingDimensions: grading?.dimensions ?? {},

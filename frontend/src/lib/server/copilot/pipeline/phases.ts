@@ -302,8 +302,9 @@ function buildCategoryUserPrompt(args: {
 	categoryTitle: string;
 	preAnalysis: PreAnalysis;
 	cells: readonly ExecutedCell[];
+	autofixBlock?: string | null;
 }): string {
-	const { worksheet, categoryKey, categoryTitle, preAnalysis, cells } = args;
+	const { worksheet, categoryKey, categoryTitle, preAnalysis, cells, autofixBlock } = args;
 	// Deterministic import facts for code_formatting decisions: the whole-list
 	// alphabetization verdict and any disallowed libraries found. These are
 	// computed facts, not model guesses — the model must align its import
@@ -357,6 +358,11 @@ function buildCategoryUserPrompt(args: {
 		"",
 		"Notebook source (EVIDENCE — verify every checkbox against this):",
 		...formatCellSourcePreview(cells),
+		// Autofix note: when the pipeline produced a verified clean re-run the
+		// cell-bearing phases grade downstream cells on the fixed output (the
+		// same block the Phase 2a scorer sees — kept byte-consistent). Absent
+		// for clean submissions, so the category-turn prompts are unchanged.
+		...(autofixBlock ? ["", autofixBlock] : []),
 		"",
 		"---",
 		"",
@@ -653,6 +659,8 @@ export async function runTurnBasedRubricSelection(args: {
 	cells: readonly ExecutedCell[];
 	model?: string;
 	temperature?: number;
+	/** Autofix note injected into every category-turn prompt (optional). */
+	autofixBlock?: string | null;
 }): Promise<{
 	rubricSelections: { categoryKey: string; optionKey: string }[];
 	additionalNotes: Record<string, string>;
@@ -679,6 +687,8 @@ async function runTurnBasedCategoryTurns(args: {
 	model?: string;
 	temperature?: number;
 	categoryKeys?: readonly string[];
+	/** Autofix note injected into every category-turn prompt (optional). */
+	autofixBlock?: string | null;
 }): Promise<{
 	worksheet: string;
 	rubricSelections: { categoryKey: string; optionKey: string }[];
@@ -695,6 +705,7 @@ async function runTurnBasedCategoryTurns(args: {
 		model,
 		temperature = 0.2,
 		categoryKeys,
+		autofixBlock,
 	} = args;
 
 	const rubricSelections: { categoryKey: string; optionKey: string }[] = [];
@@ -715,6 +726,7 @@ async function runTurnBasedCategoryTurns(args: {
 			categoryTitle,
 			preAnalysis,
 			cells,
+			autofixBlock,
 		});
 
 		let returnedSection = await callCategoryTurn({

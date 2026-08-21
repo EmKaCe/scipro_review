@@ -46,6 +46,13 @@ export type StoredPreEvaluation = PreEvaluation & { evaluatedAt: string };
  */
 export type StoredExecutionResult = ExecutionResult & {
 	error?: string | null;
+	/**
+	 * Teacher's per-cell autofix decisions: cell index -> "accepted" | "ignored".
+	 * Read by the pre-evaluation autofix block to make grading disposition-aware
+	 * ('ignored' falls back to the ORIGINAL error; everything else uses the
+	 * verified fixed run). Optional — the pipeline defaults to {} when absent.
+	 */
+	autofixDispositions?: Record<string, "accepted" | "ignored">;
 	preEval?: StoredPreEvaluation;
 	/** Corrected grading data from postProcessSubmission (7 deterministic passes). */
 	postProcessed?: PostProcessData;

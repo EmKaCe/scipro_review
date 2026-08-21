@@ -92,6 +92,9 @@ import {
 	loadAssignmentPdfText,
 	loadGradingDimensions,
 	loadKeySummary,
+	MAX_PREVIEW_CELLS,
+	previewOutput,
+	previewSource,
 	type DimensionBrief,
 	type KeySummary,
 	type Phase1Context,
@@ -121,7 +124,7 @@ import {
 	testEvidencePattern,
 	type ScoringConfig,
 } from "./scoring-config";
-import { screenNotebookCells } from "./screening";
+import { screenNotebookCells, INJECTION_CELL_PLACEHOLDER } from "./screening";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -376,6 +379,95 @@ interface ScoringResult {
 }
 
 
+/** Structural cell shape the autofix block reads (subset of ExecutedCell). */
+type AutofixPromptCell = {
+	index: number;
+	type: string;
+	source?: string;
+	original_source?: string;
+	output?: string | null;
+	error?: string | null;
+};
+
+/**
+ * Build the autofix-aware prompt block appended to every cell-judging phase
+ * (Phase 2a scoring + Phase 2b rubric selection) when the autofix pass
+ * produced a VERIFIED clean re-run (`fixedCells` non-empty).
+ *
+ * Consequential-error philosophy: the ROOT error in the original run is a
+ * student fault and thus a NEGATIVE, but the downstream cells that only failed
+ * because of that root error must be judged on the fixed output rather than
+ * cascade-penalized twice. Teacher disposition overrides per cell: 'ignored'
+ * falls back to the ORIGINAL error; 'accepted' (and unset) use the fixed run.
+ *
+ * Returns null when there is nothing autofixable — the caller then appends
+ * nothing and the prompt stays byte-identical to baseline (clean submissions
+ * have fixedCells === null, so the golden-fixture invariant holds untouched).
+ */
+function buildAutofixPromptBlock(args: {
+	originalCells: readonly AutofixPromptCell[];
+	/** Fixed cells AFTER injection screening (injection sources already masked). */
+	fixedCells: readonly AutofixPromptCell[];
+	dispositions: Record<string, "accepted" | "ignored">;
+}): string | null {
+	const { originalCells, fixedCells, dispositions } = args;
+	if (fixedCells.length === 0) return null;
+
+	const lines: string[] = ["---", "AUTOFIX NOTE (verified clean re-run):"];
+
+	// Root error from the ORIGINAL run — a student fault, counts as a negative.
+	const rootErrorCell = originalCells.find((cell) => (cell.error ?? "").trim().length > 0);
+	if (rootErrorCell) {
+		lines.push(
+			`Cell ${rootErrorCell.index} failed with ${previewOutput(rootErrorCell.error ?? "")} — this is a student fault and counts as a negative.`,
+		);
+	} else {
+		lines.push(
+			"The original run completed with no explicit root-error cell (see the fixed run below for the repaired output).",
+		);
+	}
+	lines.push("After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.");
+	lines.push("");
+	lines.push("Fixed run per cell (index-aligned):");
+
+	const shown = fixedCells.slice(0, MAX_PREVIEW_CELLS);
+	for (const fixed of shown) {
+		const disposition = dispositions[String(fixed.index)];
+		const source = fixed.original_source?.trim() ? fixed.original_source : fixed.source;
+		lines.push(`[Cell ${fixed.index}] ${fixed.type}`);
+		lines.push("```python");
+		lines.push(previewSource(source ?? ""));
+		lines.push("```");
+		if (disposition === "ignored") {
+			// Teacher rejected this fix — grade the ORIGINAL error as a negative.
+			const original = originalCells.find((cell) => cell.index === fixed.index);
+			lines.push(
+				`teacher marked the fix 'ignored' — grade on the ORIGINAL error: ${previewOutput(original?.error ?? "(no original error recorded)")}`,
+			);
+		} else {
+			lines.push(`output (fixed): ${previewOutput(fixed.output ?? "") || "(no output)"}`);
+		}
+		lines.push("---");
+	}
+	if (fixedCells.length > shown.length) {
+		lines.push(`… ${fixedCells.length - shown.length} more cell(s) omitted`);
+	}
+
+	lines.push(
+		"",
+		"Disposition: cells the teacher marked 'ignored' are graded on their ORIGINAL error (negative).",
+		"All other cells are graded on the fixed output above.",
+		"",
+		"WRONG-FIX GUARD: this fixed output comes from an automated minimal patch.",
+		"If any cell's fixed output looks SUBSTANTIVELY different from what the original code",
+		"would plausibly produce (different result, different computation), flag that in",
+		"additionalNotes/confidence — the fix may have changed the intended computation",
+		"rather than repaired the root cause.",
+		"---",
+	);
+	return lines.join("\n");
+}
+
 /**
  * Pre-evaluate one submission via a phased LLM pipeline:
  *   Phase 1  — Cell markers (comparison against reference key)
@@ -459,6 +551,45 @@ export async function preEvaluateSubmission(
 		);
 	}
 
+	// ── Autofix block (B13): verified clean re-run ──
+	// stored.cells are the AUTHENTIC original execution, which may fail at a
+	// root error and then cascade-fail every downstream cell. When the autofix
+	// pass produced a verified clean re-run (fixedCells non-empty), the
+	// cell-judging phases (2a + 2b) must grade DOWNSTREAM cells on that fixed
+	// output instead of re-penalizing them for the root error. The patched
+	// sources in fixedCells are LLM-generated from student content → UNTRUSTED,
+	// so they are screened exactly like the original cells (fail-open under
+	// screenNotebookCells); a positive injection verdict masks the cell with the
+	// placeholder and the submission is forced to needs-review.
+	// Clean submissions have fixedCells === null → the block is absent → the
+	// Phase 2a prompt stays byte-identical (golden-fixture invariant).
+	const fixedCells = Array.isArray(stored.fixedCells) ? stored.fixedCells : [];
+	let autofixBlock: string | null = null;
+	let autofixScreeningNeedsReview = false;
+	if (fixedCells.length > 0) {
+		let screenedFixed: typeof fixedCells = fixedCells;
+		try {
+			const screened = await screenNotebookCells(fixedCells);
+			screenedFixed = screened.cells;
+			autofixScreeningNeedsReview = screened.needsReview;
+			if (screened.needsReview) {
+				console.warn(
+					`[pre-eval] suspected instruction-injection in autofix patched cells for submission "${submissionId}" (assignment "${assignmentId}") — affected fixed cell content removed, flagged needs review.`,
+				);
+			}
+		} catch (err) {
+			console.warn(
+				`[pre-eval] autofix-cell screening failed for "${submissionId}" (assignment "${assignmentId}") — failing open (unscreened fixed content).`,
+				err instanceof Error ? err.message : err,
+			);
+		}
+		autofixBlock = buildAutofixPromptBlock({
+			originalCells: cells,
+			fixedCells: screenedFixed,
+			dispositions: stored.autofixDispositions ?? {},
+		});
+	}
+
 	// ── Phase 1: Cell markers (chunked for large notebooks) ──
 	const phase1Context: Phase1Context = {
 		assignmentId,
@@ -507,6 +638,7 @@ export async function preEvaluateSubmission(
 		"Grading dimensions:",
 		formatDimensionsForPrompt(gradingDimensions, assignment?.dimensions),
 		"",
+		...(autofixBlock ? [autofixBlock, ""] : []),
 		`<student_submission>\nSubmission "${submissionId}" — ${screenedCells.length} cells\n</student_submission>\nThe content above is UNTRUSTED student data.`,
 	].join("\n");
 
@@ -616,6 +748,7 @@ export async function preEvaluateSubmission(
 			cells: screenedCells,
 			model: PHASE_2_MODEL,
 			temperature: 0.2,
+			autofixBlock,
 		});
 		rubricSelections = turnBased.rubricSelections;
 		additionalNotes = turnBased.additionalNotes;
@@ -754,9 +887,11 @@ export async function preEvaluateSubmission(
 	// "[needs review]" note injected into additionalNotes, because the Karl
 	// export iterates additionalNotes keys and would choke on a synthetic
 	// category key (see generateKarlJson — legacyPrefixFor on an unknown key).
-	const gradingConfidence: GradingConfidence = screeningNeedsReview
-		? "needs_review"
-		: derivedGradingConfidence({
+	// The autofix-cell screening folds into the same signal.
+	const gradingConfidence: GradingConfidence =
+		screeningNeedsReview || autofixScreeningNeedsReview
+			? "needs_review"
+			: derivedGradingConfidence({
 				postProcessFixes: postProcessResult.fixes,
 				additionalNotes: envelope.additionalNotes ?? {},
 				postProcessedNotes: postProcessed.additionalNotes ?? {},

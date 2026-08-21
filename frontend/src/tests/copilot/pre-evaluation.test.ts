@@ -2333,4 +2333,117 @@ describe("cell screening (B13)", () => {
 			warnSpy.mockRestore();
 		}
 	});
+
+	// Autofix-aware grading (B13): a submission with a verified clean re-run
+	// (fixedCells non-empty) is graded on the fixed downstream output, not the
+	// cascade-failing original. Clean submissions (fixedCells null) get no block —
+	// the Phase 2a prompt stays byte-identical (asserted against the golden
+	// fixture in scoring-config.test.ts, untouched).
+	const AUTOFIX_FIXED_CELLS = (() => {
+		const original = makeExecutionResult();
+		return [
+			{ ...original.cells[0]! },
+			{
+				...original.cells[1]!,
+				source: 'arr = np.array([1, 2, 3])\ndf = pd.read_csv("input_data/soil.csv")',
+				original_source: 'arr = np.array([1, 2, 3])\ndf = pd.read_csv("input_data/soil.csv")',
+				output: "   x   y\n0  1   2",
+				error: null,
+				traceback: null,
+			},
+		] as typeof original.cells;
+	})();
+
+	it("grades an autofixed notebook on the verified clean re-run (autofix block in Phase 2a + 2b)", async () => {
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: { ...makeExecutionResult(), fixedCells: AUTOFIX_FIXED_CELLS },
+		});
+
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const p2a = phasePrompt(2);
+		// Root-error instruction: the original failure is still a student NEGATIVE.
+		expect(p2a).toContain("AUTOFIX NOTE (verified clean re-run):");
+		expect(p2a).toContain("Cell 1 failed with");
+		expect(p2a).toContain("this is a student fault and counts as a negative.");
+		expect(p2a).toContain("Execution errors: 1");
+		// Downstream cells are judged on the fixed output, so the scores that
+		// reach the code_execution_results dimension reflect the clean run.
+		expect(p2a).toContain("After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.");
+		expect(p2a).toContain("output (fixed):");
+		expect(p2a).toContain("code_execution_results");
+
+		// The same consistent block reaches the Phase 2b rubric turns.
+		expect(categoryTurnPrompt("code_formatting")).toContain("AUTOFIX NOTE (verified clean re-run):");
+		expect(categoryTurnPrompt("code_formatting")).toContain("Judge downstream cells on this fixed output.");
+	});
+
+	it("falls back to the ORIGINAL error for cells the teacher marked ignored", async () => {
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: {
+				...makeExecutionResult(),
+				fixedCells: AUTOFIX_FIXED_CELLS,
+				autofixDispositions: { "1": "ignored" },
+			},
+		});
+
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const p2a = phasePrompt(2);
+		// The teacher rejected the fix -> that cell is graded on its original error.
+		expect(p2a).toContain("teacher marked the fix 'ignored' — grade on the ORIGINAL error");
+		expect(p2a).toContain("FileNotFoundError");
+		// The accepted/unset cell still carries the fixed output.
+		expect(p2a).toContain("output (fixed):");
+		expect(p2a).toContain("AUTOFIX NOTE (verified clean re-run):");
+	});
+
+	it("masks an injection-carrying autofix cell and flags the submission needs review", async () => {
+		const original = makeExecutionResult();
+		const smuggledFixed = [
+			{ ...original.cells[0]! },
+			{ ...original.cells[1]!, source: SMUGGLED, original_source: SMUGGLED, output: "", error: null, traceback: null },
+		] as typeof original.cells;
+		await writeResults(ASSIGNMENT, { [STUDENT]: { ...original, fixedCells: smuggledFixed } });
+
+		// Isolate the autofix screening path: only the smuggled FIXED cell is
+		// flagged; the benign original cells pass through clean (needsReview false).
+		screeningCellsMock.screenNotebookCells.mockImplementation(
+			async (incoming: ReadonlyArray<Record<string, unknown>>) => {
+				const flagged = incoming.some(
+					(c) => typeof c.source === "string" && c.source.includes(SMUGGLED),
+				);
+				const processed = incoming.map((c) =>
+					typeof c.source === "string" && c.source.includes(SMUGGLED)
+						? {
+								...c,
+								source: "[cell content removed: injection attempt]",
+								original_source: "[cell content removed: injection attempt]",
+								output: "",
+							}
+						: c,
+				);
+				return { cells: processed, needsReview: flagged };
+			},
+		);
+
+		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const p2a = phasePrompt(2);
+		// The smuggled text never reaches the prompt; the placeholder stands in.
+		expect(p2a).not.toContain(SMUGGLED);
+		expect(p2a).toContain("AUTOFIX NOTE (verified clean re-run):");
+		expect(p2a).toContain("[cell content removed: injection attempt]");
+		// Positive injection verdict in the autofix cells forces needs-review.
+		expect(result.gradingConfidence).toBe("needs_review");
+	});
+
+	it("omits the autofix block for a clean submission (fixedCells null)", async () => {
+		// makeExecutionResult() stores fixedCells: null — no verified re-run.
+		await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+
+		const p2a = phasePrompt(2);
+		expect(p2a).not.toContain("AUTOFIX NOTE (verified clean re-run):");
+		// Clean submissions are byte-identical to the golden baseline — asserted by
+		// expect(assembled).toBe(golden) in scoring-config.test.ts (unchanged).
+	});
 });
