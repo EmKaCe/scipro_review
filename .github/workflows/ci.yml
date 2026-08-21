@@ -69,7 +69,10 @@ jobs:
 
       - run: uv sync --frozen
 
+      # app.py mkdirs DATA_DIR at import time; default /app/data only exists
+      # in Docker. Point it at a writable temp dir on the runner. Tests
+      # monkeypatch DATA_DIR per-case anyway.
       # pytest is not a declared dependency of the executor project (no dev
       # group in pyproject.toml), so inject it via an ephemeral uv overlay
       # rather than a bare `uv run pytest` (which would not be installed).
-      - run: uv run --with pytest pytest -q
+      - run: DATA_DIR=$RUNNER_TEMP/executor-data uv run --with pytest pytest -q
