@@ -9,6 +9,8 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-08-21
+
 ### Added
 
 - First-run onboarding checklist page (create/import assignment → wire
