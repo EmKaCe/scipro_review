@@ -63,7 +63,7 @@
 	"dependencies": {
 		"@ai-sdk/openai-compatible": "^3.0.26",
 		"@mastra/core": "^1.54.0",
-		"@mastra/memory": "^1.24.0",
+		"@mastra/memory": "^1.27.0",
 		"@tiptap/core": "^3.29.2",
 		"@tiptap/extension-placeholder": "^3.29.2",
 		"@tiptap/starter-kit": "^3.29.2",
