@@ -55,7 +55,9 @@
 						</span>
 					</span>
 				</span>
-				<span class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}>
+				<span
+					class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}
+				>
 					Setup
 					<ArrowUpRight class="h-3.5 w-3.5" />
 				</span>
@@ -67,13 +69,12 @@
 				class="rounded-[var(--radius)] border border-dashed border-border bg-card/50 p-5 text-sm text-muted-foreground"
 			>
 				Teacher-only settings (LLM provider, scoring config, data management, and the
-				first-run setup checklist) are available in the self-hosted teacher build of
-				SciPro Review — see the <a
+				first-run setup checklist) are available in the self-hosted teacher build of SciPro
+				Review — see the <a
 					class="text-primary hover:underline"
 					href="https://github.com/EmKaCe/scipro_review"
 					target="_blank"
-					rel="noopener noreferrer"
-					>README</a
+					rel="noopener noreferrer">README</a
 				>
 				for setup instructions.
 			</div>
