@@ -9,14 +9,29 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-08-21
+
+### Added
+
+- Static/student build: **Local data** settings card — back up all locally stored
+  reviews (JSON), restore from a backup with counts, clear with an inline
+  confirm. Student Settings carries no reference to teacher mode.
+- App favicon: green check-mark SVG + 32 px and apple-touch PNG fallbacks
+  (replaces the SvelteKit default).
+
+### Changed
+
+- Runtime dependency bumps (katex, marked, js-yaml, @mastra/core,
+  @mastra/memory, @tiptap/*, highlight.js, @ai-sdk/openai-compatible).
+- CI: `actions/setup-python@v7` and `astral-sh/setup-uv@v7` (removes Node 20
+  deprecation warnings); dependabot config drops the dead gitsubmodule entry.
+
 ### Fixed
 
-- Static/student build: the Settings page only shows student-relevant cards;
-  teacher-only cards (LLM provider, scoring config, configuration map, data
-  management, danger zone, first-run checklist) are hidden with a pointer to
-  the self-hosted teacher build.
-- README mermaid diagrams render on GitHub (removed fragile ` <br/> ` / unicode
-  label markup from the flowcharts).
+- Static/student build: Settings hides teacher-only cards via the `base === ""`
+  gate; the placeholder "teacher-only" notice is gone.
+- README mermaid diagrams render on GitHub (removed fragile `<br/>` / unicode
+  label markup); corrected the stale "teacher routes render stubs" claim.
 
 ## [2.5.0] - 2026-08-21
 
