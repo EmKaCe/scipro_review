@@ -73,11 +73,3 @@ updates:
       prefix: deps
       prefix-development: deps-dev
       include: scope
-
-  # Git submodules
-  - package-ecosystem: gitsubmodule
-    directory: /
-    schedule:
-      interval: monthly
-    commit-message:
-      prefix: submodules
