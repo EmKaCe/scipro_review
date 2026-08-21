@@ -147,7 +147,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 > **How good is the pre-evaluation?** Read the [Quality statement](.github/references/quality-statement.md) — what the copilot gets right, what needs teacher review, and the confidence flags.  
 > **One design language?** Read the [Design tokens](.github/references/design-tokens.md) — the token reference and the audit gate for consistent theming.  
 > **How is it wired?** Read the [Architecture](.github/references/architecture.md), [Data structures & wiring](.github/references/data-structures.md), and [Developer guide & glossary](.github/references/developer-guide.md) — the canonical, current module map, data flow, and terminology.  
-> **Why is it structured this way?** Read the [decision records](.github/references/decisions/) (e.g. the monolith-split ADR).
+> **Why is it structured this way?** The single-package layout with in-app module extraction is a deliberate choice — a package split was considered and rejected (see the architecture module map and the git history for that decision).
 
 ## Configuration
 
@@ -580,9 +580,9 @@ for batch-run progress. See the [developer guide](.github/references/developer-g
 
 ## CI/CD
 
-- **CI** (`.github/workflows/ci.yml`): Runs `pnpm lint` + `pnpm check` on push/PR
+- **CI** (`.github/workflows/ci.yml`): On push/PR runs `pnpm lint` + `pnpm check`, the full vitest suite, and the synthetic grading gate, plus executor pytest (lean by design — no Playwright e2e)
 - **Deploy** (`.github/workflows/deploy.yml`): Builds and deploys static build to GitHub Pages on push to `main`
-- **Dependabot**: Weekly dependency updates with auto-merge for minor/patch
+- **Dependabot**: Weekly dependency update PRs (reviewed before merge — no auto-merge)
 
 ---
 

@@ -8,8 +8,8 @@ sit alongside; the [quality statement](quality-statement.md) is the honest
 accuracy baseline, and [assignment-calibration](assignment-calibration.md) is
 how to onboard a new assignment. **New maintainers:** start with
 [Concepts & trust boundaries](concepts.md) (the explainable mental model +
-visuals), then return here for the module-level detail. Historical decisions
-are logged under [decisions/](decisions/).
+visuals), then return here for the module-level detail. Past design decisions
+live in the git history rather than a formal ADR directory.
 
 > **Keep this honest.** If you change the pipeline's phases, add a server
 > module, or move a data structure, update this file in the same change. A doc
