@@ -60,10 +60,6 @@ export interface PreAnalysis {
 /** Names that are acceptable as single letters in specific contexts. */
 const CONTEXT_OK_SINGLE_LETTERS = new Set(["i", "j", "k", "n", "m", "p"]);
 
-/** Regex matching a Python import statement: import X or from X import Y */
-const IMPORT_STMT_RE =
-	/(?:^|\n)(?:import\s+([\w.]+(?:\s*,\s*[\w.]+)*)|from\s+([\w.]+)\s+import\s+(.+))/g;
-
 /** Words that indicate interpretation / analysis in markdown. */
 const INTERPRETATION_WORDS =
 	/\b(mean|median|std|standard deviation|correlation|trend|pattern|significant|outlier|cluster[sd]?|indicates?|shows? that|suggests?|implies?|therefore|because|due to|likely|observed|compare|higher|lower|increase|decrease)\b/i;
@@ -237,7 +233,6 @@ export function detectDisallowedImports(
  */
 function findUnusedImports(codeSources: string[]): string[] {
 	const imported: Map<string, string> = new Map(); // symbol -> module
-	const allSource = codeSources.join("\n");
 
 	for (const src of codeSources) {
 		for (const line of src.split("\n")) {
@@ -252,7 +247,7 @@ function findUnusedImports(codeSources: string[]): string[] {
 	}
 
 	const unused: string[] = [];
-	for (const [symbol, module] of imported) {
+	for (const [symbol] of imported) {
 		// Remove the import lines themselves from the search corpus
 		const codeWithoutImports = codeSources
 			.map((s) =>

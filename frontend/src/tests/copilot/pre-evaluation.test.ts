@@ -22,7 +22,6 @@ import {
 	preEvaluateSubmission,
 	modelHintBlock,
 	runCohortCalibration,
-	type GradingConfidence,
 	type PreEvaluation,
 } from "$lib/server/copilot/pre-evaluation";
 import type { ExecutionResult } from "$lib/server/executor-client";
@@ -562,7 +561,7 @@ function makeExecutionResultWithCellCount(n: number): ExecutionResult {
  */
 function setupDefaultMock(): void {
 	kiConnectMock.chatCompletion.mockImplementation(
-		async (systemPrompt: string, userPrompt: string) => {
+		async (systemPrompt: string, _userPrompt: string) => {
 			if (systemPrompt.includes("Your ONLY job is to mark each cell")) {
 				// Fresh objects — the pipeline mutates phase responses in place
 				// (markers forced to null without a key, score caps write into
@@ -1154,7 +1153,8 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
 		kiConnectMock.chatCompletionText.mockImplementation(
 			async (system: string, user: string) => {
-				const key = user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1]!;
+				const m = user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/);
+				const key = m ? m[1] : "";
 				return filledSectionMarkdown(key, allPositiveAndNeutral(key), `Notes for ${key}.`);
 			},
 		);

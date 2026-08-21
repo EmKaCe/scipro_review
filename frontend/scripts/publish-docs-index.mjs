@@ -49,6 +49,7 @@ function parseArgs(argv) {
 			case "--help":
 				usage();
 				process.exit(0);
+				break;
 			default:
 				console.warn(`[publish-docs-index] ignoring unknown argument: ${argv[i]}`);
 		}

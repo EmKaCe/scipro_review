@@ -7,7 +7,7 @@
 	 * available for copy but is NOT the primary display. Malformed or empty
 	 * input falls back to escaped raw text — this component never crashes a
 	 * card and never emits unescaped HTML (all output goes through Svelte
-	 * text interpolation or {@html} of escaped content only).
+	 * text interpolation only).
 	 */
 
 	let { args = "" }: { args?: string } = $props();
@@ -22,16 +22,6 @@
 		} catch {
 			return null;
 		}
-	}
-
-	/** Escape HTML metacharacters for {@html} fallbacks. */
-	function escapeHtml(value: string): string {
-		return value
-			.replace(/&/g, "&amp;")
-			.replace(/</g, "&lt;")
-			.replace(/>/g, "&gt;")
-			.replace(/"/g, "&quot;")
-			.replace(/'/g, "&#39;");
 	}
 
 	/** Rows of a flat object; nested values collapse under a <details>. */

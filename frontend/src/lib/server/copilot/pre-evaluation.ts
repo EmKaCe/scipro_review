@@ -93,8 +93,6 @@ import {
 	MAX_PREVIEW_CELLS,
 	previewOutput,
 	previewSource,
-	type DimensionBrief,
-	type KeySummary,
 	type Phase1Context,
 } from "./pipeline/context";
 
@@ -111,15 +109,10 @@ export { runTurnBasedRubricSelection, runTurnBasedCategoryMilestone } from "./pi
 
 import { validateEnvelopeAgainstContext, type ValidatedPreEvaluation } from "./pipeline/validate";
 import {
-	buildEvidenceHaystacks,
-	haystackFor,
 	loadScoringConfig,
-	measureEvidencePattern,
 	substituteAnchors,
-	testEvidencePattern,
-	type ScoringConfig,
 } from "./scoring-config";
-import { screenNotebookCells, INJECTION_CELL_PLACEHOLDER } from "./screening";
+import { screenNotebookCells } from "./screening";
 
 // ---------------------------------------------------------------------------
 // Wire contract
@@ -544,7 +537,7 @@ export async function preEvaluateSubmission(
 	const assignment = await getAssignmentById(assignmentId);
 	const rubric = assignment ? await loadCriteriaForAssignment(assignment.criteria_files) : null;
 	const gradingDimensions = await loadGradingDimensions();
-	const inputDataFiles = await listInputDataFiles(assignmentId);
+	const _inputDataFiles = await listInputDataFiles(assignmentId);
 	const key = await loadKeySummary(assignmentId);
 	const assignmentPdfText = await loadAssignmentPdfText(assignmentId);
 

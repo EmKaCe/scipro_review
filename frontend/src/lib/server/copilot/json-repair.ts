@@ -150,13 +150,13 @@ function repairJSON(raw: string): string {
 
 	// Single-quoted keys: {'key': …} → {"key": …}
 	// (lookbehind/lookahead so consecutive matches don't overlap)
-	s = s.replace(/(?<=[\[{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*:)/g, '"$1"');
+	s = s.replace(/(?<=[[{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*:)/g, '"$1"');
 
 	// Single-quoted string values after a colon: {"key": 'value'} → {"key": "value"}
 	s = s.replace(/(?<=:\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, '"$1"');
 
 	// Single-quoted string elements in arrays: ['a', 'b'] → ["a", "b"]
-	s = s.replace(/(?<=[\[{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, '"$1"');
+	s = s.replace(/(?<=[[{,]\s*)'([^'\\]*(?:\\.[^'\\]*)*)'(?=\s*[,}\]])/g, '"$1"');
 
 	// Consecutive commas first: {"a": 1,, "b": 2} → {"a": 1, "b": 2}
 	s = s.replace(/,{2,}/g, ",");

@@ -22,7 +22,6 @@
 		class?: string;
 		side?: "top" | "right" | "bottom" | "left";
 		sideOffset?: number;
-		align?: "start" | "center" | "end";
 		/** Test handle (forwarded to the tooltip element). */
 		"data-testid"?: string;
 		children?: Snippet;
@@ -32,7 +31,6 @@
 		class: className,
 		side = "top",
 		sideOffset = 4,
-		align = "center",
 		"data-testid": testId,
 		children,
 		...restProps

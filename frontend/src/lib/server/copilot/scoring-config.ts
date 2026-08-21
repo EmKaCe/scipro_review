@@ -199,7 +199,7 @@ export function compileScoringConfig(
 	}
 
 	// ── prompt_anchor_text.dimension_guidance ──
-	let dimensionGuidance: Record<string, string> = {};
+	const dimensionGuidance: Record<string, string> = {};
 	const rawPrompt = scoring.prompt_anchor_text;
 	if (rawPrompt !== undefined) {
 		if (!rawPrompt || typeof rawPrompt !== "object" || Array.isArray(rawPrompt)) {

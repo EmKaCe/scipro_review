@@ -221,27 +221,6 @@ function findRubricSectionStart(lines: string[], key: string): number {
 	return lines.findIndex((line) => pattern.test(line));
 }
 
-/**
- * Extract one contiguous worksheet region: from the first line starting with
- * `headerPrefix` up to (not including) the next level-2 header. Returns null
- * when the header is absent. The generator emits every section this way, and
- * the LLM's filled sections are spliced back with the same boundaries.
- */
-function extractWorksheetRegion(markdown: string, headerPrefix: string): string | null {
-	const lines = markdown.split("\n");
-	const start = lines.findIndex((line) => line.startsWith(headerPrefix));
-	if (start === -1) return null;
-	let end = lines.length;
-	for (let i = start + 1; i < lines.length; i++) {
-		if (/^## /.test(lines[i]!)) {
-			end = i;
-			break;
-		}
-	}
-	const region = lines.slice(start, end).join("\n");
-	return region.length > 0 ? region : null;
-}
-
 /** One rubric category's section (its `## Rubric: {key}` header + body). */
 function extractCategorySection(markdown: string, key: string): string | null {
 	const lines = markdown.split("\n");

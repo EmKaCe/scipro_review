@@ -11,19 +11,6 @@
 
 	let { steps }: Props = $props();
 
-	/** Status icon: pending → hollow, in_progress → spinner, done → check, error → x. */
-	function statusIcon(status: CopilotPlanStep["status"]) {
-		switch (status) {
-			case "in_progress":
-				return LoaderCircle;
-			case "completed":
-				return CircleCheck;
-			case "error":
-				return CircleX;
-			default:
-				return null;
-		}
-	}
 </script>
 
 {#if steps.length > 0}

@@ -231,6 +231,7 @@
 		if (incoming.length === 0) return;
 		cancelAutoClose();
 
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient local dedupe scratch set for one handler call, not reactive component state
 		const seen = new Set(
 			files.map((f) => `${f.file.name}|${f.file.size}|${f.file.lastModified}`),
 		);
@@ -355,6 +356,7 @@
 			// Group results by file name; two distinct files can share a name
 			// (e.g. an edited re-upload of 2026SS_01.ipynb), so a name keyed
 			// Map alone would collapse them — disambiguate by byte size.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity -- transient local per-request result grouping, not reactive component state
 			const resultsByName = new Map<string, SubmissionUploadResult[]>();
 			for (const r of res.results) {
 				const arr = resultsByName.get(r.fileName) ?? [];

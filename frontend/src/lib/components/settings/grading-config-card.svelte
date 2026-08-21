@@ -42,7 +42,7 @@
 	let saving = $state(false);
 	let form = $state<GradingDraft | null>(null);
 	let loadError = $state<string | null>(null);
-	let validationError = $state<string | null>(null);
+	let _validationError = $state<string | null>(null);
 	let savedAt = $state<string | null>(null);
 
 	$effect(() => {
@@ -137,7 +137,7 @@
 	async function handleSave() {
 		if (!form || saving) return;
 		const err = validateDraft(form);
-		validationError = err;
+		_validationError = err;
 		if (err) {
 			addToast("error", err, 4000);
 			return;
@@ -173,7 +173,7 @@
 					usEquiv: b.us_equiv,
 				})),
 			};
-			validationError = null;
+			_validationError = null;
 			savedAt = new Date().toLocaleTimeString();
 			addToast("success", "Grading config saved", 3000);
 		} catch (e) {

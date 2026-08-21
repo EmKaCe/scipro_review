@@ -279,6 +279,7 @@ function parseArgs(argv) {
 			case "--help":
 				usage();
 				process.exit(0);
+				break;
 			default:
 				console.warn(`[build-docs-index] ignoring unknown argument: ${a}`);
 		}
@@ -343,8 +344,7 @@ const NAMED_ENTITIES = {
 	approx: "≈",
 	equiv: "≡",
 	sqrt: "√",
-	frac: "⁄",
-	nbsp: " ",
+	tfrac: "⁄",
 };
 
 /** Decode HTML entities (numeric + common named) in a text string. */
