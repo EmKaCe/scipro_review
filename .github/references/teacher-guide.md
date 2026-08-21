@@ -122,6 +122,21 @@ make this faster — never to replace your judgment.
    blocks export, and deliberately keeping extra selections is a valid choice.
    Expand it and verify the selection before you accept the evaluation.
 
+**Autofix & dispositions (consequential-error grading)** — when a notebook
+breaks mid-run (a root error: a typo, a missing argument, a bad import), the
+executor applies a minimal fix so the rest of the notebook still runs. On the
+submission detail page you can toggle each cell between the **authentic
+original** and the **fixed run**, and for each fixed cell you set a
+**disposition**: *accepted* (the fix is correct) or *ignored* (you reject it;
+saving always keeps the authentic original). These decisions feed the grade: a
+root error counts as a **negative** (it is a student fault), but cells
+downstream are judged on the *fixed* output you accepted — so a plot or fit
+that never ran because of an earlier typo is **not** additionally penalized.
+Cells you *ignored* fall back to the original error. The copilot sees both
+runs plus your dispositions, so you can ask it whether a fix looks reasonable;
+when a fix differs substantively from what the original code would plausibly
+produce, the pipeline flags it for your review.
+
 ### The copilot (how to use it)
 
 - Open the **copilot tab** on a submission (per-submission scope) or the
