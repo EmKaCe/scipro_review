@@ -216,8 +216,14 @@ export function buildPhase2aDimensionGuidance(
  * rubric selection all run on gpt-oss-120b — stronger instruction following
  * than qwen3-30b on many-constraint conditional tasks (the rubric
  * filling failure mode).
+ *
+ * Env-overridable (PHASE_2_MODEL) so a provider swap (e.g. OpenRouter) can
+ * route these phases to an equivalent model without a code change. The
+ * default stays `openai-gpt-oss-120b` — the golden prompt fixture and the
+ * tuned calibration were built against it.
  */
-export const PHASE_2_MODEL = "openai-gpt-oss-120b";
+export const PHASE_2_MODEL =
+	process.env.PHASE_2_MODEL ?? "openai-gpt-oss-120b";
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 export const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:
