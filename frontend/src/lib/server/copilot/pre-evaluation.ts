@@ -108,10 +108,7 @@ export { modelHintBlock };
 export { runTurnBasedRubricSelection, runTurnBasedCategoryMilestone } from "./pipeline/phases";
 
 import { validateEnvelopeAgainstContext, type ValidatedPreEvaluation } from "./pipeline/validate";
-import {
-	loadScoringConfig,
-	substituteAnchors,
-} from "./scoring-config";
+import { loadScoringConfig, substituteAnchors } from "./scoring-config";
 import { screenNotebookCells } from "./screening";
 
 // ---------------------------------------------------------------------------

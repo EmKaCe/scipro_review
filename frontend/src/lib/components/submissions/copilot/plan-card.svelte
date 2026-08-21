@@ -10,7 +10,6 @@
 	};
 
 	let { steps }: Props = $props();
-
 </script>
 
 {#if steps.length > 0}
