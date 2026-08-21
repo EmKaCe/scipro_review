@@ -4,6 +4,7 @@
 	import { cn } from "$lib/utils.js";
 	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
 	import AppearanceCard from "$lib/components/settings/appearance-card.svelte";
+	import LocalDataCard from "$lib/components/settings/local-data-card.svelte";
 	import DataManagementCard from "$lib/components/settings/data-management-card.svelte";
 	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
 	import GradingConfigCard from "$lib/components/settings/grading-config-card.svelte";
@@ -65,8 +66,9 @@
 			<DataManagementCard />
 			<DangerZoneCard />
 		{:else}
-			<!-- Student/static build: teacher-only cards are intentionally hidden.
-						     Local-data management (backup/restore) is provided separately. -->
+			<!-- Student/static build: teacher-only cards are intentionally hidden;
+					     local-data management is the student-facing equivalent. -->
+			<LocalDataCard />
 		{/if}
 		<AboutCard />
 	</div>
