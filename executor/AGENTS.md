@@ -30,7 +30,7 @@ changes, regenerate it deliberately: `uv lock` then commit.
 The executor is **Python** — it is **not** part of the frontend's vitest
 suite. Verify the whole project, including executor wiring, with the root
 `AGENTS.md` canonical recipe (`pnpm install` → `build:student` → full
-`vitest run` → preview probe on `http://127.0.0.1:4173/svelte_review/`).
+`vitest run` → preview probe on `http://127.0.0.1:4173/scipro_review/`).
 Never add executor behavior to the vitest run. The executor's own tests run
 under pytest: `uv run pytest` (from `executor/`).
 

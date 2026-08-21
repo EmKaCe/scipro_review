@@ -356,7 +356,7 @@ describe("apiMode (teacher build)", () => {
 		expect(rubric).not.toBeNull();
 		expect(rubric!.categories[0].key).toBe("code_formatting");
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// base may be "" (dev/node) or "/scipro_review" (static build) —
 		// assert the API path itself.
 		expect(String(fetchMock.mock.calls[0][0])).toContain(
 			"/api/config/criteria?assignment=atom_interaction",
@@ -417,7 +417,7 @@ describe("apiMode (teacher build)", () => {
 		expect(registry).not.toBeNull();
 		expect(registry!.assignments).toHaveLength(1);
 		expect(registry!.assignments[0].dimensions).toEqual([]);
-		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// base may be "" (dev/node) or "/scipro_review" (static build) —
 		// assert the API path itself.
 		expect(String(fetchMock.mock.calls[0][0])).toContain("/api/assignments");
 

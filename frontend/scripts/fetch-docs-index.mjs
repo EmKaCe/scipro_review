@@ -23,7 +23,7 @@
  *
  * Usage: node scripts/fetch-docs-index.mjs [options]
  *   --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
- *   --repo <r>    owner/repo (default: EmKaCe/svelte_review)
+ *   --repo <r>    owner/repo (default: EmKaCe/scipro_review)
  *   --tag <t>     release tag (default: docs-index)
  *   --public      use plain HTTPS download (public repo) instead of the gh CLI
  *   --help        show this help
@@ -40,14 +40,14 @@ const ARTIFACTS = ["docs-index.json", "docs-vectors.bin"];
 function usage() {
 	console.log(`Usage: node scripts/fetch-docs-index.mjs [options]
   --out <dir>   target dir (default: $DOCS_INDEX_DIR or <DATA_DIR>/docs-index)
-  --repo <r>    owner/repo (default: EmKaCe/svelte_review)
+  --repo <r>    owner/repo (default: EmKaCe/scipro_review)
   --tag <t>     release tag (default: ${TAG})
   --public      use plain HTTPS download (public repo) instead of the gh CLI
   --help        show this help`);
 }
 
 function parseArgs(argv) {
-	const args = { out: null, repo: "EmKaCe/svelte_review", tag: TAG, public: false };
+	const args = { out: null, repo: "EmKaCe/scipro_review", tag: TAG, public: false };
 	for (let i = 0; i < argv.length; i++) {
 		switch (argv[i]) {
 			case "--out":

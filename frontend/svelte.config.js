@@ -16,9 +16,9 @@ const config = {
 	kit: {
 		adapter: isNode ? adapterNode() : adapterStatic({ fallback: "404.html" }),
 		paths: {
-			// GitHub Pages serves at /svelte_review/ — dev server uses root /
+			// GitHub Pages serves at /scipro_review/ — dev server uses root /
 			// Node builds also use root — the Docker container handles routing
-			base: isNode || dev ? "" : "/svelte_review",
+			base: isNode || dev ? "" : "/scipro_review",
 		},
 	},
 };

@@ -68,7 +68,7 @@ pnpm build:student              # static build → build/
 unset ADAPTER NODE_ENV KI_CONNECT_API_KEY
 pnpm vitest run                  # full suite
 # then serve build/ (e.g. pnpm preview) and probe:
-#   GET http://127.0.0.1:4173/svelte_review/  → expect HTTP 200
+#   GET http://127.0.0.1:4173/scipro_review/  → expect HTTP 200
 ```
 
 ---

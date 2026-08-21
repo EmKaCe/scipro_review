@@ -2,7 +2,7 @@
 
 > Peer-review and grading tool for Jupyter notebook submissions. Designed for Scientific Programming in Python courses at the Bonn-Rhein-Sieg University of Applied Sciences.
 
-**Student URL:** [emkace.github.io/svelte_review](https://emkace.github.io/svelte_review/)
+**Student URL:** [emkace.github.io/scipro_review](https://emkace.github.io/scipro_review/)
 
 ---
 
@@ -400,8 +400,8 @@ AI copilot agent over an OpenAI-compatible LLM API (KI Connect).
 
 ```bash
 # Clone the repository
-git clone https://github.com/EmKaCe/svelte_review.git
-cd svelte_review/frontend
+git clone https://github.com/EmKaCe/scipro_review.git
+cd scipro_review/frontend
 
 # Install dependencies
 pnpm install

@@ -262,7 +262,7 @@ describe("apiMode (teacher build)", () => {
 		expect(config).not.toBeNull();
 		expect(config!.dimensions).toHaveLength(1);
 		expect(fetchMock).toHaveBeenCalledTimes(1);
-		// base may be "" (dev/node) or "/svelte_review" (static build) —
+		// base may be "" (dev/node) or "/scipro_review" (static build) —
 		// assert the API path itself.
 		expect(String(fetchMock.mock.calls[0][0])).toContain("/api/config/grading");
 

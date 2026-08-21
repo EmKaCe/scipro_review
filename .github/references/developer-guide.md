@@ -21,7 +21,7 @@ this file is about **how to work here** and **what things are called**.
    pnpm vitest run <file>     # one file (see §3 gotcha)
    # whole-project canonical verify (from repo root): pnpm install →
    # pnpm build:student → unset ADAPTER NODE_ENV KI_CONNECT_API_KEY →
-   # pnpm vitest run → preview probe on http://127.0.0.1:4173/svelte_review/ (HTTP 200)
+   # pnpm vitest run → preview probe on http://127.0.0.1:4173/scipro_review/ (HTTP 200)
    ```
 4. **Commit per package, locally only.** No push until the human reviews.
 

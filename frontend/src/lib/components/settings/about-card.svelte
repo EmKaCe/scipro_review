@@ -27,7 +27,7 @@
 		</p>
 		<div class="flex items-center gap-3 pt-2">
 			<a
-				href="https://github.com/EmKaCe/svelte_review"
+				href="https://github.com/EmKaCe/scipro_review"
 				target="_blank"
 				rel="noopener noreferrer"
 				class="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"

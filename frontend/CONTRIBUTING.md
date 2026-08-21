@@ -13,8 +13,8 @@ Thank you for your interest in contributing to SciPro Review! This guide provide
 
 ```bash
 # Clone the repository
-git clone https://github.com/EmKaCe/svelte_review.git
-cd svelte_review/frontend
+git clone https://github.com/EmKaCe/scipro_review.git
+cd scipro_review/frontend
 
 # Install dependencies
 pnpm install

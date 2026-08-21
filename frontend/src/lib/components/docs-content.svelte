@@ -36,8 +36,8 @@
 			<li>
 				Clone the repository:
 				<pre><code
-						>git clone https://github.com/EmKaCe/svelte_review.git
-cd svelte_review</code
+						>git clone https://github.com/EmKaCe/scipro_review.git
+cd scipro_review</code
 					></pre>
 			</li>
 			<li>

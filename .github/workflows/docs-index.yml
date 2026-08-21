@@ -36,7 +36,7 @@ jobs:
       - name: Report published index + validate config (no build)
         run: |
           echo "== current docs-index release =="
-          gh release view docs-index --repo EmKaCe/svelte_review --json tagName,assets --jq '{tag:.tagName, assets:[.assets[].name]}' 2>/dev/null || echo "(no docs-index release published yet)"
+          gh release view docs-index --repo EmKaCe/scipro_review --json tagName,assets --jq '{tag:.tagName, assets:[.assets[].name]}' 2>/dev/null || echo "(no docs-index release published yet)"
           echo "== corpus config parses =="
           node -e 'const L=require("./frontend/scripts/docs-libraries.json").libraries; const zip=Object.entries(L).filter(([k,v])=>v.source==="zip"); const crawl=Object.entries(L).filter(([k,v])=>v.source==="crawl"); console.log(`${Object.keys(L).length} libraries (${zip.length} zip, ${crawl.length} crawl)`)'
 
