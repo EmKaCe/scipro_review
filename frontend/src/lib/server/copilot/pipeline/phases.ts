@@ -26,11 +26,7 @@ import type { Category, MergedRubric, Sentiment } from "$lib/types/criteria";
 // Type-only import (erased at runtime) — the wire types stay defined in
 // pre-evaluation.ts; this module only consumes them.
 import type { PreEvaluationMarker } from "../pre-evaluation";
-import {
-	PHASE1_MARKERS_PROMPT,
-	TURN_BASED_SYSTEM_PROMPT,
-	modelHintBlock,
-} from "./prompts";
+import { PHASE1_MARKERS_PROMPT, TURN_BASED_SYSTEM_PROMPT, modelHintBlock } from "./prompts";
 import {
 	MAX_PREVIEW_CELLS,
 	SOURCE_PREVIEW_LINES,
@@ -288,7 +284,6 @@ function replaceCategorySection(markdown: string, key: string, newSection: strin
 	return `${before.trimEnd()}\n\n${replacement}\n\n${after.trimStart()}`;
 }
 
-
 /**
  * Build the user prompt for one category turn: the full living worksheet as
  * context (so the model sees adjacent decisions), the deterministic
@@ -315,7 +310,9 @@ function buildCategoryUserPrompt(args: {
 			`- Imports alphabetized (whole-list check): ${preAnalysis.importsAlphabetized ? "yes" : "NO"}`,
 		);
 		if (preAnalysis.disallowedImports.length > 0) {
-			importFacts.push(`- Disallowed imports found: ${preAnalysis.disallowedImports.join(", ")}`);
+			importFacts.push(
+				`- Disallowed imports found: ${preAnalysis.disallowedImports.join(", ")}`,
+			);
 		}
 	}
 	// Category-specific selection guidance. The universal block fights
@@ -351,7 +348,11 @@ function buildCategoryUserPrompt(args: {
 		"",
 		formatPreAnalysis(preAnalysis),
 		...(importFacts.length > 0
-			? ["", "Import facts (deterministic — verify against the source, do not contradict):", ...importFacts]
+			? [
+					"",
+					"Import facts (deterministic — verify against the source, do not contradict):",
+					...importFacts,
+				]
 			: []),
 		"",
 		"---",
@@ -464,9 +465,7 @@ function importsAreAlphabetized(cells: readonly ExecutedCell[]): boolean {
 		}
 	}
 	if (importLines.length <= 1) return true;
-	const sorted = [...importLines].sort((a, b) =>
-		a.toLowerCase().localeCompare(b.toLowerCase()),
-	);
+	const sorted = [...importLines].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 	return importLines.every((line, i) => line === sorted[i]);
 }
 
@@ -482,9 +481,7 @@ function importsListedAtTop(cells: readonly ExecutedCell[]): boolean {
 	for (const cell of cells) {
 		if (cell.type !== "code") continue;
 		codeCellRank++;
-		const hasImport = (cell.source ?? "")
-			.split("\n")
-			.some((line) => isImportLine(line));
+		const hasImport = (cell.source ?? "").split("\n").some((line) => isImportLine(line));
 		if (hasImport) {
 			importCellCount++;
 			lastImportCodeCellRank = codeCellRank;
@@ -946,7 +943,8 @@ export async function runTurnBasedCategoryMilestone(args: {
 
 	const settings = await loadSettings();
 	const effectiveTimeoutMs =
-		llmTimeoutMs ?? (settings.llm.timeoutMs > 0 ? settings.llm.timeoutMs : PRE_EVALUATION_LLM_TIMEOUT_MS);
+		llmTimeoutMs ??
+		(settings.llm.timeoutMs > 0 ? settings.llm.timeoutMs : PRE_EVALUATION_LLM_TIMEOUT_MS);
 
 	const worksheet = generateWorksheet({
 		submissionId,
@@ -995,10 +993,7 @@ export async function runTurnBasedCategoryMilestone(args: {
  * worksheet must never come back empty for them. Assignment-specific
  * categories are added at runtime (see {@link mandatoryCategoryKeys}).
  */
-const MANDATORY_GENERAL_CATEGORY_KEYS = new Set([
-	"jupyter_notebooks",
-	"academic_scholarship",
-]);
+const MANDATORY_GENERAL_CATEGORY_KEYS = new Set(["jupyter_notebooks", "academic_scholarship"]);
 
 /**
  * Categories where zero selections are ALWAYS legitimate — never warned about.
@@ -1051,7 +1046,10 @@ async function mandatoryCategoryKeys(
 				// Assignment-specific categories are NOT per-section mandatory —
 				// a clean submission legitimately has no negatives. Only warn
 				// about total-zero for these (and skip silent-empty categories).
-				if (!(entry.key in general.categories) && !SILENT_EMPTY_CATEGORY_KEYS.has(entry.key)) {
+				if (
+					!(entry.key in general.categories) &&
+					!SILENT_EMPTY_CATEGORY_KEYS.has(entry.key)
+				) {
 					keys.add(entry.key);
 				}
 			}
@@ -1140,7 +1138,9 @@ export async function logBalancedCriteriaWarnings(opts: {
 		// Total gap: the category came back entirely empty across all
 		// sentiments — the strongest signal that the model skipped it.
 		if ((selectionCounts.get(entry.key) ?? 0) === 0) {
-			warnings.push(`Category '${title}' has zero rubric selections — may need manual review`);
+			warnings.push(
+				`Category '${title}' has zero rubric selections — may need manual review`,
+			);
 		}
 	}
 	if (warnings.length === 0) return;

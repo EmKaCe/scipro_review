@@ -42,7 +42,8 @@ const SOIL_LIKE: ScoringConfigDocument = {
 	allowed_libraries: ["numpy", "pandas", "scipy", "sklearn", "matplotlib"],
 	prompt_anchor_text: {
 		dimension_guidance: {
-			scientific_programming: "scientific methodology. Anchor scale: 5-5.5 = fit reproduces the reference.",
+			scientific_programming:
+				"scientific methodology. Anchor scale: 5-5.5 = fit reproduces the reference.",
 		},
 	},
 };

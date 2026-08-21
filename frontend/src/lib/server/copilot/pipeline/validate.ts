@@ -119,7 +119,7 @@ export function fuzzyMatchOptionKey(
 
 	// Containment ≥ 90% = "one is clearly a fragment of the other"
 	// Jaccard ≥ 80% = "minor cosmetic drift"
-	return (bestScore >= 0.8 && bestText.length > 0) ? bestText : null;
+	return bestScore >= 0.8 && bestText.length > 0 ? bestText : null;
 }
 
 /**
@@ -177,7 +177,8 @@ export function validateEnvelopeAgainstContext(
 		// Strip entries that reference unknown categories (the LLM regularly
 		// uses grading DIMENSION keys like "scientific_programming" here) or
 		// fabricated optionKeys that match nothing after fuzzy matching.
-		const toClean = selections.length > MAX_SELECTIONS ? selections.slice(0, MAX_SELECTIONS) : selections;
+		const toClean =
+			selections.length > MAX_SELECTIONS ? selections.slice(0, MAX_SELECTIONS) : selections;
 		envelope.rubricSelections = toClean.filter((item) => {
 			// Shape guard: the LLM occasionally emits malformed entries.
 			if (
@@ -202,10 +203,7 @@ export function validateEnvelopeAgainstContext(
 			);
 			if (matchesOption) return true;
 			// Exact match failed — try fuzzy matching within the stated category.
-			const fuzzyHit = fuzzyMatchOptionKey(
-				item.optionKey,
-				allSubPoints(category.category),
-			);
+			const fuzzyHit = fuzzyMatchOptionKey(item.optionKey, allSubPoints(category.category));
 			if (fuzzyHit) {
 				item.optionKey = fuzzyHit;
 				return true;
@@ -255,4 +253,3 @@ export function validateEnvelopeAgainstContext(
 	}
 	return null;
 }
-

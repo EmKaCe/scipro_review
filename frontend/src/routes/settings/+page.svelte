@@ -45,18 +45,16 @@
 			<span class="flex items-start gap-3">
 				<ListChecks class="mt-0.5 h-5 w-5 shrink-0 text-primary" />
 				<span>
-					<span class="block text-sm font-medium text-foreground">First-run setup checklist</span>
+					<span class="block text-sm font-medium text-foreground"
+						>First-run setup checklist</span
+					>
 					<span class="mt-0.5 block text-xs text-muted-foreground">
-						Guided checklist for getting SciPro Review ready — assignments, scoring, LLM, docs index.
+						Guided checklist for getting SciPro Review ready — assignments, scoring,
+						LLM, docs index.
 					</span>
 				</span>
 			</span>
-			<span
-				class={cn(
-					buttonVariants({ variant: "outline", size: "sm" }),
-					"shrink-0 gap-1",
-				)}
-			>
+			<span class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}>
 				Setup
 				<ArrowUpRight class="h-3.5 w-3.5" />
 			</span>

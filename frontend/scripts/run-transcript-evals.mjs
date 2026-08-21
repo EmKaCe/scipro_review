@@ -40,7 +40,10 @@ try {
 		if (!trimmed || trimmed.startsWith("#")) continue;
 		const eq = trimmed.indexOf("=");
 		if (eq === -1) continue;
-		const key = trimmed.slice(0, eq).trim().replace(/^export\s+/, "");
+		const key = trimmed
+			.slice(0, eq)
+			.trim()
+			.replace(/^export\s+/, "");
 		const value = trimmed.slice(eq + 1).trim();
 		if (key && !(key in process.env)) process.env[key] = value;
 	}
@@ -188,7 +191,9 @@ const client = getKiConnectClient();
 const model = MODEL_OVERRIDE ?? settings.llm.model;
 
 if (!JSON_ONLY) {
-	console.log(`Scoring ${items.length} proposal(s) with model ${model} (concurrency ${CONCURRENCY})`);
+	console.log(
+		`Scoring ${items.length} proposal(s) with model ${model} (concurrency ${CONCURRENCY})`,
+	);
 	console.log("");
 }
 
@@ -210,7 +215,14 @@ const scored = await mapWithConcurrency(items, CONCURRENCY, async ({ thread, tur
 		// One failed judge call must not abort the whole run: mark the item
 		// failed, keep the already-completed scores, and let the summary
 		// report the failure count.
-		return { thread, turn, proposal, score: null, reason: null, error: String(err?.message ?? err) };
+		return {
+			thread,
+			turn,
+			proposal,
+			score: null,
+			reason: null,
+			error: String(err?.message ?? err),
+		};
 	}
 });
 
@@ -227,7 +239,8 @@ if (!JSON_ONLY) {
 		);
 	}
 	const valid = scored.filter((s) => s.score !== null);
-	const mean = valid.length > 0 ? valid.reduce((sum, s) => sum + s.score, 0) / valid.length : null;
+	const mean =
+		valid.length > 0 ? valid.reduce((sum, s) => sum + s.score, 0) / valid.length : null;
 	console.log("");
 	console.log(
 		`SUMMARY: ${scored.length} proposal(s); ${valid.length} scored, ${scored.length - valid.length} failed; mean rubric-fidelity = ${mean === null ? "n/a" : mean.toFixed(3)}`,
@@ -245,9 +258,7 @@ const report = {
 		title: t.title,
 		resourceId: t.resourceId,
 		proposals: t.proposals.map((proposal, i) => {
-			const s = scored.find(
-				(x) => x.thread.threadId === t.threadId && x.turn === t.turns[i],
-			);
+			const s = scored.find((x) => x.thread.threadId === t.threadId && x.turn === t.turns[i]);
 			return {
 				turn: t.turns[i],
 				proposal,

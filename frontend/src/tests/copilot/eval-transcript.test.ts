@@ -64,11 +64,20 @@ describe("extractGradingProposals", () => {
 		const parts = [
 			toolInvocation("get-assignment", { assignmentId: "soil_contamination" }),
 			toolInvocation("compare-to-key", { submissionId: "2026SS_00" }),
-			toolInvocation("set-rubric-item", SET_RUBRIC_ARGS("assignment_requirements", "complete")),
-			toolInvocation("set-rubric-item", SET_RUBRIC_ARGS("code_execution_results", "complete")),
+			toolInvocation(
+				"set-rubric-item",
+				SET_RUBRIC_ARGS("assignment_requirements", "complete"),
+			),
+			toolInvocation(
+				"set-rubric-item",
+				SET_RUBRIC_ARGS("code_execution_results", "complete"),
+			),
 			toolInvocation("update-grade-dimension", DIMENSION_ARGS("code_quality_design", 600)),
 			toolInvocation("update-grade-dimension", DIMENSION_ARGS("scientific_programming", 600)),
-			toolInvocation("write-notes", NOTES_ARGS("- Excellent work! Your notebook closely follows the reference key.")),
+			toolInvocation(
+				"write-notes",
+				NOTES_ARGS("- Excellent work! Your notebook closely follows the reference key."),
+			),
 		];
 
 		const proposals = extractGradingProposals(parts);
@@ -127,9 +136,13 @@ describe("extractGradingProposals", () => {
 
 	it("draft-notes counts as a grading write (feedback), matching the recorded turn", () => {
 		const parts = [
-			toolInvocation("draft-notes", { submissionId: "2026SS_00", assignmentId: "soil_contamination" }, {
-				notes: "Great work on this assignment!",
-			}),
+			toolInvocation(
+				"draft-notes",
+				{ submissionId: "2026SS_00", assignmentId: "soil_contamination" },
+				{
+					notes: "Great work on this assignment!",
+				},
+			),
 		];
 
 		const proposals = extractGradingProposals(parts);
@@ -144,15 +157,27 @@ describe("extractGradingProposals", () => {
 		// Real recorded result shape: set-rubric-item returns rubricItem; the
 		// update-grade-dimension result carries dimension; write-notes returns notes.
 		const parts = [
-			toolInvocation("set-rubric-item", { submissionId: "2026SS_00" }, {
-				rubricItem: { criterionKey: "assignment_requirements", optionKey: "complete" },
-			}),
-			toolInvocation("update-grade-dimension", { submissionId: "2026SS_00" }, {
-				dimension: { dimensionId: "code_quality_design", value: 500 },
-			}),
-			toolInvocation("write-notes", { submissionId: "2026SS_00" }, {
-				notes: "Solid work overall.",
-			}),
+			toolInvocation(
+				"set-rubric-item",
+				{ submissionId: "2026SS_00" },
+				{
+					rubricItem: { criterionKey: "assignment_requirements", optionKey: "complete" },
+				},
+			),
+			toolInvocation(
+				"update-grade-dimension",
+				{ submissionId: "2026SS_00" },
+				{
+					dimension: { dimensionId: "code_quality_design", value: 500 },
+				},
+			),
+			toolInvocation(
+				"write-notes",
+				{ submissionId: "2026SS_00" },
+				{
+					notes: "Solid work overall.",
+				},
+			),
 		];
 
 		const proposals = extractGradingProposals(parts);
@@ -194,22 +219,32 @@ describe("loadRecordedThreads", () => {
 	}
 
 	it("loads threads with grading proposals, resolving assignmentId from thread metadata", async () => {
-		await seedThread("thread-a", {
-			id: "thread-a",
-			title: "Can you do a complete check of the submitted assignment?",
-			resourceId: "2026SS_00",
-			createdAt: "2026-08-09T21:49:00.000Z",
-			updatedAt: "2026-08-09T21:51:00.000Z",
-			metadata: { assignmentId: "soil_contamination" },
-		}, [
-			{ role: "user", content: { format: 2, parts: [textPart("check it")] } },
-			assistantMessage([
-				toolInvocation("compare-to-key", { submissionId: "2026SS_00" }),
-				toolInvocation("set-rubric-item", SET_RUBRIC_ARGS("assignment_requirements", "complete")),
-				toolInvocation("update-grade-dimension", DIMENSION_ARGS("code_quality_design", 600)),
-				toolInvocation("write-notes", NOTES_ARGS("Good work.")),
-			]),
-		]);
+		await seedThread(
+			"thread-a",
+			{
+				id: "thread-a",
+				title: "Can you do a complete check of the submitted assignment?",
+				resourceId: "2026SS_00",
+				createdAt: "2026-08-09T21:49:00.000Z",
+				updatedAt: "2026-08-09T21:51:00.000Z",
+				metadata: { assignmentId: "soil_contamination" },
+			},
+			[
+				{ role: "user", content: { format: 2, parts: [textPart("check it")] } },
+				assistantMessage([
+					toolInvocation("compare-to-key", { submissionId: "2026SS_00" }),
+					toolInvocation(
+						"set-rubric-item",
+						SET_RUBRIC_ARGS("assignment_requirements", "complete"),
+					),
+					toolInvocation(
+						"update-grade-dimension",
+						DIMENSION_ARGS("code_quality_design", 600),
+					),
+					toolInvocation("write-notes", NOTES_ARGS("Good work.")),
+				]),
+			],
+		);
 
 		const evals = await loadRecordedThreads(tempDir);
 
@@ -228,20 +263,24 @@ describe("loadRecordedThreads", () => {
 	});
 
 	it("skips threads with zero grading proposals (e2e-smoke pattern)", async () => {
-		await seedThread("e2e-smoke", {
-			id: "e2e-smoke",
-			title: "",
-			resourceId: "2026SS_00",
-			createdAt: "2026-08-18T10:00:00.000Z",
-			updatedAt: "2026-08-18T10:01:00.000Z",
-			metadata: {},
-		}, [
-			assistantMessage([
-				toolInvocation("get-assignment", { id: "soil_contamination" }),
-				toolInvocation("get-submission-context", { submissionId: "2026SS_00" }),
-				toolInvocation("compare-to-key", { submissionId: "2026SS_00" }),
-			]),
-		]);
+		await seedThread(
+			"e2e-smoke",
+			{
+				id: "e2e-smoke",
+				title: "",
+				resourceId: "2026SS_00",
+				createdAt: "2026-08-18T10:00:00.000Z",
+				updatedAt: "2026-08-18T10:01:00.000Z",
+				metadata: {},
+			},
+			[
+				assistantMessage([
+					toolInvocation("get-assignment", { id: "soil_contamination" }),
+					toolInvocation("get-submission-context", { submissionId: "2026SS_00" }),
+					toolInvocation("compare-to-key", { submissionId: "2026SS_00" }),
+				]),
+			],
+		);
 
 		const evals = await loadRecordedThreads(tempDir);
 
@@ -249,31 +288,45 @@ describe("loadRecordedThreads", () => {
 	});
 
 	it("uses thread metadata assignmentId when present; no fallback guessing without it (privacy: no hard-coded submission map)", async () => {
-		await seedThread("with-meta", {
-			id: "with-meta",
-			title: "meta thread",
-			resourceId: "2026SS_00",
-			createdAt: "2026-08-19T10:00:00.000Z",
-			updatedAt: "2026-08-19T10:01:00.000Z",
-			metadata: { assignmentId: "other_assignment" },
-		}, [
-			assistantMessage([toolInvocation("write-notes", NOTES_ARGS("notes from metadata thread"))]),
-		]);
-		await seedThread("without-meta", {
-			id: "without-meta",
-			title: "no-meta thread",
-			resourceId: "2026SS_00",
-			createdAt: "2026-08-19T10:00:00.000Z",
-			updatedAt: "2026-08-19T10:01:00.000Z",
-			metadata: {},
-		}, [
-			assistantMessage([toolInvocation("write-notes", NOTES_ARGS("notes from no-meta thread"))]),
-		]);
+		await seedThread(
+			"with-meta",
+			{
+				id: "with-meta",
+				title: "meta thread",
+				resourceId: "2026SS_00",
+				createdAt: "2026-08-19T10:00:00.000Z",
+				updatedAt: "2026-08-19T10:01:00.000Z",
+				metadata: { assignmentId: "other_assignment" },
+			},
+			[
+				assistantMessage([
+					toolInvocation("write-notes", NOTES_ARGS("notes from metadata thread")),
+				]),
+			],
+		);
+		await seedThread(
+			"without-meta",
+			{
+				id: "without-meta",
+				title: "no-meta thread",
+				resourceId: "2026SS_00",
+				createdAt: "2026-08-19T10:00:00.000Z",
+				updatedAt: "2026-08-19T10:01:00.000Z",
+				metadata: {},
+			},
+			[
+				assistantMessage([
+					toolInvocation("write-notes", NOTES_ARGS("notes from no-meta thread")),
+				]),
+			],
+		);
 
 		const evals = await loadRecordedThreads(tempDir);
 
 		expect(evals).toHaveLength(2);
-		const byId = Object.fromEntries(evals.map((e) => [e.threadId, e.proposals[0].assignmentId]));
+		const byId = Object.fromEntries(
+			evals.map((e) => [e.threadId, e.proposals[0].assignmentId]),
+		);
 		// With metadata → metadata wins.
 		expect(byId["with-meta"]).toBe("other_assignment");
 		// Without metadata → assignmentId is undefined (no hard-coded fallback —
@@ -283,24 +336,34 @@ describe("loadRecordedThreads", () => {
 	});
 
 	it("one proposal per grading turn, in conversation order, with turn numbers", async () => {
-		await seedThread("multi-turn", {
-			id: "multi-turn",
-			title: "multi-turn thread",
-			resourceId: "2026SS_00",
-			createdAt: "2026-08-19T10:00:00.000Z",
-			updatedAt: "2026-08-19T10:05:00.000Z",
-			metadata: {},
-		}, [
-			{ role: "user", content: { format: 2, parts: [textPart("first message")] } },
-			assistantMessage([
-				toolInvocation("set-rubric-item", SET_RUBRIC_ARGS("assignment_requirements", "complete")),
-			]),
-			{ role: "user", content: { format: 2, parts: [textPart("more")] } },
-			assistantMessage([
-				toolInvocation("update-grade-dimension", DIMENSION_ARGS("code_quality_design", 300)),
-				toolInvocation("write-notes", NOTES_ARGS("Second turn notes.")),
-			]),
-		]);
+		await seedThread(
+			"multi-turn",
+			{
+				id: "multi-turn",
+				title: "multi-turn thread",
+				resourceId: "2026SS_00",
+				createdAt: "2026-08-19T10:00:00.000Z",
+				updatedAt: "2026-08-19T10:05:00.000Z",
+				metadata: {},
+			},
+			[
+				{ role: "user", content: { format: 2, parts: [textPart("first message")] } },
+				assistantMessage([
+					toolInvocation(
+						"set-rubric-item",
+						SET_RUBRIC_ARGS("assignment_requirements", "complete"),
+					),
+				]),
+				{ role: "user", content: { format: 2, parts: [textPart("more")] } },
+				assistantMessage([
+					toolInvocation(
+						"update-grade-dimension",
+						DIMENSION_ARGS("code_quality_design", 300),
+					),
+					toolInvocation("write-notes", NOTES_ARGS("Second turn notes.")),
+				]),
+			],
+		);
 
 		const evals = await loadRecordedThreads(tempDir);
 

@@ -176,11 +176,15 @@ export async function compareNotebooks(
 		// positive injection verdict on EITHER notebook skips the pair (the
 		// structural result stands); screening failures degrade to proceeding.
 		if (await screensAsInjection(a, maxChars)) {
-			console.warn(`[plagiarism] semantic pair skipped: injection detected in ${a.studentId}`);
+			console.warn(
+				`[plagiarism] semantic pair skipped: injection detected in ${a.studentId}`,
+			);
 			return null;
 		}
 		if (await screensAsInjection(b, maxChars)) {
-			console.warn(`[plagiarism] semantic pair skipped: injection detected in ${b.studentId}`);
+			console.warn(
+				`[plagiarism] semantic pair skipped: injection detected in ${b.studentId}`,
+			);
 			return null;
 		}
 

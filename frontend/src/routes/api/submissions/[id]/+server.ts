@@ -30,10 +30,7 @@ import { getSubmissionNotebookAbsolutePath } from "$lib/server/file-service";
 import { getSubmission, removeSubmission } from "$lib/server/metadata";
 import { removeStudentFromPlagiarism } from "$lib/server/plagiarism/cache";
 import { readResults, clearResult } from "$lib/server/results-store";
-import {
-	loadCohortNorms,
-	overTickFromStored,
-} from "$lib/server/copilot/over-tick";
+import { loadCohortNorms, overTickFromStored } from "$lib/server/copilot/over-tick";
 import type { CellInfo } from "$lib/types/submissions";
 
 export async function GET(event: RequestEvent): Promise<Response> {

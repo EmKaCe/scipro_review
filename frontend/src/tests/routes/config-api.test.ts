@@ -287,11 +287,18 @@ async function readOnDisk(): Promise<string> {
 describe("PUT /api/config/grading", () => {
 	it("validates and persists a valid config, returning it sorted", async () => {
 		const resp = await gradingPUT(
-			makePutEvent({ config: { ...VALID_GRADING, grade_boundaries: [...VALID_GRADING.grade_boundaries].reverse() } }),
+			makePutEvent({
+				config: {
+					...VALID_GRADING,
+					grade_boundaries: [...VALID_GRADING.grade_boundaries].reverse(),
+				},
+			}),
 		);
 		expect(resp.status).toBe(200);
 
-		const body = (await resp.json()) as { config: { grade_boundaries: Array<{ min_percentage: number }> } };
+		const body = (await resp.json()) as {
+			config: { grade_boundaries: Array<{ min_percentage: number }> };
+		};
 		// Boundaries are returned sorted descending regardless of input order.
 		expect(body.config.grade_boundaries.map((b) => b.min_percentage)).toEqual([95, 0]);
 
@@ -299,7 +306,9 @@ describe("PUT /api/config/grading", () => {
 		const onDisk = await loadGradingConfigFile();
 		expect(onDisk).not.toBeNull();
 		expect(onDisk!.dimensions).toHaveLength(2);
-		expect(onDisk!.grade_boundaries.map((b) => b.min_percentage).sort((a, b) => b - a)).toEqual([95, 0]);
+		expect(onDisk!.grade_boundaries.map((b) => b.min_percentage).sort((a, b) => b - a)).toEqual(
+			[95, 0],
+		);
 	});
 
 	it("no-op guard: saving a semantically identical config does NOT rewrite the file", async () => {
@@ -324,7 +333,12 @@ describe("PUT /api/config/grading", () => {
 		const changed = {
 			...VALID_GRADING,
 			dimensions: [
-				{ key: "code_quality_design", title: "Code Quality & Design", max_points: 6, weight: 5 },
+				{
+					key: "code_quality_design",
+					title: "Code Quality & Design",
+					max_points: 6,
+					weight: 5,
+				},
 			],
 		};
 		const resp = await gradingPUT(makePutEvent({ config: changed }));
@@ -344,9 +358,26 @@ describe("PUT /api/config/grading", () => {
 			{ config: null },
 			{ config: {} },
 			{ config: { dimensions: [], grade_boundaries: [] } },
-			{ config: { ...VALID_GRADING, dimensions: [{ key: "x", title: "", max_points: 6, weight: 1 }] } },
-			{ config: { ...VALID_GRADING, dimensions: [{ key: "x", title: "T", max_points: -1, weight: 1 }] } },
-			{ config: { ...VALID_GRADING, grade_boundaries: [{ min_percentage: 150, grade: 1, label: "l", us_equiv: "A" }] } },
+			{
+				config: {
+					...VALID_GRADING,
+					dimensions: [{ key: "x", title: "", max_points: 6, weight: 1 }],
+				},
+			},
+			{
+				config: {
+					...VALID_GRADING,
+					dimensions: [{ key: "x", title: "T", max_points: -1, weight: 1 }],
+				},
+			},
+			{
+				config: {
+					...VALID_GRADING,
+					grade_boundaries: [
+						{ min_percentage: 150, grade: 1, label: "l", us_equiv: "A" },
+					],
+				},
+			},
 		];
 		for (const bad of badCases) {
 			let status: number | null = null;

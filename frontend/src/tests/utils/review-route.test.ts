@@ -16,10 +16,7 @@
  * decision that both review pages now gate on.
  */
 import { describe, it, expect } from "vitest";
-import {
-	resolveReviewAssignmentId,
-	isUnknownReviewAssignmentId,
-} from "$lib/utils/review-route.js";
+import { resolveReviewAssignmentId, isUnknownReviewAssignmentId } from "$lib/utils/review-route.js";
 
 // Enabled assignment registry as loaded by the review store (RubricStore.init
 // filters `enabled`). Soil is the only enabled assignment in the repo.

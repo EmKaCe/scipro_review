@@ -33,10 +33,7 @@ import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
-import {
-	preEvaluateSubmission,
-	runCohortCalibration,
-} from "$lib/server/copilot/pre-evaluation";
+import { preEvaluateSubmission, runCohortCalibration } from "$lib/server/copilot/pre-evaluation";
 import {
 	MIN_OUTLIER_CONSENSUS,
 	type CalibrationAdjustment,

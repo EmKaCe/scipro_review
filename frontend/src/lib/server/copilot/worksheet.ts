@@ -338,10 +338,7 @@ export const MUTUAL_EXCLUSION_PAIRS: Readonly<Record<string, readonly MutualExcl
 
 /** Validation error kinds surfaced by {@link validateWorksheetSection}. */
 export type WorksheetValidationErrorType =
-	| "unknown"
-	| "mutual_exclusion"
-	| "empty"
-	| "header_mismatch";
+	"unknown" | "mutual_exclusion" | "empty" | "header_mismatch";
 
 /** One validation failure for a worksheet section. */
 export interface WorksheetValidationError {
@@ -599,11 +596,7 @@ function splitSectionHeader(header: string): { key: string; title: string } {
  * matching the header's title against category titles (the LLM may drop the
  * key). Returns null when neither matches — the section is skipped.
  */
-function resolveCategoryKey(
-	rubric: MergedRubric,
-	key: string,
-	title: string,
-): string | null {
+function resolveCategoryKey(rubric: MergedRubric, key: string, title: string): string | null {
 	if (rubric.categories.some((entry) => entry.key === key)) return key;
 	const byTitle = rubric.categories.find((entry) => entry.category.title === title);
 	return byTitle ? byTitle.key : null;

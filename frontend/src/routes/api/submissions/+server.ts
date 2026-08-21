@@ -16,10 +16,7 @@ import type { RequestEvent } from "@sveltejs/kit";
 import { assignmentExists, resolveAssignmentId } from "$lib/server/assignments";
 import { listSubmissions } from "$lib/server/metadata";
 import { deriveCellSummary, readResults } from "$lib/server/results-store";
-import {
-	loadCohortNorms,
-	overTickFromStored,
-} from "$lib/server/copilot/over-tick";
+import { loadCohortNorms, overTickFromStored } from "$lib/server/copilot/over-tick";
 
 export async function GET(event: RequestEvent): Promise<Response> {
 	const assignmentId = await resolveAssignmentId(event.url.searchParams.get("assignment"));

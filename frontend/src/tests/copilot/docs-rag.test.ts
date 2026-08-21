@@ -156,10 +156,38 @@ async function writeFixtureIndex(
 		embeddingModel: withVectors ? "e5-mistral-7b-instruct" : null,
 		embeddingDim: withVectors ? (options.embeddingDim ?? 4) : null,
 		libraries: [
-			{ library: "numpy", version: "2.5.1", pinnedVersion: "2.5.1", sourceUrl: "https://numpy.org/doc/stable/numpy-html.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
-			{ library: "pandas", version: "3.0.5", pinnedVersion: "3.0.5", sourceUrl: "https://pandas.pydata.org/docs/pandas.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
-			{ library: "scipy", version: "1.18.0", pinnedVersion: "1.18.0", sourceUrl: "https://docs.scipy.org/doc/scipy-1.18.0/scipy-html-1.18.0.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
-			{ library: "sklearn", version: "1.9.0", pinnedVersion: "1.9.0", sourceUrl: "https://scikit-learn.org/stable/_downloads/scikit-learn-docs.zip", sha256: "abc", builtAt: "2026-08-18T00:00:00.000Z" },
+			{
+				library: "numpy",
+				version: "2.5.1",
+				pinnedVersion: "2.5.1",
+				sourceUrl: "https://numpy.org/doc/stable/numpy-html.zip",
+				sha256: "abc",
+				builtAt: "2026-08-18T00:00:00.000Z",
+			},
+			{
+				library: "pandas",
+				version: "3.0.5",
+				pinnedVersion: "3.0.5",
+				sourceUrl: "https://pandas.pydata.org/docs/pandas.zip",
+				sha256: "abc",
+				builtAt: "2026-08-18T00:00:00.000Z",
+			},
+			{
+				library: "scipy",
+				version: "1.18.0",
+				pinnedVersion: "1.18.0",
+				sourceUrl: "https://docs.scipy.org/doc/scipy-1.18.0/scipy-html-1.18.0.zip",
+				sha256: "abc",
+				builtAt: "2026-08-18T00:00:00.000Z",
+			},
+			{
+				library: "sklearn",
+				version: "1.9.0",
+				pinnedVersion: "1.9.0",
+				sourceUrl: "https://scikit-learn.org/stable/_downloads/scikit-learn-docs.zip",
+				sha256: "abc",
+				builtAt: "2026-08-18T00:00:00.000Z",
+			},
 		],
 		chunks,
 	};
@@ -455,10 +483,11 @@ describe("search-docs tool", () => {
 	it("returns hits with the documented shape through the registry", async () => {
 		await writeFixtureIndex(dataDir, false);
 
-		const result = (await registry.run("search-docs", { query: "curve_fit" }, makeContext())) as Record<
-			string,
-			unknown
-		>;
+		const result = (await registry.run(
+			"search-docs",
+			{ query: "curve_fit" },
+			makeContext(),
+		)) as Record<string, unknown>;
 
 		expect(result["query"]).toBe("curve_fit");
 		expect(result["count"]).toBeGreaterThan(0);
@@ -477,9 +506,9 @@ describe("search-docs tool", () => {
 	});
 
 	it("rejects invalid args via the zod input schema", async () => {
-		await expect(
-			registry.run("search-docs", { query: "" }, makeContext()),
-		).rejects.toThrow(/invalid arguments/);
+		await expect(registry.run("search-docs", { query: "" }, makeContext())).rejects.toThrow(
+			/invalid arguments/,
+		);
 		await expect(
 			registry.run("search-docs", { query: "x", library: "tensorflow" }, makeContext()),
 		).rejects.toThrow(/invalid arguments/);
@@ -507,10 +536,11 @@ describe("search-docs tool", () => {
 	});
 
 	it("returns a note when the index is not built (never throws)", async () => {
-		const result = (await registry.run("search-docs", { query: "curve_fit" }, makeContext())) as Record<
-			string,
-			unknown
-		>;
+		const result = (await registry.run(
+			"search-docs",
+			{ query: "curve_fit" },
+			makeContext(),
+		)) as Record<string, unknown>;
 
 		expect(result["count"]).toBe(0);
 		expect(result["results"]).toEqual([]);

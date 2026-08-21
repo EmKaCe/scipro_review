@@ -45,8 +45,7 @@ export function filterSubmissions(
 		if (statusFilter !== "all" && s.status !== statusFilter) return false;
 		// Confidence routing: rows without a stored confidence (pre-eval not
 		// run, or a legacy envelope) only match the "All" filter.
-		if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter)
-			return false;
+		if (confidenceFilter !== "all" && s.gradingConfidence !== confidenceFilter) return false;
 		if (searchQuery && !s.studentId.toLowerCase().includes(searchQuery.toLowerCase()))
 			return false;
 		return true;

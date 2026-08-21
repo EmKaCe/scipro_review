@@ -64,10 +64,13 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 /** The committed soil scoring file (byte-equality contract — read-only). */
-const SOIL_SCORING_SOURCE = "/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml";
+const SOIL_SCORING_SOURCE =
+	"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml";
 /** The committed soil own-rubric criteria file (grounding rubric). */
-const SOIL_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/soil_contamination.yaml";
-const ATOM_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/atom_interaction.yaml";
+const SOIL_CRITERIA_SOURCE =
+	"/root/projects/svelte-review-copilot/data/criteria/soil_contamination.yaml";
+const ATOM_CRITERIA_SOURCE =
+	"/root/projects/svelte-review-copilot/data/criteria/atom_interaction.yaml";
 
 /** A valid full scoring document (passes the compile gate). */
 const VALID_DRAFT: Record<string, unknown> = {
@@ -82,7 +85,8 @@ const VALID_DRAFT: Record<string, unknown> = {
 	},
 	evidence_patterns: {
 		r2_or_rmse_computed: {
-			pattern: "\\\\bR\\\\s*(?:\\\\^2|²|2)\\\\s*[=:]\\\\s*[\\\\d.]+|\\\\bRMSE\\\\s*[=:]\\\\s*[\\\\d.]+",
+			pattern:
+				"\\\\bR\\\\s*(?:\\\\^2|²|2)\\\\s*[=:]\\\\s*[\\\\d.]+|\\\\bRMSE\\\\s*[=:]\\\\s*[\\\\d.]+",
 			semantics: "test",
 			haystack: "output",
 		},
@@ -250,9 +254,15 @@ describe("POST /api/assignments/[id]/scoring/draft", () => {
 		expect(assignment?.scoring_file).toBeUndefined();
 
 		// And the pre-existing committed file stays byte-identical.
-		const soilBefore = await readFile(path.join(dataDir, "scoring", "soil_contamination.yaml"), "utf-8");
+		const soilBefore = await readFile(
+			path.join(dataDir, "scoring", "soil_contamination.yaml"),
+			"utf-8",
+		);
 		await postDraft(postEvent("soil_contamination"));
-		const soilAfter = await readFile(path.join(dataDir, "scoring", "soil_contamination.yaml"), "utf-8");
+		const soilAfter = await readFile(
+			path.join(dataDir, "scoring", "soil_contamination.yaml"),
+			"utf-8",
+		);
 		expect(soilAfter).toBe(soilBefore);
 	});
 });

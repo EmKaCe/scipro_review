@@ -32,9 +32,7 @@ afterEach(() => {
 
 describe("KiConnectClient 429 retry", () => {
 	it("retries a 429 and succeeds on the next attempt", async () => {
-		mockFetch
-			.mockResolvedValueOnce(rateLimited())
-			.mockResolvedValueOnce(okResponse());
+		mockFetch.mockResolvedValueOnce(rateLimited()).mockResolvedValueOnce(okResponse());
 
 		const client = new KiConnectClient({ apiKey: "test-key", baseUrl: "http://example.test" });
 		const result = await client.chatCompletionText("sys", "user");
@@ -62,9 +60,7 @@ describe("KiConnectClient 429 retry", () => {
 
 	it("respects Retry-After for the backoff delay", async () => {
 		vi.useFakeTimers();
-		mockFetch
-			.mockResolvedValueOnce(rateLimited(2))
-			.mockResolvedValueOnce(okResponse());
+		mockFetch.mockResolvedValueOnce(rateLimited(2)).mockResolvedValueOnce(okResponse());
 
 		const client = new KiConnectClient({ apiKey: "test-key", baseUrl: "http://example.test" });
 		const promise = client.chatCompletionText("sys", "user");

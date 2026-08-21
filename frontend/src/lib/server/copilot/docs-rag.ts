@@ -248,7 +248,9 @@ export async function loadDocsIndex(): Promise<LoadedIndex | null> {
 			chunks,
 			vectors,
 			embeddingDim: typeof file.embeddingDim === "number" ? file.embeddingDim : null,
-			manifest: Array.isArray(file.libraries) ? (file.libraries as DocsLibraryManifest[]) : [],
+			manifest: Array.isArray(file.libraries)
+				? (file.libraries as DocsLibraryManifest[])
+				: [],
 			miniSearch,
 		};
 		return loadedIndex;
@@ -332,7 +334,10 @@ function embeddingTopN(
 	const scored: Array<{ chunk: DocsChunk; score: number }> = [];
 	for (let i = 0; i < chunks.length; i++) {
 		if (library && chunks[i]!.library !== library) continue;
-		scored.push({ chunk: chunks[i]!, score: cosine(vectors.subarray(i * dim, (i + 1) * dim), queryVector) });
+		scored.push({
+			chunk: chunks[i]!,
+			score: cosine(vectors.subarray(i * dim, (i + 1) * dim), queryVector),
+		});
 	}
 	scored.sort((a, b) => b.score - a.score);
 	return scored.slice(0, n);
@@ -372,7 +377,9 @@ function rrfFuse(
 
 function toHit(chunk: DocsChunk, score: number): DocHit {
 	const snippet =
-		chunk.text.length > SNIPPET_CHARS ? chunk.text.slice(0, SNIPPET_CHARS) + SNIPPET_MARKER : chunk.text;
+		chunk.text.length > SNIPPET_CHARS
+			? chunk.text.slice(0, SNIPPET_CHARS) + SNIPPET_MARKER
+			: chunk.text;
 	return {
 		title: chunk.title,
 		url: chunk.url,
@@ -431,7 +438,13 @@ export async function searchDocs(
 				queryVector.length > 0 &&
 				queryVector.length === index.embeddingDim
 			) {
-				const embedTop = embeddingTopN(index.chunks, index.vectors, queryVector, library, RRF_CANDIDATES);
+				const embedTop = embeddingTopN(
+					index.chunks,
+					index.vectors,
+					queryVector,
+					library,
+					RRF_CANDIDATES,
+				);
 				const fused = rrfFuse(bm25Top, embedTop, topK);
 				return fused.map((r) => toHit(r.chunk, r.score));
 			}

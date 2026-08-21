@@ -32,13 +32,8 @@ import type { RequestEvent } from "@sveltejs/kit";
 import * as yaml from "js-yaml";
 
 import { getAssignmentById } from "$lib/server/assignments";
-import {
-	AssignmentWriteError,
-	updateAssignment,
-} from "$lib/server/assignments-writer";
-import {
-	compileScoringConfig,
-} from "$lib/server/copilot/scoring-config";
+import { AssignmentWriteError, updateAssignment } from "$lib/server/assignments-writer";
+import { compileScoringConfig } from "$lib/server/copilot/scoring-config";
 import { getDataDir } from "$lib/server/metadata";
 
 // ---------------------------------------------------------------------------
@@ -51,12 +46,15 @@ import { getDataDir } from "$lib/server/metadata";
  */
 export interface ScoringConfigDocument {
 	reference_anchors?: Record<string, number>;
-	evidence_patterns?: Record<string, {
-		pattern: string | string[];
-		semantics: "test" | "test_all" | "capture_value" | "distinct_count";
-		haystack: "output" | "code" | "markdown" | "output+code" | "markdown+code";
-		capture_group?: number;
-	}>;
+	evidence_patterns?: Record<
+		string,
+		{
+			pattern: string | string[];
+			semantics: "test" | "test_all" | "capture_value" | "distinct_count";
+			haystack: "output" | "code" | "markdown" | "output+code" | "markdown+code";
+			capture_group?: number;
+		}
+	>;
 	disallowed_libraries?: string[];
 	prompt_anchor_text?: {
 		dimension_guidance?: Record<string, string>;

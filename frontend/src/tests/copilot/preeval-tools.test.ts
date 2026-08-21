@@ -157,29 +157,29 @@ beforeEach(async () => {
 	kiConnectMock.chatCompletionText.mockReset();
 	// Default screening: pass cells through unchanged (clean).
 	screeningCellsMock.screenNotebookCells.mockReset();
-	screeningCellsMock.screenNotebookCells.mockImplementation(async (cells: readonly unknown[]) => ({
-		cells: cells as typeof cells,
-		needsReview: false,
-	}));
-	kiConnectMock.chatCompletion.mockImplementation(
-		async (systemPrompt: string) => {
-			if (systemPrompt.includes("Your ONLY job is to mark each cell")) {
-				return PHASE1_MARKERS;
-			}
-			// Phase 2a: scoring only (new split pipeline — must come before the legacy catch-all)
-			if (systemPrompt.includes("Your ONLY job is to assign RAW POINT scores")) {
-				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
-			}
-			// Self-critique pass: review scores (optional, gated by CRITIQUE_ENABLED)
-			if (systemPrompt.includes("reviewing dimension scores for correctness")) {
-				return { gradeSuggestion: ENVELOPE.gradeSuggestion };
-			}
-			if (systemPrompt.includes("writing constructive feedback for ONE student")) {
-				return PHASE3_FEEDBACK;
-			}
-			throw new Error(`Unexpected system prompt: ${systemPrompt.slice(0, 100)}`);
-		},
+	screeningCellsMock.screenNotebookCells.mockImplementation(
+		async (cells: readonly unknown[]) => ({
+			cells: cells as typeof cells,
+			needsReview: false,
+		}),
 	);
+	kiConnectMock.chatCompletion.mockImplementation(async (systemPrompt: string) => {
+		if (systemPrompt.includes("Your ONLY job is to mark each cell")) {
+			return PHASE1_MARKERS;
+		}
+		// Phase 2a: scoring only (new split pipeline — must come before the legacy catch-all)
+		if (systemPrompt.includes("Your ONLY job is to assign RAW POINT scores")) {
+			return { gradeSuggestion: ENVELOPE.gradeSuggestion };
+		}
+		// Self-critique pass: review scores (optional, gated by CRITIQUE_ENABLED)
+		if (systemPrompt.includes("reviewing dimension scores for correctness")) {
+			return { gradeSuggestion: ENVELOPE.gradeSuggestion };
+		}
+		if (systemPrompt.includes("writing constructive feedback for ONE student")) {
+			return PHASE3_FEEDBACK;
+		}
+		throw new Error(`Unexpected system prompt: ${systemPrompt.slice(0, 100)}`);
+	});
 	// The fixture has NO criteria files, so the worksheet pipeline is skipped
 	// and the raw-text path must never be hit.
 	kiConnectMock.chatCompletionText.mockImplementation(async () => {

@@ -31,10 +31,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import * as yaml from "js-yaml";
 
-import type {
-	OverTickCategory,
-	OverTickResult,
-} from "$lib/types/submissions";
+import type { OverTickCategory, OverTickResult } from "$lib/types/submissions";
 import type { StoredExecutionResult } from "../results-store";
 import { getDataDir } from "../metadata";
 
@@ -197,8 +194,7 @@ export function computeOverTick(
 		}
 		if (overlap / total < 0.6) {
 			const differ = total - overlap;
-			overlapNote =
-				`count looks normal, but ${differ} of ${total} items differ from a typical review — verify the selection.`;
+			overlapNote = `count looks normal, but ${differ} of ${total} items differ from a typical review — verify the selection.`;
 		}
 	}
 
@@ -216,9 +212,7 @@ export function overTickFromStored(
 	norms: CohortNorms,
 ): OverTickResult | null {
 	const selections =
-		stored?.postProcessed?.rubricSelections ??
-		stored?.preEval?.rubricSelections ??
-		[];
+		stored?.postProcessed?.rubricSelections ?? stored?.preEval?.rubricSelections ?? [];
 	if (selections.length === 0) {
 		return null;
 	}

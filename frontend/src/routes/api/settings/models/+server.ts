@@ -37,9 +37,7 @@ export async function GET(): Promise<Response> {
 	if (live.length > 0) {
 		const models: ModelInfo[] = live.map((model) => ({
 			id: model.id,
-			contextTokens:
-				model.context_length ??
-				resolveContextTokens(model.id),
+			contextTokens: model.context_length ?? resolveContextTokens(model.id),
 			isOpenWeight: isOpenWeightModel(model.id),
 			operator: model.owned_by || undefined,
 		}));
@@ -48,12 +46,10 @@ export async function GET(): Promise<Response> {
 
 	// Static fallback: the verified model map (context sizes + operators
 	// from the KI Connect deployments page).
-	const models: ModelInfo[] = Object.entries(MODEL_CONTEXT_TOKENS).map(
-		([id, contextTokens]) => ({
-			id,
-			contextTokens,
-			isOpenWeight: isOpenWeightModel(id),
-		}),
-	);
+	const models: ModelInfo[] = Object.entries(MODEL_CONTEXT_TOKENS).map(([id, contextTokens]) => ({
+		id,
+		contextTokens,
+		isOpenWeight: isOpenWeightModel(id),
+	}));
 	return json({ models, source: "static" as const });
 }

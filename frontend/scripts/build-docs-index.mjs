@@ -67,8 +67,9 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 // drifting download fails the build (reproducibility) rather than silently
 // embedding stale docs.
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
-const LIBRARIES = JSON.parse(await readFile(path.join(SCRIPT_DIR, "docs-libraries.json"), "utf-8"))
-	.libraries;
+const LIBRARIES = JSON.parse(
+	await readFile(path.join(SCRIPT_DIR, "docs-libraries.json"), "utf-8"),
+).libraries;
 
 // ---------------------------------------------------------------------------
 // Curated cross-library integration notes
@@ -235,7 +236,16 @@ function usage() {
 }
 
 function parseArgs(argv) {
-	const args = { out: null, libraries: null, limit: null, matplotlibDir: null, seabornDir: null, fetchCrawls: null, venv: null, skipEmbed: false };
+	const args = {
+		out: null,
+		libraries: null,
+		limit: null,
+		matplotlibDir: null,
+		seabornDir: null,
+		fetchCrawls: null,
+		venv: null,
+		skipEmbed: false,
+	};
 	for (let i = 0; i < argv.length; i++) {
 		const a = argv[i];
 		switch (a) {
@@ -243,7 +253,10 @@ function parseArgs(argv) {
 				args.out = argv[++i];
 				break;
 			case "--libraries":
-				args.libraries = argv[++i]?.split(",").map((s) => s.trim()).filter(Boolean);
+				args.libraries = argv[++i]
+					?.split(",")
+					.map((s) => s.trim())
+					.filter(Boolean);
 				break;
 			case "--limit":
 				args.limit = Number(argv[++i]);
@@ -286,7 +299,10 @@ try {
 		if (!trimmed || trimmed.startsWith("#")) continue;
 		const eq = trimmed.indexOf("=");
 		if (eq === -1) continue;
-		const key = trimmed.slice(0, eq).trim().replace(/^export\s+/, "");
+		const key = trimmed
+			.slice(0, eq)
+			.trim()
+			.replace(/^export\s+/, "");
 		const value = trimmed.slice(eq + 1).trim();
 		if (key && !(key in process.env)) process.env[key] = value;
 	}
@@ -348,7 +364,10 @@ function decodeEntities(text) {
 
 /** Strip all tags from an HTML fragment and normalize whitespace. */
 function htmlToText(html) {
-	return decodeEntities(html.replace(/<[^>]+>/g, " ")).replace(/[ \t\r\f\v]+/g, " ").replace(/\n\s*\n+/g, "\n").trim();
+	return decodeEntities(html.replace(/<[^>]+>/g, " "))
+		.replace(/[ \t\r\f\v]+/g, " ")
+		.replace(/\n\s*\n+/g, "\n")
+		.trim();
 }
 
 /** Collapse whitespace in a signature line. */
@@ -447,7 +466,11 @@ function extractExamples(fragment, max = MAX_EXAMPLES) {
 		const text = htmlToText(m[1]);
 		if (!text) continue;
 		// Keep doctest blocks (>>>) and plain code blocks; skip pure output.
-		if (text.includes(">>>") || /^[a-zA-Z_][\w.]*\s*\(/.test(text) || text.includes("import ")) {
+		if (
+			text.includes(">>>") ||
+			/^[a-zA-Z_][\w.]*\s*\(/.test(text) ||
+			text.includes("import ")
+		) {
 			examples.push(text.slice(0, MAX_EXAMPLE_CHARS));
 			if (examples.length >= max) break;
 		}
@@ -502,7 +525,10 @@ function selectApiPages(files, lib) {
 		// signature dt but no generated/ prefix. Index pages (optimize.html,
 		// stats.html, ...) have no signature dt and are excluded.
 		const special = names.filter(
-			(n) => n.startsWith("reference/") && !n.startsWith("reference/generated/") && n.includes("<dt class=\"sig sig-object"),
+			(n) =>
+				n.startsWith("reference/") &&
+				!n.startsWith("reference/generated/") &&
+				n.includes('<dt class="sig sig-object'),
 		);
 		return [...direct, ...special];
 	}
@@ -520,7 +546,14 @@ function selectApiPages(files, lib) {
 function chunkPage(html, relPath, lib, version) {
 	const article = extractArticle(html);
 	const cleaned = removeElements(article, (tag, attrs) => {
-		if (tag === "script" || tag === "style" || tag === "nav" || tag === "footer" || tag === "aside" || tag === "dialog") {
+		if (
+			tag === "script" ||
+			tag === "style" ||
+			tag === "nav" ||
+			tag === "footer" ||
+			tag === "aside" ||
+			tag === "dialog"
+		) {
 			return true;
 		}
 		// Try-examples / jupyterlite iframe wrappers (numpy/pandas) — noise.
@@ -535,7 +568,7 @@ function chunkPage(html, relPath, lib, version) {
 		const dtMatch = block.match(/<dt class="sig sig-object[^"]*"[^>]*id="([^"]+)"/);
 		const title = dtMatch ? dtMatch[1] : null;
 		const sigMatch = block.match(/<dt class="sig sig-object[^"]*"[^>]*>([\s\S]*?)<\/dt>/);
-		const signature = sigMatch ? cleanSignature(sigMatch[1]) : title ?? relPath;
+		const signature = sigMatch ? cleanSignature(sigMatch[1]) : (title ?? relPath);
 
 		// dd content (everything after the dt), minus the Attributes/Methods
 		// link tables on class pages, minus examples (kept separately).
@@ -730,7 +763,10 @@ if (libraries.length === 0) {
 	process.exit(1);
 }
 
-const outDir = args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
+const outDir =
+	args.out ??
+	process.env.DOCS_INDEX_DIR ??
+	path.join(process.env.DATA_DIR ?? "./data", "docs-index");
 await mkdir(outDir, { recursive: true });
 
 // --fetch-crawls: produce the no-zip crawl sources (matplotlib/seaborn) from
@@ -755,8 +791,12 @@ const docChunksByLib = new Map();
 if (docstringLibs.length > 0) {
 	const venv = args.venv ?? process.env.DOCS_VENV ?? "/tmp/docs-docstrings-venv";
 	const pybin = path.join(venv, "bin", "python");
-	console.log(`[build-docs-index] docstring extraction for: ${docstringLibs.join(", ")} (venv ${venv})`);
-	execSync(`test -x ${JSON.stringify(pybin)} || uv venv --python 3.12 ${JSON.stringify(venv)}`, { stdio: "inherit" });
+	console.log(
+		`[build-docs-index] docstring extraction for: ${docstringLibs.join(", ")} (venv ${venv})`,
+	);
+	execSync(`test -x ${JSON.stringify(pybin)} || uv venv --python 3.12 ${JSON.stringify(venv)}`, {
+		stdio: "inherit",
+	});
 	// Some lib keys differ from their PyPI distribution name (import module
 	// `sklearn` ships as the `scikit-learn` package).
 	const PIP_PACKAGE = { sklearn: "scikit-learn" };
@@ -795,7 +835,9 @@ for (const lib of libraries) {
 				`sha256 mismatch for ${lib}: expected ${cfg.sha256}, got ${zipSha} — source changed; update docs-libraries.json (pinned version) and rebuild`,
 			);
 		}
-		console.log(`[build-docs-index]   ${(buf.length / 1024 / 1024).toFixed(1)} MB, sha256 ${zipSha.slice(0, 12)}… (verified)`);
+		console.log(
+			`[build-docs-index]   ${(buf.length / 1024 / 1024).toFixed(1)} MB, sha256 ${zipSha.slice(0, 12)}… (verified)`,
+		);
 		files = unzipSync(new Uint8Array(buf));
 		if (Array.isArray(cfg.pages)) files = stripCommonTopDir(files); // python docs zip nests under a version dir
 	} else if (cfg.source === "crawl") {
@@ -826,11 +868,15 @@ for (const lib of libraries) {
 			url: c.url,
 			text: c.text,
 		}));
-		console.log(`[build-docs-index]   ${libChunks.length} docstring chunk(s) (version ${version})`);
+		console.log(
+			`[build-docs-index]   ${libChunks.length} docstring chunk(s) (version ${version})`,
+		);
 	} else {
 		const pages = selectApiPages(files, lib);
 		const limited = args.limit ? pages.slice(0, args.limit) : pages;
-		console.log(`[build-docs-index]   ${pages.length} API pages (processing ${limited.length})`);
+		console.log(
+			`[build-docs-index]   ${pages.length} API pages (processing ${limited.length})`,
+		);
 		libChunks = [];
 		for (const relPath of limited) {
 			const html = strFromU8(files[relPath]);
@@ -858,19 +904,30 @@ for (const lib of libraries) {
 
 	if (!args.skipEmbed) {
 		if (!process.env.KI_CONNECT_API_KEY) {
-			console.warn("[build-docs-index] KI_CONNECT_API_KEY not set — writing index WITHOUT vectors (BM25-only at runtime)");
+			console.warn(
+				"[build-docs-index] KI_CONNECT_API_KEY not set — writing index WITHOUT vectors (BM25-only at runtime)",
+			);
 		} else {
 			try {
 				const model = createEmbedder();
 				embeddingModel = EMBEDDING_MODEL;
 				embeddingDim = EMBEDDING_DIM;
-				console.log(`[build-docs-index]   embedding ${libChunks.length} chunks (${EMBEDDING_MODEL}, concurrency ${EMBED_CONCURRENCY}) …`);
-				const vectors = await embedAll(model, libChunks.map((c) => c.text), (done, total) => {
-					if (done % 64 === 0 || done === total) console.log(`[build-docs-index]     ${done}/${total}`);
-				});
+				console.log(
+					`[build-docs-index]   embedding ${libChunks.length} chunks (${EMBEDDING_MODEL}, concurrency ${EMBED_CONCURRENCY}) …`,
+				);
+				const vectors = await embedAll(
+					model,
+					libChunks.map((c) => c.text),
+					(done, total) => {
+						if (done % 64 === 0 || done === total)
+							console.log(`[build-docs-index]     ${done}/${total}`);
+					},
+				);
 				allVectors.push(...vectors);
 			} catch (err) {
-				console.warn(`[build-docs-index]   embedding failed (${err instanceof Error ? err.message : String(err)}) — writing index WITHOUT vectors`);
+				console.warn(
+					`[build-docs-index]   embedding failed (${err instanceof Error ? err.message : String(err)}) — writing index WITHOUT vectors`,
+				);
 			}
 		}
 	}
@@ -890,13 +947,19 @@ if (INTEGRATION_NOTES.length > 0) {
 	}));
 	if (!args.skipEmbed) {
 		if (!process.env.KI_CONNECT_API_KEY) {
-			console.warn("[build-docs-index] KI_CONNECT_API_KEY not set — integration notes written WITHOUT vectors");
+			console.warn(
+				"[build-docs-index] KI_CONNECT_API_KEY not set — integration notes written WITHOUT vectors",
+			);
 		} else {
 			try {
 				const model = createEmbedder();
 				if (!embeddingModel) embeddingModel = EMBEDDING_MODEL;
 				if (!embeddingDim) embeddingDim = EMBEDDING_DIM;
-				const vectors = await embedAll(model, libChunks.map((c) => c.text), () => {});
+				const vectors = await embedAll(
+					model,
+					libChunks.map((c) => c.text),
+					() => {},
+				);
 				allVectors.push(...vectors);
 			} catch (err) {
 				console.warn(

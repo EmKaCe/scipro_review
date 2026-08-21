@@ -103,13 +103,15 @@
 <div class="mx-auto max-w-2xl px-4 py-8">
 	<div class="space-y-6">
 		<header>
-			<h1 class="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground">
+			<h1
+				class="flex items-center gap-2 text-xl font-semibold tracking-tight text-foreground"
+			>
 				<ListChecks class="h-5 w-5 text-primary" />
 				First-run setup checklist
 			</h1>
 			<p class="mt-1 text-sm text-muted-foreground">
-				A guided checklist to get SciPro Review ready for its first grading pass. Read-only — each
-				item is completed on its linked page.
+				A guided checklist to get SciPro Review ready for its first grading pass. Read-only
+				— each item is completed on its linked page.
 			</p>
 		</header>
 
@@ -118,7 +120,9 @@
 		{:else if error}
 			<p class="text-sm text-destructive">Could not load setup status: {error}</p>
 		{:else}
-			<ul class="divide-y divide-border overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
+			<ul
+				class="divide-y divide-border overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm"
+			>
 				{#each items as item (item.id)}
 					{@const meta = ITEM_META[item.id]}
 					{@const href = meta ? meta.link(item.detail) : undefined}
@@ -137,25 +141,36 @@
 								<div class="flex flex-wrap items-center gap-2">
 									<p class="text-sm font-medium text-foreground">{meta.title}</p>
 									<span
-										class="rounded-full border px-2 py-px text-[10px] font-semibold uppercase tracking-wide
+										class="rounded-full border px-2 py-px text-[10px] font-semibold tracking-wide uppercase
 										{item.done === true
 											? 'border-success/30 bg-success/10 text-success'
 											: item.done === false
 												? 'border-border bg-muted text-muted-foreground'
 												: 'border-warning/30 bg-warning/10 text-warning'}"
 									>
-										{item.done === true ? "Done" : item.done === false ? "To do" : "Unknown"}
+										{item.done === true
+											? "Done"
+											: item.done === false
+												? "To do"
+												: "Unknown"}
 									</span>
 								</div>
-								<p class="mt-0.5 text-xs text-muted-foreground">{meta.description}</p>
+								<p class="mt-0.5 text-xs text-muted-foreground">
+									{meta.description}
+								</p>
 								{#if item.done === false && meta.help}
-									<p class="mt-1 text-[11px] text-muted-foreground">{meta.help}</p>
+									<p class="mt-1 text-[11px] text-muted-foreground">
+										{meta.help}
+									</p>
 								{/if}
 							</div>
 							{#if href}
 								<a
-									href={href}
-									class={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1")}
+									{href}
+									class={cn(
+										buttonVariants({ variant: "outline", size: "sm" }),
+										"shrink-0 gap-1",
+									)}
 								>
 									Setup
 									<ArrowUpRight class="h-3.5 w-3.5" />

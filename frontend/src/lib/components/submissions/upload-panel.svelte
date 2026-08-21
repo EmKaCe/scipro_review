@@ -231,7 +231,9 @@
 		if (incoming.length === 0) return;
 		cancelAutoClose();
 
-		const seen = new Set(files.map((f) => `${f.file.name}|${f.file.size}|${f.file.lastModified}`));
+		const seen = new Set(
+			files.map((f) => `${f.file.name}|${f.file.size}|${f.file.lastModified}`),
+		);
 		let duplicates = 0;
 		for (const file of incoming) {
 			const key = `${file.name}|${file.size}|${file.lastModified}`;
@@ -259,7 +261,11 @@
 			});
 		}
 		if (duplicates > 0) {
-			addToast("info", `${duplicates} duplicate file${duplicates === 1 ? "" : "s"} skipped`, 3000);
+			addToast(
+				"info",
+				`${duplicates} duplicate file${duplicates === 1 ? "" : "s"} skipped`,
+				3000,
+			);
 		}
 	}
 
@@ -357,8 +363,7 @@
 			}
 			for (const entry of targets) {
 				const candidates = resultsByName.get(entry.file.name) ?? [];
-				const result =
-					candidates.find((r) => r.bytes === entry.file.size) ?? candidates[0];
+				const result = candidates.find((r) => r.bytes === entry.file.size) ?? candidates[0];
 				if (!result) {
 					entry.phase = "failed";
 					entry.errorMessage = "No result returned for this file";
@@ -380,7 +385,11 @@
 			const ok = batchResults.filter((r) => !r.error).length;
 			const failed = batchResults.length - ok;
 			if (failed > 0) {
-				addToast("warning", `${ok} file${ok === 1 ? "" : "s"} uploaded · ${failed} failed`, 5000);
+				addToast(
+					"warning",
+					`${ok} file${ok === 1 ? "" : "s"} uploaded · ${failed} failed`,
+					5000,
+				);
 			} else if (ok > 0) {
 				addToast("success", `${ok} file${ok === 1 ? "" : "s"} uploaded`, 4000);
 				// Auto-close after a fully successful run (keep open on errors
@@ -566,11 +575,15 @@
 
 							<div class="row-main">
 								<div class="row-name-line">
-									<span class="file-name" title={entry.file.name}>{entry.file.name}</span>
+									<span class="file-name" title={entry.file.name}
+										>{entry.file.name}</span
+									>
 									<span class="file-size">{formatBytes(entry.file.size)}</span>
 								</div>
 								{#if entry.phase === "succeeded"}
-									<span class="uploaded-note"><CircleCheck size={11} /> Uploaded</span>
+									<span class="uploaded-note"
+										><CircleCheck size={11} /> Uploaded</span
+									>
 								{:else if entry.errorMessage}
 									<span class="error-note">{entry.errorMessage}</span>
 								{:else if entry.message}
@@ -583,7 +596,8 @@
 								{/if}
 							</div>
 
-							<span class="chip {chipClass(entry.kind)}">{kindLabel(entry.kind)}</span>
+							<span class="chip {chipClass(entry.kind)}">{kindLabel(entry.kind)}</span
+							>
 
 							<!-- Kind override dropdown — only when the detected kind might be wrong -->
 							{#if entry.status !== "error" && entry.detectedKind !== "submission"}
@@ -594,9 +608,15 @@
 									value={entry.kind}
 									disabled={uploading}
 									onchange={(e) =>
-										setKind(entry, (e.currentTarget as HTMLSelectElement).value as UploadKind)}
+										setKind(
+											entry,
+											(e.currentTarget as HTMLSelectElement)
+												.value as UploadKind,
+										)}
 								>
-									<option value="submission" disabled={!isStudentNotebookName(entry.file.name)}
+									<option
+										value="submission"
+										disabled={!isStudentNotebookName(entry.file.name)}
 										>Submission</option
 									>
 									<option value="material-data">Input Data</option>
@@ -641,8 +661,9 @@
 			<!-- Detection rules help (empty state) -->
 			<div class="detection-rules">
 				<strong>Auto-detection:</strong> filenames like
-				<code>2026SS_01.ipynb</code> are classified as <strong>Submission</strong>; data files
-				(.csv, .xlsx, …) as <strong>Input Data</strong>; everything else (e.g. .pdf) as
+				<code>2026SS_01.ipynb</code> are classified as <strong>Submission</strong>; data
+				files (.csv, .xlsx, …) as <strong>Input Data</strong>; everything else (e.g. .pdf)
+				as
 				<strong>Material</strong>. Use the dropdown on a file row to override its kind.
 			</div>
 		{/if}

@@ -52,39 +52,46 @@
 			rows: [
 				{
 					name: "LLM provider",
-					description: "Base URL, model, request timeout (data/settings.yaml). Applies on the next LLM request; the copilot agent may need a restart.",
+					description:
+						"Base URL, model, request timeout (data/settings.yaml). Applies on the next LLM request; the copilot agent may need a restart.",
 					affordance: "This page → Execution & AI",
 				},
 				{
 					name: "Executor timeouts",
-					description: "Request / per-notebook / per-cell execution budgets (data/settings.yaml).",
+					description:
+						"Request / per-notebook / per-cell execution budgets (data/settings.yaml).",
 					affordance: "This page → Execution & AI",
 				},
 				{
 					name: "Copilot",
-					description: "Approval mode, allowed/deny tools, approval TTL, session cap, recall window, auto-compact (data/settings.yaml).",
+					description:
+						"Approval mode, allowed/deny tools, approval TTL, session cap, recall window, auto-compact (data/settings.yaml).",
 					affordance: "This page → Execution & AI",
 				},
 				{
 					name: "Grading dimensions",
-					description: "Global grading dimensions (key / title / max_points / weight) (data/grading_config.yaml).",
+					description:
+						"Global grading dimensions (key / title / max_points / weight) (data/grading_config.yaml).",
 					affordance: "This page → Grading",
 				},
 				{
 					name: "Grade boundaries",
-					description: "Percentage → German grade / label / US equivalent bands (data/grading_config.yaml).",
+					description:
+						"Percentage → German grade / label / US equivalent bands (data/grading_config.yaml).",
 					affordance: "This page → Grading",
 				},
 				{
 					name: "KI Connect API key",
-					description: "KI Connect bearer token (also settable via env at deploy). Stored in the server process only — never sent back to the browser.",
+					description:
+						"KI Connect bearer token (also settable via env at deploy). Stored in the server process only — never sent back to the browser.",
 					affordance: "This page → Execution & AI",
 					note: "Secret — masked; not readable.",
 					secret: true,
 				},
 				{
 					name: "Appearance",
-					description: "Color scheme (light / dark / system) and autosave (localStorage).",
+					description:
+						"Color scheme (light / dark / system) and autosave (localStorage).",
 					affordance: "This page → Appearance",
 					note: "Per-device, not shared.",
 				},
@@ -102,12 +109,14 @@
 				},
 				{
 					name: "Scoring config",
-					description: "Calibration anchors, evidence regexes, disallowed libraries, dimension guidance (data/scoring/<id>.yaml).",
+					description:
+						"Calibration anchors, evidence regexes, disallowed libraries, dimension guidance (data/scoring/<id>.yaml).",
 					affordance: "Assignment editor → Scoring",
 				},
 				{
 					name: "Assignment metadata",
-					description: "Registry entry, dimensions, enabled state, materials (data/assignments.yaml).",
+					description:
+						"Registry entry, dimensions, enabled state, materials (data/assignments.yaml).",
 					affordance: "Assignment editor",
 				},
 			],
@@ -119,7 +128,8 @@
 			rows: [
 				{
 					name: "DATA_DIR",
-					description: "Data root for all runtime config and state (e.g. /app/data in Docker).",
+					description:
+						"Data root for all runtime config and state (e.g. /app/data in Docker).",
 					affordance: "Environment / .env",
 					note: "Not editable here.",
 				},
@@ -137,13 +147,15 @@
 				},
 				{
 					name: "PRE_EVAL_CRITIQUE",
-					description: "Set to 0 to disable the pre-evaluation critique pass (cost/quality toggle).",
+					description:
+						"Set to 0 to disable the pre-evaluation critique pass (cost/quality toggle).",
 					affordance: "Environment / .env",
 					note: "Not editable here.",
 				},
 				{
 					name: "KI_CONNECT_BASE_URL",
-					description: "KI Connect base URL fallback. Also overridable in settings.yaml (this page → Execution & AI).",
+					description:
+						"KI Connect base URL fallback. Also overridable in settings.yaml (this page → Execution & AI).",
 					affordance: "Environment / .env",
 				},
 			],
@@ -173,7 +185,8 @@
 				},
 				{
 					name: "Rich-output caps",
-					description: "RICH_OUTPUT_MAX_IMAGE_BYTES (5 MB) / RICH_OUTPUT_MAX_HTML_CHARS (200k).",
+					description:
+						"RICH_OUTPUT_MAX_IMAGE_BYTES (5 MB) / RICH_OUTPUT_MAX_HTML_CHARS (200k).",
 					affordance: "Environment / .env (executor/runner.py)",
 					note: "Env-driven default.",
 				},
@@ -186,9 +199,9 @@
 	<div class="p-5 pb-3">
 		<h2 class="text-base font-semibold tracking-tight">Configuration map</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Where every setting lives, and where to change it — grouped by purpose, so it's clear nearly
-			everything is edited on this page. A no-op save never touches disk; settings are read fresh on
-			load.
+			Where every setting lives, and where to change it — grouped by purpose, so it's clear
+			nearly everything is edited on this page. A no-op save never touches disk; settings are
+			read fresh on load.
 		</p>
 	</div>
 
@@ -209,28 +222,36 @@
 				{#if section.intro}
 					<p class="mb-2 text-xs text-muted-foreground">{section.intro}</p>
 				{/if}
-				<div class="divide-y divide-border rounded-[var(--radius)] border border-border bg-background">
+				<div
+					class="divide-y divide-border rounded-[var(--radius)] border border-border bg-background"
+				>
 					{#each section.rows as row (row.name)}
 						<div class="flex items-start justify-between gap-4 px-3 py-2">
 							<div class="min-w-0">
 								<p
 									class="font-mono text-xs font-medium text-foreground {row.secret
-									? 'flex items-center gap-1.5'
-									: ''}"
+										? 'flex items-center gap-1.5'
+										: ''}"
 								>
 									{row.name}
 									{#if row.secret}
-										<span class="rounded-full border border-warning/30 bg-warning/10 px-1.5 py-px text-[10px] text-warning">
+										<span
+											class="rounded-full border border-warning/30 bg-warning/10 px-1.5 py-px text-[10px] text-warning"
+										>
 											secret
 										</span>
 									{/if}
 								</p>
-								<p class="mt-0.5 text-xs text-muted-foreground">{row.description}</p>
+								<p class="mt-0.5 text-xs text-muted-foreground">
+									{row.description}
+								</p>
 							</div>
 							<div class="shrink-0 text-right">
 								<p class="text-xs font-medium text-foreground">{row.affordance}</p>
 								{#if row.note}
-									<p class="mt-0.5 text-[11px] text-muted-foreground">{row.note}</p>
+									<p class="mt-0.5 text-[11px] text-muted-foreground">
+										{row.note}
+									</p>
 								{/if}
 							</div>
 						</div>

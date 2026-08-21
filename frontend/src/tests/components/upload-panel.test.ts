@@ -33,7 +33,8 @@ import { submissionsStore } from "$lib/services/submissions-store.js";
 // `cells` array, and the server-side validation mirrors that.
 const NOTEBOOK_JSON = JSON.stringify({ cells: [], metadata: {}, nbformat: 4, nbformat_minor: 5 });
 
-const notebookFile = (name: string) => new File([NOTEBOOK_JSON], name, { type: "application/json" });
+const notebookFile = (name: string) =>
+	new File([NOTEBOOK_JSON], name, { type: "application/json" });
 
 // ---------------------------------------------------------------------------
 // Tests

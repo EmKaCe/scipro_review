@@ -148,15 +148,19 @@ describe("calibrateCohortScores", () => {
 			ExecutionCluster.reference_fit,
 		);
 		// Below the floor or above the ceiling — not reference-fit.
-		expect(classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 }, SOIL_ANCHORS_FIXTURE)).not.toBe(
-			ExecutionCluster.reference_fit,
-		);
-		expect(classifyExecutionCluster({ rSquared: 0.98, rmse: 31 }, SOIL_ANCHORS_FIXTURE)).not.toBe(
-			ExecutionCluster.reference_fit,
-		);
+		expect(
+			classifyExecutionCluster({ rSquared: 0.9699, rmse: 20 }, SOIL_ANCHORS_FIXTURE),
+		).not.toBe(ExecutionCluster.reference_fit);
+		expect(
+			classifyExecutionCluster({ rSquared: 0.98, rmse: 31 }, SOIL_ANCHORS_FIXTURE),
+		).not.toBe(ExecutionCluster.reference_fit);
 		// Bounded fits and metric-less submissions land elsewhere.
-		expect(classifyExecutionCluster({ bounded: true }, SOIL_ANCHORS_FIXTURE)).toBe(ExecutionCluster.bounded_fit);
-		expect(classifyExecutionCluster({}, SOIL_ANCHORS_FIXTURE)).toBe(ExecutionCluster.no_metrics);
+		expect(classifyExecutionCluster({ bounded: true }, SOIL_ANCHORS_FIXTURE)).toBe(
+			ExecutionCluster.bounded_fit,
+		);
+		expect(classifyExecutionCluster({}, SOIL_ANCHORS_FIXTURE)).toBe(
+			ExecutionCluster.no_metrics,
+		);
 	});
 
 	it("caps 6.0 to 5.5 across all submissions", () => {
@@ -292,11 +296,7 @@ describe("calibrateCohortScores", () => {
 			s5: storedResult({ error: "boom", preEval: preEval({ code_quality_design: 5.5 }) }),
 		};
 
-		const adjustments = calibrateCohortFromResults(
-			results,
-			new Map(),
-			SOIL_ANCHORS_FIXTURE,
-		);
+		const adjustments = calibrateCohortFromResults(results, new Map(), SOIL_ANCHORS_FIXTURE);
 
 		// s1 and s2 failed execution → capped at 5.0; s3 (clean), s4 (already
 		// at or below 5.0) and s5 (non-CER dimension) stay untouched.
@@ -325,8 +325,7 @@ describe("extractFitMetricsFromResults", () => {
 					}),
 					cell({
 						index: 1,
-						source:
-							"popt, pcov = curve_fit(model, x, y, p0=[1000, 0], bounds=(0, np.inf))",
+						source: "popt, pcov = curve_fit(model, x, y, p0=[1000, 0], bounds=(0, np.inf))",
 						output: "R^2 = 0.98\nRMSE = 20.5",
 					}),
 				],
@@ -349,7 +348,9 @@ describe("extractFitMetricsFromResults", () => {
 				],
 			}),
 			// No metrics, no bounds — outcome present but empty.
-			s4: storedResult({ cells: [cell({ index: 0, source: "print('hello')", output: "hello" })] }),
+			s4: storedResult({
+				cells: [cell({ index: 0, source: "print('hello')", output: "hello" })],
+			}),
 		};
 
 		const outcomes = extractFitMetricsFromResults(results);

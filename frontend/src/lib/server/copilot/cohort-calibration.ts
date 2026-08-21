@@ -155,7 +155,8 @@ export function fitMetricPatternsFromConfig(
 		rmseParen:
 			config?.evidencePatterns.get("fit_metrics_rmse_paren")?.regexes[0] ??
 			FIT_RMSE_PAREN_PATTERN,
-		bounds: config?.evidencePatterns.get("bounds_assignment")?.regexes[0] ?? BOUNDS_CODE_PATTERN,
+		bounds:
+			config?.evidencePatterns.get("bounds_assignment")?.regexes[0] ?? BOUNDS_CODE_PATTERN,
 	};
 }
 
@@ -448,8 +449,7 @@ function extractFitMetricsFromCells(
 
 	const outcome: SubmissionExecutionOutcome = {};
 	const r2 = outputText.match(patterns.r2)?.[1];
-	const rmse =
-		outputText.match(patterns.rmse)?.[1] ?? outputText.match(patterns.rmseParen)?.[1];
+	const rmse = outputText.match(patterns.rmse)?.[1] ?? outputText.match(patterns.rmseParen)?.[1];
 	if (r2 !== undefined) {
 		outcome.rSquared = Number.parseFloat(r2);
 	}

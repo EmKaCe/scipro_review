@@ -17,10 +17,11 @@ import { SvelteSet } from "svelte/reactivity";
 import ExecutionOutput from "$lib/components/submissions/execution-output.svelte";
 import type { CellInfo, CellRichOutput } from "$lib/types/submissions";
 
-const PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
+const PNG_B64 =
+	"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=";
 
 const EVIL_HTML =
-	'<script>window.__pwned=1</script><img src=x onerror="parent.document.body.innerHTML=\'pwned\'">';
+	"<script>window.__pwned=1</script><img src=x onerror=\"parent.document.body.innerHTML='pwned'\">";
 // srcdoc is the RAZED attribute value the browser would parse back.
 const ESCAPED_EVIL_HTML =
 	"&lt;script&gt;window.__pwned=1&lt;/script&gt;&lt;img src=x onerror=&quot;parent.document.body.innerHTML='pwned'&quot;&gt;";
@@ -36,11 +37,11 @@ const ORIGINALS: CellInfo[] = [
 	]),
 ];
 
-const FIXED: CellInfo[] = [
-	cell(0, [{ mime_type: "image/png", data: PNG_B64 }]),
-];
+const FIXED: CellInfo[] = [cell(0, [{ mime_type: "image/png", data: PNG_B64 }])];
 
-function renderOutput(opts: { fixedCells?: CellInfo[] | null; fixedView?: SvelteSet<number> } = {}) {
+function renderOutput(
+	opts: { fixedCells?: CellInfo[] | null; fixedView?: SvelteSet<number> } = {},
+) {
 	return render(ExecutionOutput, {
 		props: {
 			cells: ORIGINALS,

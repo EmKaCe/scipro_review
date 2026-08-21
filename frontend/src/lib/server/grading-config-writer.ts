@@ -126,7 +126,9 @@ export async function loadGradingConfigFile(): Promise<GradingConfig | null> {
 		});
 	}
 	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new Error("grading_config.yaml must be an object with 'dimensions' and 'grade_boundaries'");
+		throw new Error(
+			"grading_config.yaml must be an object with 'dimensions' and 'grade_boundaries'",
+		);
 	}
 	const record = parsed as { dimensions?: unknown; grade_boundaries?: unknown };
 	if (!Array.isArray(record.dimensions)) {

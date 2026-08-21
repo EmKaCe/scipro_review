@@ -34,7 +34,11 @@
 		</div>
 		<ul class="plan-steps">
 			{#each steps as step (step.id)}
-				<li class="plan-step" class:step-done={step.status === "completed"} class:step-error={step.status === "error"}>
+				<li
+					class="plan-step"
+					class:step-done={step.status === "completed"}
+					class:step-error={step.status === "error"}
+				>
 					{#if step.status === "in_progress"}
 						<span class="step-icon spin"><LoaderCircle size={13} /></span>
 					{:else if step.status === "completed"}

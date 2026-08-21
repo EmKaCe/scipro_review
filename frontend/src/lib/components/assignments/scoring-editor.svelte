@@ -128,8 +128,8 @@
 	<section class="editor-section">
 		<h3 class="section-title">Calibration anchors</h3>
 		<p class="section-hint">
-			Leave all empty to disable calibration. Anchors are all-or-nothing: either fill
-			every field or clear them all before saving.
+			Leave all empty to disable calibration. Anchors are all-or-nothing: either fill every
+			field or clear them all before saving.
 		</p>
 		<div class="anchor-grid">
 			{#each ANCHOR_KEYS as key (key)}
@@ -178,7 +178,8 @@
 						value={pattern.semantics}
 						onchange={(e) =>
 							updatePattern(index, {
-								semantics: (e.currentTarget as HTMLSelectElement).value as EditablePattern["semantics"],
+								semantics: (e.currentTarget as HTMLSelectElement)
+									.value as EditablePattern["semantics"],
 							})}
 					>
 						{#each EVIDENCE_SEMANTICS as semantics (semantics)}
@@ -191,7 +192,8 @@
 						value={pattern.haystack}
 						onchange={(e) =>
 							updatePattern(index, {
-								haystack: (e.currentTarget as HTMLSelectElement).value as EditablePattern["haystack"],
+								haystack: (e.currentTarget as HTMLSelectElement)
+									.value as EditablePattern["haystack"],
 							})}
 					>
 						{#each HAYSTACKS as haystack (haystack)}
@@ -240,8 +242,7 @@
 					oninput={(e) =>
 						updatePattern(index, {
 							pattern: (e.currentTarget as HTMLTextAreaElement).value,
-						})}
-				></textarea>
+						})}></textarea>
 				{#if pattern.semantics === "capture_value" || pattern.semantics === "distinct_count"}
 					<label class="capture-field">
 						<span class="capture-label">Capture group</span>
@@ -290,8 +291,8 @@
 	<section class="editor-section">
 		<h3 class="section-title">Allowed libraries</h3>
 		<p class="section-hint">
-			Comma-separated imports the post-process scan permits. Leave empty for the
-			default list (numpy, pandas, scipy, sklearn, matplotlib, pathlib, typing).
+			Comma-separated imports the post-process scan permits. Leave empty for the default list
+			(numpy, pandas, scipy, sklearn, matplotlib, pathlib, typing).
 		</p>
 		<input
 			class="input libs-input"
@@ -307,8 +308,8 @@
 	<section class="editor-section">
 		<h3 class="section-title">Dimension guidance</h3>
 		<p class="section-hint">
-			Per-dimension Phase 2a guidance suffix text. {`{A} {B} {L}`} placeholders are
-			substituted from the anchors at prompt time.
+			Per-dimension Phase 2a guidance suffix text. {`{A} {B} {L}`} placeholders are substituted
+			from the anchors at prompt time.
 		</p>
 		{#if guidanceDimensions.length === 0}
 			<p class="section-empty">No dimension guidance yet — add a dimension below.</p>

@@ -30,7 +30,13 @@ import {
 // The gate reads the REAL committed grading config + rubric (read-only) so the
 // fixture assertions are grounded in production data. Point DATA_DIR at the
 // repo data/ explicitly (vitest forbids the implicit real tree).
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const REPO_ROOT = path.resolve(
+	path.dirname(fileURLToPath(import.meta.url)),
+	"..",
+	"..",
+	"..",
+	"..",
+);
 beforeAll(() => {
 	process.env.DATA_DIR = path.join(REPO_ROOT, "data");
 });

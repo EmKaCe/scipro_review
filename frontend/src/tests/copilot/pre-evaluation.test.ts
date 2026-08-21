@@ -392,11 +392,7 @@ function firstPositiveSubPoint(key: string): string {
  * has neutral sub-points), the checked items marked `[x]`, and `### Additional
  * Notes` with a short note.
  */
-function filledSectionMarkdown(
-	categoryKey: string,
-	checked: string[],
-	notes: string,
-): string {
+function filledSectionMarkdown(categoryKey: string, checked: string[], notes: string): string {
 	const entry = RUBRIC.categories.find((c) => c.key === categoryKey)!;
 	const category = entry.category;
 	const lines: string[] = [];
@@ -595,7 +591,9 @@ function setupDefaultMock(): void {
 				// code_formatting).
 				return turnResponseFor(userPrompt);
 			}
-			throw new Error(`Unexpected chatCompletionText system prompt: ${systemPrompt.slice(0, 100)}`);
+			throw new Error(
+				`Unexpected chatCompletionText system prompt: ${systemPrompt.slice(0, 100)}`,
+			);
 		},
 	);
 }
@@ -644,14 +642,23 @@ beforeEach(async () => {
 	// Default screening: pass every cell through unchanged (clean), so existing
 	// byte-equality / call-count assertions hold.
 	screeningCellsMock.screenNotebookCells.mockReset();
-	screeningCellsMock.screenNotebookCells.mockImplementation(async (cells: readonly unknown[]) => ({
-		cells: cells as typeof cells,
-		needsReview: false,
-	}));
+	screeningCellsMock.screenNotebookCells.mockImplementation(
+		async (cells: readonly unknown[]) => ({
+			cells: cells as typeof cells,
+			needsReview: false,
+		}),
+	);
 	setupDefaultMock();
 
 	pdfParseMock.mockReset();
-	pdfParseMock.mockResolvedValue({ text: "", numpages: 0, numrender: 0, info: null, metadata: null, version: "test" });
+	pdfParseMock.mockResolvedValue({
+		text: "",
+		numpages: 0,
+		numrender: 0,
+		info: null,
+		metadata: null,
+		version: "test",
+	});
 });
 
 afterEach(async () => {
@@ -759,7 +766,9 @@ describe("preEvaluateSubmission", () => {
 		// only occurrence, never a "- [x]" checkbox line).
 		expect(turn1).not.toMatch(/- \[x\]/);
 		// The turn prompt highlights the ONE category to fill.
-		expect(turn1).toContain("Fill ONLY the `## Rubric: code_formatting — Code Formatting` section");
+		expect(turn1).toContain(
+			"Fill ONLY the `## Rubric: code_formatting — Code Formatting` section",
+		);
 		// The living worksheet carries every category, but the turn prompt
 		// still only asks for the requested one.
 		expect(turn1).toContain("Correct use of loops");
@@ -897,7 +906,10 @@ describe("worksheet pipeline and semantic validation", () => {
 	it("parses the per-category markdown sections into rubricSelections and additionalNotes", async () => {
 		// The default mock already returns valid markdown sections for every
 		// category (one chatCompletionText call per category).
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		expect(result.rubricSelections).toEqual(ENVELOPE.rubricSelections);
 		expect(result.additionalNotes).toEqual(ENVELOPE.additionalNotes);
 	});
@@ -926,7 +938,10 @@ describe("worksheet pipeline and semantic validation", () => {
 			});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 
 		// The retry fixed the drift: the exact rubric text is selected and
 		// the drifted variant never reaches the envelope.
@@ -966,18 +981,18 @@ describe("worksheet pipeline and semantic validation", () => {
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-			kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-				// Initial turns carry the "Fill ONLY" line; retry prompts
-				// carry the returned section inside a code fence — both
-				// name code_formatting, and BOTH must get the fabricated
-				// section so the retry loop never sees a clean response.
-				const key =
-					user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1] ??
-					user.match(/## Rubric: ([a-z_]+) —/)?.[1];
-				return key === "code_formatting"
-					? fabricatedSection
-					: turnResponseFor(user);
-			});
+			kiConnectMock.chatCompletionText.mockImplementation(
+				async (system: string, user: string) => {
+					// Initial turns carry the "Fill ONLY" line; retry prompts
+					// carry the returned section inside a code fence — both
+					// name code_formatting, and BOTH must get the fabricated
+					// section so the retry loop never sees a clean response.
+					const key =
+						user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1] ??
+						user.match(/## Rubric: ([a-z_]+) —/)?.[1];
+					return key === "code_formatting" ? fabricatedSection : turnResponseFor(user);
+				},
+			);
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 			const result = await preEvaluateSubmission({
@@ -992,7 +1007,9 @@ describe("worksheet pipeline and semantic validation", () => {
 			).toBe(false);
 			expect(result.rubricSelections).toHaveLength(13);
 			expect(result.additionalNotes!.code_formatting).toContain("[needs review]");
-			expect(result.additionalNotes!.code_formatting).toContain("matches no rubric sub-point");
+			expect(result.additionalNotes!.code_formatting).toContain(
+				"matches no rubric sub-point",
+			);
 			// The retry-loop exhaustion flag forces the confidence tier down:
 			// the teacher must review this submission's rubric selections.
 			expect(result.gradingConfidence).toBe("needs_review");
@@ -1020,7 +1037,10 @@ describe("worksheet pipeline and semantic validation", () => {
 			),
 		);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 
 		// No rubric → no worksheet turns; selections and notes stay empty and
 		// the rest of the envelope still flows.
@@ -1047,12 +1067,17 @@ describe("worksheet pipeline and semantic validation", () => {
 		});
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		// Prompt rendering must not crash; null entries are dropped and
 		// null reasons are coerced to "" at assembly.
 		expect(result.markers).toEqual([
@@ -1074,9 +1099,11 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
 		// Critique returns the same invalid scores — validation must still reject.
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		await expect(
@@ -1097,9 +1124,11 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
 		// Critique returns the same invalid scores — validation must still reject.
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(badScoring);
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		await expect(
@@ -1123,13 +1152,18 @@ describe("worksheet pipeline and semantic validation", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			const key = user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1]!;
-			return filledSectionMarkdown(key, allPositiveAndNeutral(key), `Notes for ${key}.`);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				const key = user.match(/Fill ONLY the `## Rubric: ([a-z_]+) —/)?.[1]!;
+				return filledSectionMarkdown(key, allPositiveAndNeutral(key), `Notes for ${key}.`);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		expect(result.rubricSelections!.length).toBeGreaterThan(30);
 		// Every kept entry is an exact rubric sub-point text.
 		for (const sel of result.rubricSelections!) {
@@ -1185,7 +1219,9 @@ describe("worksheet pipeline and semantic validation", () => {
 		// detail items — it must not pad color/line style/line thickness.
 		expect(plottingPrompt).toContain("OVERALL-FIRST");
 		expect(plottingPrompt).toContain("Color palette: well chosen");
-		expect(plottingPrompt).toContain("Do not check color/line style/line thickness/point style");
+		expect(plottingPrompt).toContain(
+			"Do not check color/line style/line thickness/point style",
+		);
 	});
 
 	it("gives the coding_concept turn builtin-selectivity guidance against over-ticking builtins", async () => {
@@ -1218,8 +1254,12 @@ describe("worksheet pipeline and semantic validation", () => {
 		for (const call of libraryTurns) {
 			const userPrompt = String(call[1]);
 			expect(userPrompt).toContain("CORE USAGE");
-			expect(userPrompt).toContain("abbreviation, vectorization, functions, types, data loading");
-			expect(userPrompt).toContain("do NOT skip them just because the submission is 'average'");
+			expect(userPrompt).toContain(
+				"abbreviation, vectorization, functions, types, data loading",
+			);
+			expect(userPrompt).toContain(
+				"do NOT skip them just because the submission is 'average'",
+			);
 		}
 
 		// The universal CORE-FIRST block applies to every turn.
@@ -1227,7 +1267,9 @@ describe("worksheet pipeline and semantic validation", () => {
 			const userPrompt = String(call[1]);
 			expect(userPrompt).toContain("CORE-FIRST");
 			expect(userPrompt).toContain("abbreviation `np`, vectorization, `np.exp` usage");
-			expect(userPrompt).toContain("A submission that uses the library at all deserves its core positives checked");
+			expect(userPrompt).toContain(
+				"A submission that uses the library at all deserves its core positives checked",
+			);
 		}
 	});
 
@@ -1313,7 +1355,9 @@ describe("assignment PDF instructions and prompt hygiene", () => {
 		// Phase 2a system prompt carries the scoring instructions
 		const calls = kiConnectMock.chatCompletion.mock.calls;
 		const phase2aSystem = String(
-			calls.find((c) => String(c[0]).includes("Your ONLY job is to assign RAW POINT scores"))![0],
+			calls.find((c) =>
+				String(c[0]).includes("Your ONLY job is to assign RAW POINT scores"),
+			)![0],
 		);
 		expect(phase2aSystem).toContain("RAW POINTS");
 		expect(phase2aSystem).toContain("NOT percentages");
@@ -1369,22 +1413,29 @@ describe("KI Connect failure handling", () => {
 	it("retries once after a KI Connect timeout and succeeds", async () => {
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
-		kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("KI Connect request timed out"));
+		kiConnectMock.chatCompletion.mockRejectedValueOnce(
+			new Error("KI Connect request timed out"),
+		);
 		// Fresh objects, NOT the shared PHASE*_MARKERS fixtures: the pipeline
 		// mutates the phase-1 response in place (markers.markers = null when
 		// no key), so earlier tests can poison the shared consts.
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce({
 			feedbackDraft: ENVELOPE.feedbackDraft,
 			notebookSummary: ENVELOPE.notebookSummary,
 		});
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		// Phase 1 attempted twice (timeout + retry), then 2a, critique, 3 →
 		// 5 JSON calls; the 14 category turns go through the raw-text path.
 		expect(kiConnectMock.chatCompletion).toHaveBeenCalledTimes(5);
@@ -1394,8 +1445,12 @@ describe("KI Connect failure handling", () => {
 
 	it("throws the original error when the timeout retry also fails", async () => {
 		kiConnectMock.chatCompletion.mockReset();
-		kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("KI Connect request timed out"));
-		kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("KI Connect request timed out"));
+		kiConnectMock.chatCompletion.mockRejectedValueOnce(
+			new Error("KI Connect request timed out"),
+		);
+		kiConnectMock.chatCompletion.mockRejectedValueOnce(
+			new Error("KI Connect request timed out"),
+		);
 
 		await expect(
 			preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT }),
@@ -1473,12 +1528,17 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 				justification: "corrected scores",
 			},
 		});
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		// The corrected scores flow into the envelope and the worksheet context.
 		expect(result.gradeSuggestion.dimensions.code_quality_design).toBe(3);
 		expect(result.gradeSuggestion.justification).toBe("corrected scores");
@@ -1493,12 +1553,17 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 			kiConnectMock.chatCompletion.mockRejectedValueOnce(new Error("critique boom"));
-			kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-				return turnResponseFor(user);
-			});
+			kiConnectMock.chatCompletionText.mockImplementation(
+				async (system: string, user: string) => {
+					return turnResponseFor(user);
+				},
+			);
 			kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
-			const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+			const result = await preEvaluateSubmission({
+				submissionId: STUDENT,
+				assignmentId: ASSIGNMENT,
+			});
 			// Critique failure is non-fatal: the pipeline continues with the
 			// original Phase 2a output and a warning is logged.
 			expect(result.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
@@ -1597,7 +1662,9 @@ describe("phase split, progressive disclosure, self-critique and model hints", (
 		expect(calls.length).toBeGreaterThan(0);
 		for (const call of calls) {
 			expect(String(call[0])).toContain('set reasoning_effort to "medium"');
-			expect(String(call[0])).toContain("The model supports configurable reasoning effort levels");
+			expect(String(call[0])).toContain(
+				"The model supports configurable reasoning effort levels",
+			);
 		}
 		// The per-category turns are routed to gpt-oss-120b too → GPT hint.
 		const turnCalls = kiConnectMock.chatCompletionText.mock.calls;
@@ -1622,54 +1689,54 @@ describe("Phase 1 chunking", () => {
 	function mockChunkedPipeline(chunk1Count: number, chunk2Count: number): void {
 		kiConnectMock.chatCompletion.mockReset();
 		kiConnectMock.chatCompletionText.mockReset();
-		kiConnectMock.chatCompletion.mockImplementation(
+		kiConnectMock.chatCompletion.mockImplementation(async (system: string, user: string) => {
+			if (system.includes("mark each cell")) {
+				if (user.includes("chunk 1 of 2")) {
+					return {
+						markers: Array.from({ length: chunk1Count }, (_, i) => ({
+							cell_index: i,
+							marker: i % 2 === 0 ? "same" : "different",
+							reason: `chunk1 cell ${i}`,
+						})),
+					};
+				}
+				if (user.includes("chunk 2 of 2")) {
+					return {
+						markers: Array.from({ length: chunk2Count }, (_, i) => ({
+							cell_index: i, // relative to the chunk!
+							marker: "questionable",
+							reason: `chunk2 cell ${i}`,
+						})),
+					};
+				}
+				throw new Error(`Unexpected Phase 1 chunk prompt: ${user.slice(0, 120)}`);
+			}
+			if (system.includes("assign RAW POINT scores")) {
+				return {
+					gradeSuggestion: {
+						dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
+						justification: ENVELOPE.gradeSuggestion.justification,
+					},
+				};
+			}
+			if (system.includes("reviewing dimension scores")) {
+				return {
+					gradeSuggestion: {
+						dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
+						justification: ENVELOPE.gradeSuggestion.justification,
+					},
+				};
+			}
+			if (system.includes("writing constructive feedback")) {
+				return PHASE3_FEEDBACK;
+			}
+			throw new Error(`Unexpected system prompt: ${system.slice(0, 100)}`);
+		});
+		kiConnectMock.chatCompletionText.mockImplementation(
 			async (system: string, user: string) => {
-				if (system.includes("mark each cell")) {
-					if (user.includes("chunk 1 of 2")) {
-						return {
-							markers: Array.from({ length: chunk1Count }, (_, i) => ({
-								cell_index: i,
-								marker: i % 2 === 0 ? "same" : "different",
-								reason: `chunk1 cell ${i}`,
-							})),
-						};
-					}
-					if (user.includes("chunk 2 of 2")) {
-						return {
-							markers: Array.from({ length: chunk2Count }, (_, i) => ({
-								cell_index: i, // relative to the chunk!
-								marker: "questionable",
-								reason: `chunk2 cell ${i}`,
-							})),
-						};
-					}
-					throw new Error(`Unexpected Phase 1 chunk prompt: ${user.slice(0, 120)}`);
-				}
-				if (system.includes("assign RAW POINT scores")) {
-					return {
-						gradeSuggestion: {
-							dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
-							justification: ENVELOPE.gradeSuggestion.justification,
-						},
-					};
-				}
-				if (system.includes("reviewing dimension scores")) {
-					return {
-						gradeSuggestion: {
-							dimensions: { ...ENVELOPE.gradeSuggestion.dimensions },
-							justification: ENVELOPE.gradeSuggestion.justification,
-						},
-					};
-				}
-				if (system.includes("writing constructive feedback")) {
-					return PHASE3_FEEDBACK;
-				}
-				throw new Error(`Unexpected system prompt: ${system.slice(0, 100)}`);
+				return turnResponseFor(user);
 			},
 		);
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
 	}
 
 	it("splits Phase 1 into sequential chunks (> CHUNK_SIZE cells) and merges markers with absolute indices", async () => {
@@ -1748,9 +1815,11 @@ describe("Phase 1 chunking", () => {
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(markersResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse());
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(scoringResponse()); // critique
-		kiConnectMock.chatCompletionText.mockImplementation(async (system: string, user: string) => {
-			return turnResponseFor(user);
-		});
+		kiConnectMock.chatCompletionText.mockImplementation(
+			async (system: string, user: string) => {
+				return turnResponseFor(user);
+			},
+		);
 		kiConnectMock.chatCompletion.mockResolvedValueOnce(PHASE3_FEEDBACK);
 
 		const result = await preEvaluateSubmission({
@@ -1838,352 +1907,359 @@ describe("Wave 5 per-phase model + temperature routing", () => {
 		// qwen3-30b is not gpt-oss-120b — no reasoning-effort hint.
 		expect(block).not.toContain("reasoning_effort");
 	});
-	});
+});
 
-	// ---------------------------------------------------------------------------
-	// Confidence routing (Step 8) — derivedGradingConfidence thresholds
-	// ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Confidence routing (Step 8) — derivedGradingConfidence thresholds
+// ---------------------------------------------------------------------------
 
-	/** Minimal clean pre-analysis; override the signal fields under test. */
-	function makePreAnalysis(overrides: Partial<PreAnalysis> = {}): PreAnalysis {
-		return {
-			nonDescriptiveNames: [],
-			importsNotAlphabetized: false,
-			importsAlphabetized: true,
-			disallowedImports: [],
-			unusedImports: [],
-			codeCellCount: 2,
-			markdownCellCount: 2,
-			citationCount: 1,
-			hasInterpretation: true,
-			errorCount: 0,
-			issueSummary: "0 issues found",
-			...overrides,
-		};
+/** Minimal clean pre-analysis; override the signal fields under test. */
+function makePreAnalysis(overrides: Partial<PreAnalysis> = {}): PreAnalysis {
+	return {
+		nonDescriptiveNames: [],
+		importsNotAlphabetized: false,
+		importsAlphabetized: true,
+		disallowedImports: [],
+		unusedImports: [],
+		codeCellCount: 2,
+		markdownCellCount: 2,
+		citationCount: 1,
+		hasInterpretation: true,
+		errorCount: 0,
+		issueSummary: "0 issues found",
+		...overrides,
+	};
+}
+
+describe("derivedGradingConfidence", () => {
+	const clean = {
+		postProcessFixes: [] as PostProcessFix[],
+		additionalNotes: {},
+		postProcessedNotes: {},
+		preAnalysis: makePreAnalysis(),
+	};
+
+	function fix(pass: string, field: string): PostProcessFix {
+		return { pass, field, oldValue: null, newValue: "fixed", reason: "test fixture" };
 	}
 
-	describe("derivedGradingConfidence", () => {
-		const clean = {
-			postProcessFixes: [] as PostProcessFix[],
-			additionalNotes: {},
-			postProcessedNotes: {},
-			preAnalysis: makePreAnalysis(),
-		};
-
-		function fix(pass: string, field: string): PostProcessFix {
-			return { pass, field, oldValue: null, newValue: "fixed", reason: "test fixture" };
-		}
-
-		it("returns high_confidence for a clean run (no fixes, no flags, clean pre-analysis)", () => {
-			expect(derivedGradingConfidence(clean)).toBe("high_confidence");
-		});
-
-		it("returns needs_review when any category carries a [needs review] flag in the raw notes", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					additionalNotes: { code_formatting: "Matches no rubric sub-point [needs review]" },
-				}),
-			).toBe("needs_review");
-		});
-
-		it("returns needs_review when the corrected (post-processed) notes carry the flag", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					postProcessedNotes: { jupyter_notebooks: "[needs review] — could not parse section" },
-				}),
-			).toBe("needs_review");
-		});
-
-		it("returns needs_review when post-processing applied 5+ fixes", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					postProcessFixes: [0, 1, 2, 3, 4].map((n) => fix("fill-empty", `cat-${n}`)),
-				}),
-			).toBe("needs_review");
-		});
-
-		it("returns needs_review when the notebook has execution errors", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ errorCount: 1 }),
-				}),
-			).toBe("needs_review");
-		});
-
-		it("returns needs_review when a disallowed library is imported", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ disallowedImports: ["tensorflow"] }),
-				}),
-			).toBe("needs_review");
-		});
-
-		it("returns review_optional for minor findings (non-descriptive names, unordered imports, unused imports)", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ nonDescriptiveNames: ["x"] }),
-				}),
-			).toBe("review_optional");
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ importsAlphabetized: false }),
-				}),
-			).toBe("review_optional");
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ unusedImports: ["np"] }),
-				}),
-			).toBe("review_optional");
-		});
-
-		it("returns review_optional for a handful of post-process fixes (below the needs_review threshold)", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					postProcessFixes: [fix("disallowed-library-scan", "following_instructions-positive")],
-				}),
-			).toBe("review_optional");
-		});
-
-		it("returns high_confidence even when citations are missing or interpretation is absent (not gating signals)", () => {
-			expect(
-				derivedGradingConfidence({
-					...clean,
-					preAnalysis: makePreAnalysis({ citationCount: 0, hasInterpretation: false }),
-				}),
-			).toBe("high_confidence");
-		});
+	it("returns high_confidence for a clean run (no fixes, no flags, clean pre-analysis)", () => {
+		expect(derivedGradingConfidence(clean)).toBe("high_confidence");
 	});
 
-	// ---------------------------------------------------------------------------
-	// Wave 8 — post-processing, cohort calibration, grade export wiring
-	// ---------------------------------------------------------------------------
+	it("returns needs_review when any category carries a [needs review] flag in the raw notes", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				additionalNotes: { code_formatting: "Matches no rubric sub-point [needs review]" },
+			}),
+		).toBe("needs_review");
+	});
 
-	describe("Wave 8 pipeline wiring", () => {
-		it("calls postProcessSubmission after Phase 3 and returns the corrected data alongside the raw envelope", async () => {
-			const result = await preEvaluateSubmission({
-				submissionId: STUDENT,
-				assignmentId: ASSIGNMENT,
-			});
-
-			// Raw envelope fields are untouched (post-processing never mutates them).
-			expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
-			expect(result.notebookSummary).toBe(ENVELOPE.notebookSummary);
-			expect(result.gradeSuggestion.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
-
-			// The corrected data + fix log ride along — postProcessSubmission ran.
-			expect(result.postProcessed).toBeDefined();
-			expect(result.postProcessed.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
-			expect(Array.isArray(result.postProcessFixes)).toBe(true);
-
-			// Confidence routing (Step 8): the deterministic confidence rides
-			// on the return. The fixture notebook has an execution error
-			// (FileNotFoundError in cell 2), so the tier is needs_review.
-			expect(result.gradingConfidence).toBe("needs_review");
-
-			// Deterministic pass 3 (disallowed-library-scan): the fixture imports
-			// only numpy (allowed), so the no-disallowed-libraries positive is
-			// added to following_instructions — and the fix is recorded.
-			expect(
-				result.postProcessed.rubricSelections.some(
-					(s) =>
-						s.categoryKey === "following_instructions" &&
-						s.optionKey === "Disallowed libraries were not used.",
-				),
-			).toBe(true);
-			expect(
-				result.postProcessFixes.some(
-					(fix) => fix.pass === "disallowed-library-scan" && fix.newValue === "checked",
-				),
-			).toBe(true);
-		});
-
-		it("stores post-processed data alongside the raw pre-eval envelope", async () => {
-			const envelope = await preEvaluateSubmission({
-				submissionId: STUDENT,
-				assignmentId: ASSIGNMENT,
-			});
-			// Persist the FULL preEvaluateSubmission return — setPreEvaluation
-			// normalizes it into preEval (raw) + postProcessed (sibling).
-			await setPreEvaluation(ASSIGNMENT, STUDENT, {
-				...envelope,
-				evaluatedAt: "2026-08-11T00:00:00.000Z",
-			});
-
-			const stored = (await readResults(ASSIGNMENT))[STUDENT]!;
-			// preEval stays the RAW LLM envelope — no post-processed data nested inside.
-			expect(stored.preEval!.markers).toEqual(ENVELOPE.markers);
-			expect(stored.preEval!.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
-			// Confidence routing: the deterministic confidence is persisted
-			// with the raw envelope (Step 8) — the dashboard list reads it
-			// from stored.preEval.gradingConfidence.
-			expect(stored.preEval!.gradingConfidence).toBe("needs_review");
-			expect(
-				(stored.preEval as PreEvaluation & { postProcessed?: unknown }).postProcessed,
-			).toBeUndefined();
-			// The corrected data is stored as a SIBLING of preEval.
-			expect(stored.postProcessed).toEqual(envelope.postProcessed);
-			expect(stored.postProcessFixes).toEqual(envelope.postProcessFixes);
-			// No calibration has run yet.
-			expect(stored.calibrationAdjustments).toBeUndefined();
-		});
-
-		it("runs cohort calibration over the batch and applies adjustments to the stored preEval AND postProcessed dimensions", async () => {
-			// Two pre-evaluated submissions: STUDENT (already consistent) and a
-			// second one whose CER score of 6.0 is impossible (top of the scale
-			// is 5.5 — the hard cap fires deterministically).
-			const other = "2026SS_39";
-			const base = await preEvaluateSubmission({
-				submissionId: STUDENT,
-				assignmentId: ASSIGNMENT,
-			});
-			await setPreEvaluation(ASSIGNMENT, STUDENT, {
-				...base,
-				evaluatedAt: "2026-08-11T00:00:00.000Z",
-			});
-			await writeResults(ASSIGNMENT, {
-				[STUDENT]: (await readResults(ASSIGNMENT))[STUDENT]!,
-				[other]: {
-					...makeExecutionResult(),
-					preEval: {
-						...base,
-						gradeSuggestion: {
-							...base.gradeSuggestion,
-							dimensions: { ...base.gradeSuggestion.dimensions, code_execution_results: 6 },
-						},
-						evaluatedAt: "2026-08-11T00:00:00.000Z",
-					},
-					// The post-processed copy (what the gate reads) exists and
-					// mirrors the raw 6.0 before calibration runs.
-					postProcessed: {
-						...base.postProcessed,
-						dimensions: { ...base.postProcessed.dimensions, code_execution_results: 6 },
-					},
+	it("returns needs_review when the corrected (post-processed) notes carry the flag", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				postProcessedNotes: {
+					jupyter_notebooks: "[needs review] — could not parse section",
 				},
-			});
+			}),
+		).toBe("needs_review");
+	});
 
-			const calibration = await runCohortCalibration(ASSIGNMENT);
+	it("returns needs_review when post-processing applied 5+ fixes", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				postProcessFixes: [0, 1, 2, 3, 4].map((n) => fix("fill-empty", `cat-${n}`)),
+			}),
+		).toBe("needs_review");
+	});
 
-			// The 6.0 cap fires (calibrateCohortFromResults → calibrateCohortScores).
-			const cerAdjustment = calibration.adjustments.find(
-				(adj) => adj.submissionId === other && adj.dimension === "code_execution_results",
-			);
-			expect(cerAdjustment).toBeDefined();
-			expect(cerAdjustment!.oldScore).toBe(6);
-			expect(cerAdjustment!.newScore).toBe(5.5);
-			expect(calibration.calibratedCount).toBe(1);
+	it("returns needs_review when the notebook has execution errors", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ errorCount: 1 }),
+			}),
+		).toBe("needs_review");
+	});
 
-			// The audit trail is kept…
-			const storedOther = (await readResults(ASSIGNMENT))[other]!;
-			expect(storedOther.calibrationAdjustments).toBeDefined();
-			expect(
-				storedOther.calibrationAdjustments!.some(
-					(adj) => adj.dimension === "code_execution_results" && adj.newScore === 5.5,
-				),
-			).toBe(true);
-			// …and the calibrated score REPLACES the raw envelope's dimension
-			// (calibration is the final authority after the batch)…
-			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.5);
-			// …while untouched dimensions are preserved.
-			expect(storedOther.preEval!.gradeSuggestion.dimensions.code_quality_design).toBe(4);
-			// The gate-visible post-processed copy receives the SAME calibrated
-			// score — the stored postProcessed.dimensions are rewritten too.
-			expect(storedOther.postProcessed!.dimensions.code_execution_results).toBe(5.5);
-			// STUDENT stays untouched (no adjustments for it).
-			const storedStudent = (await readResults(ASSIGNMENT))[STUDENT]!;
-			expect(storedStudent.calibrationAdjustments).toBeUndefined();
-			expect(storedStudent.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(4);
-		});
+	it("returns needs_review when a disallowed library is imported", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ disallowedImports: ["tensorflow"] }),
+			}),
+		).toBe("needs_review");
+	});
 
-		it("passes fit metrics to the calibrator so reference-fit/bounded-fit clustering fires (not all no_metrics)", async () => {
-			const base = await preEvaluateSubmission({
-				submissionId: STUDENT,
-				assignmentId: ASSIGNMENT,
-			});
-			// Four reference-fit submissions (R²/RMSE in executed-cell output,
-			// inside the anchor band) with CER 5.0, plus one bounded-fit
-			// submission (bounds= in the source) with CER 5.5. The bounded-fit
-			// CER cap fires ONLY when the outcomes map reaches the calibrator —
-			// without it every submission would cluster as no_metrics, no
-			// reference-fit median would exist, and nothing would be adjusted.
-			const cell = (over: Partial<ExecutionResult["cells"][number]>) => ({
-				index: 0,
-				type: "code" as const,
-				source: "",
-				original_source: "",
-				output: "",
-				error: null,
-				traceback: null,
-				execution_count: 1,
-				marker: "pending" as const,
-				...over,
-			});
-			const preEval = (cer: number) => ({
-				...base,
-				gradeSuggestion: {
-					...base.gradeSuggestion,
-					dimensions: { code_execution_results: cer },
-				},
-				evaluatedAt: "2026-08-11T00:00:00.000Z",
-			});
-			const results: ResultsFile = {};
-			for (const id of ["r1", "r2", "r3", "r4"]) {
-				results[id] = {
-					...makeExecutionResult(),
-					cells: [cell({ source: "x = 1", output: "R^2 = 0.98\nRMSE = 20" })],
-					preEval: preEval(5.0),
-				};
-			}
-			results["b1"] = {
-				...makeExecutionResult(),
-				cells: [
-					cell({
-						source: "popt, pcov = curve_fit(model, x, y, bounds=(0, np.inf))",
-						output: "R^2 = 0.8\nRMSE = 60",
-					}),
+	it("returns review_optional for minor findings (non-descriptive names, unordered imports, unused imports)", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ nonDescriptiveNames: ["x"] }),
+			}),
+		).toBe("review_optional");
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ importsAlphabetized: false }),
+			}),
+		).toBe("review_optional");
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ unusedImports: ["np"] }),
+			}),
+		).toBe("review_optional");
+	});
+
+	it("returns review_optional for a handful of post-process fixes (below the needs_review threshold)", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				postProcessFixes: [
+					fix("disallowed-library-scan", "following_instructions-positive"),
 				],
-				preEval: preEval(5.5),
+			}),
+		).toBe("review_optional");
+	});
+
+	it("returns high_confidence even when citations are missing or interpretation is absent (not gating signals)", () => {
+		expect(
+			derivedGradingConfidence({
+				...clean,
+				preAnalysis: makePreAnalysis({ citationCount: 0, hasInterpretation: false }),
+			}),
+		).toBe("high_confidence");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Wave 8 — post-processing, cohort calibration, grade export wiring
+// ---------------------------------------------------------------------------
+
+describe("Wave 8 pipeline wiring", () => {
+	it("calls postProcessSubmission after Phase 3 and returns the corrected data alongside the raw envelope", async () => {
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+
+		// Raw envelope fields are untouched (post-processing never mutates them).
+		expect(result.feedbackDraft).toBe(ENVELOPE.feedbackDraft);
+		expect(result.notebookSummary).toBe(ENVELOPE.notebookSummary);
+		expect(result.gradeSuggestion.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
+
+		// The corrected data + fix log ride along — postProcessSubmission ran.
+		expect(result.postProcessed).toBeDefined();
+		expect(result.postProcessed.dimensions).toEqual(ENVELOPE.gradeSuggestion.dimensions);
+		expect(Array.isArray(result.postProcessFixes)).toBe(true);
+
+		// Confidence routing (Step 8): the deterministic confidence rides
+		// on the return. The fixture notebook has an execution error
+		// (FileNotFoundError in cell 2), so the tier is needs_review.
+		expect(result.gradingConfidence).toBe("needs_review");
+
+		// Deterministic pass 3 (disallowed-library-scan): the fixture imports
+		// only numpy (allowed), so the no-disallowed-libraries positive is
+		// added to following_instructions — and the fix is recorded.
+		expect(
+			result.postProcessed.rubricSelections.some(
+				(s) =>
+					s.categoryKey === "following_instructions" &&
+					s.optionKey === "Disallowed libraries were not used.",
+			),
+		).toBe(true);
+		expect(
+			result.postProcessFixes.some(
+				(fix) => fix.pass === "disallowed-library-scan" && fix.newValue === "checked",
+			),
+		).toBe(true);
+	});
+
+	it("stores post-processed data alongside the raw pre-eval envelope", async () => {
+		const envelope = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+		// Persist the FULL preEvaluateSubmission return — setPreEvaluation
+		// normalizes it into preEval (raw) + postProcessed (sibling).
+		await setPreEvaluation(ASSIGNMENT, STUDENT, {
+			...envelope,
+			evaluatedAt: "2026-08-11T00:00:00.000Z",
+		});
+
+		const stored = (await readResults(ASSIGNMENT))[STUDENT]!;
+		// preEval stays the RAW LLM envelope — no post-processed data nested inside.
+		expect(stored.preEval!.markers).toEqual(ENVELOPE.markers);
+		expect(stored.preEval!.gradeSuggestion).toEqual(ENVELOPE.gradeSuggestion);
+		// Confidence routing: the deterministic confidence is persisted
+		// with the raw envelope (Step 8) — the dashboard list reads it
+		// from stored.preEval.gradingConfidence.
+		expect(stored.preEval!.gradingConfidence).toBe("needs_review");
+		expect(
+			(stored.preEval as PreEvaluation & { postProcessed?: unknown }).postProcessed,
+		).toBeUndefined();
+		// The corrected data is stored as a SIBLING of preEval.
+		expect(stored.postProcessed).toEqual(envelope.postProcessed);
+		expect(stored.postProcessFixes).toEqual(envelope.postProcessFixes);
+		// No calibration has run yet.
+		expect(stored.calibrationAdjustments).toBeUndefined();
+	});
+
+	it("runs cohort calibration over the batch and applies adjustments to the stored preEval AND postProcessed dimensions", async () => {
+		// Two pre-evaluated submissions: STUDENT (already consistent) and a
+		// second one whose CER score of 6.0 is impossible (top of the scale
+		// is 5.5 — the hard cap fires deterministically).
+		const other = "2026SS_39";
+		const base = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+		await setPreEvaluation(ASSIGNMENT, STUDENT, {
+			...base,
+			evaluatedAt: "2026-08-11T00:00:00.000Z",
+		});
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: (await readResults(ASSIGNMENT))[STUDENT]!,
+			[other]: {
+				...makeExecutionResult(),
+				preEval: {
+					...base,
+					gradeSuggestion: {
+						...base.gradeSuggestion,
+						dimensions: {
+							...base.gradeSuggestion.dimensions,
+							code_execution_results: 6,
+						},
+					},
+					evaluatedAt: "2026-08-11T00:00:00.000Z",
+				},
+				// The post-processed copy (what the gate reads) exists and
+				// mirrors the raw 6.0 before calibration runs.
 				postProcessed: {
 					...base.postProcessed,
-					dimensions: { code_execution_results: 5.5 },
+					dimensions: { ...base.postProcessed.dimensions, code_execution_results: 6 },
 				},
-			};
-			await writeResults(ASSIGNMENT, results);
-
-			const calibration = await runCohortCalibration(ASSIGNMENT);
-
-			// Exactly one adjustment: b1's bounded-fit CER 5.5 capped to the
-			// reference-fit median 5.0 — proof the extracted fit metrics reached
-			// the calibrator (the reason text only exists on that code path).
-			expect(calibration.adjustments).toHaveLength(1);
-			expect(calibration.adjustments[0]).toMatchObject({
-				submissionId: "b1",
-				dimension: "code_execution_results",
-				oldScore: 5.5,
-				newScore: 5.0,
-			});
-			expect(calibration.adjustments[0].reason).toContain("reference-fit median");
-			expect(calibration.calibratedCount).toBe(1);
-
-			// The calibrated score is applied to BOTH stored dimension maps.
-			const storedB1 = (await readResults(ASSIGNMENT))["b1"]!;
-			expect(storedB1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
-			expect(storedB1.postProcessed!.dimensions.code_execution_results).toBe(5.0);
-			// Reference-fit members were already consistent — untouched.
-			expect(storedB1.calibrationAdjustments).toHaveLength(1);
-			const storedR1 = (await readResults(ASSIGNMENT))["r1"]!;
-			expect(storedR1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
-			expect(storedR1.calibrationAdjustments).toBeUndefined();
+			},
 		});
+
+		const calibration = await runCohortCalibration(ASSIGNMENT);
+
+		// The 6.0 cap fires (calibrateCohortFromResults → calibrateCohortScores).
+		const cerAdjustment = calibration.adjustments.find(
+			(adj) => adj.submissionId === other && adj.dimension === "code_execution_results",
+		);
+		expect(cerAdjustment).toBeDefined();
+		expect(cerAdjustment!.oldScore).toBe(6);
+		expect(cerAdjustment!.newScore).toBe(5.5);
+		expect(calibration.calibratedCount).toBe(1);
+
+		// The audit trail is kept…
+		const storedOther = (await readResults(ASSIGNMENT))[other]!;
+		expect(storedOther.calibrationAdjustments).toBeDefined();
+		expect(
+			storedOther.calibrationAdjustments!.some(
+				(adj) => adj.dimension === "code_execution_results" && adj.newScore === 5.5,
+			),
+		).toBe(true);
+		// …and the calibrated score REPLACES the raw envelope's dimension
+		// (calibration is the final authority after the batch)…
+		expect(storedOther.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.5);
+		// …while untouched dimensions are preserved.
+		expect(storedOther.preEval!.gradeSuggestion.dimensions.code_quality_design).toBe(4);
+		// The gate-visible post-processed copy receives the SAME calibrated
+		// score — the stored postProcessed.dimensions are rewritten too.
+		expect(storedOther.postProcessed!.dimensions.code_execution_results).toBe(5.5);
+		// STUDENT stays untouched (no adjustments for it).
+		const storedStudent = (await readResults(ASSIGNMENT))[STUDENT]!;
+		expect(storedStudent.calibrationAdjustments).toBeUndefined();
+		expect(storedStudent.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(4);
 	});
+
+	it("passes fit metrics to the calibrator so reference-fit/bounded-fit clustering fires (not all no_metrics)", async () => {
+		const base = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
+		// Four reference-fit submissions (R²/RMSE in executed-cell output,
+		// inside the anchor band) with CER 5.0, plus one bounded-fit
+		// submission (bounds= in the source) with CER 5.5. The bounded-fit
+		// CER cap fires ONLY when the outcomes map reaches the calibrator —
+		// without it every submission would cluster as no_metrics, no
+		// reference-fit median would exist, and nothing would be adjusted.
+		const cell = (over: Partial<ExecutionResult["cells"][number]>) => ({
+			index: 0,
+			type: "code" as const,
+			source: "",
+			original_source: "",
+			output: "",
+			error: null,
+			traceback: null,
+			execution_count: 1,
+			marker: "pending" as const,
+			...over,
+		});
+		const preEval = (cer: number) => ({
+			...base,
+			gradeSuggestion: {
+				...base.gradeSuggestion,
+				dimensions: { code_execution_results: cer },
+			},
+			evaluatedAt: "2026-08-11T00:00:00.000Z",
+		});
+		const results: ResultsFile = {};
+		for (const id of ["r1", "r2", "r3", "r4"]) {
+			results[id] = {
+				...makeExecutionResult(),
+				cells: [cell({ source: "x = 1", output: "R^2 = 0.98\nRMSE = 20" })],
+				preEval: preEval(5.0),
+			};
+		}
+		results["b1"] = {
+			...makeExecutionResult(),
+			cells: [
+				cell({
+					source: "popt, pcov = curve_fit(model, x, y, bounds=(0, np.inf))",
+					output: "R^2 = 0.8\nRMSE = 60",
+				}),
+			],
+			preEval: preEval(5.5),
+			postProcessed: {
+				...base.postProcessed,
+				dimensions: { code_execution_results: 5.5 },
+			},
+		};
+		await writeResults(ASSIGNMENT, results);
+
+		const calibration = await runCohortCalibration(ASSIGNMENT);
+
+		// Exactly one adjustment: b1's bounded-fit CER 5.5 capped to the
+		// reference-fit median 5.0 — proof the extracted fit metrics reached
+		// the calibrator (the reason text only exists on that code path).
+		expect(calibration.adjustments).toHaveLength(1);
+		expect(calibration.adjustments[0]).toMatchObject({
+			submissionId: "b1",
+			dimension: "code_execution_results",
+			oldScore: 5.5,
+			newScore: 5.0,
+		});
+		expect(calibration.adjustments[0].reason).toContain("reference-fit median");
+		expect(calibration.calibratedCount).toBe(1);
+
+		// The calibrated score is applied to BOTH stored dimension maps.
+		const storedB1 = (await readResults(ASSIGNMENT))["b1"]!;
+		expect(storedB1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
+		expect(storedB1.postProcessed!.dimensions.code_execution_results).toBe(5.0);
+		// Reference-fit members were already consistent — untouched.
+		expect(storedB1.calibrationAdjustments).toHaveLength(1);
+		const storedR1 = (await readResults(ASSIGNMENT))["r1"]!;
+		expect(storedR1.preEval!.gradeSuggestion.dimensions.code_execution_results).toBe(5.0);
+		expect(storedR1.calibrationAdjustments).toBeUndefined();
+	});
+});
 
 describe("analyzeSubmission kwarg guard (regression: 2026SS_09 false positives)", () => {
 	function codeCell(source: string) {
@@ -2259,7 +2335,9 @@ describe("cell screening (B13)", () => {
 				marker: "pending",
 			},
 		] as typeof baseCells;
-		await writeResults(ASSIGNMENT, { [STUDENT]: { ...makeExecutionResult(), cells: notebookCells } });
+		await writeResults(ASSIGNMENT, {
+			[STUDENT]: { ...makeExecutionResult(), cells: notebookCells },
+		});
 
 		// Screening flags the smuggled markdown cell and replaces its source.
 		screeningCellsMock.screenNotebookCells.mockImplementation(
@@ -2278,7 +2356,10 @@ describe("cell screening (B13)", () => {
 			},
 		);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 
 		// The smuggled string never reaches any phase prompt.
 		for (const phase of [1, 2, 3] as const) {
@@ -2346,7 +2427,8 @@ describe("cell screening (B13)", () => {
 			{
 				...original.cells[1]!,
 				source: 'arr = np.array([1, 2, 3])\ndf = pd.read_csv("input_data/soil.csv")',
-				original_source: 'arr = np.array([1, 2, 3])\ndf = pd.read_csv("input_data/soil.csv")',
+				original_source:
+					'arr = np.array([1, 2, 3])\ndf = pd.read_csv("input_data/soil.csv")',
 				output: "   x   y\n0  1   2",
 				error: null,
 				traceback: null,
@@ -2369,13 +2451,19 @@ describe("cell screening (B13)", () => {
 		expect(p2a).toContain("Execution errors: 1");
 		// Downstream cells are judged on the fixed output, so the scores that
 		// reach the code_execution_results dimension reflect the clean run.
-		expect(p2a).toContain("After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.");
+		expect(p2a).toContain(
+			"After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.",
+		);
 		expect(p2a).toContain("output (fixed):");
 		expect(p2a).toContain("code_execution_results");
 
 		// The same consistent block reaches the Phase 2b rubric turns.
-		expect(categoryTurnPrompt("code_formatting")).toContain("AUTOFIX NOTE (verified clean re-run):");
-		expect(categoryTurnPrompt("code_formatting")).toContain("Judge downstream cells on this fixed output.");
+		expect(categoryTurnPrompt("code_formatting")).toContain(
+			"AUTOFIX NOTE (verified clean re-run):",
+		);
+		expect(categoryTurnPrompt("code_formatting")).toContain(
+			"Judge downstream cells on this fixed output.",
+		);
 	});
 
 	it("falls back to the ORIGINAL error for cells the teacher marked ignored", async () => {
@@ -2402,7 +2490,14 @@ describe("cell screening (B13)", () => {
 		const original = makeExecutionResult();
 		const smuggledFixed = [
 			{ ...original.cells[0]! },
-			{ ...original.cells[1]!, source: SMUGGLED, original_source: SMUGGLED, output: "", error: null, traceback: null },
+			{
+				...original.cells[1]!,
+				source: SMUGGLED,
+				original_source: SMUGGLED,
+				output: "",
+				error: null,
+				traceback: null,
+			},
 		] as typeof original.cells;
 		await writeResults(ASSIGNMENT, { [STUDENT]: { ...original, fixedCells: smuggledFixed } });
 
@@ -2427,7 +2522,10 @@ describe("cell screening (B13)", () => {
 			},
 		);
 
-		const result = await preEvaluateSubmission({ submissionId: STUDENT, assignmentId: ASSIGNMENT });
+		const result = await preEvaluateSubmission({
+			submissionId: STUDENT,
+			assignmentId: ASSIGNMENT,
+		});
 		const p2a = phasePrompt(2);
 		// The smuggled text never reaches the prompt; the placeholder stands in.
 		expect(p2a).not.toContain(SMUGGLED);

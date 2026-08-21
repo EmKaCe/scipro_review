@@ -153,7 +153,8 @@ function makeContext(overrides: Partial<WorksheetContext> = {}): WorksheetContex
 		cellCount: 5,
 		codeCellCount: 3,
 		markdownCellCount: 2,
-		preAnalysisSummary: "2 issue(s) found: Non-descriptive variable names detected; Unused imports detected",
+		preAnalysisSummary:
+			"2 issue(s) found: Non-descriptive variable names detected; Unused imports detected",
 		markerCounts: { same: 1, different: 2, questionable: 0 },
 		dimensionScores: { code_quality_design: 5, code_execution_results: 4 },
 		rubric: RUBRIC,
@@ -173,7 +174,9 @@ describe("generateWorksheet", () => {
 		expect(md).toContain("## Rubric: code_formatting — Code Formatting");
 		expect(md).toContain("## Rubric: coding_concept — Coding Concept");
 		expect(md).toContain("## Rubric: jupyter_notebooks — Jupyter Notebooks");
-		expect(md).toContain("## Rubric: academic_scholarship — Academic Scholarship (Citations and Writing)");
+		expect(md).toContain(
+			"## Rubric: academic_scholarship — Academic Scholarship (Citations and Writing)",
+		);
 	});
 
 	it("includes every sub-point from every category as an unchecked checkbox", () => {
@@ -213,9 +216,13 @@ describe("generateWorksheet", () => {
 		expect(md).toContain("## Context");
 		expect(md).toContain("- Assignment: soil_contamination");
 		expect(md).toContain("- Cells: 5 (3 code, 2 markdown)");
-		expect(md).toContain("- Pre-analysis: 2 issue(s) found: Non-descriptive variable names detected; Unused imports detected");
+		expect(md).toContain(
+			"- Pre-analysis: 2 issue(s) found: Non-descriptive variable names detected; Unused imports detected",
+		);
 		expect(md).toContain("- Cell markers: 1 same, 2 different, 0 questionable");
-		expect(md).toContain("- Dimension scores: code_quality_design: 5, code_execution_results: 4");
+		expect(md).toContain(
+			"- Dimension scores: code_quality_design: 5, code_execution_results: 4",
+		);
 	});
 
 	it("omits marker counts and dimension scores when they are unavailable", () => {

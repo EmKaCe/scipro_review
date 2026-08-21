@@ -37,11 +37,7 @@ export function currentModelName(): string {
  */
 export function isWeakModel(modelName?: string): boolean {
 	const name = (modelName ?? currentModelName()).toLowerCase();
-	return (
-		name.includes("qwen") ||
-		name.includes("8b") ||
-		name.includes("7b")
-	);
+	return name.includes("qwen") || name.includes("8b") || name.includes("7b");
 }
 
 /**
@@ -193,7 +189,10 @@ export const DEFAULT_DIMENSION_GUIDANCE: Record<string, string> = {
 export function buildPhase2aDimensionGuidance(
 	guidance: Record<string, string> | null | undefined,
 ): string {
-	const effective: Record<string, string> = { ...DEFAULT_DIMENSION_GUIDANCE, ...(guidance ?? {}) };
+	const effective: Record<string, string> = {
+		...DEFAULT_DIMENSION_GUIDANCE,
+		...(guidance ?? {}),
+	};
 	const order = [
 		"code_quality_design",
 		"code_execution_results",
@@ -222,8 +221,7 @@ export function buildPhase2aDimensionGuidance(
  * default stays `openai-gpt-oss-120b` — the golden prompt fixture and the
  * tuned calibration were built against it.
  */
-export const PHASE_2_MODEL =
-	process.env.PHASE_2_MODEL ?? "openai-gpt-oss-120b";
+export const PHASE_2_MODEL = process.env.PHASE_2_MODEL ?? "openai-gpt-oss-120b";
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 export const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:
@@ -268,4 +266,3 @@ CHECKING RULES:
 - The notebook source in the user prompt is the EVIDENCE. The pre-analysis findings are heuristic hints — trust the source over the hints.
 
 ADDITIONAL NOTES: write 1-3 evidence-grounded sentences citing specific cells or patterns from the notebook source. Do NOT re-state the rubric text — describe what you observed in the student's notebook that supports your selections.`;
-

@@ -68,8 +68,8 @@
 			<h1 class="page-title">Scoring — {assignmentId}</h1>
 			<p class="page-subtitle">
 				Configure this assignment's scoring semantics: calibration anchors, evidence
-				regexes, disallowed libraries and Phase 2a dimension guidance. The server
-				compile gate validates on save.
+				regexes, disallowed libraries and Phase 2a dimension guidance. The server compile
+				gate validates on save.
 			</p>
 		</div>
 		<a

@@ -463,7 +463,9 @@ export class KiConnectClient {
 					// failing the row: a batch run must survive a transient 429.
 					const retryAfterRaw = resp.headers.get("retry-after");
 					const retryAfterMs = retryAfterRaw
-						? Number(retryAfterRaw) * 1000 || Date.parse(retryAfterRaw) - Date.now() || 1000
+						? Number(retryAfterRaw) * 1000 ||
+							Date.parse(retryAfterRaw) - Date.now() ||
+							1000
 						: undefined;
 					lastRateLimitMs = retryAfterMs ?? lastRateLimitMs;
 					if (attempt < MAX_ATTEMPTS - 1) {
@@ -478,7 +480,9 @@ export class KiConnectClient {
 				}
 				if (resp.status >= 500) {
 					const detail = await resp.text().catch(() => "");
-					throw new Error(`KI Connect server error ${resp.status}: ${detail.slice(0, 500)}`);
+					throw new Error(
+						`KI Connect server error ${resp.status}: ${detail.slice(0, 500)}`,
+					);
 				}
 
 				const data = (await resp.json()) as {

@@ -143,7 +143,11 @@ async function resolveDimensionMaxPoints(dimensionId: string): Promise<number> {
 }
 
 /** A CopilotToolArgumentError for a semantic (run-time) arg violation. */
-function argError(toolName: string, message: string, path: (string | number)[]): CopilotToolArgumentError {
+function argError(
+	toolName: string,
+	message: string,
+	path: (string | number)[],
+): CopilotToolArgumentError {
 	return new CopilotToolArgumentError(toolName, [
 		{ code: "custom", message, path },
 	] as ConstructorParameters<typeof CopilotToolArgumentError>[1]);

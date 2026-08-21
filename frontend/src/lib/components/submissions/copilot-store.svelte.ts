@@ -631,7 +631,13 @@ export function createCopilotStore(options?: {
 			}
 			case "change": {
 				const payload = (data ?? {}) as {
-					changes?: { kind?: string; field?: string; oldValue?: unknown; newValue?: unknown; submissionId?: string }[];
+					changes?: {
+						kind?: string;
+						field?: string;
+						oldValue?: unknown;
+						newValue?: unknown;
+						submissionId?: string;
+					}[];
 				};
 				const incoming = payload.changes ?? [];
 				const ledger: CopilotChange[] = incoming

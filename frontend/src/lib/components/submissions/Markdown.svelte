@@ -65,10 +65,15 @@
 		const BLOCK_PREFIX = "\u0000MD_BLOCK_";
 		// 1) Extract fenced code blocks FIRST (a table-looking block inside
 		//    code must stay code).
-		const withCode = src.replace(/```([^\n`]*)\n?([\s\S]*?)```/g, (_m, _lang: string, code: string) => {
-			blocks.push(`<pre class="md-code-block"><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`);
-			return `${BLOCK_PREFIX}${blocks.length - 1}\u0000`;
-		});
+		const withCode = src.replace(
+			/```([^\n`]*)\n?([\s\S]*?)```/g,
+			(_m, _lang: string, code: string) => {
+				blocks.push(
+					`<pre class="md-code-block"><code>${escapeHtml(code.replace(/\n$/, ""))}</code></pre>`,
+				);
+				return `${BLOCK_PREFIX}${blocks.length - 1}\u0000`;
+			},
+		);
 		// 2) Extract pipe tables (header + separator + body rows) on the
 		//    code-placeholder string, so a table inside code is untouched.
 		const lines = withCode.split("\n");
@@ -78,7 +83,12 @@
 			const next = lines[i + 1] ?? "";
 			const isSep = /^\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?$/.test(next.trim());
 			if (/^\|.*\|$/.test(line.trim()) && isSep) {
-				const headerRow = line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+				const headerRow = line
+					.trim()
+					.replace(/^\|/, "")
+					.replace(/\|$/, "")
+					.split("|")
+					.map((c) => c.trim());
 				const rows: string[][] = [];
 				let j = i + 2;
 				while (j < lines.length && /^\|.*\|$/.test(lines[j].trim())) {
@@ -98,7 +108,12 @@
 					`</tr></thead>` +
 					(rows.length > 0
 						? `<tbody>` +
-							rows.map((r) => `<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`).join("") +
+							rows
+								.map(
+									(r) =>
+										`<tr>${r.map((c) => `<td>${escapeHtml(c)}</td>`).join("")}</tr>`,
+								)
+								.join("") +
 							`</tbody>`
 						: "") +
 					`</table>`;
@@ -150,7 +165,9 @@
 					inQuote = false;
 				}
 				const level = headingMatch[1].length;
-				parts.push(`<h${level} class="md-h${level}">${renderInline(headingMatch[2])}</h${level}>`);
+				parts.push(
+					`<h${level} class="md-h${level}">${renderInline(headingMatch[2])}</h${level}>`,
+				);
 				continue;
 			}
 			// Horizontal rule — a line that is exactly --- (and NOT an
@@ -182,7 +199,7 @@
 					parts.push("</ol>");
 					inOList = false;
 				}
-				if (!inQuote) parts.push("<blockquote class=\"md-quote\">");
+				if (!inQuote) parts.push('<blockquote class="md-quote">');
 				inQuote = true;
 				parts.push(`<p>${renderInline(quoteMatch[1])}</p>`);
 				continue;
@@ -194,7 +211,7 @@
 					parts.push("</blockquote>");
 					inQuote = false;
 				}
-				if (!inOList) parts.push("<ol class=\"md-ol\">");
+				if (!inOList) parts.push('<ol class="md-ol">');
 				inOList = true;
 				parts.push(`<li>${renderInline(olistMatch[1])}</li>`);
 				continue;

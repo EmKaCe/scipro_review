@@ -63,9 +63,7 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 	});
 
 	it("repairs trailing commas in the response content", async () => {
-		fetchMock().mockResolvedValueOnce(
-			chatResponse('{"grade": 5, "notes": ["a", "b",]}'),
-		);
+		fetchMock().mockResolvedValueOnce(chatResponse('{"grade": 5, "notes": ["a", "b",]}'));
 
 		const result = await client.chatCompletion("system", "user");
 
@@ -75,7 +73,9 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 
 	it("retries once with a JSON-fix prompt when the first response is not parseable", async () => {
 		fetchMock()
-			.mockResolvedValueOnce(chatResponse("I am sorry, here is the answer: definitely not JSON"))
+			.mockResolvedValueOnce(
+				chatResponse("I am sorry, here is the answer: definitely not JSON"),
+			)
 			.mockResolvedValueOnce(chatResponse('{"grade": 4}'));
 
 		const result = await client.chatCompletion("system", "user");
@@ -155,7 +155,14 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 				});
 			});
 
-			const promise = client.chatCompletion("system", "user", 0.1, undefined, undefined, 5_000);
+			const promise = client.chatCompletion(
+				"system",
+				"user",
+				0.1,
+				undefined,
+				undefined,
+				5_000,
+			);
 			// Attach the rejection handler BEFORE advancing timers so the
 			// abort rejection is never left unhandled.
 			const rejection = expect(promise).rejects.toThrow(/timed out/);
@@ -234,7 +241,12 @@ describe("KiConnectClient.listModels", () => {
 				owned_by: "Academiccloud",
 				context_length: 262_144,
 			},
-			{ id: "gpt-4.1-mini", object: "model", created: 1_750_000_000, owned_by: "Academiccloud" },
+			{
+				id: "gpt-4.1-mini",
+				object: "model",
+				created: 1_750_000_000,
+				owned_by: "Academiccloud",
+			},
 		];
 		fetchMock().mockResolvedValueOnce(modelsResponse(models));
 

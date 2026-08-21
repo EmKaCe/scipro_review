@@ -51,7 +51,11 @@ describe("rubric-fidelity scorer (Wave 4)", () => {
 	});
 
 	it("output schema rejects out-of-range scores", () => {
-		expect(rubricFidelityOutputSchema.safeParse({ score: 1.5, reason: "x" }).success).toBe(false);
-		expect(rubricFidelityOutputSchema.safeParse({ score: -0.1, reason: "x" }).success).toBe(false);
+		expect(rubricFidelityOutputSchema.safeParse({ score: 1.5, reason: "x" }).success).toBe(
+			false,
+		);
+		expect(rubricFidelityOutputSchema.safeParse({ score: -0.1, reason: "x" }).success).toBe(
+			false,
+		);
 	});
 });

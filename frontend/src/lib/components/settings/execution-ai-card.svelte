@@ -10,10 +10,7 @@
 		saveApiKey,
 		saveSettings,
 	} from "$lib/services/settings-api.js";
-	import type {
-		AppSettings,
-		ModelInfo,
-	} from "$lib/services/settings-api.js";
+	import type { AppSettings, ModelInfo } from "$lib/services/settings-api.js";
 
 	let loading = $state(true);
 	let saving = $state(false);

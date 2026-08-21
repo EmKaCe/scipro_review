@@ -82,7 +82,19 @@ describe("phaseForMessage", () => {
 
 	it("returns null for text, suggestion and error messages", () => {
 		expect(phaseForMessage(msg("t", "text"))).toBeNull();
-		expect(phaseForMessage(msg("s", "suggestion", { suggestion: { suggestionId: "s1", kind: "draft", title: "t", body: "b", actionLabel: "Apply" } }))).toBeNull();
+		expect(
+			phaseForMessage(
+				msg("s", "suggestion", {
+					suggestion: {
+						suggestionId: "s1",
+						kind: "draft",
+						title: "t",
+						body: "b",
+						actionLabel: "Apply",
+					},
+				}),
+			),
+		).toBeNull();
 		expect(phaseForMessage(msg("e", "error"))).toBeNull();
 	});
 });
@@ -94,7 +106,11 @@ describe("phaseForMessage", () => {
 describe("groupMessagesByPhase", () => {
 	it("groups an analyze-code tool-call under the analyze-code step, preserving order", () => {
 		const analyze = msg("a1", "tool-call", { tool: "analyze-code" });
-		const analyzeResult = msg("a2", "tool-result", { tool: "analyze-code", ok: true, summary: "ok" });
+		const analyzeResult = msg("a2", "tool-result", {
+			tool: "analyze-code",
+			ok: true,
+			summary: "ok",
+		});
 		const pre = msg("p1", "tool-call", { tool: "pre-evaluate" });
 		const messages = [analyze, pre, analyzeResult];
 
@@ -111,7 +127,10 @@ describe("groupMessagesByPhase", () => {
 
 	it("follows plan-step order, not first-use order", () => {
 		const { groups } = groupMessagesByPhase(
-			[msg("p1", "tool-call", { tool: "pre-evaluate" }), msg("a1", "tool-call", { tool: "analyze-code" })],
+			[
+				msg("p1", "tool-call", { tool: "pre-evaluate" }),
+				msg("a1", "tool-call", { tool: "analyze-code" }),
+			],
 			[step("analyze-code"), step("pre-evaluate")],
 		);
 		expect(groups.map((g) => g.step.id)).toEqual(["analyze-code", "pre-evaluate"]);
@@ -138,7 +157,13 @@ describe("groupMessagesByPhase", () => {
 	it("keeps text, suggestion and error messages ungrouped in order", () => {
 		const text = msg("t1", "text", { content: "hi", role: "teacher" });
 		const suggestion = msg("s1", "suggestion", {
-			suggestion: { suggestionId: "s1", kind: "draft", title: "Draft", body: "b", actionLabel: "Apply" },
+			suggestion: {
+				suggestionId: "s1",
+				kind: "draft",
+				title: "Draft",
+				body: "b",
+				actionLabel: "Apply",
+			},
 		});
 		const error = msg("e1", "error", { content: "boom" });
 		const analyze = msg("a1", "tool-call", { tool: "analyze-code" });

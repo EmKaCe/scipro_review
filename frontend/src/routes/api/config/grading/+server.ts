@@ -33,7 +33,9 @@ import type { GradingConfig } from "$lib/types/grading";
 function withSortedBoundaries(config: GradingConfig): GradingConfig {
 	return {
 		dimensions: config.dimensions,
-		grade_boundaries: [...config.grade_boundaries].sort((a, b) => b.min_percentage - a.min_percentage),
+		grade_boundaries: [...config.grade_boundaries].sort(
+			(a, b) => b.min_percentage - a.min_percentage,
+		),
 	};
 }
 
@@ -74,7 +76,9 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 	function forCompare(c: GradingConfig): GradingConfig {
 		return {
 			dimensions: c.dimensions,
-			grade_boundaries: [...c.grade_boundaries].sort((a, b) => b.min_percentage - a.min_percentage),
+			grade_boundaries: [...c.grade_boundaries].sort(
+				(a, b) => b.min_percentage - a.min_percentage,
+			),
 		};
 	}
 

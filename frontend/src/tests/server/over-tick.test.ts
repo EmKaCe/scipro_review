@@ -50,7 +50,10 @@ const NORMS: CohortNorms = {
 	},
 	typical_checked: {
 		plotting: ["axis labels", "legend", "title"],
-		codeFormatting: ["f-string - properly used", "indentation - consistent and done with 4 spaces"],
+		codeFormatting: [
+			"f-string - properly used",
+			"indentation - consistent and done with 4 spaces",
+		],
 	},
 };
 

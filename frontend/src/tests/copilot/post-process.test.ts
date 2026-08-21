@@ -223,7 +223,16 @@ describe("postProcessSubmission", () => {
 						optionKey: "Disallowed libraries were not used.",
 					},
 				],
-				allowedImports: ["numpy", "pandas", "scipy", "sklearn", "matplotlib", "pathlib", "typing", "seaborn"],
+				allowedImports: [
+					"numpy",
+					"pandas",
+					"scipy",
+					"sklearn",
+					"matplotlib",
+					"pathlib",
+					"typing",
+					"seaborn",
+				],
 			}),
 		);
 

@@ -28,11 +28,16 @@ export function addToast(type: ToastType, message: string, duration: number = 30
 	// of pushing a twin. A toast mid-exit-animation counts as NOT existing — a
 	// re-fire during the 200ms exit window re-pushes a fresh banner (the old
 	// one is already on its way out).
-	const existing = toasts.find((t) => t.type === type && t.message === message && !exitingToasts.has(t.id));
+	const existing = toasts.find(
+		(t) => t.type === type && t.message === message && !exitingToasts.has(t.id),
+	);
 	if (existing) {
 		const timeoutId = toastTimeouts.get(existing.id);
 		if (timeoutId !== undefined) clearTimeout(timeoutId);
-		toastTimeouts.set(existing.id, window.setTimeout(() => removeToast(existing.id), duration));
+		toastTimeouts.set(
+			existing.id,
+			window.setTimeout(() => removeToast(existing.id), duration),
+		);
 		return;
 	}
 	const id = `toast-${nextId++}`;

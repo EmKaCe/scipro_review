@@ -18,8 +18,7 @@
 		canRevertTurn: boolean;
 	};
 
-	let { changes, onAccept, onReject, onAcceptAll, onRevertTurn, canRevertTurn }: Props =
-		$props();
+	let { changes, onAccept, onReject, onAcceptAll, onRevertTurn, canRevertTurn }: Props = $props();
 
 	/** Human-readable label for a change kind. */
 	function kindLabel(kind: CopilotChange["kind"]): string {
@@ -59,7 +58,11 @@
 			<span class="ledger-title">Proposed changes</span>
 			<div class="ledger-actions">
 				{#if canRevertTurn}
-					<button class="revert-turn" title="Restore the grading state from before this turn" onclick={onRevertTurn}>
+					<button
+						class="revert-turn"
+						title="Restore the grading state from before this turn"
+						onclick={onRevertTurn}
+					>
 						<RotateCcw size={13} />
 						Revert turn
 					</button>
@@ -76,7 +79,11 @@
 			<ul class="ledger-list">
 				{#each changes as change (change.id)}
 					{@const Icon = kindIcon(change.kind)}
-					<li class="ledger-item" class:item-accepted={change.status === "accepted"} class:item-rejected={change.status === "rejected"}>
+					<li
+						class="ledger-item"
+						class:item-accepted={change.status === "accepted"}
+						class:item-rejected={change.status === "rejected"}
+					>
 						<span class="item-icon"><Icon size={13} /></span>
 						<div class="item-body">
 							<div class="item-kind">{kindLabel(change.kind)} · {change.field}</div>
@@ -88,10 +95,18 @@
 						</div>
 						{#if change.status === "pending"}
 							<div class="item-actions">
-								<button class="btn-accept" title="Accept this change" onclick={() => onAccept(change.id)}>
+								<button
+									class="btn-accept"
+									title="Accept this change"
+									onclick={() => onAccept(change.id)}
+								>
 									<Check size={13} />
 								</button>
-								<button class="btn-reject" title="Reject and revert" onclick={() => onReject(change.id)}>
+								<button
+									class="btn-reject"
+									title="Reject and revert"
+									onclick={() => onReject(change.id)}
+								>
 									<RotateCcw size={13} />
 								</button>
 							</div>

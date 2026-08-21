@@ -322,7 +322,7 @@ describe("applySuggestionToState — rubric selections", () => {
 		expect(next.categorySelections).toBeDefined();
 		expect(next.categorySelections!.cat.checked_items.has("ok")).toBe(true);
 		expect(Object.keys(next.categorySelections!)).toEqual(["cat"]);
-		});
+	});
 });
 
 describe("applySuggestionToState — additional notes", () => {
@@ -421,9 +421,9 @@ describe("applySuggestionToState — additional notes", () => {
 		);
 
 		// Rubric items and notes land on the same category in one pass.
-		expect(next.categorySelections!.code_quality.checked_items.has("Readable variable names.")).toBe(
-			true,
-		);
+		expect(
+			next.categorySelections!.code_quality.checked_items.has("Readable variable names."),
+		).toBe(true);
 		expect(next.categorySelections!.code_quality.notes).toBe("Check the loop bounds.");
 		expect(next.categorySelections!.reporting.notes).toBe("Diagrams need captions.");
 		// Dimensions still merge alongside both.
@@ -433,4 +433,3 @@ describe("applySuggestionToState — additional notes", () => {
 		expect(state.categorySelections!.code_quality.notes).toBe("");
 	});
 });
-

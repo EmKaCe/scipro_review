@@ -16,10 +16,7 @@
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Info from "@lucide/svelte/icons/info";
 	import { addToast } from "$lib/stores/toast.svelte.js";
-	import {
-		fetchGradingConfig,
-		saveGradingConfig,
-	} from "$lib/services/grading-config.js";
+	import { fetchGradingConfig, saveGradingConfig } from "$lib/services/grading-config.js";
 	import { parseDimensionKey } from "$lib/types/grading.js";
 
 	interface EditableDimension {
@@ -122,7 +119,10 @@
 		if (!form) return;
 		form = {
 			...form,
-			grade_boundaries: [...form.grade_boundaries, { minPercentage: 0, grade: 5, label: "", usEquiv: "" }],
+			grade_boundaries: [
+				...form.grade_boundaries,
+				{ minPercentage: 0, grade: 5, label: "", usEquiv: "" },
+			],
 		};
 	}
 
@@ -177,7 +177,11 @@
 			savedAt = new Date().toLocaleTimeString();
 			addToast("success", "Grading config saved", 3000);
 		} catch (e) {
-			addToast("error", e instanceof Error ? e.message : "Failed to save grading config", 4000);
+			addToast(
+				"error",
+				e instanceof Error ? e.message : "Failed to save grading config",
+				4000,
+			);
 		} finally {
 			saving = false;
 		}
@@ -188,7 +192,8 @@
 	<div class="p-5 pb-3">
 		<h2 class="text-base font-semibold tracking-tight">Grading</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
-			Global grading dimensions and grade boundaries. Saved to data/grading_config.yaml on the server.
+			Global grading dimensions and grade boundaries. Saved to data/grading_config.yaml on the
+			server.
 		</p>
 	</div>
 
@@ -232,7 +237,9 @@
 								/>
 							</label>
 							<label class="block sm:col-span-2">
-								<span class="mb-1 block text-xs text-muted-foreground">Max points</span>
+								<span class="mb-1 block text-xs text-muted-foreground"
+									>Max points</span
+								>
 								<input
 									type="number"
 									min="0.5"
@@ -281,7 +288,9 @@
 					Grade boundaries
 				</h3>
 				{#each form.grade_boundaries as boundary, index (index)}
-					<div class="mb-2 rounded-[var(--radius)] border border-border bg-background p-3">
+					<div
+						class="mb-2 rounded-[var(--radius)] border border-border bg-background p-3"
+					>
 						<div class="grid grid-cols-2 gap-3 sm:grid-cols-10">
 							<label class="block sm:col-span-2">
 								<span class="mb-1 block text-xs text-muted-foreground">Min %</span>
@@ -314,7 +323,9 @@
 								/>
 							</label>
 							<label class="block sm:col-span-2">
-								<span class="mb-1 block text-xs text-muted-foreground">US equiv.</span>
+								<span class="mb-1 block text-xs text-muted-foreground"
+									>US equiv.</span
+								>
 								<input
 									type="text"
 									class="h-9 w-full rounded-[var(--radius)] border border-border bg-background px-2 text-sm text-foreground"
@@ -350,9 +361,10 @@
 				<Info size={14} class="mt-0.5 shrink-0" />
 				<p>
 					Application-level config shared across all assignments — saved atomically to
-					data/grading_config.yaml and read fresh by grading pages on load. Changing weights or
-					boundaries affects future computations; already-stored grades are not recomputed. Per-assignment
-					criteria &amp; scoring live in the assignment editor, not here.
+					data/grading_config.yaml and read fresh by grading pages on load. Changing
+					weights or boundaries affects future computations; already-stored grades are not
+					recomputed. Per-assignment criteria &amp; scoring live in the assignment editor,
+					not here.
 				</p>
 			</div>
 

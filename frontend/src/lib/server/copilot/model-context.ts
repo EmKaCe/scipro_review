@@ -124,9 +124,7 @@ export function resolveContextTokens(modelId: string): number {
 export function isOpenWeightModel(modelId: string): boolean {
 	const lower = modelId.toLowerCase();
 	// Strip KI Connect prefixes so "openai-gpt-oss-120b" → "gpt-oss-120b"
-	const normalized = lower
-		.replace(/^openai[-_]/, "")
-		.replace(/^mistralai[-_]/, "");
+	const normalized = lower.replace(/^openai[-_]/, "").replace(/^mistralai[-_]/, "");
 	return (
 		normalized.includes("qwen") ||
 		normalized.includes("gpt-oss") ||

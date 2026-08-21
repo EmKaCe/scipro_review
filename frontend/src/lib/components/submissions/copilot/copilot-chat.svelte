@@ -273,7 +273,7 @@
 			onAccept={onAcceptChange}
 			onReject={onRejectChange}
 			onAcceptAll={onAcceptAllChanges}
-			onRevertTurn={onRevertTurn}
+			{onRevertTurn}
 			{canRevertTurn}
 		/>
 	{/if}

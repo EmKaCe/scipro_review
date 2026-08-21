@@ -837,7 +837,13 @@ describe("change-ledger extraction (W2d)", () => {
 			previous: "old notes",
 		});
 		expect(changes).toEqual([
-			{ kind: "notes", field: "notes", oldValue: "old notes", newValue: "new notes", submissionId: "s1" },
+			{
+				kind: "notes",
+				field: "notes",
+				oldValue: "old notes",
+				newValue: "new notes",
+				submissionId: "s1",
+			},
 		]);
 	});
 
@@ -854,8 +860,20 @@ describe("change-ledger extraction (W2d)", () => {
 			},
 		});
 		expect(changes).toEqual([
-			{ kind: "rubric", field: "clarity", oldValue: "ok", newValue: "good", submissionId: "s1" },
-			{ kind: "dimension", field: "code_quality_design", oldValue: 3, newValue: 4, submissionId: "s1" },
+			{
+				kind: "rubric",
+				field: "clarity",
+				oldValue: "ok",
+				newValue: "good",
+				submissionId: "s1",
+			},
+			{
+				kind: "dimension",
+				field: "code_quality_design",
+				oldValue: 3,
+				newValue: 4,
+				submissionId: "s1",
+			},
 			{ kind: "notes", field: "notes", oldValue: null, newValue: "hi", submissionId: "s1" },
 		]);
 	});
@@ -864,219 +882,237 @@ describe("change-ledger extraction (W2d)", () => {
 		expect(extractChangesFromToolResult("analyze-code", { ok: true })).toEqual([]);
 		// A grading result without `previous` (older server) still yields a
 		// ledger entry — oldValue falls back to null ("— → y").
-		expect(extractChangesFromToolResult("set-rubric-item", { rubricItem: { criterionKey: "x", optionKey: "y" } })).toEqual([
+		expect(
+			extractChangesFromToolResult("set-rubric-item", {
+				rubricItem: { criterionKey: "x", optionKey: "y" },
+			}),
+		).toEqual([
 			{ kind: "rubric", field: "x", oldValue: null, newValue: "y", submissionId: undefined },
 		]);
 		expect(extractChangesFromToolResult("save-grading", { rubric: {} })).toEqual([]);
-});
+	});
 });
 
 describe("turn checkpoints (P3)", () => {
-		async function seedSubmission(
-			studentId: string,
-			grading: Record<string, unknown> | undefined,
-		): Promise<void> {
-			const subDir = path.join(dataDir, "submissions", "soil_contamination");
-			await mkdir(subDir, { recursive: true });
-			await writeFile(
-				path.join(subDir, "metadata.json"),
-				JSON.stringify({
-					[studentId]: {
-						id: studentId,
-						studentId,
-						assignmentId: "soil_contamination",
-						createdAt: "2026-08-07T13:02:52.411Z",
-						fileName: `${studentId}.ipynb`,
-						notebookPath: `submissions/soil_contamination/${studentId}.ipynb`,
-						status: "executed",
-						...(grading !== undefined ? { grading } : {}),
-					},
-				}),
-			);
-			await writeFile(
-				path.join(dataDir, "assignments.yaml"),
-				"assignments:\n  - id: soil_contamination\n    title: Soil Contamination\n    enabled: true\n    criteria_files: []\n    dimensions:\n      - code_quality_design\n",
-			);
-		}
-
-		it("snapshots the submission's grading state (rubric/dimensions/notes/feedback)", async () => {
-			await seedSubmission("2026SS_00", {
-				rubric: { clarity: "good" },
-				dimensions: { code_quality_design: 2 },
-				notes: "Nice work overall",
-				feedback: {
-					clarity: {
-						checked: ["Uses readable variable names"],
-						comments: {},
-						deductions: {},
-						notes: "",
-					},
+	async function seedSubmission(
+		studentId: string,
+		grading: Record<string, unknown> | undefined,
+	): Promise<void> {
+		const subDir = path.join(dataDir, "submissions", "soil_contamination");
+		await mkdir(subDir, { recursive: true });
+		await writeFile(
+			path.join(subDir, "metadata.json"),
+			JSON.stringify({
+				[studentId]: {
+					id: studentId,
+					studentId,
+					assignmentId: "soil_contamination",
+					createdAt: "2026-08-07T13:02:52.411Z",
+					fileName: `${studentId}.ipynb`,
+					notebookPath: `submissions/soil_contamination/${studentId}.ipynb`,
+					status: "executed",
+					...(grading !== undefined ? { grading } : {}),
 				},
-				updatedAt: "2026-08-08T10:00:00.000Z",
-			});
+			}),
+		);
+		await writeFile(
+			path.join(dataDir, "assignments.yaml"),
+			"assignments:\n  - id: soil_contamination\n    title: Soil Contamination\n    enabled: true\n    criteria_files: []\n    dimensions:\n      - code_quality_design\n",
+		);
+	}
 
-			const snap = await snapshotGradingState("soil_contamination", "2026SS_00");
-			expect(snap).toEqual({
-				rubric: { clarity: "good" },
-				dimensions: { code_quality_design: 2 },
-				notes: "Nice work overall",
-				feedback: {
-					clarity: {
-						checked: ["Uses readable variable names"],
-						comments: {},
-						deductions: {},
-						notes: "",
-					},
+	it("snapshots the submission's grading state (rubric/dimensions/notes/feedback)", async () => {
+		await seedSubmission("2026SS_00", {
+			rubric: { clarity: "good" },
+			dimensions: { code_quality_design: 2 },
+			notes: "Nice work overall",
+			feedback: {
+				clarity: {
+					checked: ["Uses readable variable names"],
+					comments: {},
+					deductions: {},
+					notes: "",
 				},
-			});
+			},
+			updatedAt: "2026-08-08T10:00:00.000Z",
 		});
 
-		it("returns the empty snapshot for a submission without grading state or unknown ids", async () => {
-			await seedSubmission("2026SS_00", undefined);
-			const empty = { rubric: {}, dimensions: {}, notes: null, feedback: {} };
-
-			// Record exists but has no grading state.
-			expect(await snapshotGradingState("soil_contamination", "2026SS_00")).toEqual(empty);
-			// Unknown submission / assignment — never throws.
-			expect(await snapshotGradingState("soil_contamination", "nope")).toEqual(empty);
-			expect(await snapshotGradingState("nope", "2026SS_00")).toEqual(empty);
-			expect(await snapshotGradingState(undefined, "2026SS_00")).toEqual(empty);
-			expect(await snapshotGradingState("soil_contamination", undefined)).toEqual(empty);
+		const snap = await snapshotGradingState("soil_contamination", "2026SS_00");
+		expect(snap).toEqual({
+			rubric: { clarity: "good" },
+			dimensions: { code_quality_design: 2 },
+			notes: "Nice work overall",
+			feedback: {
+				clarity: {
+					checked: ["Uses readable variable names"],
+					comments: {},
+					deductions: {},
+					notes: "",
+				},
+			},
 		});
+	});
 
-		it("emits a checkpoint event with a turnId and snapshot on the first grading tool-call, and persists it", async () => {
-			await seedSubmission("2026SS_00", {
-				rubric: { clarity: "ok" },
-				dimensions: { code_quality_design: 3 },
-				notes: "before",
-				updatedAt: "2026-08-08T10:00:00.000Z",
-			});
-			const threadId = "cp-thread-1";
-			mockControl.script = [
-				toolCallTurn("set-rubric-item", JSON.stringify({ criterionKey: "clarity", optionKey: "good" })),
-				toolCallTurn("update-grade-dimension", JSON.stringify({ dimensionId: "code_quality_design", value: 4 })),
-				textTurn("Done"),
-			];
+	it("returns the empty snapshot for a submission without grading state or unknown ids", async () => {
+		await seedSubmission("2026SS_00", undefined);
+		const empty = { rubric: {}, dimensions: {}, notes: null, feedback: {} };
 
-			const events = await collectWithApproval(
-				await streamChat({ submissionId: "2026SS_00", threadId, message: "grade it" }),
-				"approve",
-			);
+		// Record exists but has no grading state.
+		expect(await snapshotGradingState("soil_contamination", "2026SS_00")).toEqual(empty);
+		// Unknown submission / assignment — never throws.
+		expect(await snapshotGradingState("soil_contamination", "nope")).toEqual(empty);
+		expect(await snapshotGradingState("nope", "2026SS_00")).toEqual(empty);
+		expect(await snapshotGradingState(undefined, "2026SS_00")).toEqual(empty);
+		expect(await snapshotGradingState("soil_contamination", undefined)).toEqual(empty);
+	});
 
-			// Exactly one checkpoint event, emitted BEFORE the first grading
-			// tool-call event, carrying the pre-write state.
-			const checkpoints = events.filter((e) => e.type === "checkpoint");
-			expect(checkpoints).toHaveLength(1);
-			const cp = checkpoints[0];
-			expect(cp && cp.type === "checkpoint" ? cp.turnId : "").toBeTypeOf("string");
-			expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
-				rubric: { clarity: "ok" },
-				dimensions: { code_quality_design: 3 },
-				notes: "before",
-				feedback: {},
-			});
-			const firstToolCall = events.findIndex((e) => e.type === "tool-call");
-			expect(events.findIndex((e) => e.type === "checkpoint")).toBeLessThan(firstToolCall);
-
-			// The snapshot was persisted under the thread + turn id.
-			const turnId = cp && cp.type === "checkpoint" ? cp.turnId : "";
-			expect(await listCheckpoints(threadId)).toEqual([turnId]);
-			expect(await loadCheckpoint(threadId, turnId)).toEqual({
-				rubric: { clarity: "ok" },
-				dimensions: { code_quality_design: 3 },
-				notes: "before",
-				feedback: {},
-			});
+	it("emits a checkpoint event with a turnId and snapshot on the first grading tool-call, and persists it", async () => {
+		await seedSubmission("2026SS_00", {
+			rubric: { clarity: "ok" },
+			dimensions: { code_quality_design: 3 },
+			notes: "before",
+			updatedAt: "2026-08-08T10:00:00.000Z",
 		});
+		const threadId = "cp-thread-1";
+		mockControl.script = [
+			toolCallTurn(
+				"set-rubric-item",
+				JSON.stringify({ criterionKey: "clarity", optionKey: "good" }),
+			),
+			toolCallTurn(
+				"update-grade-dimension",
+				JSON.stringify({ dimensionId: "code_quality_design", value: 4 }),
+			),
+			textTurn("Done"),
+		];
 
-		it("emits the checkpoint only once per turn (second grading tool-call does not re-snapshot)", async () => {
-			await seedSubmission("2026SS_00", {
-				rubric: { clarity: "ok" },
-				dimensions: {},
-				updatedAt: "2026-08-08T10:00:00.000Z",
-			});
-			mockControl.script = [
-				toolCallTurn("set-rubric-item", JSON.stringify({ criterionKey: "clarity", optionKey: "good" })),
-				toolCallTurn("write-notes", JSON.stringify({ notes: "after" })),
-				textTurn("Done"),
-			];
+		const events = await collectWithApproval(
+			await streamChat({ submissionId: "2026SS_00", threadId, message: "grade it" }),
+			"approve",
+		);
 
-			const events = await collectWithApproval(
-				await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
-				"approve",
-			);
-
-			expect(events.filter((e) => e.type === "checkpoint")).toHaveLength(1);
-			// The snapshot still reflects the PRE-turn state, not the state
-			// after the first write.
-			const cp = events.find((e) => e.type === "checkpoint");
-			expect(cp && cp.type === "checkpoint" ? cp.snapshot.rubric : null).toEqual({ clarity: "ok" });
+		// Exactly one checkpoint event, emitted BEFORE the first grading
+		// tool-call event, carrying the pre-write state.
+		const checkpoints = events.filter((e) => e.type === "checkpoint");
+		expect(checkpoints).toHaveLength(1);
+		const cp = checkpoints[0];
+		expect(cp && cp.type === "checkpoint" ? cp.turnId : "").toBeTypeOf("string");
+		expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
+			rubric: { clarity: "ok" },
+			dimensions: { code_quality_design: 3 },
+			notes: "before",
+			feedback: {},
 		});
+		const firstToolCall = events.findIndex((e) => e.type === "tool-call");
+		expect(events.findIndex((e) => e.type === "checkpoint")).toBeLessThan(firstToolCall);
 
-		it("still emits the checkpoint event when persistence fails (saveCheckpoint throws)", async () => {
-			await seedSubmission("2026SS_00", {
-				rubric: { clarity: "ok" },
-				dimensions: { code_quality_design: 3 },
-				notes: "before",
-				updatedAt: "2026-08-08T10:00:00.000Z",
-			});
-			mockControl.script = [
-				toolCallTurn("set-rubric-item", JSON.stringify({ criterionKey: "clarity", optionKey: "good" })),
-				textTurn("Done"),
-			];
-			// Persistence is broken — the in-stream snapshot must still flow.
-			vi.spyOn(checkpointStore, "saveCheckpoint").mockRejectedValue(new Error("disk full"));
-
-			const events = await collectWithApproval(
-				await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
-				"approve",
-			);
-
-			const cp = events.find((e) => e.type === "checkpoint");
-			expect(cp).toBeDefined();
-			expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
-				rubric: { clarity: "ok" },
-				dimensions: { code_quality_design: 3 },
-				notes: "before",
-				feedback: {},
-			});
-			// The run completed normally — the persistence failure was swallowed.
-			expect(events[events.length - 1].type).toBe("done");
-			// Nothing was persisted.
-			expect(await listCheckpoints("cp-thread-1")).toEqual([]);
+		// The snapshot was persisted under the thread + turn id.
+		const turnId = cp && cp.type === "checkpoint" ? cp.turnId : "";
+		expect(await listCheckpoints(threadId)).toEqual([turnId]);
+		expect(await loadCheckpoint(threadId, turnId)).toEqual({
+			rubric: { clarity: "ok" },
+			dimensions: { code_quality_design: 3 },
+			notes: "before",
+			feedback: {},
 		});
+	});
 
-		it("emits a checkpoint event with the empty snapshot when the submission has no grading state (never throws)", async () => {
-			await seedSubmission("2026SS_00", undefined);
-			mockControl.script = [
-				toolCallTurn("save-grading", JSON.stringify({ notes: "hi" })),
-				textTurn("Done"),
-			];
-
-			const events = await collectWithApproval(
-				await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
-				"approve",
-			);
-
-			const cp = events.find((e) => e.type === "checkpoint");
-			expect(cp).toBeDefined();
-			expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
-				rubric: {},
-				dimensions: {},
-				notes: null,
-				feedback: {},
-			});
-			expect(events[events.length - 1].type).toBe("done");
+	it("emits the checkpoint only once per turn (second grading tool-call does not re-snapshot)", async () => {
+		await seedSubmission("2026SS_00", {
+			rubric: { clarity: "ok" },
+			dimensions: {},
+			updatedAt: "2026-08-08T10:00:00.000Z",
 		});
+		mockControl.script = [
+			toolCallTurn(
+				"set-rubric-item",
+				JSON.stringify({ criterionKey: "clarity", optionKey: "good" }),
+			),
+			toolCallTurn("write-notes", JSON.stringify({ notes: "after" })),
+			textTurn("Done"),
+		];
 
-		it("does not emit a checkpoint for non-grading tool calls", async () => {
-			mockControl.script = [toolCallTurn("analyze-code", "{}"), textTurn("Done")];
+		const events = await collectWithApproval(
+			await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
+			"approve",
+		);
 
-			const events = await collect(await streamChat({ submissionId: "s1", message: "analyze" }));
-
-			expect(events.some((e) => e.type === "checkpoint")).toBe(false);
-			expect(events[events.length - 1].type).toBe("done");
+		expect(events.filter((e) => e.type === "checkpoint")).toHaveLength(1);
+		// The snapshot still reflects the PRE-turn state, not the state
+		// after the first write.
+		const cp = events.find((e) => e.type === "checkpoint");
+		expect(cp && cp.type === "checkpoint" ? cp.snapshot.rubric : null).toEqual({
+			clarity: "ok",
 		});
+	});
+
+	it("still emits the checkpoint event when persistence fails (saveCheckpoint throws)", async () => {
+		await seedSubmission("2026SS_00", {
+			rubric: { clarity: "ok" },
+			dimensions: { code_quality_design: 3 },
+			notes: "before",
+			updatedAt: "2026-08-08T10:00:00.000Z",
+		});
+		mockControl.script = [
+			toolCallTurn(
+				"set-rubric-item",
+				JSON.stringify({ criterionKey: "clarity", optionKey: "good" }),
+			),
+			textTurn("Done"),
+		];
+		// Persistence is broken — the in-stream snapshot must still flow.
+		vi.spyOn(checkpointStore, "saveCheckpoint").mockRejectedValue(new Error("disk full"));
+
+		const events = await collectWithApproval(
+			await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
+			"approve",
+		);
+
+		const cp = events.find((e) => e.type === "checkpoint");
+		expect(cp).toBeDefined();
+		expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
+			rubric: { clarity: "ok" },
+			dimensions: { code_quality_design: 3 },
+			notes: "before",
+			feedback: {},
+		});
+		// The run completed normally — the persistence failure was swallowed.
+		expect(events[events.length - 1].type).toBe("done");
+		// Nothing was persisted.
+		expect(await listCheckpoints("cp-thread-1")).toEqual([]);
+	});
+
+	it("emits a checkpoint event with the empty snapshot when the submission has no grading state (never throws)", async () => {
+		await seedSubmission("2026SS_00", undefined);
+		mockControl.script = [
+			toolCallTurn("save-grading", JSON.stringify({ notes: "hi" })),
+			textTurn("Done"),
+		];
+
+		const events = await collectWithApproval(
+			await streamChat({ submissionId: "2026SS_00", message: "grade it" }),
+			"approve",
+		);
+
+		const cp = events.find((e) => e.type === "checkpoint");
+		expect(cp).toBeDefined();
+		expect(cp && cp.type === "checkpoint" ? cp.snapshot : null).toEqual({
+			rubric: {},
+			dimensions: {},
+			notes: null,
+			feedback: {},
+		});
+		expect(events[events.length - 1].type).toBe("done");
+	});
+
+	it("does not emit a checkpoint for non-grading tool calls", async () => {
+		mockControl.script = [toolCallTurn("analyze-code", "{}"), textTurn("Done")];
+
+		const events = await collect(await streamChat({ submissionId: "s1", message: "analyze" }));
+
+		expect(events.some((e) => e.type === "checkpoint")).toBe(false);
+		expect(events[events.length - 1].type).toBe("done");
+	});
 });
 
 describe("search-docs grounding (P5)", () => {

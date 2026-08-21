@@ -231,7 +231,10 @@
 							{#if a.scoring_file}
 								<span class="scoring-indicator"> · scoring config</span>
 							{:else}
-								<span class="not-calibrated-chip" title="No scoring config yet — pre-evaluation will skip calibration and use generic fallbacks">
+								<span
+									class="not-calibrated-chip"
+									title="No scoring config yet — pre-evaluation will skip calibration and use generic fallbacks"
+								>
 									· not calibrated
 								</span>
 							{/if}

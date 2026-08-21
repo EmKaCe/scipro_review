@@ -58,11 +58,7 @@
 			"pinnedVersion": "3.12",
 			"apiPrefix": "",
 			"urlBase": "https://docs.python.org/3.12/",
-			"pages": [
-				"library/functions.html",
-				"library/constants.html",
-				"library/builtins.html"
-			]
+			"pages": ["library/functions.html", "library/constants.html", "library/builtins.html"]
 		},
 		"stdlib": {
 			"source": "zip",
@@ -100,9 +96,7 @@
 			"pinnedVersion": "3.12",
 			"apiPrefix": "",
 			"urlBase": "https://docs.python.org/3.12/",
-			"pages": [
-				"library/typing.html"
-			]
+			"pages": ["library/typing.html"]
 		}
 	}
 }

@@ -70,18 +70,22 @@ describe("filterSubmissions", () => {
 	});
 
 	it("reveals archived rows only when statusFilter is 'archived'", () => {
-		expect(filterSubmissions(rows, opts({ statusFilter: "archived" })).map((r) => r.studentId))
-			.toEqual(["2026SS_04"]);
+		expect(
+			filterSubmissions(rows, opts({ statusFilter: "archived" })).map((r) => r.studentId),
+		).toEqual(["2026SS_04"]);
 	});
 
 	it("filters by status exactly (non-archived statuses)", () => {
-		expect(filterSubmissions(rows, opts({ statusFilter: "graded" })).map((r) => r.studentId))
-			.toEqual(["2026SS_03", "2026SS_05"]);
+		expect(
+			filterSubmissions(rows, opts({ statusFilter: "graded" })).map((r) => r.studentId),
+		).toEqual(["2026SS_03", "2026SS_05"]);
 	});
 
 	it("filters by confidence, excluding rows without a stored value", () => {
 		expect(
-			filterSubmissions(rows, opts({ confidenceFilter: "needs_review" })).map((r) => r.studentId),
+			filterSubmissions(rows, opts({ confidenceFilter: "needs_review" })).map(
+				(r) => r.studentId,
+			),
 		).toEqual(["2026SS_01"]); // 2026SS_04 is archived → hidden under "all"
 		expect(
 			filterSubmissions(rows, opts({ confidenceFilter: "high_confidence" })).map(
@@ -91,8 +95,9 @@ describe("filterSubmissions", () => {
 	});
 
 	it("matches a search term as a case-insensitive substring of studentId", () => {
-		expect(filterSubmissions(rows, opts({ searchQuery: "2026ss_03" })).map((r) => r.studentId))
-			.toEqual(["2026SS_03"]);
+		expect(
+			filterSubmissions(rows, opts({ searchQuery: "2026ss_03" })).map((r) => r.studentId),
+		).toEqual(["2026SS_03"]);
 		expect(filterSubmissions(rows, opts({ searchQuery: "graded-something" }))).toEqual([]);
 	});
 

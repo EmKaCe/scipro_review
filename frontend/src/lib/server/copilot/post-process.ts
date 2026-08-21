@@ -814,9 +814,7 @@ function generatePlottingNote(ev: EvidenceFacts): string {
 function generateCodeFormattingNote(ev: EvidenceFacts): string {
 	const sentences: string[] = [];
 	sentences.push(
-		!ev.pre.importsAlphabetized
-			? "Imports are not alphabetized."
-			: "Imports are alphabetized.",
+		!ev.pre.importsAlphabetized ? "Imports are not alphabetized." : "Imports are alphabetized.",
 	);
 	if (ev.pre.nonDescriptiveNames.length > 0) {
 		sentences.push(
@@ -968,23 +966,14 @@ function passFillTextareas(
  *   - citations: the academic_scholarship no-citations negative is added when
  *     markdown cells exist but contain no citations
  */
-function passEvidenceGroundedCorrections(
-	state: WorkingState,
-	fixes: PostProcessFix[],
-): void {
+function passEvidenceGroundedCorrections(state: WorkingState, fixes: PostProcessFix[]): void {
 	const pre = state.preAnalysis;
 
 	// (a) Import alphabetization — flip the mutual-exclusion pair to the side
 	// the whole-list check supports.
 	const codeFormatting = resolveCategory("code_formatting");
 	if (codeFormatting && !pre.importsAlphabetized) {
-		if (
-			hasOption(
-				state.selections,
-				codeFormatting.key,
-				CODE_FORMATTING_IMPORTS_ALPHABETIZED,
-			)
-		) {
+		if (hasOption(state.selections, codeFormatting.key, CODE_FORMATTING_IMPORTS_ALPHABETIZED)) {
 			state.selections = withSelectionRemoved(
 				state.selections,
 				codeFormatting.key,
@@ -1053,11 +1042,7 @@ function passEvidenceGroundedCorrections(
 	if (
 		codeFormatting &&
 		pre.nonDescriptiveNames.length > 0 &&
-		hasOption(
-			state.selections,
-			codeFormatting.key,
-			CODE_FORMATTING_NAMING_DESCRIPTIVE,
-		)
+		hasOption(state.selections, codeFormatting.key, CODE_FORMATTING_NAMING_DESCRIPTIVE)
 	) {
 		state.selections = withSelectionRemoved(
 			state.selections,
@@ -1078,11 +1063,7 @@ function passEvidenceGroundedCorrections(
 	if (
 		codingConcept &&
 		pre.unusedImports.length > 0 &&
-		!hasOption(
-			state.selections,
-			codingConcept.key,
-			CODING_CONCEPT_IMPORTS_NOT_USED,
-		)
+		!hasOption(state.selections, codingConcept.key, CODING_CONCEPT_IMPORTS_NOT_USED)
 	) {
 		state.selections = withSelectionAdded(
 			state.selections,
@@ -1128,11 +1109,7 @@ function passEvidenceGroundedCorrections(
 		academic &&
 		pre.citationCount === 0 &&
 		pre.markdownCellCount > 0 &&
-		!hasOption(
-			state.selections,
-			academic.key,
-			ACADEMIC_SCHOLARSHIP_NO_CITATIONS,
-		)
+		!hasOption(state.selections, academic.key, ACADEMIC_SCHOLARSHIP_NO_CITATIONS)
 	) {
 		state.selections = withSelectionAdded(
 			state.selections,

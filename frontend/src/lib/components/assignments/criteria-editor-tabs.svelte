@@ -215,10 +215,10 @@
 	</div>
 
 	{#if validationError || saveError || draftError}
-	<div class="editor-error" role="alert">
-		<TriangleAlert size={14} class="shrink-0" />
-		<span>{validationError ?? saveError ?? draftError}</span>
-	</div>
+		<div class="editor-error" role="alert">
+			<TriangleAlert size={14} class="shrink-0" />
+			<span>{validationError ?? saveError ?? draftError}</span>
+		</div>
 	{/if}
 
 	<div class="tab-panel" role="tabpanel">

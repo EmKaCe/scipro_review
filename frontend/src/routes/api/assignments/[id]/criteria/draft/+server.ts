@@ -77,9 +77,7 @@ function summarizeRubric(criteria: CriteriaFile): string {
 	for (const [key, category] of Object.entries(criteria.categories)) {
 		lines.push(`- ${key}: ${category.title}`);
 		for (const sentiment of ["positive", "neutral", "negative"] as const) {
-			const texts = category[sentiment].flatMap((mp) =>
-				mp.sub_points.map((sp) => sp.text),
-			);
+			const texts = category[sentiment].flatMap((mp) => mp.sub_points.map((sp) => sp.text));
 			if (texts.length === 0) continue;
 			lines.push(`  ${sentiment}:`);
 			for (const text of texts) lines.push(`    - ${text}`);

@@ -256,9 +256,7 @@ export class SubmissionsStore {
 	 * @param entries Files to upload; `kind` is an optional per-file override
 	 *   (omit it to let the server auto-detect, matching the old behavior).
 	 */
-	async uploadMany(
-		entries: { file: File; kind?: UploadKind }[],
-	): Promise<UploadResponse> {
+	async uploadMany(entries: { file: File; kind?: UploadKind }[]): Promise<UploadResponse> {
 		const assignmentId = this.requireAssignment();
 		const files = entries.map((e) => e.file);
 		const kinds: Record<string, UploadKind> = {};
@@ -268,7 +266,11 @@ export class SubmissionsStore {
 		// No overrides → omit the "kinds" field entirely (matches the single
 		// upload() wire contract); otherwise send the override map.
 		const hasOverrides = Object.keys(kinds).length > 0;
-		const response = await uploadSubmissions(files, assignmentId, hasOverrides ? kinds : undefined);
+		const response = await uploadSubmissions(
+			files,
+			assignmentId,
+			hasOverrides ? kinds : undefined,
+		);
 		await this.refresh();
 		this.syncPolling();
 		return response;

@@ -44,7 +44,8 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 /** The committed soil scoring file (byte-equality contract — read-only). */
-const SOIL_SCORING_SOURCE = "/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml";
+const SOIL_SCORING_SOURCE =
+	"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml";
 
 /** A valid full scoring document for PUT (passes the compile gate). */
 const VALID_SCORING: Record<string, unknown> = {
@@ -283,7 +284,8 @@ describe("PUT /api/assignments/[id]/scoring", () => {
 					disallowed_libraries: ["tensorflow", "torch"],
 					evidence_patterns: {
 						r2_or_rmse_computed: {
-							pattern: "\\bR\\s*(?:\\^2|²|2)\\s*[=:]\\s*[\\d.]+|\\bRMSE\\s*[=:]\\s*[\\d.]+",
+							pattern:
+								"\\bR\\s*(?:\\^2|²|2)\\s*[=:]\\s*[\\d.]+|\\bRMSE\\s*[=:]\\s*[\\d.]+",
 							semantics: "test",
 							haystack: "output",
 						},

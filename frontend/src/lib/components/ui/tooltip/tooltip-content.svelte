@@ -91,15 +91,13 @@
 		style:position="fixed"
 		style:top={`${pos.top}px`}
 		style:left={`${pos.left}px`}
-		style:transform={
-			side === "bottom"
-				? "translate(-50%, 0)"
-				: side === "left"
-					? "translate(-100%, -50%)"
-					: side === "right"
-						? "translate(0, -50%)"
-						: "translate(-50%, -100%)"
-		}
+		style:transform={side === "bottom"
+			? "translate(-50%, 0)"
+			: side === "left"
+				? "translate(-100%, -50%)"
+				: side === "right"
+					? "translate(0, -50%)"
+					: "translate(-50%, -100%)"}
 		class={cn(
 			"z-50 max-w-xs rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-md select-none",
 			className,

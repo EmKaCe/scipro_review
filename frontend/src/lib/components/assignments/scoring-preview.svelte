@@ -75,7 +75,9 @@
 								<span class="pattern-chip">{pattern.semantics}</span>
 								<span class="pattern-chip">{pattern.haystack}</span>
 								{#if pattern.captureGroup.trim() !== ""}
-									<span class="pattern-chip">capture group {pattern.captureGroup}</span>
+									<span class="pattern-chip"
+										>capture group {pattern.captureGroup}</span
+									>
 								{/if}
 							</div>
 							<pre class="pattern-regex">{pattern.pattern}</pre>

@@ -111,7 +111,9 @@ const KNOWN_PREFIXES = [
 	"plotting",
 ];
 
-function makeOptions(overrides: Partial<GenerateLegacyGradeJsonOptions> = {}): GenerateLegacyGradeJsonOptions {
+function makeOptions(
+	overrides: Partial<GenerateLegacyGradeJsonOptions> = {},
+): GenerateLegacyGradeJsonOptions {
 	return {
 		submissionId: "2026SS_00",
 		dimensions: { ...BASE_DIMENSIONS },

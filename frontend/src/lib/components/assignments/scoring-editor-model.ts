@@ -46,21 +46,10 @@ export const SCORING_DIMENSIONS = [
 
 export type ScoringDimension = (typeof SCORING_DIMENSIONS)[number];
 
-export const EVIDENCE_SEMANTICS = [
-	"test",
-	"test_all",
-	"capture_value",
-	"distinct_count",
-] as const;
+export const EVIDENCE_SEMANTICS = ["test", "test_all", "capture_value", "distinct_count"] as const;
 export type EvidenceSemantics = (typeof EVIDENCE_SEMANTICS)[number];
 
-export const HAYSTACKS = [
-	"output",
-	"code",
-	"markdown",
-	"output+code",
-	"markdown+code",
-] as const;
+export const HAYSTACKS = ["output", "code", "markdown", "output+code", "markdown+code"] as const;
 export type Haystack = (typeof HAYSTACKS)[number];
 
 /** One editable evidence pattern card. */
@@ -129,11 +118,8 @@ function toEditablePattern(
 	const haystack = HAYSTACKS.includes(entry.haystack as Haystack)
 		? (entry.haystack as Haystack)
 		: "output";
-	const pattern = Array.isArray(entry.pattern)
-		? entry.pattern.join("\n")
-		: (entry.pattern ?? "");
-	const captureGroup =
-		typeof entry.capture_group === "number" ? String(entry.capture_group) : "";
+	const pattern = Array.isArray(entry.pattern) ? entry.pattern.join("\n") : (entry.pattern ?? "");
+	const captureGroup = typeof entry.capture_group === "number" ? String(entry.capture_group) : "";
 	return { key, semantics, haystack, pattern, captureGroup };
 }
 

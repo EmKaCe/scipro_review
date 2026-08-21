@@ -62,8 +62,10 @@ const ASSIGNMENTS_YAML = `assignments:
 `;
 
 /** The committed soil own-rubric criteria file (grounding rubric). */
-const SOIL_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/soil_contamination.yaml";
-const ATOM_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/atom_interaction.yaml";
+const SOIL_CRITERIA_SOURCE =
+	"/root/projects/svelte-review-copilot/data/criteria/soil_contamination.yaml";
+const ATOM_CRITERIA_SOURCE =
+	"/root/projects/svelte-review-copilot/data/criteria/atom_interaction.yaml";
 
 /** The shared general rubric — its category keys must never appear in a draft. */
 const GENERAL_CRITERIA_SOURCE = "/root/projects/svelte-review-copilot/data/criteria/general.yaml";
@@ -77,11 +79,18 @@ const VALID_DRAFT: Record<string, unknown> = {
 			positive: [
 				{
 					main_point: "The following points were well done",
-					sub_points: [{ text: "Functions: good use of Pandas functions.", comment: true }],
+					sub_points: [
+						{ text: "Functions: good use of Pandas functions.", comment: true },
+					],
 				},
 			],
 			neutral: [],
-			negative: [{ main_point: "Data Loading", sub_points: [{ text: "Delimiter: separators correct in read_csv." }] }],
+			negative: [
+				{
+					main_point: "Data Loading",
+					sub_points: [{ text: "Delimiter: separators correct in read_csv." }],
+				},
+			],
 		},
 	},
 };
@@ -107,7 +116,9 @@ const COLLISION_DRAFT: Record<string, unknown> = {
 			positive: [
 				{
 					main_point: "Good",
-					sub_points: [{ text: "Functions: good use of Pandas functions.", comment: true }],
+					sub_points: [
+						{ text: "Functions: good use of Pandas functions.", comment: true },
+					],
 				},
 			],
 			neutral: [],
@@ -275,9 +286,15 @@ describe("POST /api/assignments/[id]/criteria/draft", () => {
 		]);
 
 		// The pre-existing committed file stays byte-identical.
-		const soilBefore = await readFile(path.join(criteriaDir, "soil_contamination.yaml"), "utf-8");
+		const soilBefore = await readFile(
+			path.join(criteriaDir, "soil_contamination.yaml"),
+			"utf-8",
+		);
 		await postDraft(postEvent("soil_contamination"));
-		const soilAfter = await readFile(path.join(criteriaDir, "soil_contamination.yaml"), "utf-8");
+		const soilAfter = await readFile(
+			path.join(criteriaDir, "soil_contamination.yaml"),
+			"utf-8",
+		);
 		expect(soilAfter).toBe(soilBefore);
 	});
 

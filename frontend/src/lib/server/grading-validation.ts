@@ -73,7 +73,11 @@ export function validateGradingConfig(value: unknown): string | null {
 		if (typeof dim.title !== "string" || dim.title.trim().length === 0) {
 			return `dimension '${dim.key}' needs a non-empty 'title'`;
 		}
-		if (typeof dim.max_points !== "number" || !Number.isFinite(dim.max_points) || dim.max_points <= 0) {
+		if (
+			typeof dim.max_points !== "number" ||
+			!Number.isFinite(dim.max_points) ||
+			dim.max_points <= 0
+		) {
 			return `dimension '${dim.key}' needs a positive numeric 'max_points'`;
 		}
 		if (typeof dim.weight !== "number" || !Number.isFinite(dim.weight) || dim.weight <= 0) {

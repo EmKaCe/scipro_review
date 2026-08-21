@@ -26,10 +26,7 @@
 	import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
 
 	import { Button } from "$lib/components/ui/button/index.js";
-	import {
-		draftScoringConfig,
-		saveScoringConfig,
-	} from "$lib/services/submissions-api.js";
+	import { draftScoringConfig, saveScoringConfig } from "$lib/services/submissions-api.js";
 	import { addToast } from "$lib/stores/toast.svelte.js";
 	import ScoringEditor from "./scoring-editor.svelte";
 	import ScoringPreview from "./scoring-preview.svelte";
@@ -100,11 +97,7 @@
 				throw new Error("expected a mapping with a `scoring` key");
 			}
 			const scoringMap = parsed.scoring;
-			if (
-				!scoringMap ||
-				typeof scoringMap !== "object" ||
-				Array.isArray(scoringMap)
-			) {
+			if (!scoringMap || typeof scoringMap !== "object" || Array.isArray(scoringMap)) {
 				throw new Error("`scoring` must be a mapping");
 			}
 			draft = fromServerScoring(scoringMap as ScoringConfigDocument);

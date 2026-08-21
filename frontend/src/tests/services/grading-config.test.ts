@@ -315,9 +315,16 @@ describe("fetchGradingConfig / saveGradingConfig (settings editor)", () => {
 	it("saveGradingConfig PUTs { config } and returns the saved config", async () => {
 		const savedConfig = {
 			dimensions: [
-				{ key: "code_quality_design", title: "Code Quality & Design", max_points: 6, weight: 4 },
+				{
+					key: "code_quality_design",
+					title: "Code Quality & Design",
+					max_points: 6,
+					weight: 4,
+				},
 			],
-			grade_boundaries: [{ min_percentage: 95, grade: 1.0, label: "excellent", us_equiv: "A+" }],
+			grade_boundaries: [
+				{ min_percentage: 95, grade: 1.0, label: "excellent", us_equiv: "A+" },
+			],
 		};
 		const fetchMock = vi.fn().mockResolvedValue(
 			new Response(JSON.stringify({ config: savedConfig }), {
@@ -344,9 +351,11 @@ describe("fetchGradingConfig / saveGradingConfig (settings editor)", () => {
 	it("saveGradingConfig refreshes the in-memory cache on success", async () => {
 		clearGradingConfigCache();
 		const savedConfig = { dimensions: [], grade_boundaries: [] };
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
-		);
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
+			);
 		vi.stubGlobal("fetch", fetchMock);
 
 		await saveGradingConfig({ dimensions: [], grade_boundaries: [] });
@@ -360,7 +369,9 @@ describe("fetchGradingConfig / saveGradingConfig (settings editor)", () => {
 
 	it("saveGradingConfig throws on a non-OK response", async () => {
 		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ message: "Invalid grading config: bad" }), { status: 400 }),
+			new Response(JSON.stringify({ message: "Invalid grading config: bad" }), {
+				status: 400,
+			}),
 		);
 		vi.stubGlobal("fetch", fetchMock);
 
@@ -374,9 +385,11 @@ describe("fetchGradingConfig / saveGradingConfig (settings editor)", () => {
 	it("fetchGradingConfig issues a fresh GET (bypasses cache)", async () => {
 		clearGradingConfigCache();
 		const savedConfig = { dimensions: [], grade_boundaries: [] };
-		const fetchMock = vi.fn().mockResolvedValue(
-			new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
-		);
+		const fetchMock = vi
+			.fn()
+			.mockResolvedValue(
+				new Response(JSON.stringify({ config: savedConfig }), { status: 200 }),
+			);
 		vi.stubGlobal("fetch", fetchMock);
 
 		const out = await fetchGradingConfig();

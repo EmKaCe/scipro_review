@@ -359,11 +359,9 @@ describe("mutations", () => {
 
 		// ONE upload request carrying every file; kinds map only holds overrides.
 		expect(api.uploadSubmissions).toHaveBeenCalledTimes(1);
-		expect(api.uploadSubmissions).toHaveBeenCalledWith(
-			[files[0], files[1]],
-			ASSIGNMENT,
-			{ "notes.pdf": "material-file" },
-		);
+		expect(api.uploadSubmissions).toHaveBeenCalledWith([files[0], files[1]], ASSIGNMENT, {
+			"notes.pdf": "material-file",
+		});
 		// load + a single list refresh (not one refresh per file) + one poll.
 		expect(api.fetchSubmissions).toHaveBeenCalledTimes(2);
 		expect(store.isPolling).toBe(true);
@@ -398,9 +396,9 @@ describe("mutations", () => {
 	});
 
 	it("uploadMany() refuses to run without a loaded assignment", async () => {
-		await expect(
-			store.uploadMany([{ file: new File(["{}"], "a.ipynb") }]),
-		).rejects.toThrow("No assignment selected");
+		await expect(store.uploadMany([{ file: new File(["{}"], "a.ipynb") }])).rejects.toThrow(
+			"No assignment selected",
+		);
 		expect(api.uploadSubmissions).not.toHaveBeenCalled();
 	});
 

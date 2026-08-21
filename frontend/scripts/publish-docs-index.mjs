@@ -60,7 +60,10 @@ const sha256 = (buf) => createHash("sha256").update(buf).digest("hex");
 const gh = (args, opts = {}) => execFileSync("gh", args, { encoding: "utf-8", ...opts });
 
 const args = parseArgs(process.argv.slice(2));
-const dir = args.dir ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
+const dir =
+	args.dir ??
+	process.env.DOCS_INDEX_DIR ??
+	path.join(process.env.DATA_DIR ?? "./data", "docs-index");
 const tag = args.tag;
 
 const jsonPath = path.join(dir, "docs-index.json");
@@ -106,7 +109,15 @@ try {
 	gh(["release", "view", tag, "--json", "tagName"]);
 } catch {
 	console.log(`[publish-docs-index] creating release tag '${tag}' …`);
-	gh(["release", "create", tag, "--title", "Offline docs index", "--notes", "Prebuilt offline docs index."]);
+	gh([
+		"release",
+		"create",
+		tag,
+		"--title",
+		"Offline docs index",
+		"--notes",
+		"Prebuilt offline docs index.",
+	]);
 }
 
 console.log(`[publish-docs-index] uploading 3 assets to '${tag}' …`);

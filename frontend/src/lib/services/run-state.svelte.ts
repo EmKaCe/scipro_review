@@ -52,11 +52,7 @@ export const runRegistry = $state<Record<RunKind, RunSnapshot>>({
  *                  restore) so the elapsed stopwatch continues rather than
  *                  resetting to the page-load instant. Defaults to now.
  */
-export function markRunStarted(
-	kind: RunKind,
-	total: number,
-	startedAt: number = Date.now(),
-): void {
+export function markRunStarted(kind: RunKind, total: number, startedAt: number = Date.now()): void {
 	const snap = runRegistry[kind];
 	snap.startedAt = startedAt;
 	snap.targetCount = total;

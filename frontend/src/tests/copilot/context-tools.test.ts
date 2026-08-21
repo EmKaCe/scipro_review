@@ -313,7 +313,7 @@ describe("get-submission-context", () => {
 		expect(result["autofixDispositions"]).toEqual({ "3": "accepted" });
 		// no verified clean re-run on this record → fixedCells is null (not [] / undefined)
 		expect(result["fixedCells"]).toBeNull();
-		});
+	});
 
 	it("truncates long cell sources to 40 lines with a marker and never dumps full sources", async () => {
 		const registry = freshRegistry();
@@ -475,7 +475,9 @@ describe("get-submission-context", () => {
 		expect(fixedCells[0]!["sourcePreview"]).toBe("[cell content removed: injection attempt]");
 		expect(fixedCells[0]!["outputPreview"]).toBe("");
 		// The notice calls out the scrubbed fixed cell.
-		expect(result["truncationNotice"]).toMatch(/1 of 1 fixed cells flagged for possible injection/);
+		expect(result["truncationNotice"]).toMatch(
+			/1 of 1 fixed cells flagged for possible injection/,
+		);
 	});
 
 	it("falls back to ctx.submissionId when the args omit it", async () => {

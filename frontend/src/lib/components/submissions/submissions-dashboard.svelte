@@ -215,9 +215,7 @@
 	 * total:0 before the run registers) never disarms the polling loop mid-run.
 	 * A status observation with running:true also keeps it armed.
 	 */
-	let preEvalRunning = $derived(
-		runRegistry.preEval.running || (preEvalStatus?.running ?? false),
-	);
+	let preEvalRunning = $derived(runRegistry.preEval.running || (preEvalStatus?.running ?? false));
 
 	let preEvalDone = $derived(preEvalStatus?.done ?? 0);
 	let preEvalTotal = $derived(preEvalStatus?.total ?? runRegistry.preEval.targetCount);
@@ -384,11 +382,7 @@
 		<table class="submissions-table" aria-label="Submissions table" role="grid">
 			<thead>
 				<tr aria-rowindex={1}>
-					<th
-						class="col-select"
-						role="columnheader"
-						aria-label="Select all submissions"
-					>
+					<th class="col-select" role="columnheader" aria-label="Select all submissions">
 						<Checkbox
 							checked={allVisibleSelected}
 							indeterminate={headerIndeterminate}
@@ -399,7 +393,11 @@
 					<th
 						class="col-id"
 						role="columnheader"
-						aria-sort={sortKey === "studentId" ? (sortAsc ? "ascending" : "descending") : "none"}
+						aria-sort={sortKey === "studentId"
+							? sortAsc
+								? "ascending"
+								: "descending"
+							: "none"}
 						onclick={() => toggleSort("studentId")}
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("studentId")}
@@ -416,7 +414,11 @@
 					<th
 						class="col-status"
 						role="columnheader"
-						aria-sort={sortKey === "status" ? (sortAsc ? "ascending" : "descending") : "none"}
+						aria-sort={sortKey === "status"
+							? sortAsc
+								? "ascending"
+								: "descending"
+							: "none"}
 						onclick={() => toggleSort("status")}
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("status")}
@@ -433,7 +435,11 @@
 					<th
 						class="col-cells"
 						role="columnheader"
-						aria-sort={sortKey === "cellSummary" ? (sortAsc ? "ascending" : "descending") : "none"}
+						aria-sort={sortKey === "cellSummary"
+							? sortAsc
+								? "ascending"
+								: "descending"
+							: "none"}
 						onclick={() => toggleSort("cellSummary")}
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("cellSummary")}
@@ -446,13 +452,15 @@
 							class="sort-arrow-icon"
 						/>
 					</th>
-					<th class="col-preeval" role="columnheader">
-						Pre-Eval
-					</th>
+					<th class="col-preeval" role="columnheader"> Pre-Eval </th>
 					<th
 						class="col-grade"
 						role="columnheader"
-						aria-sort={sortKey === "teacherGrade" ? (sortAsc ? "ascending" : "descending") : "none"}
+						aria-sort={sortKey === "teacherGrade"
+							? sortAsc
+								? "ascending"
+								: "descending"
+							: "none"}
 						onclick={() => toggleSort("teacherGrade")}
 						tabindex="0"
 						onkeydown={(e) => e.key === "Enter" && toggleSort("teacherGrade")}

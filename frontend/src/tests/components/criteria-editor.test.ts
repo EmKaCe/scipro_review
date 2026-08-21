@@ -299,7 +299,9 @@ describe("CriteriaEditorTabs", () => {
 	});
 
 	it("Draft with AI surfaces the error and keeps the current draft when it fails", async () => {
-		mockedDraft.mockRejectedValue(new Error("Assignment has no rubric — upload criteria first"));
+		mockedDraft.mockRejectedValue(
+			new Error("Assignment has no rubric — upload criteria first"),
+		);
 		render(CriteriaEditorTabs, {
 			props: { assignmentId: "soil_contamination", initial: INITIAL },
 		});

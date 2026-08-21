@@ -613,11 +613,15 @@
 		const maxScores: Record<string, number> | undefined = gradingConfig
 			? Object.fromEntries(gradingConfig.dimensions.map((d) => [d.key, d.max_points]))
 			: undefined;
-		const next = applySuggestionToState(suggestion, {
-			gradingInputs: { ...gradingInputs },
-			notesDraft,
-			categorySelections,
-		}, maxScores);
+		const next = applySuggestionToState(
+			suggestion,
+			{
+				gradingInputs: { ...gradingInputs },
+				notesDraft,
+				categorySelections,
+			},
+			maxScores,
+		);
 		gradingInputs = next.gradingInputs;
 		notesDraft = next.notesDraft;
 		if (next.categorySelections) {
@@ -717,10 +721,7 @@
 							<SkeletonPulse class="ml-auto h-4 w-28 rounded-full" />
 						</div>
 						<div class="p-3">
-							<SkeletonPulse
-								class="h-12 w-full"
-								style="background:var(--code-bg)"
-							/>
+							<SkeletonPulse class="h-12 w-full" style="background:var(--code-bg)" />
 						</div>
 					</div>
 				{/each}
@@ -985,8 +986,8 @@
 							<TriangleAlert size={13} />
 							<span class="over-tick-title">Review extras</span>
 							<span class="over-tick-hint">
-								{overTick.overTickCategories.length} categor{overTick.overTickCategories.length ===
-								1
+								{overTick.overTickCategories.length} categor{overTick
+									.overTickCategories.length === 1
 									? "y"
 									: "ies"} over the cohort norm
 							</span>
@@ -997,8 +998,8 @@
 								{#if overTick.totalFlagged}
 									<p class="over-tick-note over-tick-warn">
 										Pipeline checked {overTick.total} items — well above the typical
-										review (cohort median {overTick.median}). Verify the selection
-										before accepting.
+										review (cohort median {overTick.median}). Verify the
+										selection before accepting.
 									</p>
 								{/if}
 								{#if overTick.overlapNote}

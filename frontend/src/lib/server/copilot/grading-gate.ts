@@ -204,9 +204,7 @@ export async function runFixtureChecks(
 
 /** Absolute path of the committed synthetic fixtures dir (robust under bundling). */
 export function getGateFixturesDir(): string {
-	return fileURLToPath(
-		new URL("../../../tests/copilot/fixtures/grading-gate", import.meta.url),
-	);
+	return fileURLToPath(new URL("../../../tests/copilot/fixtures/grading-gate", import.meta.url));
 }
 
 /** Load all committed fixtures from the fixtures dir. */

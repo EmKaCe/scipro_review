@@ -169,11 +169,14 @@ export async function setPreEvaluation(
 	}
 	// Normalize: pull any nested post-processed data out of the envelope so
 	// the stored preEval stays the raw LLM output (see StoredExecutionResult).
-	const { postProcessed: nestedPostProcessed, postProcessFixes: nestedFixes, ...rawPreEval } =
-		preEval as StoredPreEvaluation & {
-			postProcessed?: PostProcessData;
-			postProcessFixes?: PostProcessFix[];
-		};
+	const {
+		postProcessed: nestedPostProcessed,
+		postProcessFixes: nestedFixes,
+		...rawPreEval
+	} = preEval as StoredPreEvaluation & {
+		postProcessed?: PostProcessData;
+		postProcessFixes?: PostProcessFix[];
+	};
 	const resolvedPostProcessed = postProcessed ?? nestedPostProcessed;
 	const resolvedFixes = postProcessFixes ?? nestedFixes;
 	results[studentId] = {

@@ -999,9 +999,9 @@ describe("thread management (T.3)", () => {
 		await store2.restoreActiveThread();
 		expect(localStorage.getItem("copilot:activeThread:sub-42")).toBeNull();
 		expect(store2.activeThread).toBeNull();
-		});
+	});
 
-		describe("harness surface (W2a/W2d) — plan checklist + change ledger", () => {
+	describe("harness surface (W2a/W2d) — plan checklist + change ledger", () => {
 		it("renders the plan from the plan event and advances status on tool events", async () => {
 			copilot.apiMode.value = true;
 			const chat = openSseResponse(
@@ -1012,7 +1012,11 @@ describe("thread management (T.3)", () => {
 					],
 				}),
 				sseFrame("tool-call", { tool: "process-submission", args: {} }),
-				sseFrame("tool-result", { tool: "process-submission", ok: true, summary: "Executed" }),
+				sseFrame("tool-result", {
+					tool: "process-submission",
+					ok: true,
+					summary: "Executed",
+				}),
 				sseFrame("tool-call", { tool: "set-rubric-item", args: {} }),
 				sseFrame("tool-result", { tool: "set-rubric-item", ok: true, summary: "Set" }),
 				sseFrame("done", {}),
@@ -1024,7 +1028,11 @@ describe("thread management (T.3)", () => {
 
 			expect(store.planSteps).toEqual([
 				{ id: "execute-notebook", label: "Execute notebook", status: "completed" },
-				{ id: "apply-grading-changes", label: "Apply grading changes", status: "completed" },
+				{
+					id: "apply-grading-changes",
+					label: "Apply grading changes",
+					status: "completed",
+				},
 			]);
 		});
 
@@ -1370,9 +1378,9 @@ describe("thread management (T.3)", () => {
 			// Once the turn ends, the revert is live again.
 			expect(store.canRevertTurn).toBe(true);
 		});
-		});
+	});
 
-		describe("steering (W3b) — queue / steer-at-boundary / stop", () => {
+	describe("steering (W3b) — queue / steer-at-boundary / stop", () => {
 		it("queues a message while streaming and drains it after the run ends", async () => {
 			copilot.apiMode.value = true;
 			// First turn: tool-call -> tool-result -> done. Second turn (queued): done.
@@ -1455,5 +1463,5 @@ describe("thread management (T.3)", () => {
 			expect(store.queueMessage("Nope")).toBe(false);
 			expect(store.queuedMessages).toEqual([]);
 		});
-		});
+	});
 });

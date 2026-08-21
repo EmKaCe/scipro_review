@@ -60,13 +60,7 @@ describe("checkpoint-store (P3)", () => {
 	it("persists to DATA_DIR/copilot/checkpoints/<threadId>/<turnId>.json", async () => {
 		await saveCheckpoint("thread-1", "turn-1", snapshot());
 
-		const file = path.join(
-			dataDir,
-			"copilot",
-			"checkpoints",
-			"thread-1",
-			"turn-1.json",
-		);
+		const file = path.join(dataDir, "copilot", "checkpoints", "thread-1", "turn-1.json");
 		const raw = await readFile(file, "utf8");
 		expect(JSON.parse(raw)).toEqual(snapshot());
 	});

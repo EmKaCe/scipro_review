@@ -114,7 +114,8 @@ export function extractGradingProposals(parts: ReadonlyArray<unknown>): RubricFi
 				stringField(args, "criterionKey") ??
 				stringField(asRecord(result.rubricItem), "criterionKey");
 			const optionKey =
-				stringField(args, "optionKey") ?? stringField(asRecord(result.rubricItem), "optionKey");
+				stringField(args, "optionKey") ??
+				stringField(asRecord(result.rubricItem), "optionKey");
 			if (criterionKey && optionKey) {
 				rubric[criterionKey] = optionKey;
 				wrote = true;
@@ -124,7 +125,8 @@ export function extractGradingProposals(parts: ReadonlyArray<unknown>): RubricFi
 
 		if (toolName === "update-grade-dimension") {
 			const dimensionId =
-				stringField(args, "dimensionId") ?? stringField(asRecord(result.dimension), "dimensionId");
+				stringField(args, "dimensionId") ??
+				stringField(asRecord(result.dimension), "dimensionId");
 			const value =
 				numberField(args, "value") ?? numberField(asRecord(result.dimension), "value");
 			if (dimensionId && value !== undefined) {
@@ -227,7 +229,9 @@ export async function loadRecordedThreads(
 
 		const resourceId = typeof thread.resourceId === "string" ? thread.resourceId : "";
 		const metadataAssignmentId =
-			typeof thread.metadata?.assignmentId === "string" ? thread.metadata.assignmentId : undefined;
+			typeof thread.metadata?.assignmentId === "string"
+				? thread.metadata.assignmentId
+				: undefined;
 		const assignmentId = metadataAssignmentId ?? SUBMISSION_TO_ASSIGNMENT[resourceId];
 
 		const proposals: RubricFidelityInput[] = [];

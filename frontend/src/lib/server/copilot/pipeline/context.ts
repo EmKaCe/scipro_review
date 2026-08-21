@@ -383,11 +383,15 @@ export function buildPhase1UserPrompt(
 export function formatPreAnalysis(pa: PreAnalysis): string {
 	const lines: string[] = ["Deterministic pre-analysis findings (FACTS — do not contradict):"];
 	if (pa.nonDescriptiveNames.length > 0) {
-		lines.push(`- Non-descriptive variable names detected: ${pa.nonDescriptiveNames.join(", ")}`);
+		lines.push(
+			`- Non-descriptive variable names detected: ${pa.nonDescriptiveNames.join(", ")}`,
+		);
 	} else {
 		lines.push("- All variable names appear descriptive");
 	}
-	lines.push(`- Imports alphabetized (whole-list check): ${pa.importsAlphabetized ? "yes" : "NO"}`);
+	lines.push(
+		`- Imports alphabetized (whole-list check): ${pa.importsAlphabetized ? "yes" : "NO"}`,
+	);
 	if (pa.disallowedImports.length > 0) {
 		lines.push(`- Disallowed imports found: ${pa.disallowedImports.join(", ")}`);
 	}
@@ -429,17 +433,17 @@ export function buildExtraAnalysisEvidence(
 	// Helper: run a config pattern if present; else the built-in regex.
 	const testBuiltin = (key: string, builtin: RegExp, kind: Haystack): boolean => {
 		const compiled = config?.evidencePatterns.get(key);
-		if (compiled) return testEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks));
+		if (compiled)
+			return testEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks));
 		return builtin.test(haystackFor(kind, haystacks));
 	};
-	const countBuiltin = (
-		key: string,
-		builtin: RegExp,
-		kind: Haystack,
-		group: number,
-	): number => {
+	const countBuiltin = (key: string, builtin: RegExp, kind: Haystack, group: number): number => {
 		const compiled = config?.evidencePatterns.get(key);
-		if (compiled) return measureEvidencePattern(compiled, haystackFor(compiled.haystack, haystacks)) as number;
+		if (compiled)
+			return measureEvidencePattern(
+				compiled,
+				haystackFor(compiled.haystack, haystacks),
+			) as number;
 		const seen = new Set<string>();
 		for (const m of haystackFor(kind, haystacks).matchAll(builtin)) {
 			seen.add(m[group] ?? "");
@@ -464,22 +468,15 @@ export function buildExtraAnalysisEvidence(
 		/\bR\s*(?:\^2|²|2)\s*[=:]\s*[\d.]+|\bRMSE\s*[=:]\s*[\d.]+/i,
 		"output",
 	);
-	const r2Discussed = testBuiltin(
-		"r2_or_rmse_discussed",
-		/\bR\s*(?:\^2|²|2)\b/i,
-		"markdown",
-	) || testBuiltin("r2_or_rmse_discussed", /\bRMSE\b/i, "markdown");
+	const r2Discussed =
+		testBuiltin("r2_or_rmse_discussed", /\bR\s*(?:\^2|²|2)\b/i, "markdown") ||
+		testBuiltin("r2_or_rmse_discussed", /\bRMSE\b/i, "markdown");
 	bullets.push(`- R²/RMSE computed and interpreted: ${r2Computed && r2Discussed ? "yes" : "no"}`);
 
 	// (c) Extra visualizations — count distinct plot-call families (both the
 	// plt.* and ax.* idioms); more than 2 distinct families is a signal of
 	// extra presentation work.
-	const plotFamilies = countBuiltin(
-		"plot_family_counter",
-		/(?:plt|ax)\.(\w+)\s*\(/g,
-		"code",
-		1,
-	);
+	const plotFamilies = countBuiltin("plot_family_counter", /(?:plt|ax)\.(\w+)\s*\(/g, "code", 1);
 	bullets.push(`- distinct plot types used: ${plotFamilies}`);
 
 	// (d) Physical-insight language — discussing WHY a fitted parameter is
@@ -489,7 +486,9 @@ export function buildExtraAnalysisEvidence(
 		/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i,
 		"markdown+code",
 	);
-	bullets.push(`- physical-insight discussion (e.g. why a parameter is non-physical): ${physicalInsight ? "yes" : "no"}`);
+	bullets.push(
+		`- physical-insight discussion (e.g. why a parameter is non-physical): ${physicalInsight ? "yes" : "no"}`,
+	);
 
 	// (e) Scientific-methodology signals the professor rewarded (scientific_programming).
 	// The emailed ground truth shows the professor's scale is FIT-QUALITY driven:
@@ -510,16 +509,8 @@ export function buildExtraAnalysisEvidence(
 		);
 	})();
 	const stdErrReported =
-		(testBuiltin(
-			"std_err_signal",
-			/(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i,
-			"output",
-		) &&
-			testBuiltin(
-				"std_err_signal_with_param",
-				/\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/,
-				"output",
-			)) ||
+		(testBuiltin("std_err_signal", /(?:±|\+\/-|\+-\s*|standard error|uncertaint)/i, "output") &&
+			testBuiltin("std_err_signal_with_param", /\b(?:A|B|x0|y0|L)\b[^.\n]*[±]/, "output")) ||
 		(/\bstandard error\b/i.test(haystacks.output) && fitReproducesReference);
 	const usesBuiltinMetrics = testBuiltin(
 		"builtin_metrics_call",
@@ -565,4 +556,3 @@ export function formatDimensionsForPrompt(
 	}
 	return "(no grading dimensions configured)";
 }
-

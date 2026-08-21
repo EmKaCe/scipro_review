@@ -33,7 +33,6 @@
 		onApprove,
 		onDeny,
 	}: Props = $props();
-
 </script>
 
 <div class="copilot-card approval-card" aria-live="assertive">
@@ -44,7 +43,7 @@
 	<div class="approval-body">
 		<code class="tool-name">{toolName}</code>
 		{#if args}
-			<ToolArgs args={args} />
+			<ToolArgs {args} />
 		{/if}
 		{#if runId}
 			<span class="run-id" title={`Tool call: ${toolCallId}`}>Run {runId}</span>

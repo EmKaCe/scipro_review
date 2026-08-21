@@ -61,10 +61,12 @@ export interface PreAnalysis {
 const CONTEXT_OK_SINGLE_LETTERS = new Set(["i", "j", "k", "n", "m", "p"]);
 
 /** Regex matching a Python import statement: import X or from X import Y */
-const IMPORT_STMT_RE = /(?:^|\n)(?:import\s+([\w.]+(?:\s*,\s*[\w.]+)*)|from\s+([\w.]+)\s+import\s+(.+))/g;
+const IMPORT_STMT_RE =
+	/(?:^|\n)(?:import\s+([\w.]+(?:\s*,\s*[\w.]+)*)|from\s+([\w.]+)\s+import\s+(.+))/g;
 
 /** Words that indicate interpretation / analysis in markdown. */
-const INTERPRETATION_WORDS = /\b(mean|median|std|standard deviation|correlation|trend|pattern|significant|outlier|cluster[sd]?|indicates?|shows? that|suggests?|implies?|therefore|because|due to|likely|observed|compare|higher|lower|increase|decrease)\b/i;
+const INTERPRETATION_WORDS =
+	/\b(mean|median|std|standard deviation|correlation|trend|pattern|significant|outlier|cluster[sd]?|indicates?|shows? that|suggests?|implies?|therefore|because|due to|likely|observed|compare|higher|lower|increase|decrease)\b/i;
 
 /** Citation patterns: [1], [1-3], (Author, 2020) */
 const CITATION_RE = /\[[\d,\-\s]+\]|\(\w+,\s*\d{4}\)/g;
@@ -157,7 +159,7 @@ function checkImportOrder(codeSources: string[]): boolean {
 	for (let i = 1; i <= allImports.length; i++) {
 		const isNewBlock =
 			i === allImports.length ||
-			(allImports[i]!.startsWith("from") !== allImports[i - 1]!.startsWith("from"));
+			allImports[i]!.startsWith("from") !== allImports[i - 1]!.startsWith("from");
 		if (isNewBlock) {
 			const block = allImports.slice(blockStart, i);
 			const sorted = [...block].sort((a, b) =>
@@ -194,9 +196,7 @@ export function checkImportsAlphabetizedWholeList(cells: ExecutedCell[]): boolea
 		}
 	}
 	if (importLines.length <= 1) return true;
-	const sorted = [...importLines].sort((a, b) =>
-		a.toLowerCase().localeCompare(b.toLowerCase()),
-	);
+	const sorted = [...importLines].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
 	return importLines.every((line, i) => line === sorted[i]);
 }
 
@@ -243,9 +243,7 @@ function findUnusedImports(codeSources: string[]): string[] {
 		for (const line of src.split("\n")) {
 			if (line.trim().startsWith("import ") || line.trim().startsWith("from ")) {
 				const moduleName =
-					line.match(/from\s+(\S+)/)?.[1] ??
-					line.match(/import\s+(\S+)/)?.[1] ??
-					"";
+					line.match(/from\s+(\S+)/)?.[1] ?? line.match(/import\s+(\S+)/)?.[1] ?? "";
 				for (const name of extractImportedNames(line)) {
 					imported.set(name, moduleName);
 				}
@@ -265,7 +263,11 @@ function findUnusedImports(codeSources: string[]): string[] {
 			)
 			.join("\n");
 		// Check if symbol appears anywhere outside import statements
-		if (!new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(codeWithoutImports)) {
+		if (
+			!new RegExp(`\\b${symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+				codeWithoutImports,
+			)
+		) {
 			unused.push(symbol);
 		}
 	}
@@ -331,13 +333,17 @@ export function analyzeSubmission(
 	// Build summary
 	const issues: string[] = [];
 	if (nonDescriptiveNames.length > 0) {
-		issues.push(`${nonDescriptiveNames.length} non-descriptive variable name(s): ${nonDescriptiveNames.join(", ")}`);
+		issues.push(
+			`${nonDescriptiveNames.length} non-descriptive variable name(s): ${nonDescriptiveNames.join(", ")}`,
+		);
 	}
 	if (importsNotAlphabetized) {
 		issues.push("imports are not alphabetically ordered");
 	}
 	if (disallowedImports.length > 0) {
-		issues.push(`${disallowedImports.length} disallowed import(s): ${disallowedImports.join(", ")}`);
+		issues.push(
+			`${disallowedImports.length} disallowed import(s): ${disallowedImports.join(", ")}`,
+		);
 	}
 	if (unusedImports.length > 0) {
 		issues.push(`${unusedImports.length} unused import(s): ${unusedImports.join(", ")}`);

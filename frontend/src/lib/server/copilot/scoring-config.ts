@@ -120,11 +120,15 @@ export async function loadScoringConfig(assignmentId: string): Promise<ScoringCo
 	}
 
 	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-		throw new Error(`scoring config ${getScoringConfigPath(assignmentId)} is invalid: expected a 'scoring' map`);
+		throw new Error(
+			`scoring config ${getScoringConfigPath(assignmentId)} is invalid: expected a 'scoring' map`,
+		);
 	}
 	const root = parsed as { scoring?: unknown };
 	if (!root.scoring || typeof root.scoring !== "object" || Array.isArray(root.scoring)) {
-		throw new Error(`scoring config ${getScoringConfigPath(assignmentId)} is invalid: missing 'scoring' map`);
+		throw new Error(
+			`scoring config ${getScoringConfigPath(assignmentId)} is invalid: missing 'scoring' map`,
+		);
 	}
 	const scoring = root.scoring as Record<string, unknown>;
 
@@ -175,7 +179,9 @@ export function compileScoringConfig(
 	const rawDisallowed = scoring.disallowed_libraries;
 	if (rawDisallowed !== undefined) {
 		if (!Array.isArray(rawDisallowed) || rawDisallowed.some((v) => typeof v !== "string")) {
-			throw new Error(`scoring config ${assignmentId}: disallowed_libraries must be a string array`);
+			throw new Error(
+				`scoring config ${assignmentId}: disallowed_libraries must be a string array`,
+			);
 		}
 		disallowedLibraries = rawDisallowed as string[];
 	}
@@ -185,7 +191,9 @@ export function compileScoringConfig(
 	const rawAllowed = scoring.allowed_libraries;
 	if (rawAllowed !== undefined) {
 		if (!Array.isArray(rawAllowed) || rawAllowed.some((v) => typeof v !== "string")) {
-			throw new Error(`scoring config ${assignmentId}: allowed_libraries must be a string array`);
+			throw new Error(
+				`scoring config ${assignmentId}: allowed_libraries must be a string array`,
+			);
 		}
 		allowedLibraries = rawAllowed as string[];
 	}
@@ -200,11 +208,15 @@ export function compileScoringConfig(
 		const rawGuidance = (rawPrompt as Record<string, unknown>).dimension_guidance;
 		if (rawGuidance !== undefined) {
 			if (!rawGuidance || typeof rawGuidance !== "object" || Array.isArray(rawGuidance)) {
-				throw new Error(`scoring config ${assignmentId}: prompt_anchor_text.dimension_guidance must be a map`);
+				throw new Error(
+					`scoring config ${assignmentId}: prompt_anchor_text.dimension_guidance must be a map`,
+				);
 			}
 			for (const [dim, text] of Object.entries(rawGuidance as Record<string, unknown>)) {
 				if (typeof text !== "string") {
-					throw new Error(`scoring config ${assignmentId}: dimension_guidance.${dim} must be a string`);
+					throw new Error(
+						`scoring config ${assignmentId}: dimension_guidance.${dim} must be a string`,
+					);
 				}
 				dimensionGuidance[dim] = text;
 			}
@@ -221,10 +233,7 @@ export function compileScoringConfig(
 	};
 }
 
-function compileAnchors(
-	raw: unknown,
-	assignmentId: string,
-): ReferenceAnchors | null {
+function compileAnchors(raw: unknown, assignmentId: string): ReferenceAnchors | null {
 	if (raw === undefined || raw === null) {
 		return null; // no anchors → calibration is skipped by callers
 	}
@@ -235,7 +244,9 @@ function compileAnchors(
 	const num = (key: string): number => {
 		const v = r[key];
 		if (typeof v !== "number" || !Number.isFinite(v)) {
-			throw new Error(`scoring config ${assignmentId}: reference_anchors.${key} must be a finite number`);
+			throw new Error(
+				`scoring config ${assignmentId}: reference_anchors.${key} must be a finite number`,
+			);
 		}
 		return v;
 	};
@@ -250,7 +261,9 @@ function compileAnchors(
 	};
 	// Sanity: r_squared ∈ [0,1], rmse > 0.
 	if (anchors.rSquared < 0 || anchors.rSquared > 1) {
-		throw new Error(`scoring config ${assignmentId}: reference_anchors.r_squared must be in [0,1]`);
+		throw new Error(
+			`scoring config ${assignmentId}: reference_anchors.r_squared must be in [0,1]`,
+		);
 	}
 	if (anchors.rmse <= 0) {
 		throw new Error(`scoring config ${assignmentId}: reference_anchors.rmse must be > 0`);
@@ -287,8 +300,13 @@ function compileEvidencePattern(
 	} else {
 		patterns = [e.pattern];
 	}
-	if (patterns.length === 0 || patterns.some((p) => typeof p !== "string" || (p as string).length === 0)) {
-		throw new Error(`scoring config ${assignmentId}: evidence_patterns.${key}.pattern must be a non-empty string or string list`);
+	if (
+		patterns.length === 0 ||
+		patterns.some((p) => typeof p !== "string" || (p as string).length === 0)
+	) {
+		throw new Error(
+			`scoring config ${assignmentId}: evidence_patterns.${key}.pattern must be a non-empty string or string list`,
+		);
 	}
 
 	const regexes: RegExp[] = [];
@@ -330,14 +348,22 @@ export function testEvidencePattern(pattern: CompiledEvidencePattern, haystack: 
 }
 
 /** Run one compiled pattern → value (capture_value) or count (distinct_count). */
-export function measureEvidencePattern(pattern: CompiledEvidencePattern, haystack: string): string | number {
+export function measureEvidencePattern(
+	pattern: CompiledEvidencePattern,
+	haystack: string,
+): string | number {
 	if (pattern.semantics === "capture_value") {
 		return pattern.regexes[0]!.exec(haystack)?.[pattern.captureGroup!] ?? "";
 	}
 	// distinct_count — matchAll + collect the capture group.
 	// matchAll requires the `g` flag; the loader compiles with `i` only, so
 	// clone with `g` for the scan (the source is unchanged).
-	const re = new RegExp(pattern.regexes[0]!.source, pattern.regexes[0]!.flags.includes("g") ? pattern.regexes[0]!.flags : `${pattern.regexes[0]!.flags}g`);
+	const re = new RegExp(
+		pattern.regexes[0]!.source,
+		pattern.regexes[0]!.flags.includes("g")
+			? pattern.regexes[0]!.flags
+			: `${pattern.regexes[0]!.flags}g`,
+	);
 	const seen = new Set<string>();
 	for (const m of haystack.matchAll(re)) {
 		seen.add(m[pattern.captureGroup!] ?? "");

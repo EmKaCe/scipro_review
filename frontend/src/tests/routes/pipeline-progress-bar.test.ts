@@ -12,11 +12,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 
 import type { SubmissionMeta } from "$lib/types/submissions.js";
 import type { PreEvalProgress, ProcessProgress } from "$lib/services/submissions-api.js";
-import {
-	markRunFinished,
-	markRunStarted,
-	setRunSummary,
-} from "$lib/services/run-state.svelte.js";
+import { markRunFinished, markRunStarted, setRunSummary } from "$lib/services/run-state.svelte.js";
 
 // Static import (not dynamic): the page pulls in the tooltip component
 // graph, whose first-load transform exceeds the per-test timeout in a
@@ -224,8 +220,7 @@ describe("submissions dashboard — pipeline progress bar", () => {
 		render(SubmissionsPage);
 		await screen.findByText("2026SS_01");
 
-		const resetBtn = () =>
-			screen.getByRole("button", { name: /reset pre-evaluation/i });
+		const resetBtn = () => screen.getByRole("button", { name: /reset pre-evaluation/i });
 		// Idle: Reset enabled (wait for the fresh list carrying the
 		// pre-evaluated row), no pre-eval bar.
 		await waitFor(() => expect(resetBtn().hasAttribute("disabled")).toBe(false));

@@ -273,7 +273,8 @@ const getSubmissionContextTool: CopilotTool<z.infer<typeof submissionIdArgs>> = 
 		// fixedCells is the verified clean re-run produced by the autofix stage.
 		// Its patched source is LLM-generated from student content and is equally
 		// untrusted — give it the SAME per-cell screening treatment.
-		const fixed = fixedCells && fixedCells.length > 0 ? await screenCellPreviews(fixedCells) : null;
+		const fixed =
+			fixedCells && fixedCells.length > 0 ? await screenCellPreviews(fixedCells) : null;
 
 		const noticeParts: string[] = [];
 		if (executed.truncatedSources > 0) {

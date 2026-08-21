@@ -87,8 +87,8 @@ cd scipro_review</code
 		</p>
 		<p class="note">
 			<strong>Deep reference:</strong> this page is the <em>how-to</em>. For the full
-			architecture, data flow, how the data structures are wired, and the terminology, see
-			the repo's <code>.github/references/</code> docs —
+			architecture, data flow, how the data structures are wired, and the terminology, see the
+			repo's <code>.github/references/</code> docs —
 			<code>concepts.md</code> (the explainable mental model), <code>architecture.md</code>,
 			<code>data-structures.md</code>, <code>developer-guide.md</code> — and for
 			new-assignment / accuracy guidance, <code>assignment-calibration.md</code> and

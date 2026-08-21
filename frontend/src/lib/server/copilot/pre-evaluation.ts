@@ -55,9 +55,7 @@ import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-ana
 // (the type itself lives in the shared client-safe types module).
 export type { GradingConfidence } from "$lib/types/submissions";
 import type { GradingConfidence } from "$lib/types/submissions";
-import {
-	generateWorksheet,
-} from "$lib/server/copilot/worksheet";
+import { generateWorksheet } from "$lib/server/copilot/worksheet";
 import {
 	postProcessSubmission,
 	type PostProcessData,
@@ -111,10 +109,7 @@ import {
 export { modelHintBlock };
 export { runTurnBasedRubricSelection, runTurnBasedCategoryMilestone } from "./pipeline/phases";
 
-import {
-	validateEnvelopeAgainstContext,
-	type ValidatedPreEvaluation,
-} from "./pipeline/validate";
+import { validateEnvelopeAgainstContext, type ValidatedPreEvaluation } from "./pipeline/validate";
 import {
 	buildEvidenceHaystacks,
 	haystackFor,
@@ -197,7 +192,6 @@ export type PreEvaluationWithPostProcess = PreEvaluation & {
 	postProcessFixes: PostProcessFix[];
 };
 
-
 /**
  * Libraries disallowed per assignment come from the scoring config
  * (data/scoring/<id>.yaml, `disallowed_libraries`). A student notebook
@@ -236,18 +230,59 @@ const API_REFERENCE_PATTERN = /(?<!["'])\b[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*){1,3}\b/
  */
 const BARE_DOCS_NAMES: Record<string, DocsLibrary> = {
 	// builtins — commonly called without a module prefix
-	len: "builtins", range: "builtins", sum: "builtins", sorted: "builtins", min: "builtins",
-	max: "builtins", abs: "builtins", round: "builtins", map: "builtins", filter: "builtins",
-	enumerate: "builtins", zip: "builtins", any: "builtins", all: "builtins", print: "builtins",
-	isinstance: "builtins", list: "builtins", dict: "builtins", set: "builtins", tuple: "builtins",
-	str: "builtins", int: "builtins", float: "builtins", bool: "builtins", reversed: "builtins",
-	pow: "builtins", id: "builtins", next: "builtins", iter: "builtins", open: "builtins",
+	len: "builtins",
+	range: "builtins",
+	sum: "builtins",
+	sorted: "builtins",
+	min: "builtins",
+	max: "builtins",
+	abs: "builtins",
+	round: "builtins",
+	map: "builtins",
+	filter: "builtins",
+	enumerate: "builtins",
+	zip: "builtins",
+	any: "builtins",
+	all: "builtins",
+	print: "builtins",
+	isinstance: "builtins",
+	list: "builtins",
+	dict: "builtins",
+	set: "builtins",
+	tuple: "builtins",
+	str: "builtins",
+	int: "builtins",
+	float: "builtins",
+	bool: "builtins",
+	reversed: "builtins",
+	pow: "builtins",
+	id: "builtins",
+	next: "builtins",
+	iter: "builtins",
+	open: "builtins",
 	// typing — annotation names, usually used bare after `from typing import …`
-	TypeVar: "typing", Optional: "typing", Union: "typing", Callable: "typing", Any: "typing",
-	List: "typing", Dict: "typing", Tuple: "typing", Set: "typing", Iterable: "typing",
-	Sequence: "typing", Literal: "typing", NamedTuple: "typing", Protocol: "typing", Self: "typing",
-	Type: "typing", ClassVar: "typing", Final: "typing", Generic: "typing", cast: "typing",
-	Annotated: "typing", TypedDict: "typing",
+	TypeVar: "typing",
+	Optional: "typing",
+	Union: "typing",
+	Callable: "typing",
+	Any: "typing",
+	List: "typing",
+	Dict: "typing",
+	Tuple: "typing",
+	Set: "typing",
+	Iterable: "typing",
+	Sequence: "typing",
+	Literal: "typing",
+	NamedTuple: "typing",
+	Protocol: "typing",
+	Self: "typing",
+	Type: "typing",
+	ClassVar: "typing",
+	Final: "typing",
+	Generic: "typing",
+	cast: "typing",
+	Annotated: "typing",
+	TypedDict: "typing",
 };
 
 /** Cap on distinct APIs looked up per submission (cost control). */
@@ -272,7 +307,9 @@ export interface DocsApiRef {
  *     annotation (`len(...)`, `TypeVar("T")`, `Optional[int]`) — scoped to
  *     their library bucket.
  */
-export function extractApiReferences(cells: readonly { type: string; source: string }[]): DocsApiRef[] {
+export function extractApiReferences(
+	cells: readonly { type: string; source: string }[],
+): DocsApiRef[] {
 	const apis: DocsApiRef[] = [];
 	const seen = new Set<string>();
 	const append = (ref: DocsApiRef) => {
@@ -309,14 +346,19 @@ export function extractApiReferences(cells: readonly { type: string; source: str
  * substitutes an empty block and the prompt is byte-identical to the
  * pre-grounding version.
  */
-export async function buildDocsFactsBlock(cells: readonly { type: string; source: string }[]): Promise<string> {
+export async function buildDocsFactsBlock(
+	cells: readonly { type: string; source: string }[],
+): Promise<string> {
 	try {
 		const apis = extractApiReferences(cells);
 		if (apis.length === 0) return "";
 
 		const lines: string[] = ["<docs_facts>"];
 		for (const api of apis) {
-			const hits = await searchDocs(api.name, api.library ? { topK: DOCS_TOP_K, library: api.library } : { topK: DOCS_TOP_K });
+			const hits = await searchDocs(
+				api.name,
+				api.library ? { topK: DOCS_TOP_K, library: api.library } : { topK: DOCS_TOP_K },
+			);
 			if (hits.length === 0) continue;
 			for (const hit of hits) {
 				// The chunk head carries the signature line ("Signature: ...");
@@ -362,10 +404,6 @@ export async function buildDocsFactsBlock(cells: readonly { type: string; source
  */
 const CRITIQUE_ENABLED = process.env.PRE_EVAL_CRITIQUE !== "0";
 
-
-
-
-
 // ---------------------------------------------------------------------------
 // Service — 4-phase pipeline (2a/2b split + optional 2a critique)
 // ---------------------------------------------------------------------------
@@ -377,7 +415,6 @@ interface ScoringResult {
 		justification: string;
 	};
 }
-
 
 /** Structural cell shape the autofix block reads (subset of ExecutedCell). */
 type AutofixPromptCell = {
@@ -426,7 +463,9 @@ function buildAutofixPromptBlock(args: {
 			"The original run completed with no explicit root-error cell (see the fixed run below for the repaired output).",
 		);
 	}
-	lines.push("After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.");
+	lines.push(
+		"After a minimal fix, the notebook runs clean. Judge downstream cells on this fixed output.",
+	);
 	lines.push("");
 	lines.push("Fixed run per cell (index-aligned):");
 
@@ -733,8 +772,11 @@ export async function preEvaluateSubmission(
 				markerCounts: markers.markers
 					? {
 							same: markers.markers.filter((m) => m?.marker === "same").length,
-							different: markers.markers.filter((m) => m?.marker === "different").length,
-							questionable: markers.markers.filter((m) => m?.marker === "questionable").length,
+							different: markers.markers.filter((m) => m?.marker === "different")
+								.length,
+							questionable: markers.markers.filter(
+								(m) => m?.marker === "questionable",
+							).length,
 						}
 					: null,
 				dimensionScores: scoring.gradeSuggestion.dimensions,
@@ -789,7 +831,9 @@ export async function preEvaluateSubmission(
 		"Rubric selections:",
 		rubricSelections.length > 0
 			? rubricSelections
-					.map((r) => `  [${r?.categoryKey ?? "?"}] ${(r?.optionKey ?? "").slice(0, 100)}`)
+					.map(
+						(r) => `  [${r?.categoryKey ?? "?"}] ${(r?.optionKey ?? "").slice(0, 100)}`,
+					)
 					.join("\n")
 			: "  (none)",
 		"",
@@ -892,11 +936,11 @@ export async function preEvaluateSubmission(
 		screeningNeedsReview || autofixScreeningNeedsReview
 			? "needs_review"
 			: derivedGradingConfidence({
-				postProcessFixes: postProcessResult.fixes,
-				additionalNotes: envelope.additionalNotes ?? {},
-				postProcessedNotes: postProcessed.additionalNotes ?? {},
-				preAnalysis,
-			});
+					postProcessFixes: postProcessResult.fixes,
+					additionalNotes: envelope.additionalNotes ?? {},
+					postProcessedNotes: postProcessed.additionalNotes ?? {},
+					preAnalysis,
+				});
 
 	return {
 		...envelope,
@@ -913,10 +957,7 @@ export async function preEvaluateSubmission(
  *
  * Caps are conservative: they only lower scores, never raise them.
  */
-function applyScoreCaps(
-	dimensions: Record<string, number>,
-	pa: PreAnalysis,
-): void {
+function applyScoreCaps(dimensions: Record<string, number>, pa: PreAnalysis): void {
 	const cap = (key: string, max: number) => {
 		const current = dimensions[key];
 		if (current !== undefined && current > max) {
@@ -986,8 +1027,10 @@ export function derivedGradingConfidence(input: {
 }): GradingConfidence {
 	const { postProcessFixes, additionalNotes, postProcessedNotes, preAnalysis } = input;
 
-	const hasNeedsReviewFlag = [...Object.values(additionalNotes), ...Object.values(postProcessedNotes)]
-		.some((notes) => notes.includes("[needs review]"));
+	const hasNeedsReviewFlag = [
+		...Object.values(additionalNotes),
+		...Object.values(postProcessedNotes),
+	].some((notes) => notes.includes("[needs review]"));
 
 	if (
 		hasNeedsReviewFlag ||
@@ -1083,10 +1126,9 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
 		const stored = results[studentId];
 		if (!stored?.preEval) continue;
 		const originalDims = stored.preEval.gradeSuggestion.dimensions;
-		const adjustedDims = applyCalibrationAdjustments(
-			{ [studentId]: originalDims },
-			list,
-		)[studentId]!;
+		const adjustedDims = applyCalibrationAdjustments({ [studentId]: originalDims }, list)[
+			studentId
+		]!;
 		results[studentId] = {
 			...stored,
 			preEval: {
@@ -1119,9 +1161,7 @@ export async function runCohortCalibration(assignmentId: string): Promise<{
  * criteria files — generateLegacyGradeJson's contract) are isolated and returned
  * in `failed` so one stale selection cannot sink the whole batch export.
  */
-export async function generateAssignmentExport(
-	assignmentId: string,
-): Promise<{
+export async function generateAssignmentExport(assignmentId: string): Promise<{
 	/** studentId → flat legacy grading-form JSON (element id → value string). */
 	exports: Record<string, Record<string, string>>;
 	/** Submissions whose export failed, with the error message. */
@@ -1155,7 +1195,3 @@ export async function generateAssignmentExport(
 	}
 	return { exports, failed };
 }
-
-
-
-

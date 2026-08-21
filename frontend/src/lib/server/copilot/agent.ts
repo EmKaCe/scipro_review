@@ -273,10 +273,7 @@ const PLAN_FALLBACK_PHASE = { id: "gather-context", label: "Gather context" } as
  * without `previous` (older server / other tools) — the ledger is purely
  * additive and never blocks the stream.
  */
-export function extractChangesFromToolResult(
-	toolName: string,
-	result: unknown,
-): CopilotChange[] {
+export function extractChangesFromToolResult(toolName: string, result: unknown): CopilotChange[] {
 	if (result === null || typeof result !== "object" || Array.isArray(result)) return [];
 	const r = result as Record<string, unknown>;
 	const submissionId = typeof r.submissionId === "string" ? r.submissionId : undefined;
@@ -330,7 +327,8 @@ export function extractChangesFromToolResult(
 			changes.push({
 				kind: "rubric",
 				field: criterionKey,
-				oldValue: (previous.rubric as Record<string, string> | undefined)?.[criterionKey] ?? null,
+				oldValue:
+					(previous.rubric as Record<string, string> | undefined)?.[criterionKey] ?? null,
 				newValue: optionKey,
 				submissionId,
 			});
@@ -340,7 +338,9 @@ export function extractChangesFromToolResult(
 			changes.push({
 				kind: "dimension",
 				field: dimensionId,
-				oldValue: (previous.dimensions as Record<string, number> | undefined)?.[dimensionId] ?? null,
+				oldValue:
+					(previous.dimensions as Record<string, number> | undefined)?.[dimensionId] ??
+					null,
 				newValue: value,
 				submissionId,
 			});

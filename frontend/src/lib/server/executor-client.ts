@@ -459,9 +459,10 @@ export function translateCell(cell: ExecutorCellResult, metadata?: CellMetadata)
 		source: cell.source,
 		original_source: originalSource,
 		output: cell.output_text,
-		outputs: (cell.outputs ?? []).map(
-			(o): CellRichOutput => ({ mime_type: o.mime_type, data: o.data }),
-		),
+		outputs: (cell.outputs ?? []).map((o): CellRichOutput => ({
+			mime_type: o.mime_type,
+			data: o.data,
+		})),
 		error: cell.error,
 		traceback: cell.traceback,
 		execution_count: cell.execution_count,

@@ -92,12 +92,17 @@ async function downloadViaHttps(repo, tag, asset, dest) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const outDir = args.out ?? process.env.DOCS_INDEX_DIR ?? path.join(process.env.DATA_DIR ?? "./data", "docs-index");
+const outDir =
+	args.out ??
+	process.env.DOCS_INDEX_DIR ??
+	path.join(process.env.DATA_DIR ?? "./data", "docs-index");
 const stashed = path.join(outDir, ".fetch-staging");
 await mkdir(stashed, { recursive: true });
 
 if (args.public) {
-	console.log(`[fetch-docs-index] HTTPS download ${args.tag} (${args.repo}, public) -> ${stashed}`);
+	console.log(
+		`[fetch-docs-index] HTTPS download ${args.tag} (${args.repo}, public) -> ${stashed}`,
+	);
 	for (const f of [...ARTIFACTS, MANIFEST]) {
 		await downloadViaHttps(args.repo, args.tag, f, path.join(stashed, f));
 	}
@@ -117,7 +122,9 @@ for (const f of ARTIFACTS) {
 	const h = sha256(buf);
 	const expected = manifest.sha256?.[f];
 	if (expected && h !== expected) {
-		throw new Error(`sha256 mismatch for ${f}: expected ${expected}, got ${h} — refusing to install`);
+		throw new Error(
+			`sha256 mismatch for ${f}: expected ${expected}, got ${h} — refusing to install`,
+		);
 	}
 	if (expected) console.log(`  ${f}: ok (${h.slice(0, 12)})`);
 }

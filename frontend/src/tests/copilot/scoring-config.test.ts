@@ -34,7 +34,10 @@ import {
 	type ScoringConfig,
 } from "$lib/server/copilot/scoring-config";
 import { buildExtraAnalysisEvidence } from "$lib/server/copilot/pipeline/context";
-import { buildPhase2aDimensionGuidance, PHASE2A_SCORING_PROMPT } from "$lib/server/copilot/pipeline/prompts";
+import {
+	buildPhase2aDimensionGuidance,
+	PHASE2A_SCORING_PROMPT,
+} from "$lib/server/copilot/pipeline/prompts";
 import * as docsRag from "$lib/server/copilot/docs-rag";
 import { buildDocsFactsBlock, extractApiReferences } from "$lib/server/copilot/pre-evaluation";
 
@@ -60,7 +63,11 @@ function soilScoringRaw(): Record<string, unknown> {
 				haystack: "output+code",
 			},
 			fit_reproduces_reference: {
-				pattern: ["\\bA\\b[^\\n]{0,60}?1210\\.9\\d*", "\\bB\\b[^\\n]{0,60}?-?484\\.9\\d*", "\\bL\\b[^\\n]{0,60}?684\\.4\\d*"],
+				pattern: [
+					"\\bA\\b[^\\n]{0,60}?1210\\.9\\d*",
+					"\\bB\\b[^\\n]{0,60}?-?484\\.9\\d*",
+					"\\bL\\b[^\\n]{0,60}?684\\.4\\d*",
+				],
 				semantics: "test_all",
 				haystack: "output",
 			},
@@ -162,18 +169,36 @@ describe("scoring-config loader", () => {
 		try {
 			await writeFile(
 				path.join(dir, "soil_contamination.yaml"),
-				await readFile("/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml", "utf-8"),
+				await readFile(
+					"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
+					"utf-8",
+				),
 			);
 			// The loader looks for data/scoring/<id>.yaml under DATA_DIR.
 			await mkdir(path.join(dir, "scoring"), { recursive: true });
 			await writeFile(
 				path.join(dir, "scoring", "soil_contamination.yaml"),
-				await readFile("/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml", "utf-8"),
+				await readFile(
+					"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
+					"utf-8",
+				),
 			);
 			const config = await loadScoringConfig("soil_contamination");
 			expect(config).not.toBeNull();
-			expect(config!.anchors).toMatchObject({ A: 1210.91, B: -484.95, L: 684.48, rSquared: 0.9794, rmse: 25.18 });
-			expect(config!.disallowedLibraries).toEqual(["tensorflow", "torch", "keras", "xgboost", "lightgbm"]);
+			expect(config!.anchors).toMatchObject({
+				A: 1210.91,
+				B: -484.95,
+				L: 684.48,
+				rSquared: 0.9794,
+				rmse: 25.18,
+			});
+			expect(config!.disallowedLibraries).toEqual([
+				"tensorflow",
+				"torch",
+				"keras",
+				"xgboost",
+				"lightgbm",
+			]);
 			expect(config!.evidencePatterns.has("fit_reproduces_reference")).toBe(true);
 			expect(config!.dimensionGuidance.scientific_programming).toContain("A≈{A}");
 		} finally {
@@ -190,7 +215,10 @@ describe("Phase 2a prompt byte-equality golden", () => {
 		const config = compileScoringConfig("soil_contamination", soilScoringRaw());
 
 		const guidance = Object.fromEntries(
-			Object.entries(config.dimensionGuidance).map(([k, v]) => [k, substituteAnchors(v, config.anchors)]),
+			Object.entries(config.dimensionGuidance).map(([k, v]) => [
+				k,
+				substituteAnchors(v, config.anchors),
+			]),
 		);
 		// The {DOCS_FACTS} placeholder (P2-4d, docs grounding) is substituted
 		// with "" here — the golden fixture proves the prompt is byte-identical
@@ -240,8 +268,14 @@ describe("rich outputs never leak into prompts (B11 text-only contract)", () => 
 
 describe("Phase 2a docs grounding (P2-4d)", () => {
 	const CODE_CELLS = [
-		{ type: "code", source: "import numpy as np\nimport pandas as pd\npopt, pcov = scipy.optimize.curve_fit(model, x, y)" },
-		{ type: "code", source: "df = pd.read_csv(\"soil.csv\")\nkm = sklearn.cluster.KMeans(n_clusters=3)" },
+		{
+			type: "code",
+			source: "import numpy as np\nimport pandas as pd\npopt, pcov = scipy.optimize.curve_fit(model, x, y)",
+		},
+		{
+			type: "code",
+			source: 'df = pd.read_csv("soil.csv")\nkm = sklearn.cluster.KMeans(n_clusters=3)',
+		},
 		{ type: "markdown", source: "The fit reproduces the reference." },
 	];
 
@@ -266,7 +300,10 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 	it("extracts bare builtin and typing names used as calls/annotations, scoped to their library", () => {
 		const cells = [
 			{ type: "code", source: "n = len(values)\nres = sum(xs)\n" },
-			{ type: "code", source: "from typing import TypeVar\nT = TypeVar(\"T\")\ndef f(x: Optional[int]) -> int: ...\n" },
+			{
+				type: "code",
+				source: 'from typing import TypeVar\nT = TypeVar("T")\ndef f(x: Optional[int]) -> int: ...\n',
+			},
 			{ type: "markdown", source: "len and TypeVar in prose are not code cells." },
 		];
 		const apis = extractApiReferences(cells);
@@ -300,7 +337,10 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 			});
 		const block = await buildDocsFactsBlock([{ type: "code", source: "print(len(values))" }]);
 		expect(block).toContain("API: len (builtins 3.12.6)");
-		expect(searchMock).toHaveBeenCalledWith("len", expect.objectContaining({ library: "builtins" }));
+		expect(searchMock).toHaveBeenCalledWith(
+			"len",
+			expect.objectContaining({ library: "builtins" }),
+		);
 	});
 
 	it("assembles a docs-facts block with a docs URL when searchDocs returns hits", async () => {
@@ -326,7 +366,9 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 		expect(block).toContain("<docs_facts>");
 		expect(block).toContain("API: scipy.optimize.curve_fit (scipy 1.18.0)");
 		expect(block).toContain("Signature: curve_fit(f, xdata, ydata, p0=None, sigma=None");
-		expect(block).toContain("Source: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html");
+		expect(block).toContain(
+			"Source: https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.curve_fit.html",
+		);
 		expect(block).toContain("</docs_facts>");
 	});
 
@@ -378,7 +420,10 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 	it("substituting the empty block yields the byte-identical pre-grounding prompt", async () => {
 		const config = compileScoringConfig("soil_contamination", soilScoringRaw());
 		const guidance = Object.fromEntries(
-			Object.entries(config.dimensionGuidance).map(([k, v]) => [k, substituteAnchors(v, config.anchors)]),
+			Object.entries(config.dimensionGuidance).map(([k, v]) => [
+				k,
+				substituteAnchors(v, config.anchors),
+			]),
 		);
 		// Reference: the pre-grounding prompt = the combined token replaced by
 		// the guide alone (as if {DOCS_FACTS} never existed).
@@ -398,14 +443,22 @@ describe("Phase 2a docs grounding (P2-4d)", () => {
 });
 
 describe("evidence patterns — golden snapshot vs stored outputs", () => {
-	const DATA = "/var/lib/docker/volumes/svelte-review-data/_data/submissions/soil_contamination/results.json";
-	const MIRROR = "/root/projects/svelte-review-copilot/data/submissions/soil_contamination/results.json";
+	const DATA =
+		"/var/lib/docker/volumes/svelte-review-data/_data/submissions/soil_contamination/results.json";
+	const MIRROR =
+		"/root/projects/svelte-review-copilot/data/submissions/soil_contamination/results.json";
 
-	function loadResults(): Record<string, { cells?: { type: string; source: string; output?: string | null }[] }> | null {
+	function loadResults(): Record<
+		string,
+		{ cells?: { type: string; source: string; output?: string | null }[] }
+	> | null {
 		for (const p of [DATA, MIRROR]) {
 			try {
 				// eslint-disable-next-line @typescript-eslint/no-require-imports
-				return require(p) as Record<string, { cells?: { type: string; source: string; output?: string | null }[] }>;
+				return require(p) as Record<
+					string,
+					{ cells?: { type: string; source: string; output?: string | null }[] }
+				>;
 			} catch {
 				// try next
 			}
@@ -429,13 +482,22 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 	// contract is CONFIG == BUILTIN on the same data (equivalence), not a
 	// fixed absolute count (stored outputs legitimately drift when
 	// notebooks are re-executed — design §6 mismatch policy).
-	const BUILTINS: Record<string, { re: RegExp[]; kind: "output" | "code" | "markdown" | "output+code" | "markdown+code" }> = {
+	const BUILTINS: Record<
+		string,
+		{ re: RegExp[]; kind: "output" | "code" | "markdown" | "output+code" | "markdown+code" }
+	> = {
 		fit_reproduces_reference: {
-			re: [/\bA\b[^\n]{0,60}?1210\.9\d*/i, /\bB\b[^\n]{0,60}?-?484\.9\d*/i, /\bL\b[^\n]{0,60}?684\.4\d*/i],
+			re: [
+				/\bA\b[^\n]{0,60}?1210\.9\d*/i,
+				/\bB\b[^\n]{0,60}?-?484\.9\d*/i,
+				/\bL\b[^\n]{0,60}?684\.4\d*/i,
+			],
 			kind: "output",
 		},
 		std_err_from_covariance: {
-			re: [/np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error/i],
+			re: [
+				/np\.sqrt\s*\(\s*np\.diag\s*\(\s*covariance\s*\)\s*\)|np\.diag\s*\(\s*covariance\s*\)|standard\s*error/i,
+			],
 			kind: "output+code",
 		},
 		r2_or_rmse_computed: {
@@ -448,7 +510,9 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 			kind: "markdown",
 		},
 		physical_insight: {
-			re: [/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i],
+			re: [
+				/non-?physical|meaningless|not physically|correlat(?:ed|ion)\s+between\s+(?:the\s+)?(?:parameters|A|B|L)|parameter\s+correlation/i,
+			],
 			kind: "markdown+code",
 		},
 		builtin_metrics_call: {
@@ -464,7 +528,9 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 	it("config patterns are equivalent to the builtin regexes on the 19 stored outputs (skips when data absent)", async () => {
 		const results = loadResults();
 		if (!results) {
-			console.warn("SKIP: stored results.json absent (fresh clone) — evidence snapshot not run");
+			console.warn(
+				"SKIP: stored results.json absent (fresh clone) — evidence snapshot not run",
+			);
 			return;
 		}
 		const cellsList = Object.values(results).map((r) => r.cells ?? []);
@@ -476,7 +542,9 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 			"/root/projects/svelte-review-copilot/data/scoring/soil_contamination.yaml",
 			"utf-8",
 		);
-		const parsed = (await import("js-yaml")).load(rawYaml) as { scoring: Record<string, unknown> };
+		const parsed = (await import("js-yaml")).load(rawYaml) as {
+			scoring: Record<string, unknown>;
+		};
 		const config = compileScoringConfig("soil_contamination", parsed.scoring);
 
 		for (const [key, builtin] of Object.entries(BUILTINS)) {
@@ -490,7 +558,9 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 					: builtin.re.every((re) => re.test(hay));
 			}).length;
 
-			expect(cfgCount, `pattern ${key} diverges from builtin on the stored outputs`).toBe(builtinCount);
+			expect(cfgCount, `pattern ${key} diverges from builtin on the stored outputs`).toBe(
+				builtinCount,
+			);
 		}
 	});
 });
@@ -498,11 +568,21 @@ describe("evidence patterns — golden snapshot vs stored outputs", () => {
 describe("buildExtraAnalysisEvidence fallback (no config)", () => {
 	it("is byte-identical to the pre-config hardcoded implementation", () => {
 		const cells = [
-			{ type: "code", source: "import numpy as np\nimport matplotlib.pyplot as plt\npopt, pcov = curve_fit(model, x, y, bounds=(0, np.inf))", output: "R^2 = 0.98\nRMSE = 20.5\nA = 1210.91 ± 12.3\nB = -484.95 ± 8.7\nL = 684.48 ± 5.2" },
-			{ type: "markdown", source: "The fit reproduces the reference. The parameter correlation is expected. Units are in mg/kg." },
+			{
+				type: "code",
+				source: "import numpy as np\nimport matplotlib.pyplot as plt\npopt, pcov = curve_fit(model, x, y, bounds=(0, np.inf))",
+				output: "R^2 = 0.98\nRMSE = 20.5\nA = 1210.91 ± 12.3\nB = -484.95 ± 8.7\nL = 684.48 ± 5.2",
+			},
+			{
+				type: "markdown",
+				source: "The fit reproduces the reference. The parameter correlation is expected. Units are in mg/kg.",
+			},
 		];
 
-		const withConfig = buildExtraAnalysisEvidence(cells, compileScoringConfig("soil_contamination", soilScoringRaw()));
+		const withConfig = buildExtraAnalysisEvidence(
+			cells,
+			compileScoringConfig("soil_contamination", soilScoringRaw()),
+		);
 		const withoutConfig = buildExtraAnalysisEvidence(cells);
 
 		expect(withConfig).toBe(withoutConfig);

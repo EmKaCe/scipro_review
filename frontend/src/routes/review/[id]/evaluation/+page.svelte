@@ -165,17 +165,18 @@
 	{:else if pageState === "empty"}
 		<EmptyState
 			title={unknownAssignment ? "Evaluation not available" : "No evaluation to preview"}
-			description={
-				unknownAssignment
-					? "This review could not be resolved — the address uses an unknown identifier. Start a review from the home page to generate an evaluation."
-					: "Complete at least one category and click 'Generate Evaluation' to create a preview."
-			}
+			description={unknownAssignment
+				? "This review could not be resolved — the address uses an unknown identifier. Start a review from the home page to generate an evaluation."
+				: "Complete at least one category and click 'Generate Evaluation' to create a preview."}
 		>
 			{#snippet icon()}
 				<FileText size={48} class="text-muted-foreground" />
 			{/snippet}
 			{#snippet action()}
-				<button onclick={handleBack} class={buttonVariants({ variant: "outline", size: "default" })}>
+				<button
+					onclick={handleBack}
+					class={buttonVariants({ variant: "outline", size: "default" })}
+				>
 					<ArrowLeft size={14} />
 					Back to Review
 				</button>
