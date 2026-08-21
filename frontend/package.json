@@ -74,7 +74,7 @@
 		"katex": "^0.18.1",
 		"marked": "^18.0.7",
 		"minisearch": "^7.2.0",
-		"pdf-parse": "1.1.1",
+		"pdf-parse": "2.4.5",
 		"tailwind-merge": "^3.6.0",
 		"zod": "^4.4.3"
 	}
