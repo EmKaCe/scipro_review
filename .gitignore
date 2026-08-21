@@ -30,6 +30,8 @@ frontend/static/data/
 
 # Environment variables — secrets
 .env
+.env.*
+!.env.example
 
 # Python virtual environment (local dev only)
 executor/.venv/
