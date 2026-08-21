@@ -9,6 +9,15 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+### Fixed
+
+- Static/student build: the Settings page only shows student-relevant cards;
+  teacher-only cards (LLM provider, scoring config, configuration map, data
+  management, danger zone, first-run checklist) are hidden with a pointer to
+  the self-hosted teacher build.
+- README mermaid diagrams render on GitHub (removed fragile ` <br/> ` / unicode
+  label markup from the flowcharts).
+
 ## [2.5.0] - 2026-08-21
 
 ### Added
