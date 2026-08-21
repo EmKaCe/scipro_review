@@ -37,22 +37,22 @@ grader.
 ```mermaid
 flowchart LR
     subgraph frontend["frontend (SvelteKit 5, dual-adapter)"]
-        S[Student SPA<br/>review / evaluation] --- T[Teacher app<br/>dashboard, detail, settings]
-        S -. no teacher routes .- T
+        S[Student SPA - review and evaluation] --- T[Teacher app - dashboard, detail, settings]
+        S -. no teacher surfaces .- T
     end
-    F[frontend API routes<br/>/api/...] --- T
-    subgraph server["frontend server-side (''$lib/server'')"]
-        P[Pre-evaluation pipeline] 
+    F[frontend API routes - /api/...] --- T
+    subgraph server["frontend server-side (lib/server)"]
+        P[Pre-evaluation pipeline]
         C[Copilot harness]
-        R[Stores / results store]
+        R[Stores and results store]
     end
     F --- server
     subgraph executor["executor (Python/FastAPI, hardened)"]
-        EX[Runner, autofix<br/>preprocessor]
+        EX[Runner, autofix, preprocessor]
     end
     server --- EX
-    server --- KI[KI Connect<br/>OpenAI-compatible LLM + embeddings]
-    server --- DOCS[(Offline docs index<br/>docs-index.json + vectors.bin)]
+    server --- KI[KI Connect - OpenAI-compatible LLM and embeddings]
+    server --- DOCS[(Offline docs index - docs-index.json and vectors.bin)]
     KI --- DOCS
 ```
 
@@ -62,10 +62,11 @@ flowchart LR
 
 ### 2.1 Frontend — student vs teacher
 
-The same codebase renders two experiences gated by the `ADAPTER` build flag
-(`__TEACHER_MODE__` in code). Teacher routes (dashboard, per-submission review,
-settings, copilot, plagiarism) compile only in `ADAPTER=node`; the student
-build is the pre-rendered SPA with `review/` + `review/[id]/evaluation`.
+The same codebase produces two builds via the `ADAPTER` build flag. Teacher
+mode (`ADAPTER=node`) serves the full server app; the student build
+(`adapter-static`) is a pre-rendered SPA where teacher-only **surfaces are
+hidden at runtime** (e.g. the Settings page gates its cards on `base === ""`).
+The student build ships the `review/` + `review/[id]/evaluation` routes.
 
 Relevant route trees:
 
@@ -146,15 +147,15 @@ agent.ts / registry.ts / tools/   the interactive copilot harness (see §4)
 
 ```mermaid
 flowchart TD
-    A[Upload bar → classify → executor runs notebook] --> B[results.json: executed cells + outputs]
-    B --> C[Phase 1 — cell markers<br/>chunked calls, absolute cell_index]
-    C --> P2A[Phase 2a — dimension scores<br/>docs-RAG grounded, golden prompt]
-    P2A --> P2B[Phase 2b — turn-based rubric worksheet<br/>ONE category per LLM call, edited markdown]
+    A[Upload bar to classify, executor runs notebook] --> B[results.json - executed cells and outputs]
+    B --> C[Phase 1 - cell markers, chunked calls, absolute cell_index]
+    C --> P2A[Phase 2a - dimension scores, docs-RAG grounded, golden prompt]
+    P2A --> P2B[Phase 2b - turn-based rubric worksheet, one category per call]
     P2B --> D[Feedback draft]
-    D --> E[post-process.ts — 7 deterministic passes]
-    E --> F[cohort calibration — cross-submission dimension shift]
+    D --> E[post-process - 7 deterministic passes]
+    E --> F[cohort calibration - cross-submission dimension shift]
     F --> G[PreEvaluation envelope + gradingConfidence + fix records]
-    G --> H[Teacher review + Accept/Reject → saveGrading → export]
+    G --> H[Teacher review, accept or reject, saveGrading, export]
 ```
 
 **Key contracts**
@@ -210,16 +211,16 @@ path** as the teacher's own Save button.
 
 ```mermaid
 flowchart LR
-    U[Teacher prompt] --> AG[agent.ts<br/>guardrails: injection 0.7 + PII]
-    AG --> REG[registry.ts<br/>permission: auto / approval]
+    U[Teacher prompt] --> AG[agent - guardrails: injection 0.7 + PII]
+    AG --> REG[registry - permission: auto or approval]
     REG --> T{Which tool family?}
-    T --> AN[analysis-tools: analyze code]
-    T --> CO[context-tools: get submission context<br/>(screens cell content)]
-    T --> DO[docs-tools: search-docs (RAG-grounded)]
-    T --> GR[grading-tools: set rubric / dimension score / notes / save]
-    T --> PR[preeval-tools / ref-tools / ops / management]
-    AN --> TL[tool result → phase-grouped transcript]
-    GR --> CH[change ledger: accept/reject + turn checkpoints]
+    T --> AN[analysis-tools - analyze code]
+    T --> CO[context-tools - get submission context, screens cell content]
+    T --> DO[docs-tools - search-docs, RAG-grounded]
+    T --> GR[grading-tools - rubric, dimension score, notes, save]
+    T --> PR[preeval-tools, ref-tools, ops, management]
+    AN --> TL[tool result to phase-grouped transcript]
+    GR --> CH[change ledger - accept or reject, turn checkpoints]
 ```
 
 - **Tool registry** (`registry.ts`) enforces unique names + Zod input
@@ -283,8 +284,10 @@ included in LLM prompts (they stay text-only) and student HTML renders in a
 
 `scripts/build-docs-index.mjs` builds the hybrid retrieval index into
 `<DATA_DIR>/docs-index/` (`docs-index.json` + `docs-vectors.bin`, float32 LE,
-row-major). 19,109 chunks across numpy/pandas/scipy/sklearn/matplotlib (4096
-dims; matplotlib from a crawled `api/` tree). `docs-rag.ts` loads it lazily and
+row-major). 38,380 chunks across 10 libraries (numpy, pandas, scipy,
+scikit-learn, matplotlib, seaborn, stdlib/builtins/typing, and curated
+integration notes), built from pinned PyPI docstrings (4096-dim vectors;
+standalone HTML crawls for matplotlib). `docs-rag.ts` loads it lazily and
 **never throws** — a missing/broken index degrades to BM25-only retrieval with a
 `loadNote`. `search-docs` verifies API facts before the copilot flags student
 code as wrong.
