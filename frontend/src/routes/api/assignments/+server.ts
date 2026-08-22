@@ -58,7 +58,12 @@ export async function GET(): Promise<Response> {
 		raw = await readFile(filePath, "utf-8");
 	} catch (err) {
 		if (isNodeError(err) && err.code === "ENOENT") {
-			throw error(500, `assignments.yaml not found at ${filePath}`);
+			// Structured body: `code: "assignments-missing"` lets the dashboard
+			// show the first-run onboarding callout instead of a red banner.
+			return json(
+				{ message: `assignments.yaml not found at ${filePath}`, code: "assignments-missing" },
+				{ status: 500 },
+			);
 		}
 		throw error(500, `Failed to read assignments.yaml: ${(err as Error).message}`);
 	}

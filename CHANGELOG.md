@@ -9,6 +9,20 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+### Added
+
+- **Criteria sharing between teachers** (repo-first model): the Docker
+  frontend seeds the shared data volume from the repo's tracked `data/` on
+  first boot (`./data` is mounted read-only as `/app/data-default` and copied
+  in only when `assignments.yaml` is missing); new
+  `frontend/scripts/criteria-export.mjs` / `criteria-import.mjs` bridge
+  teacher-authored criteria between the volume and git (dry-run default,
+  `--apply` to write; imports back up conflicting local files first).
+- Dashboard **first-run state**: when `assignments.yaml` is absent the
+  dashboard shows an onboarding callout pointing at the setup checklist
+  instead of the red misconfiguration banner; `GET /api/assignments` returns a
+  machine-readable `code: "assignments-missing"` to drive it.
+
 ### Docs
 
 - Removed the closed monolith-split ADR (decision is stable; git history keeps

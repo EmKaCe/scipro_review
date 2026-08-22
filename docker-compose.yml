@@ -13,6 +13,15 @@
 #
 # Shared named volume:
 #   data       — Persisted at /app/data/ in both containers
+#
+# First-boot seeding (criteria sharing model):
+#   The repo's tracked data/ (assignments.yaml, criteria/, scoring/) is the
+#   SHARED source of truth. It is mounted read-only into the frontend at
+#   /app/data-default; the entrypoint copies it into the (empty) volume on
+#   first boot so a fresh machine starts configured. Runtime edits are never
+#   written back into the repo — teachers export them with
+#   `docker compose exec frontend node scripts/criteria-export.mjs --apply`
+#   and commit. See README "Sharing grading criteria between teachers".
 # =============================================================================
 
 name: svelte-review
@@ -34,6 +43,9 @@ services:
       - "127.0.0.1:4174:4174"
     volumes:
       - data:/app/data
+      # Repo's tracked criteria/registry — read-only seed. Missing on first
+      # boot only when the clone lacks data/ (then onboarding guides setup).
+      - ./data:/app/data-default:ro
     environment:
       - ADAPTER=node
       - PORT=4174

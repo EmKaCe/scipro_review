@@ -1050,6 +1050,23 @@ describe("error mapping", () => {
 		});
 	});
 
+	it("maps a structured error body and surfaces the machine-readable code", async () => {
+		fetchMock.mockResolvedValue(
+			jsonResponse(
+				{ message: "assignments.yaml not found at /app/data/assignments.yaml", code: "assignments-missing" },
+				500,
+			),
+		);
+
+		const promise = fetchAssignments();
+
+		await expect(promise).rejects.toMatchObject({
+			status: 500,
+			message: "assignments.yaml not found at /app/data/assignments.yaml",
+			code: "assignments-missing",
+		});
+	});
+
 	it("maps network failures to ApiError with status 0", async () => {
 		fetchMock.mockRejectedValue(new TypeError("Failed to fetch"));
 

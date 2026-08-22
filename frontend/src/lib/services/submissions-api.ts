@@ -26,11 +26,15 @@ import type { CriteriaFile } from "$lib/types/criteria.js";
 export class ApiError extends Error {
 	/** HTTP status code; 0 for network failures (server unreachable). */
 	readonly status: number;
+	/** Optional machine-readable error code from the API body (e.g.
+	 * "assignments-missing" on first run). */
+	readonly code?: string;
 
-	constructor(status: number, message: string) {
+	constructor(status: number, message: string, code?: string) {
 		super(message);
 		this.name = "ApiError";
 		this.status = status;
+		this.code = code;
 	}
 }
 
@@ -430,22 +434,27 @@ async function requestRaw(path: string, init?: RequestInit): Promise<Response> {
 		throw new ApiError(0, err instanceof Error ? err.message : String(err));
 	}
 	if (!response.ok) {
-		throw new ApiError(response.status, await errorMessage(response));
+		const err = await errorBody(response);
+		throw new ApiError(response.status, err.message, err.code);
 	}
 	return response;
 }
 
-/** Extract the `{ message }` body SvelteKit errors produce; fallback text otherwise. */
-async function errorMessage(response: Response): Promise<string> {
+/** Extract `{ message, code? }` from SvelteKit error JSON bodies; generic
+ * fallback for non-JSON bodies. Parsed once — the body is single-use. */
+async function errorBody(response: Response): Promise<{ message: string; code?: string }> {
 	try {
-		const body = (await response.json()) as { message?: unknown };
-		if (typeof body.message === "string" && body.message.length > 0) {
-			return body.message;
-		}
+		const body = (await response.json()) as { message?: unknown; code?: unknown };
+		return {
+			message:
+				typeof body.message === "string" && body.message.length > 0
+					? body.message
+					: `Request failed with status ${response.status}`,
+			code: typeof body.code === "string" ? body.code : undefined,
+		};
 	} catch {
-		// Non-JSON error body — fall through to the generic message.
+		return { message: `Request failed with status ${response.status}` };
 	}
-	return `Request failed with status ${response.status}`;
 }
 
 // ---------------------------------------------------------------------------

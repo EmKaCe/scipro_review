@@ -17,6 +17,7 @@
 	import { cn } from "$lib/utils.js";
 	import SkeletonPulse from "$lib/components/ui/skeleton-pulse.svelte";
 	import ConfigErrorBanner from "$lib/components/submissions/config-error-banner.svelte";
+	import FirstRunCallout from "$lib/components/submissions/first-run-callout.svelte";
 	import AlertTriangle from "@lucide/svelte/icons/alert-triangle";
 	import RefreshCw from "@lucide/svelte/icons/refresh-cw";
 	import X from "@lucide/svelte/icons/x";
@@ -53,6 +54,7 @@
 		fetchPreEvalStatus,
 		fetchProcessStatus,
 		restoreBackup,
+		ApiError,
 		type ExecutorLogEntry,
 		type PreEvalProgress,
 		type ProcessProgress,
@@ -89,6 +91,9 @@
 	let assignmentOptions = $state<{ id: string; label: string; disabled?: boolean }[]>([]);
 	/** Set when GET /api/assignments fails; the selector then shows the empty placeholder. */
 	let assignmentsError = $state<string | null>(null);
+	/** True when the registry is absent (first run) — swaps the red
+	 * misconfiguration banner for the onboarding callout. */
+	let firstRunConfigMissing = $state(false);
 	/**
 	 * Set when the assignment configuration (assignments list or materials)
 	 * fails to load — surfaced as a dismissible banner above the table so a
@@ -561,9 +566,16 @@
 			} catch (e) {
 				const message = e instanceof Error ? e.message : "Failed to load assignments";
 				assignmentsError = message;
-				configError = message;
+				if (e instanceof ApiError && e.code === "assignments-missing") {
+					firstRunConfigMissing = true;
+					// No toast/banner — the callout explains the state; keep the
+					// path detail for the callout's detail line.
+					configError = message;
+				} else {
+					configError = message;
+					addToast("error", message, 4000);
+				}
 				isLoading = false;
-				addToast("error", message, 4000);
 			}
 		})();
 	});
@@ -987,7 +999,9 @@
 		</div>
 
 		<!-- ── Dashboard table ── -->
-		{#if configError}
+		{#if firstRunConfigMissing}
+			<FirstRunCallout message={configError ?? "assignments.yaml not found in the data directory"} />
+		{:else if configError}
 			<ConfigErrorBanner message={configError} onDismiss={() => (configError = null)} />
 		{/if}
 		<SubmissionsDashboard
@@ -1043,7 +1057,7 @@
 		</SubmissionsDashboard>
 
 		<!-- ── Bulk action bar: one button set; scope = selection or all ── -->
-		{#if assignmentsError}
+		{#if assignmentsError && !firstRunConfigMissing}
 			<p class="assignments-error">Assignments unavailable: {assignmentsError}</p>
 		{/if}
 		<div class="bulk-bar">

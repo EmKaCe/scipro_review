@@ -43,6 +43,12 @@ cp .env.example .env       # then edit ORIGIN and set a KI_CONNECT_API_KEY
 docker compose up -d       # open http://localhost:4174
 ```
 
+The first `docker compose up` seeds the shared data volume from the repo's
+tracked `data/` directory (the example assignment + criteria), so the dashboard
+boots **already configured**. Runtime edits you make in the app stay in the
+volume and never touch your git clone — see *Sharing grading criteria between
+teachers* below to publish them.
+
 Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
 reaching the app from another machine) — it is required for CSRF-safe file uploads.
 From source instead:
@@ -294,6 +300,38 @@ synced). Edited on Settings → Appearance.
 Per-assignment content (the app-vs-assignment rule): rubric criteria (`data/criteria/<id>.yaml`),
 scoring config (anchors, evidence regexes, disallowed libs, dimension guidance —
 `data/scoring/<id>.yaml`), and assignment metadata (`data/assignments.yaml`). Not on the Settings page.
+
+### Sharing grading criteria between teachers
+
+The repo is the **shared source of truth for grading criteria**; each machine's
+runtime volume is a working copy of it.
+
+| Layer | Contents | In git? |
+|---|---|---|
+| Repo `data/` | `assignments.yaml`, `criteria/*.yaml`, `scoring/*.yaml`, `grading_config.yaml` | ✅ tracked — change, commit, push |
+| Runtime volume (`/app/data`) | the machine's working copy + **internals**: `submissions/`, `materials/`, `copilot/`, `plagiarism/`, backups | ❌ untracked (`.env` too) |
+
+Two bridge scripts keep the layers in sync — both default to a **dry run** and
+only write with `--apply`:
+
+- **Publish criteria you authored in the app** (volume → repo → git):
+  ```bash
+  docker compose exec frontend node scripts/criteria-export.mjs --apply
+  git add data && git commit -m "criteria: ..." && git push
+  ```
+- **Receive shared criteria** (git → repo → volume):
+  ```bash
+  git pull
+  docker compose exec frontend node scripts/criteria-import.mjs --apply
+  ```
+  Imports back up any differing local file to `data/.criteria-backup-<timestamp>/`
+  before overwriting, so a pull that conflicts with local edits is never destructive.
+
+The scripts copy exactly `assignments.yaml`, `grading_config.yaml`,
+`criteria/*.yaml`, and `scoring/*.yaml` — never `settings.yaml` (provider/machine
+config; keys live in `.env`) and never submissions/materials/copilot state. The
+**student build** ships what is committed: it bakes the repo's `data/` at build
+time, so the next deploy carries the shared criteria automatically.
 
 ### Read-only code constants
 

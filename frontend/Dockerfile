@@ -41,6 +41,12 @@ COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
+# First-boot seeding + criteria sync helpers (see docker-entrypoint.sh and
+# README "Sharing grading criteria between teachers").
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+COPY scripts/criteria-export.mjs scripts/criteria-import.mjs /app/scripts/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
 # Verify the build output exists
 RUN test -f build/index.js || (echo "ERROR: build/index.js not found — did build:teacher succeed?" && exit 1)
 
@@ -55,5 +61,5 @@ EXPOSE 4174
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:4174/ || exit 1
 
-ENTRYPOINT ["/sbin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/docker-entrypoint.sh"]
 CMD ["node", "build/index.js"]
