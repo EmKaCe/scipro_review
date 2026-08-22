@@ -1053,7 +1053,10 @@ describe("error mapping", () => {
 	it("maps a structured error body and surfaces the machine-readable code", async () => {
 		fetchMock.mockResolvedValue(
 			jsonResponse(
-				{ message: "assignments.yaml not found at /app/data/assignments.yaml", code: "assignments-missing" },
+				{
+					message: "assignments.yaml not found at /app/data/assignments.yaml",
+					code: "assignments-missing",
+				},
 				500,
 			),
 		);

@@ -1000,7 +1000,9 @@
 
 		<!-- ── Dashboard table ── -->
 		{#if firstRunConfigMissing}
-			<FirstRunCallout message={configError ?? "assignments.yaml not found in the data directory"} />
+			<FirstRunCallout
+				message={configError ?? "assignments.yaml not found in the data directory"}
+			/>
 		{:else if configError}
 			<ConfigErrorBanner message={configError} onDismiss={() => (configError = null)} />
 		{/if}

@@ -61,7 +61,10 @@ export async function GET(): Promise<Response> {
 			// Structured body: `code: "assignments-missing"` lets the dashboard
 			// show the first-run onboarding callout instead of a red banner.
 			return json(
-				{ message: `assignments.yaml not found at ${filePath}`, code: "assignments-missing" },
+				{
+					message: `assignments.yaml not found at ${filePath}`,
+					code: "assignments-missing",
+				},
 				{ status: 500 },
 			);
 		}

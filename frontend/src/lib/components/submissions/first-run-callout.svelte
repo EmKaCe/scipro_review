@@ -15,9 +15,9 @@
 	<div class="first-run-body">
 		<p class="first-run-title">No assignment configuration found on this machine yet</p>
 		<p class="first-run-text">
-			There is no <code>assignments.yaml</code> in the data directory — that is the normal
-			state of a fresh installation before the first assignment exists. On a Docker install the
-			tracked example assignment is seeded automatically from the repo on first boot.
+			There is no <code>assignments.yaml</code> in the data directory — that is the normal state
+			of a fresh installation before the first assignment exists. On a Docker install the tracked
+			example assignment is seeded automatically from the repo on first boot.
 		</p>
 		<a class="first-run-link" href="{base}/onboarding">Open the setup checklist →</a>
 		{#if message}

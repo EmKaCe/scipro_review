@@ -64,7 +64,7 @@ console.log(`  ${changed.length} file(s) to write.`);
 
 if (!APPLY) {
 	console.log("\nRe-run with --apply to write. Then commit:");
-	console.log("  git add data && git commit -m \"criteria: export authored changes\"");
+	console.log('  git add data && git commit -m "criteria: export authored changes"');
 	process.exit(0);
 }
 
@@ -72,7 +72,7 @@ for (const item of changed) {
 	await copyFile(item.source, item.dest);
 }
 console.log(`criteria-export: wrote ${changed.length} file(s). Commit them with:`);
-console.log("  git add data && git commit -m \"criteria: export authored changes\"");
+console.log('  git add data && git commit -m "criteria: export authored changes"');
 process.exit(0);
 
 // ---------------------------------------------------------------------------
@@ -89,7 +89,13 @@ async function collectPlan(sourceDir, destDir) {
 		const subSource = path.join(sourceDir, dir);
 		if (!(await dirExists(subSource))) continue;
 		for (const fileName of (await readdir(subSource)).filter((f) => f.endsWith(".yaml"))) {
-			await planFile(subSource, path.join(destDir, dir), fileName, `${dir}/${fileName}`, plan);
+			await planFile(
+				subSource,
+				path.join(destDir, dir),
+				fileName,
+				`${dir}/${fileName}`,
+				plan,
+			);
 		}
 	}
 	return plan;
@@ -100,7 +106,8 @@ async function planFile(sourceDir, destDir, name, label, plan) {
 	const dest = path.join(destDir, name);
 	if (!(await fileExists(source))) return;
 	const destHash = await sha256(dest).catch(() => null);
-	const status = destHash === null ? "add" : destHash === (await sha256(source)) ? "unchanged" : "change";
+	const status =
+		destHash === null ? "add" : destHash === (await sha256(source)) ? "unchanged" : "change";
 	plan.push({ status, relative: label, source, dest });
 }
 
@@ -110,15 +117,23 @@ async function copyFile(source, dest) {
 }
 
 async function sha256(file) {
-	return createHash("sha256").update(await readFile(file)).digest("hex");
+	return createHash("sha256")
+		.update(await readFile(file))
+		.digest("hex");
 }
 
 async function fileExists(p) {
-	return readFile(p).then(() => true, () => false);
+	return readFile(p).then(
+		() => true,
+		() => false,
+	);
 }
 
 async function dirExists(p) {
-	return readdir(p).then(() => true, () => false);
+	return readdir(p).then(
+		() => true,
+		() => false,
+	);
 }
 
 function argValue(args, flag) {
