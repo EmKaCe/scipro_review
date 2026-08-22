@@ -48,7 +48,7 @@
 			title: "Fetch the offline docs index",
 			description:
 				"Build the offline docs-index for copilot search. Until it exists, search degrades to BM25-only with a load note.",
-			help: "Run scripts/fetch-docs-index.mjs or scripts/build-docs-index.mjs, or keep going — search will just fall back to BM25.",
+			help: "Downloads the prebuilt public index (~680 MB) — no API key needed. You can also keep going; search will just fall back to BM25.",
 			link: () => undefined,
 		},
 		"first-pipeline": {
@@ -61,6 +61,38 @@
 	let items: OnboardingItem[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	/** docs-index download state: "idle" | "running" | "done" | "failed". */
+	let docsDownload = $state<"idle" | "running" | "done" | "failed">("idle");
+	let docsDownloadError: string | null = $state(null);
+
+	async function refreshStatus(): Promise<void> {
+		try {
+			const resp = await fetch(`${base}/api/onboarding/status`);
+			if (!resp.ok) throw new Error(`Status request failed (${resp.status})`);
+			const body = (await resp.json()) as { items: OnboardingItem[] };
+			items = body.items;
+		} catch (err) {
+			error = (err as Error).message;
+		}
+	}
+
+	async function startDocsDownload(): Promise<void> {
+		if (docsDownload === "running") return;
+		docsDownload = "running";
+		docsDownloadError = null;
+		try {
+			const resp = await fetch(`${base}/api/onboarding/docs-index`, { method: "POST" });
+			const body = (await resp.json()) as { ok?: boolean; error?: string };
+			if (!resp.ok || body.ok === false) {
+				throw new Error(body.error ?? `Download failed (${resp.status})`);
+			}
+			docsDownload = "done";
+			await refreshStatus();
+		} catch (err) {
+			docsDownload = "failed";
+			docsDownloadError = (err as Error).message;
+		}
+	}
 
 	$effect(() => {
 		headerConfig.showBack = true;
@@ -164,6 +196,36 @@
 									</p>
 								{/if}
 							</div>
+							{#if item.id === "docs-index" && item.done !== true}
+								<div class="mt-2">
+									<button
+										type="button"
+										class={cn(
+											buttonVariants({ variant: "outline", size: "sm" }),
+											"gap-1",
+										)}
+										disabled={docsDownload === "running"}
+										onclick={startDocsDownload}
+									>
+										{#if docsDownload === "running"}
+											<span
+												class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
+											></span>
+											Downloading…
+										{:else if docsDownload === "done"}
+											<CircleCheckBig class="h-3.5 w-3.5" />
+											Downloaded
+										{:else}
+											Download vectors now
+										{/if}
+									</button>
+									{#if docsDownload === "failed" && docsDownloadError}
+										<p class="mt-1 text-[11px] text-destructive">
+											{docsDownloadError}
+										</p>
+									{/if}
+								</div>
+							{/if}
 							{#if href}
 								<a
 									{href}

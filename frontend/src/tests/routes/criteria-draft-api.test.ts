@@ -140,6 +140,9 @@ let dataDir: string;
 beforeEach(async () => {
 	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-criteria-draft-"));
 	vi.stubEnv("DATA_DIR", dataDir);
+	// Pin the draft model: the resolver honors PHASE_2_MODEL before the
+	// settings-UI model (fixture settings.yaml carries qwen3-30b).
+	vi.stubEnv("PHASE_2_MODEL", "openai-gpt-oss-120b");
 	await writeFile(path.join(dataDir, "assignments.yaml"), ASSIGNMENTS_YAML);
 
 	await mkdir(path.join(dataDir, "criteria"), { recursive: true });

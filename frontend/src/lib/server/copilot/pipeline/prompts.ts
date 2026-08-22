@@ -4,6 +4,7 @@
  */
 
 import { getKiConnectClient } from "$lib/server/ki-connect";
+import { loadSettings } from "$lib/server/settings";
 
 // ---------------------------------------------------------------------------
 // Model-aware prompt hints
@@ -216,12 +217,28 @@ export function buildPhase2aDimensionGuidance(
  * than qwen3-30b on many-constraint conditional tasks (the rubric
  * filling failure mode).
  *
- * Env-overridable (PHASE_2_MODEL) so a provider swap (e.g. OpenRouter) can
- * route these phases to an equivalent model without a code change. The
- * default stays `openai-gpt-oss-120b` — the golden prompt fixture and the
- * tuned calibration were built against it.
+ * Resolution order (enables a provider swap without a code change):
+ *   1. `PHASE_2_MODEL` env var (explicit override)
+ *   2. the Settings-UI `llm.model` (data/settings.yaml → KI_CONNECT_MODEL),
+ *      prefixed with `openai-` for the KI Connect id convention
+ *   3. the historical default `openai-gpt-oss-120b` — the golden prompt
+ *      fixture and the tuned calibration were built against it.
  */
-export const PHASE_2_MODEL = process.env.PHASE_2_MODEL ?? "openai-gpt-oss-120b";
+export const PHASE_2_MODEL_DEFAULT = "openai-gpt-oss-120b";
+
+export async function getPhase2Model(): Promise<string> {
+	if (process.env.PHASE_2_MODEL) return process.env.PHASE_2_MODEL;
+	try {
+		const settings = await loadSettings();
+		const settingsModel = (settings.llm?.model ?? "").trim();
+		if (settingsModel) {
+			return settingsModel.startsWith("openai-") ? settingsModel : `openai-${settingsModel}`;
+		}
+	} catch {
+		// Settings unreadable — fall through to the default.
+	}
+	return PHASE_2_MODEL_DEFAULT;
+}
 
 /** Phase 2a self-critique: re-check the scores before they are used further. */
 export const CRITIQUE_SYSTEM_PROMPT = `You are reviewing dimension scores for correctness. Check:

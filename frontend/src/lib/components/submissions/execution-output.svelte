@@ -193,6 +193,7 @@
 		{@const fixed = fixedByIndex.get(cell.index)}
 		{@const showFixed = fixed !== undefined && activeFixedView.has(cell.index)}
 		{@const delta = fixed !== undefined ? cellDelta(cell, fixed) : null}
+		{@const hasHtmlOutput = (cell.outputs ?? []).some((o) => o.mime_type === "text/html")}
 		<div
 			class="cell-card {cell.marker === 'error'
 				? 'cell-error'
@@ -288,7 +289,7 @@
 					{#if fixed.error}
 						<div class="cell-error-block">{fixed.error}</div>
 					{/if}
-					{#if fixed.output}
+					{#if fixed.output && !hasHtmlOutput}
 						<div class="cell-output">{fixed.output}</div>
 					{/if}
 					{@render richOutputs(fixed)}
@@ -302,7 +303,7 @@
 					{#if cell.error}
 						<div class="cell-error-block">{cell.error}</div>
 					{/if}
-					{#if cell.output}
+					{#if cell.output && !hasHtmlOutput}
 						<div class="cell-output">{cell.output}</div>
 					{/if}
 					{@render richOutputs(cell)}

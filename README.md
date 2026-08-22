@@ -51,6 +51,15 @@ criteria between teachers* below.
 
 Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
 reaching the app from another machine) — it is required for CSRF-safe file uploads.
+
+**First run:** open `http://localhost:4174/onboarding` — the setup checklist
+walks you through the five steps (assignment, criteria + scoring, LLM provider,
+offline docs index, first pipeline run). The docs-index step has a
+**Download vectors now** button that fetches the prebuilt public index
+(~680 MB, no API key) straight from the web UI; until it exists, copilot
+search degrades to BM25-only. Each item links to the page that completes it,
+and the checklist refreshes when you come back.
+
 From source instead:
 
 ```bash
@@ -146,6 +155,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Backup & Restore** — full data-directory backup ZIP download/restore
 - **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
+- **Security & Trust Boundaries** — loopback-only binding, no auth (never expose without auth + TLS first), ORIGIN/CSRF, executor sandbox limits and the residual app-net risk
 
 > **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.  
 > **Teacher?** Read the [Teacher guide](.github/references/teacher-guide.md) — task-oriented setup, pre-evaluation, review, and export.

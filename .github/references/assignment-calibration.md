@@ -26,8 +26,9 @@ works at every layer without any of them, but quality comes from filling them.
 Soil contamination reached gate-parity through this loop, repeated:
 
 1. **Run the real pipeline on 2-3 submissions** — small-batch live runner (a temp
-   vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the Docker volume,
-   repo-root `.env` loaded, `preEvaluateSubmission(...)`, delete the file after).
+   vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the clone's
+   `data/` directory (bind-mounted into both containers), repo-root `.env`
+   loaded, `preEvaluateSubmission(...)`, delete the file after).
 2. **Compare dimension scores and rubric selections against a reference grading**
    for those submissions. Tolerance: ±0.5 per dimension.
 3. **Tune the scoring config**: evidence regexes (`evidence_patterns`) and the

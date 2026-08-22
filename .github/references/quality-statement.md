@@ -105,8 +105,8 @@ conformance and deterministic evidence**, not necessarily real student grades:
 
 1. Run the real pipeline on a few submissions with the small-batch live runner
    (temp vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the
-   Docker volume, repo-root `.env` loaded, `preEvaluateSubmission(...)`, delete
-   the file after).
+   clone's `data/` directory (bind-mounted into both containers), repo-root
+   `.env` loaded, `preEvaluateSubmission(...)`, delete the file after).
 2. Review the rubric selections and dimension scores in the UI.
 3. Tune the per-assignment scoring config (anchors, evidence patterns,
    dimension guidance) via the scoring editor and re-run. The full loop is

@@ -519,16 +519,43 @@ grade_boundaries:
 			LAN address before starting:
 		</p>
 		<pre><code>ORIGIN=http://&lt;lan-ip&gt;:4174 docker compose up -d</code></pre>
+		<div
+			class="callout mt-4 flex items-start gap-3 rounded-lg border border-primary/10 bg-primary/5 p-4"
+		>
+			<Info size={16} class="mt-0.5 shrink-0 text-primary" />
+			<p class="m-0 text-sm text-foreground">
+				<strong>Warning:</strong> the app has <strong>no authentication</strong>. Binding to
+				the LAN means anyone who can reach <code>&lt;lan-ip&gt;:4174</code> can see
+				submissions, grades, and settings. Only do this on a trusted network — and add
+				authentication plus TLS before any Internet-facing exposure. See
+				<a href="#security">Security &amp; Trust Boundaries</a>.
+			</p>
+		</div>
 		<h3>Tailscale</h3>
 		<p>
 			If the machine is on your tailnet, you can reach the app from anywhere on the tailnet
 			via its Tailscale IP — set <code>ORIGIN</code> to
 			<code>http://&lt;tailscale-ip&gt;:4174</code> accordingly.
 		</p>
+		<div
+			class="callout mt-4 flex items-start gap-3 rounded-lg border border-primary/10 bg-primary/5 p-4"
+		>
+			<Info size={16} class="mt-0.5 shrink-0 text-primary" />
+			<p class="m-0 text-sm text-foreground">
+				<strong>Same rule as LAN:</strong> a tailnet still grants every member access to an app
+				with no login — there is no per-user security inside the app. Keep it to people you trust,
+				or add authentication first.
+			</p>
+		</div>
 		<h3>Data Persistence</h3>
 		<p>
-			All data lives in the named Docker volume <code>svelte-review-data</code> (mounted at
-			<code>/app/data</code>). It survives container restarts and recreated containers. Use
+			Both containers bind the repo's <code>./data</code> directory directly to
+			<code>/app/data</code> — <strong>no named volume, no copy step</strong>. Tracked config
+			(assignments, criteria, scoring, grading config, settings) lives in your git tree;
+			runtime state (<code>submissions/</code>, <code>materials/</code>,
+			<code>copilot/</code>,
+			<code>plagiarism/</code>, <code>docs-index/</code>) lives in the same tree but is
+			gitignored. Everything survives container restarts and recreated containers. Use
 			<a href="#backup">Backup &amp; Restore</a> for off-machine copies.
 		</p>
 		<h3>Upgrading</h3>
@@ -546,6 +573,78 @@ docker compose up -d --build</code
 				if anything goes wrong.
 			</p>
 		</div>
+	</section>
+
+	<!-- Security & Trust Boundaries -->
+	<section id="security">
+		<h2>Security &amp; Trust Boundaries</h2>
+		<p>
+			SciPro Review is a <strong
+				>single-operator grading tool, not a multi-user web service</strong
+			>. Read this section before changing any port binding or deployment.
+		</p>
+		<h3>Loopback-only by default, no authentication</h3>
+		<ul>
+			<li>
+				The teacher app binds <code>127.0.0.1:4174</code> only (loopback) and has
+				<strong>no authentication or access control</strong> — the port <em>is</em> the permission.
+				Anyone who can reach it can read submissions, grades, and settings.
+			</li>
+			<li>
+				The loopback-only model therefore protects exactly <strong>one machine</strong>: the
+				one the app runs on.
+			</li>
+			<li>
+				<strong
+					>Never expose the app on the LAN or the Internet without first adding
+					authentication and TLS.</strong
+				> The compose file pins the loopback bind for this reason; widening it is a deliberate,
+				security-relevant change.
+			</li>
+			<li>
+				If you do widen access, <code>ORIGIN</code> must match the address teachers actually
+				use, or adapter-node's CSRF guard rejects form POSTs (uploads, materials) with a
+				<code>403</code>. See <a href="#troubleshooting">Troubleshooting</a>.
+			</li>
+		</ul>
+		<h3>The executor sandbox — and its limit</h3>
+		<ul>
+			<li>
+				Student notebooks are <strong>untrusted code</strong>. The executor container runs
+				with no Linux capabilities (<code>cap_drop: ALL</code>),
+				<code>no-new-privileges</code>, a read-only rootfs, a <code>tmpfs</code>
+				<code>/tmp</code>, and a pids cap (fork-bomb guard) — but it is
+				<strong>not hardened sandboxing</strong>.
+			</li>
+			<li>
+				<strong>Residual vector:</strong> the executor shares the Docker bridge (<code
+					>app-net</code
+				>) with the frontend container, so a malicious notebook could attempt to reach the
+				frontend's own port. This is a documented, accepted risk for the localhost-only
+				model — another reason the whole stack must stay loopback-only.
+			</li>
+		</ul>
+		<h3>Untrusted notebook content</h3>
+		<ul>
+			<li>
+				Notebook text is <strong>screened before it enters any LLM prompt</strong>
+				(instruction-smuggling guard). On a hit the flagged cells are stripped from the prompt
+				and the row is marked <code>needs_review</code>. The guard fails open — grading
+				never breaks because it erred.
+			</li>
+		</ul>
+		<h3>Secrets and the docs index</h3>
+		<ul>
+			<li>
+				API keys belong only in <code>.env</code> (or the runtime Settings → Execution &amp;
+				AI page) — <strong>never</strong> in <code>data/settings.yaml</code> and never committed.
+			</li>
+			<li>
+				The prebuilt docs index is published as a <strong
+					>publicly downloadable GitHub release (~680 MB)</strong
+				> — a bandwidth consideration, not a secret.
+			</li>
+		</ul>
 	</section>
 
 	<!-- Footer spacer -->

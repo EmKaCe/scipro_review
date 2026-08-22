@@ -33,7 +33,7 @@
 	<title>Settings — SciPro Review</title>
 </svelte:head>
 
-<div class="mx-auto max-w-2xl px-4 py-8">
+<div class="mx-auto max-w-5xl px-4 py-8">
 	<div class="space-y-6">
 		<AppearanceCard />
 		{#if base === ""}

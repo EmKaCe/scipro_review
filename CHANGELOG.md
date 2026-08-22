@@ -42,8 +42,10 @@ and this project adheres to the versioning convention in
 - **Intermittent pre-eval failures:** KI Connect retried only 429 — a
   transient upstream 5xx, request timeout, or network blip failed the whole
   row immediately. Transient classes now get bounded retries with backoff
-  (4xx never retried), and after a batch the dashboard toasts the per-row
-  failure reasons (previously reasons lived only in the pipeline log).
+  (429 rate-limits always retried with backoff + `Retry-After`; other 4xx
+  client errors are never retried), and after a batch the dashboard toasts
+  the per-row failure reasons (previously reasons lived only in the
+  pipeline log).
 - **Material upload panel** labeled every non-data file "Material" — key
   notebooks now show **Key** (with a key icon) and PDFs show **PDF**; the
   detection was always correct (`hasKey`), only the row label was wrong.

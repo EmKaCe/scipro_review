@@ -602,6 +602,11 @@ let dataDir: string;
 beforeEach(async () => {
 	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-preeval-"));
 	process.env.DATA_DIR = dataDir;
+	// Pin the quality-critical phase model: the resolver honors the
+	// PHASE_2_MODEL env override BEFORE the settings-UI model, and the
+	// fixture settings.yaml carries qwen3-30b — the model-routing tests
+	// assert the gpt-oss-120b contract explicitly.
+	process.env.PHASE_2_MODEL = "openai-gpt-oss-120b";
 
 	await writeFile(path.join(dataDir, "assignments.yaml"), ASSIGNMENTS_YAML);
 	await mkdir(path.join(dataDir, "criteria"), { recursive: true });
@@ -662,6 +667,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	delete process.env.DATA_DIR;
+	delete process.env.PHASE_2_MODEL;
 	await rm(dataDir, { recursive: true, force: true });
 });
 

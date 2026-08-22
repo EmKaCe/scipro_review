@@ -36,7 +36,7 @@ import {
 	loadScoringConfig,
 	type ScoringConfig,
 } from "$lib/server/copilot/scoring-config";
-import { PHASE_2_MODEL } from "$lib/server/copilot/pipeline/prompts";
+import { getPhase2Model } from "$lib/server/copilot/pipeline/prompts";
 import { loadCriteriaFile } from "$lib/server/criteria";
 import { getKiConnectClient } from "$lib/server/ki-connect";
 import type { CriteriaFile } from "$lib/types/criteria";
@@ -158,6 +158,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	].join("\n");
 
 	const client = getKiConnectClient();
+	const phase2Model = await getPhase2Model();
 	const raw = await client.chatCompletion(
 		systemPrompt,
 		userPrompt,
@@ -165,7 +166,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 		{ type: "json_object" },
 		undefined,
 		60_000,
-		PHASE_2_MODEL,
+		phase2Model,
 	);
 	const draft = raw as ScoringConfigDocument;
 
