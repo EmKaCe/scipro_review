@@ -1,0 +1,7 @@
+# Build context hygiene — never copy these into the image build
+node_modules
+build
+static/data
+.git
+.svelte-kit
+.DS_Store
