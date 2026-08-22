@@ -6,8 +6,8 @@
 	"type": "module",
 	"scripts": {
 		"dev": "echo 'Specify mode: pnpm run dev:student (GitHub Pages) or dev:teacher (Docker)' && false",
-		"dev:student": "cp -r ../data static/ && vite dev",
-		"dev:teacher": "cp -r ../data static/ && ADAPTER=node vite dev",
+		"dev:student": "rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index && vite dev",
+		"dev:teacher": "rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index && ADAPTER=node vite dev",
 		"start:teacher": "rm -rf build && pnpm build:teacher && PORT=4174 node build/index.js",
 		"start:student": "rm -rf build && pnpm build:student && python3 -m http.server 4173 -d build",
 		"build": "echo 'Specify mode: pnpm run build:student (GitHub Pages) or build:teacher (Docker)' && false",
@@ -23,7 +23,7 @@
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage",
-		"prebuild": "cp -r ../data static/"
+		"prebuild": "rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index"
 	},
 	"devDependencies": {
 		"@eslint/compat": "^2.1.0",

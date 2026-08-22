@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * @file criteria-export.mjs — copy teacher-authored criteria from the runtime
- * data dir (Docker volume) back into the repo's tracked data/ tree.
+ * @file criteria-export.mjs — copy teacher-authored criteria from a runtime
+ * data dir into the repo's tracked data/ tree (host / migration helper).
  *
- * Sharing model: the repo's data/ is the SHARED source of truth (git); the
- * runtime volume is each machine's working copy. The webapp writes criteria
- * into the volume only — this script is the bridge back to git so a teacher
- * can commit and push their authored criteria for the other teachers.
+ * Since the single-source-tree model (Docker compose binds ./data straight
+ * into /app/data) the app writes criteria DIRECTLY into the repo tree — no
+ * export step exists in the UI or normal Docker workflow. This script is only
+ * for setups that keep DATA_DIR outside the repo clone (hand-rolled
+ * deployments, or recovering data from a pre-2.6 named-volume install):
+ * it copies the shared files back so they can be committed.
  *
  * Copies:            assignments.yaml, grading_config.yaml,
  *                    criteria/*.yaml, scoring/*.yaml
@@ -14,13 +16,8 @@
  *                    settings.yaml, .env  (internals stay untracked)
  *
  * Usage:
- *   # inside the frontend container (recommended — data dir is /app/data)
- *   docker compose exec frontend node scripts/criteria-export.mjs
- *   docker compose exec frontend node scripts/criteria-export.mjs --apply
- *
- *   # from the repo clone on a native-Linux host
  *   node frontend/scripts/criteria-export.mjs \
- *     --data-dir /var/lib/docker/volumes/svelte-review-data/_data --apply
+ *     --data-dir /path/to/runtime/data --apply
  *
  * Default is a DRY RUN (prints what would change). Pass --apply to write.
  * Exit code 0 even when nothing changed.

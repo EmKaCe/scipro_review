@@ -11,6 +11,9 @@ data/copilot/
 # Assignment materials — keys, PDFs, input data — never committed
 data/materials/
 
+# Offline docs vector index (~680 MB, runtime artifact) — never committed
+data/docs-index/
+
 # Exception: criteria, grading config, and registry stay in git
 !data/assignments.yaml
 !data/grading_config.yaml

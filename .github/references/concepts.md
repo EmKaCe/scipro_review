@@ -160,10 +160,10 @@ reload); it may bind on the LAN since it's developer-only.
   reintroduce it.**
 - **Vitest narrowing is misleading:** `pnpm test -- <file>` runs the WHOLE
   suite (vitest ignores the positional filter). Use `pnpm vitest run <file>`.
-- **The Docker volume** (`svelte-review-data`) holds its own copy of the
-  config (`assignments.yaml`, `criteria/*.yaml`, `scoring/*.yaml`) and can lag
-  the repo. Before a pre-eval run against the volume, diff volume vs repo and
-  sync — back up first.
+- **One data store since 2.6**: compose binds the repo's `data/` directly into
+  `/app/data` — no named volume, no copy, no drift. Installations migrated from
+  the old `svelte-review-data` volume (see README) should make sure no second
+  copy of the config lags behind the repo.
 - **KI Connect concurrency ceiling is 2.** Do not raise it without measuring
   against the API's rate limits (4 workers triggered sustained 429s).
 - **`hermes verify`** is a Hermes convenience wrapper. The underlying recipe is

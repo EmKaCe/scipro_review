@@ -1,18 +1,22 @@
 #!/usr/bin/env node
 /**
  * @file criteria-import.mjs — copy shared criteria from the repo's tracked
- * data/ tree into the runtime data dir (Docker volume).
+ * data/ tree into a runtime data dir (migration helper).
  *
- * Sharing model: the repo's data/ is the SHARED source of truth (git); the
- * runtime volume is each machine's working copy. After `git pull` (or when
- * setting up a machine without the first-boot seed), this script brings the
- * repo's criteria into the volume so the running app uses them.
+ * Since the single-source-tree model (Docker compose binds ./data straight
+ * into /app/data) the app reads criteria directly from the repo tree — a
+ * pull is instantly live and NO import step exists in the normal Docker
+ * workflow. This script exists for migrating a pre-2.6 named-volume install
+ * (`svelte-review-data`) into the repo clone, and for hand-rolled setups
+ * that keep DATA_DIR outside the clone.
  *
- *   Pull - receive:  git pull
- *   Import - apply:  docker compose exec frontend \
- *                      node scripts/criteria-import.mjs --apply
- *   Restart the app to be safe (registry is re-read per request, so a reload
- *   of the dashboard is usually enough).
+ *   Migration (one-time, before switching to the bind-mounted compose):
+ *     docker run --rm -v svelte-review-data:/src \
+ *       -v "$PWD/data:/dst" alpine sh -c "cp -rn /src/. /dst/"
+ *
+ *   Import from repo (non-Docker DATA_DIR):
+ *     node frontend/scripts/criteria-import.mjs \
+ *       --data-dir /path/to/runtime/data --apply
  *
  * Safety: any destination file that differs from the repo copy is backed up
  * to <data-dir>/.criteria-backup-<timestamp>/ BEFORE being overwritten, so a

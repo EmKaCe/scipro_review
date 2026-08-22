@@ -11,13 +11,17 @@ and this project adheres to the versioning convention in
 
 ### Added
 
-- **Criteria sharing between teachers** (repo-first model): the Docker
-  frontend seeds the shared data volume from the repo's tracked `data/` on
-  first boot (`./data` is mounted read-only as `/app/data-default` and copied
-  in only when `assignments.yaml` is missing); new
-  `frontend/scripts/criteria-export.mjs` / `criteria-import.mjs` bridge
-  teacher-authored criteria between the volume and git (dry-run default,
-  `--apply` to write; imports back up conflicting local files first).
+- **Single-source criteria sharing** (2.6 deployment model): compose binds the
+  repo's tracked `data/` directly into `/app/data` in both containers — no
+  named volume, no seed, no sync step. Criteria authored in the app are
+  immediately changes in the git tree; `git pull` makes shared criteria live
+  on the next page load. Gitignored runtime state (submissions, materials,
+  copilot, plagiarism, the ~680 MB docs index) lives in the same tree but is
+  never committed; `data/docs-index/` was added to `.gitignore`, and the
+  student build's `../data` copy now strips runtime dirs. Migration for older
+  named-volume installs is documented in the README (the
+  `criteria-export`/`criteria-import` scripts remain as host/migration
+  helpers, no longer part of the Docker workflow).
 - Dashboard **first-run state**: when `assignments.yaml` is absent the
   dashboard shows an onboarding callout pointing at the setup checklist
   instead of the red misconfiguration banner; `GET /api/assignments` returns a

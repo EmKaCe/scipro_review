@@ -112,10 +112,11 @@ conformance and deterministic evidence**, not necessarily real student grades:
    dimension guidance) via the scoring editor and re-run. The full loop is
    documented in the [Calibration guide](assignment-calibration.md).
 
-> **Volume staleness pitfall:** the Docker volume holds its own copies of
-> `assignments.yaml`, `grading_config.yaml`, and `criteria/*.yaml` and can lag
-> the repo. Diff volume vs repo and sync before any measurement run; back up
-> the volume config first (`cp -r /var/lib/docker/volumes/svelte-review-data/_data`).
+> **Config drift pitfall:** pre-2.6 the Docker volume held its own copies of
+> `assignments.yaml`, `grading_config.yaml`, and `criteria/*.yaml` and could lag
+> the repo, silently degrading measurement runs. 2.6+ compose binds `./data`
+> directly — one store, no lag. Migrate old volumes (README), and never keep a
+> second copy of the config.
 
 ## Rubric-fidelity regression harness (P12, recorded transcripts)
 

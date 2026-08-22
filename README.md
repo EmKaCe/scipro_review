@@ -43,11 +43,11 @@ cp .env.example .env       # then edit ORIGIN and set a KI_CONNECT_API_KEY
 docker compose up -d       # open http://localhost:4174
 ```
 
-The first `docker compose up` seeds the shared data volume from the repo's
-tracked `data/` directory (the example assignment + criteria), so the dashboard
-boots **already configured**. Runtime edits you make in the app stay in the
-volume and never touch your git clone — see *Sharing grading criteria between
-teachers* below to publish them.
+The app reads and writes the repo's **tracked `data/` directory directly**
+(both containers bind `./data` to `/app/data`) — no volume, no copy step. The
+clone boots already configured with the example assignment, and criteria you
+author in the app are immediately visible in `git status`. See *Sharing grading
+criteria between teachers* below.
 
 Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
 reaching the app from another machine) — it is required for CSRF-safe file uploads.
@@ -303,35 +303,51 @@ scoring config (anchors, evidence regexes, disallowed libs, dimension guidance �
 
 ### Sharing grading criteria between teachers
 
-The repo is the **shared source of truth for grading criteria**; each machine's
-runtime volume is a working copy of it.
+Criteria live in ONE place: the repo's tracked `data/`. The running app binds
+that directory directly — no volume, no copy, no sync step. Both teachers and
+students already consume the same files (the student build bakes `data/` at
+build time).
 
-| Layer | Contents | In git? |
-|---|---|---|
-| Repo `data/` | `assignments.yaml`, `criteria/*.yaml`, `scoring/*.yaml`, `grading_config.yaml` | ✅ tracked — change, commit, push |
-| Runtime volume (`/app/data`) | the machine's working copy + **internals**: `submissions/`, `materials/`, `copilot/`, `plagiarism/`, backups | ❌ untracked (`.env` too) |
+| In the repo (`data/`) | On the machine only |
+|---|---|
+| ✅ `assignments.yaml` — registry | ❌ `submissions/` — student notebooks, never committed |
+| ✅ `criteria/*.yaml` — rubric | ❌ `materials/` — keys, PDFs, input data |
+| ✅ `scoring/*.yaml` — anchors/evidence | ❌ `copilot/`, `plagiarism/` — runtime trails |
+| ✅ `grading_config.yaml`, `settings.yaml` | ❌ `docs-index/` — 680 MB vector index |
+| | ❌ `.env` — API keys (never even in the repo) |
 
-Two bridge scripts keep the layers in sync — both default to a **dry run** and
-only write with `--apply`:
+**Author & share:** write or edit criteria in the app → it is already a change
+in your clone (`git status` shows it) → commit and push with your normal git
+tool (GitHub Desktop / VS Code — one click, no terminal):
 
-- **Publish criteria you authored in the app** (volume → repo → git):
-  ```bash
-  docker compose exec frontend node scripts/criteria-export.mjs --apply
-  git add data && git commit -m "criteria: ..." && git push
-  ```
-- **Receive shared criteria** (git → repo → volume):
-  ```bash
-  git pull
-  docker compose exec frontend node scripts/criteria-import.mjs --apply
-  ```
-  Imports back up any differing local file to `data/.criteria-backup-<timestamp>/`
-  before overwriting, so a pull that conflicts with local edits is never destructive.
+```bash
+git add data && git commit -m "criteria: add <assignment>" && git push
+```
 
-The scripts copy exactly `assignments.yaml`, `grading_config.yaml`,
-`criteria/*.yaml`, and `scoring/*.yaml` — never `settings.yaml` (provider/machine
-config; keys live in `.env`) and never submissions/materials/copilot state. The
-**student build** ships what is committed: it bakes the repo's `data/` at build
-time, so the next deploy carries the shared criteria automatically.
+**Receive:** `git pull` → the app reads the files per request, so the new
+criteria are live on the next page load. Nothing else to do.
+
+Two honest notes:
+
+- `settings.yaml` (provider/model config) and `enabled:` toggles in the
+  registry are also tracked — a provider swap or an enable/disable will show
+  in `git status`. Review before committing; `git checkout -- data/settings.yaml`
+  reverts machine-only churn.
+- Runtime directories are gitignored, so `git add data` can never sweep
+  submissions or keys into the repo.
+
+**Migrating a pre-2.6 named-volume install** (older compose used a
+`svelte-review-data` volume): copy its contents into the clone once, then run
+the bind-mounted compose:
+
+```bash
+docker run --rm -v svelte-review-data:/src -v "$PWD/data:/dst" alpine sh -c "cp -rn /src/. /dst/"
+docker compose up -d --build
+```
+
+(`frontend/scripts/criteria-export.mjs` / `criteria-import.mjs` remain for
+hand-rolled installs that keep DATA_DIR outside the clone — dry-run by
+default, `--apply` to write.)
 
 ### Read-only code constants
 
