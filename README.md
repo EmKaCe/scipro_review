@@ -180,6 +180,7 @@ Deployment-level. Set in `.env` / the environment **before** starting the server
 | `NODE_ENV` | `production` | Node runtime mode (`production`/`development`). |
 | `PORT` | `4174` | Port the teacher Node server listens on. |
 | `ORIGIN` | `http://localhost:4174` | Canonical origin teachers use to reach the app. Required for CSRF-safe form POSTs (uploads, materials) over plain HTTP — set it to the address you actually use (e.g. `http://192.168.1.10:4174`). |
+| `BODY_SIZE_LIMIT` | `50M` | Max request body (uploads, materials, backups). adapter-node's own default is 512K — too small for notebooks/PDFs; raised to 50M in the Dockerfile and `.env.example`. |
 | `DATA_DIR` | `./data` (Docker: `/app/data`) | Data root for all runtime config and state (settings, assignments, grading config, criteria, submissions, docs index). |
 | `DOCS_INDEX_DIR` | `<DATA_DIR>/docs-index` | Docs-RAG index directory holding `docs-index.json` + `docs-vectors.bin`. |
 | `COMPOSE_PROJECT_NAME` | `svelte-review` | Docker Compose project name (container/volume prefix). |

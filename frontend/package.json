@@ -8,7 +8,7 @@
 		"dev": "echo 'Specify mode: pnpm run dev:student (GitHub Pages) or dev:teacher (Docker)' && false",
 		"dev:student": "if [ -d ../data ]; then rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index; fi && vite dev",
 		"dev:teacher": "if [ -d ../data ]; then rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index; fi && ADAPTER=node vite dev",
-		"start:teacher": "rm -rf build && pnpm build:teacher && PORT=4174 node build/index.js",
+		"start:teacher": "rm -rf build && pnpm build:teacher && PORT=4174 BODY_SIZE_LIMIT=${BODY_SIZE_LIMIT:-50M} node build/index.js",
 		"start:student": "rm -rf build && pnpm build:student && python3 -m http.server 4173 -d build",
 		"build": "echo 'Specify mode: pnpm run build:student (GitHub Pages) or build:teacher (Docker)' && false",
 		"build:student": "if [ -d ../data ]; then rm -rf static/data && cp -r ../data static/ && rm -rf static/data/submissions static/data/plagiarism static/data/copilot static/data/materials static/data/docs-index; fi && vite build",

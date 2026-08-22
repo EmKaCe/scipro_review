@@ -36,6 +36,7 @@ import {
 	validateCriteriaYaml,
 } from "$lib/server/criteria";
 import { getDataDir } from "$lib/server/metadata";
+import { parseMultipartFormData } from "$lib/server/form-data";
 import type { CriteriaFile } from "$lib/types/criteria";
 
 /** Safe criteria basenames: letters, digits, underscores, hyphens, .yaml. */
@@ -220,12 +221,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 export async function POST(event: RequestEvent): Promise<Response> {
 	const id = event.params.id ?? "";
 
-	let form: FormData;
-	try {
-		form = await event.request.formData();
-	} catch {
-		throw error(400, "Expected a multipart/form-data body");
-	}
+	const form = await parseMultipartFormData(event);
 
 	const file = form.get("file");
 	if (!(file instanceof File)) {

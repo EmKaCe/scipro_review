@@ -44,11 +44,15 @@ COPY --from=builder /app/node_modules ./node_modules
 # Verify the build output exists
 RUN test -f build/index.js || (echo "ERROR: build/index.js not found — did build:teacher succeed?" && exit 1)
 
-# Runtime environment defaults
+# Runtime environment defaults.
+# BODY_SIZE_LIMIT: adapter-node body cap — notebooks/materials/backups exceed
+# the 512K default, and oversized bodies were mis-reported as a 400
+# "Expected multipart" (fixed 2026-08-22). 50M covers the largest notebooks/PFDs.
 ENV ADAPTER=node \
     PORT=4174 \
     NODE_ENV=production \
-    EXECUTOR_URL=http://executor:8766
+    EXECUTOR_URL=http://executor:8766 \
+    BODY_SIZE_LIMIT=50M
 
 EXPOSE 4174
 

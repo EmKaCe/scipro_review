@@ -20,6 +20,7 @@ import { error, json } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { classifyFile, persistUpload } from "$lib/server/file-service";
+import { parseMultipartFormData } from "$lib/server/form-data";
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 
 // ---------------------------------------------------------------------------
@@ -74,12 +75,7 @@ export async function GET(event: RequestEvent): Promise<Response> {
 export async function POST(event: RequestEvent): Promise<Response> {
 	const assignmentId = validateAssignmentId(event.params.id);
 
-	let form: FormData;
-	try {
-		form = await event.request.formData();
-	} catch {
-		throw error(400, "Expected a multipart/form-data body");
-	}
+	const form = await parseMultipartFormData(event);
 
 	const uploaded: UploadResult[] = [];
 	for (const [, value] of form.entries()) {

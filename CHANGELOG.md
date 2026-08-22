@@ -27,6 +27,19 @@ and this project adheres to the versioning convention in
   instead of the red misconfiguration banner; `GET /api/assignments` returns a
   machine-readable `code: "assignments-missing"` to drive it.
 
+### Fixed
+
+- **Uploads over 512K failed with a misleading `400 "Expected a
+  multipart/form-data body"`.** SvelteKit's adapter-node enforces
+  `BODY_SIZE_LIMIT` (default 512K) by erroring the request stream mid-read;
+  the per-route `catch` turned that into the generic multipart error, so
+  real notebooks, materials PDFs, and backups (routinely > 512K) could not
+  be uploaded. `BODY_SIZE_LIMIT` is now 50M in the Dockerfile,
+  `.env.example`, and `start:teacher`, and all multipart routes (materials,
+  submissions/upload, criteria upload, backup restore) route through a
+  shared `parseMultipartFormData` that rethrows the body-limit rejection as
+  a genuine 413 with the real message (new unit tests).
+
 ### Docs
 
 - Removed the closed monolith-split ADR (decision is stable; git history keeps
