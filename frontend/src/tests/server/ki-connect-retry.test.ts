@@ -75,3 +75,65 @@ describe("KiConnectClient 429 retry", () => {
 		expect(mockFetch).toHaveBeenCalledTimes(2);
 	});
 });
+
+describe("KiConnectClient transient-error retry (5xx / network / timeout)", () => {
+	it("retries a 5xx server error and succeeds on the next attempt", async () => {
+		mockFetch
+			.mockResolvedValueOnce(new Response("boom", { status: 502 }))
+			.mockResolvedValueOnce(okResponse());
+
+		const client = new KiConnectClient({ baseUrl: "http://example.test" });
+		const result = await client.chatCompletionText("sys", "user");
+
+		expect(result).toBe("hello");
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("throws a descriptive error after repeated 5xx responses", async () => {
+		vi.useFakeTimers();
+		mockFetch.mockResolvedValue(new Response("bad gateway", { status: 502 }));
+
+		const client = new KiConnectClient({ baseUrl: "http://example.test" });
+		const promise = client.chatCompletionText("sys", "user");
+		promise.catch(() => undefined);
+
+		await vi.advanceTimersByTimeAsync(10000);
+		await expect(promise).rejects.toThrow("KI Connect server error 502");
+		// 4 attempts (3 retries + final throw)
+		expect(mockFetch).toHaveBeenCalledTimes(4);
+	});
+
+	it("retries a network failure (fetch TypeError) and succeeds", async () => {
+		mockFetch
+			.mockRejectedValueOnce(new TypeError("fetch failed"))
+			.mockResolvedValueOnce(okResponse());
+
+		const client = new KiConnectClient({ baseUrl: "http://example.test" });
+		const result = await client.chatCompletionText("sys", "user");
+
+		expect(result).toBe("hello");
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("retries a timed-out request (AbortError) and succeeds", async () => {
+		mockFetch
+			.mockRejectedValueOnce(Object.assign(new Error("aborted"), { name: "AbortError" }))
+			.mockResolvedValueOnce(okResponse());
+
+		const client = new KiConnectClient({ baseUrl: "http://example.test" });
+		const result = await client.chatCompletionText("sys", "user");
+
+		expect(result).toBe("hello");
+		expect(mockFetch).toHaveBeenCalledTimes(2);
+	});
+
+	it("does not retry a 4xx client error", async () => {
+		mockFetch.mockResolvedValue(new Response("nope", { status: 400 }));
+
+		const client = new KiConnectClient({ baseUrl: "http://example.test" });
+		await expect(client.chatCompletionText("sys", "user")).rejects.toThrow(
+			"KI Connect returned 400",
+		);
+		expect(mockFetch).toHaveBeenCalledTimes(1);
+	});
+});

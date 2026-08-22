@@ -134,6 +134,7 @@
 			hour: "2-digit",
 			minute: "2-digit",
 			second: "2-digit",
+			hour12: false,
 		});
 	}
 
@@ -864,6 +865,9 @@
 	.log-time {
 		color: var(--muted-foreground);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.log-source {
 		font-size: 9px;

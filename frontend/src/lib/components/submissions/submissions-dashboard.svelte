@@ -283,6 +283,18 @@
 				}`,
 				5000,
 			);
+			if (summary.failed > 0) {
+				// Surface WHY rows failed without hunting the log panel: one
+				// error toast with per-row reasons (transient LLM errors
+				// are the common case; re-running the batch retries failed
+				// rows because they keep their executed/error status).
+				const reasons = summary.results
+					.filter((r) => !r.ok && r.error)
+					.map((r) => `${r.studentId}: ${r.error}`)
+					.slice(0, 3)
+					.join("\n");
+				addToast("error", `Failed: ${reasons}`, 8000);
+			}
 			// Record the run's tallies so the page's log-panel banner shows
 			// them (BUG-007 — the POST handler is the only writer).
 			setRunSummary("preEval", summary);
@@ -596,6 +608,7 @@
 	.table-toolbar {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 10px;
 		padding: 8px 14px;
 		border-bottom: 1px solid var(--border);
@@ -657,6 +670,8 @@
 		margin-left: auto;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
+		justify-content: flex-end;
 		gap: 8px;
 	}
 	.plagiarism-count-badge {

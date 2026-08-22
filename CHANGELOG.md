@@ -39,6 +39,20 @@ and this project adheres to the versioning convention in
   submissions/upload, criteria upload, backup restore) route through a
   shared `parseMultipartFormData` that rethrows the body-limit rejection as
   a genuine 413 with the real message (new unit tests).
+- **Intermittent pre-eval failures:** KI Connect retried only 429 — a
+  transient upstream 5xx, request timeout, or network blip failed the whole
+  row immediately. Transient classes now get bounded retries with backoff
+  (4xx never retried), and after a batch the dashboard toasts the per-row
+  failure reasons (previously reasons lived only in the pipeline log).
+- **Material upload panel** labeled every non-data file "Material" — key
+  notebooks now show **Key** (with a key icon) and PDFs show **PDF**; the
+  detection was always correct (`hasKey`), only the row label was wrong.
+- **Submissions toolbar** (Plagiarism / Pre-evaluate All / Manage
+  Assignments / Backup) was clipped by the table container at narrow
+  widths — the toolbar and action group now wrap instead of overflowing.
+- **Pipeline log timestamps** wrapped on locales with AM/PM and could line-
+  break inside the fixed-width time column — now forced 24-hour format with
+  no-wrap + ellipsis.
 
 ### Docs
 
