@@ -134,7 +134,10 @@
 	}
 </script>
 
-<div class="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
+<div
+	id="execution-ai"
+	class="scroll-mt-16 overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm"
+>
 	<div class="p-5 pb-3">
 		<h2 class="text-base font-semibold tracking-tight">Execution &amp; AI</h2>
 		<p class="mt-1 text-sm text-muted-foreground">
