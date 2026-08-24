@@ -38,9 +38,15 @@
 		assignmentId: string;
 		/** Existing criteria, or null when the assignment has no own file yet. */
 		initial: CriteriaFile | null;
+		/**
+		 * Fixed grading dimensions (key + title) driving the editor's chip
+		 * pickers and the preview's dimension chips. Empty when the grading
+		 * config could not be loaded — the UI degrades gracefully.
+		 */
+		dimensions?: { key: string; title: string }[];
 	}
 
-	let { assignmentId, initial }: Props = $props();
+	let { assignmentId, initial, dimensions = [] }: Props = $props();
 
 	type Tab = "visual" | "yaml" | "preview";
 	const TABS: { id: Tab; label: string; icon: typeof PenLine }[] = [
@@ -223,7 +229,7 @@
 
 	<div class="tab-panel" role="tabpanel">
 		{#if activeTab === "visual"}
-			<CriteriaEditor {categories} onChange={(next) => (categories = next)} />
+			<CriteriaEditor {categories} {dimensions} onChange={(next) => (categories = next)} />
 		{:else if activeTab === "yaml"}
 			<div class="yaml-panel">
 				<textarea
@@ -245,7 +251,7 @@
 				{/if}
 			</div>
 		{:else}
-			<CriteriaPreview {categories} />
+			<CriteriaPreview {categories} {dimensions} />
 		{/if}
 	</div>
 </div>

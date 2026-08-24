@@ -12,13 +12,21 @@
 	import MinusCircle from "@lucide/svelte/icons/minus-circle";
 	import NotebookPen from "@lucide/svelte/icons/notebook-pen";
 	import { SENTIMENTS, type EditableCategory, type Sentiment } from "./criteria-editor-model.js";
+	import { resolveEditableSubPointDimensions } from "./criteria-editor-model.js";
 
 	interface Props {
 		/** Draft categories to preview (same shape the visual editor edits). */
 		categories: EditableCategory[];
+		/**
+		 * Fixed grading dimensions (key + title) for the per-sub-point
+		 * resolved-dimension chips. Empty when unavailable — chips render only
+		 * for keys present in this list (unknown keys are still shown so a
+		 * YAML-typed dimension never silently disappears from the preview).
+		 */
+		dimensions?: { key: string; title: string }[];
 	}
 
-	let { categories }: Props = $props();
+	let { categories, dimensions = [] }: Props = $props();
 
 	let expanded = $state<Record<string, boolean>>({});
 
@@ -132,6 +140,11 @@
 												{/if}
 												<ul class="preview-items">
 													{#each mp.sub_points as sp, spIndex (spIndex)}
+														{@const spDimensions =
+															resolveEditableSubPointDimensions(
+																mp,
+																sp,
+															)}
 														<li class="preview-item">
 															<span
 																class="preview-checkbox"
@@ -140,6 +153,22 @@
 															<span class="preview-item-text"
 																>{sp.text}</span
 															>
+															{#if spDimensions.length > 0}
+																<span
+																	class="preview-dimensions"
+																	aria-label="Grading dimensions"
+																>
+																	{#each spDimensions as key (key)}
+																		<span
+																			class="preview-dimension-chip"
+																			title={dimensions.find(
+																				(d) =>
+																					d.key === key,
+																			)?.title}>{key}</span
+																		>
+																	{/each}
+																</span>
+															{/if}
 															{#if sp.comment}
 																<span
 																	class="preview-flag preview-flag-comment"
@@ -330,6 +359,26 @@
 	}
 	.preview-item-text {
 		flex: 1;
+	}
+	.preview-dimensions {
+		display: inline-flex;
+		align-items: center;
+		gap: 4px;
+		flex-wrap: wrap;
+		margin-top: 1px;
+	}
+	.preview-dimension-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 7px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: color-mix(in oklch, var(--primary) 6%, transparent);
+		color: var(--muted-foreground);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		line-height: 1.5;
+		white-space: nowrap;
 	}
 	.preview-flag {
 		display: inline-flex;
