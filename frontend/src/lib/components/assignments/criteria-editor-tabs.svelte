@@ -63,6 +63,8 @@
 	let drafting = $state(false);
 	let saveError = $state<string | null>(null);
 	let draftError = $state<string | null>(null);
+	/** Consistency-pass notes from the draft pipeline (coverage gaps etc.). */
+	let draftNotes = $state<string[]>([]);
 	let validationError = $state<string | null>(null);
 	/** JSON of the last saved server shape — dirty = draft differs from it. */
 	let savedServerShape = $state("");
@@ -153,13 +155,16 @@
 		validationError = null;
 		drafting = true;
 		try {
-			const { draft } = await draftCriteria(assignmentId);
+			const { draft, notes } = await draftCriteria(assignmentId);
 			if (!draft) {
 				draftError = "Draft failed: the server returned no draft";
 				return;
 			}
 			categories = fromServerCategories(draft.categories);
 			yamlText = yaml.dump({ categories: toServerCategories(categories) });
+			if (notes && notes.length > 0) {
+				draftNotes = notes;
+			}
 			addToast("success", "Draft generated — review before saving", 3500);
 		} catch (e) {
 			draftError = `Draft failed: ${e instanceof Error ? e.message : "unknown error"}`;
@@ -224,6 +229,20 @@
 		<div class="editor-error" role="alert">
 			<TriangleAlert size={14} class="shrink-0" />
 			<span>{validationError ?? saveError ?? draftError}</span>
+		</div>
+	{/if}
+
+	{#if draftNotes.length > 0}
+		<div class="draft-notes" role="note">
+			<TriangleAlert size={14} class="shrink-0" />
+			<div class="draft-notes-body">
+				<p class="draft-notes-title">Draft notes — review before saving</p>
+				<ul class="draft-notes-list">
+					{#each draftNotes as note (note)}
+						<li>{note}</li>
+					{/each}
+				</ul>
+			</div>
 		</div>
 	{/if}
 
@@ -335,6 +354,37 @@
 		background: color-mix(in oklch, var(--destructive) 8%, transparent);
 		color: var(--destructive);
 		font-size: 12.5px;
+	}
+	.draft-notes {
+		display: flex;
+		align-items: flex-start;
+		gap: 8px;
+		padding: 9px 11px;
+		border: 1px solid color-mix(in oklch, var(--warning) 35%, transparent);
+		border-radius: var(--radius-md);
+		background: color-mix(in oklch, var(--warning) 8%, transparent);
+		color: var(--muted-foreground);
+		font-size: 12.5px;
+	}
+	.draft-notes-body {
+		min-width: 0;
+	}
+	.draft-notes-title {
+		margin: 0;
+		font-weight: 600;
+		color: var(--foreground);
+	}
+	.draft-notes-list {
+		margin: 4px 0 0;
+		padding-left: 18px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.draft-notes :global(svg) {
+		margin-top: 1px;
+		flex-shrink: 0;
+		color: var(--warning);
 	}
 	.tab-panel {
 		min-width: 0;

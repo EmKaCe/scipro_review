@@ -82,6 +82,7 @@
 	// B1 — Restore a backup from another machine
 	// ---------------------------------------------------------------------
 	let restoreFile: File | undefined = $state();
+	let restoreInput: HTMLInputElement | undefined = $state();
 	let restorePhase = $state<"idle" | "confirm" | "running" | "done" | "failed">("idle");
 	let restoreError: string | null = $state(null);
 	let restoreSuccess: string | null = $state(null);
@@ -107,9 +108,12 @@
 			}
 			restorePhase = "done";
 			restoreFile = undefined;
+			// Reset the DOM input so re-selecting the same file re-fires change.
+			if (restoreInput) restoreInput.value = "";
 			restoreSuccess = "Backup restored — the checklist below has been re-evaluated.";
 			await refreshStatus();
 		} catch (err) {
+			// Keep the chosen file + show Confirm again so a retry is one click.
 			restorePhase = "failed";
 			restoreError = (err as Error).message;
 		}
@@ -269,8 +273,10 @@
 			</div>
 			<div class="flex flex-wrap items-center gap-3 px-5 pb-5">
 				<input
+					bind:this={restoreInput}
 					type="file"
 					accept=".zip,application/zip"
+					aria-label="Backup zip file"
 					class="block max-w-full text-sm text-foreground file:mr-3 file:rounded-[var(--radius)] file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-muted/80"
 					onchange={(e) => {
 						const input = e.currentTarget as HTMLInputElement;
@@ -280,7 +286,7 @@
 						restoreSuccess = null;
 					}}
 				/>
-				{#if restorePhase === "confirm"}
+				{#if restorePhase === "confirm" || (restorePhase === "failed" && restoreFile)}
 					<button
 						type="button"
 						class={cn(

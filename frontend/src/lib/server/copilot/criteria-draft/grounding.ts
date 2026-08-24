@@ -25,7 +25,7 @@ import {
 	loadKeySummary,
 	type KeySummary,
 } from "$lib/server/copilot/pipeline/context";
-import type { CriteriaFile, MainPoint, SubPoint } from "$lib/types/criteria";
+import type { CriteriaFile } from "$lib/types/criteria";
 import { DEFAULT_DIMENSIONS, SHARED_CRITERIA_PATHS } from "./prompts";
 
 // ---------------------------------------------------------------------------
@@ -268,47 +268,4 @@ export function toCategoryMap(
 	}
 	result[key] = record;
 	return result;
-}
-
-/**
- * Resolve a sub-point's effective dimensions (override ?? group default ?? []).
- * Mirrors resolveSubPointDimensions in $lib/types/criteria — kept local so
- * the consistency pass does not depend on the schema module's resolver.
- */
-export function resolveSubPointDimensions(
-	mainPoint: { dimensions?: readonly string[] },
-	subPoint: { dimensions?: readonly string[] },
-): readonly string[] {
-	return subPoint.dimensions ?? mainPoint.dimensions ?? [];
-}
-
-/** All sub-points of one category across all sentiments, with their resolved dimensions. */
-export function flattenCategorySubPoints(category: Record<string, unknown>): {
-	mainPoint: MainPoint;
-	subPoint: SubPoint;
-	sentiment: string;
-	dimensions: readonly string[];
-}[] {
-	const out: {
-		mainPoint: MainPoint;
-		subPoint: SubPoint;
-		sentiment: string;
-		dimensions: readonly string[];
-	}[] = [];
-	for (const sentiment of ["positive", "neutral", "negative"] as const) {
-		const groups = category[sentiment];
-		if (!Array.isArray(groups)) continue;
-		for (const mp of groups as MainPoint[]) {
-			if (!mp || typeof mp !== "object" || !Array.isArray(mp.sub_points)) continue;
-			for (const sp of mp.sub_points) {
-				out.push({
-					mainPoint: mp,
-					subPoint: sp,
-					sentiment,
-					dimensions: resolveSubPointDimensions(mp, sp),
-				});
-			}
-		}
-	}
-	return out;
 }

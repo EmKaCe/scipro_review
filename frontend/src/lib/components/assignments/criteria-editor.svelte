@@ -445,7 +445,6 @@
 											subPointKey(sentiment, mainPointIndex, subPointIndex)
 										] ?? false}
 									<div class="sub-point">
-										`
 										<input
 											class="input sp-input"
 											aria-label="Sub-point text"

@@ -997,8 +997,10 @@ export async function saveCriteria(
  * explicitly via the compile-gate PUT. `draft` is null when the server could
  * not produce one (e.g. the assignment has no own rubric to ground on).
  */
-export async function draftCriteria(assignmentId: string): Promise<{ draft: CriteriaFile | null }> {
-	return requestJson<{ draft: CriteriaFile | null }>(
+export async function draftCriteria(
+	assignmentId: string,
+): Promise<{ draft: CriteriaFile | null; notes?: string[] }> {
+	return requestJson<{ draft: CriteriaFile | null; notes?: string[] }>(
 		`/api/assignments/${encodeURIComponent(assignmentId)}/criteria/draft`,
 		{ method: "POST" },
 	);
