@@ -223,8 +223,7 @@
 				<h2 class="text-base font-semibold tracking-tight">Configuration map</h2>
 				<p class="mt-1 text-sm text-muted-foreground">
 					Where every setting lives, and where to change it — grouped by purpose. Values
-					are live, loaded from the server: a no-op save never touches disk, and this map
-					refreshes after any save.
+					are live, loaded from the server; use Refresh to re-check after saving elsewhere.
 				</p>
 			</div>
 			<button
