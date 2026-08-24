@@ -193,6 +193,9 @@
 			const resp = await fetch(`${base}/api/onboarding/status`);
 			if (!resp.ok) throw new Error(`Status request failed (${resp.status})`);
 			const body = (await resp.json()) as { items: OnboardingItem[] };
+			// Clear any earlier failure so one transient error can't stick the
+			// page in the error state after a later successful refresh.
+			error = null;
 			items = body.items;
 		} catch (err) {
 			error = (err as Error).message;

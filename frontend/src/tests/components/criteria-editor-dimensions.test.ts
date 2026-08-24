@@ -302,6 +302,40 @@ describe("criteria editor — dimension controls", () => {
 		expect(selectedChips(childRow)).toEqual(["scientific_programming"]);
 	});
 
+	it("keeps the override editor open on an editor-created sub-point across a move (stable identity)", async () => {
+		render(CriteriaEditorTabs, {
+			props: {
+				assignmentId: "soil_contamination",
+				initial: PLAIN,
+				dimensions: DIMENSIONS,
+			},
+		});
+
+		// Add a sub-point to the group (editor-created → gets a client-only
+		// stable `_id`) and name it so the row is findable.
+		const groupRow = mainPointRow("Good formatting");
+		await fireEvent.click(within(groupRow).getByRole("button", { name: /Add sub-point/ }));
+
+		const spInputs = groupRow.querySelectorAll<HTMLInputElement>(".sp-input");
+		const freshInput = spInputs[spInputs.length - 1]!;
+		await fireEvent.input(freshInput, { target: { value: "fresh sub" } });
+
+		// Open its override editor (group has no default → chips appear).
+		const freshRow = subPointRow("fresh sub");
+		await fireEvent.click(
+			within(freshRow).getByRole("button", { name: "Override dimensions" }),
+		);
+		expect(allChips(freshRow).length).toBeGreaterThan(0);
+
+		// Move the row up — the open editor must follow the row, not the index.
+		await fireEvent.click(within(freshRow).getByRole("button", { name: "Move sub-point up" }));
+
+		const movedRow = subPointRow("fresh sub");
+		expect(allChips(movedRow).length).toBeGreaterThan(0);
+		// …and must NOT leak onto the row that slid into the old index.
+		expect(allChips(subPointRow("consistent indentation")).length).toBe(0);
+	});
+
 	it("round-trips selections through the editable model — dimensions emitted only when non-empty", async () => {
 		render(CriteriaEditorTabs, {
 			props: {

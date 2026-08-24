@@ -25,11 +25,14 @@
  * This module runs only on the SvelteKit server (`$lib/server/`).
  */
 
+import { readFile } from "node:fs/promises";
+import * as yaml from "js-yaml";
+
 import { getEnabledAssignments } from "$lib/server/assignments";
 import { hasApiKey } from "$lib/server/api-key-store";
 import { loadGradingConfigFile } from "$lib/server/grading-config-writer";
 import { getDataDir } from "$lib/server/metadata";
-import { loadSettings } from "$lib/server/settings";
+import { getSettingsPath, loadSettings } from "$lib/server/settings";
 import type { Assignment } from "$lib/types/assignments";
 
 // ---------------------------------------------------------------------------
@@ -112,6 +115,11 @@ export async function getConfigMap(): Promise<ConfigMapResponse> {
 async function settingsRows(
 	settings: Awaited<ReturnType<typeof loadSettings>>,
 ): Promise<ConfigMapRow[]> {
+	// Which llm.* keys are DECLARED in settings.yaml (not merely resolved from
+	// an env fallback). Needed so a file value equal to the env var is
+	// reported as file-owned ("ok"), not misleadingly as "env-fallback".
+	const fileLlm = await readSettingsFileLlmKeys();
+
 	return [
 		llmRow(
 			"llm.base_url",
@@ -119,6 +127,7 @@ async function settingsRows(
 			"KI Connect base URL (settings.yaml llm.base_url; env fallback KI_CONNECT_BASE_URL).",
 			settings.llm.baseUrl,
 			"KI_CONNECT_BASE_URL",
+			fileLlm.has("base_url"),
 		),
 		llmRow(
 			"llm.model",
@@ -126,6 +135,7 @@ async function settingsRows(
 			"KI Connect model id (settings.yaml llm.model; env fallback KI_CONNECT_MODEL).",
 			settings.llm.model,
 			"KI_CONNECT_MODEL",
+			fileLlm.has("model"),
 		),
 		{
 			id: "llm.timeout_ms",
@@ -279,16 +289,23 @@ async function settingsRows(
 	];
 }
 
-/** llm.* row with env-fallback detection (file value wins; env value only shows when it is in effect). */
+/**
+ * llm.* row with env-fallback detection. `declaredInFile` is true when the
+ * key is present in settings.yaml — a file-owned value is always "ok", even
+ * when it happens to equal the env var (the file is the source of truth; the
+ * env fallback only applies to keys the file does NOT declare).
+ */
 function llmRow(
 	id: string,
 	name: string,
 	description: string,
 	value: string,
 	envKey: string,
+	declaredInFile: boolean,
 ): ConfigMapRow {
 	const envValue = process.env[envKey]?.trim() ?? "";
-	const status: RowStatus = envValue !== "" && value === envValue ? "env-fallback" : "ok";
+	const status: RowStatus =
+		!declaredInFile && envValue !== "" && value === envValue ? "env-fallback" : "ok";
 	return {
 		id,
 		group: "settings",
@@ -300,6 +317,24 @@ function llmRow(
 		affordance: "this-page",
 		reload: "next-request",
 	};
+}
+
+/**
+ * Read which `llm.*` keys settings.yaml DECLARES. Missing/corrupt file →
+ * empty set (every llm key resolves from env/defaults, so env-fallback
+ * detection applies). Cheap single file read, no caching (config edits apply
+ * on the next request, matching the rest of the map).
+ */
+async function readSettingsFileLlmKeys(): Promise<Set<string>> {
+	try {
+		const raw = await readFile(getSettingsPath(), "utf-8");
+		const parsed = yaml.load(raw) as { llm?: Record<string, unknown> } | null | undefined;
+		const llm = parsed && typeof parsed === "object" && parsed.llm;
+		if (!llm || typeof llm !== "object" || Array.isArray(llm)) return new Set();
+		return new Set(Object.keys(llm).map((k) => k.trim()));
+	} catch {
+		return new Set();
+	}
 }
 
 /** API-key presence row. The key lives in env/process only (never settings.yaml) and is masked. */
