@@ -106,3 +106,37 @@ describe("ExecutionOutput with pre-evaluation markers", () => {
 		expect(screen.getByText("Error")).toBeTruthy();
 	});
 });
+
+describe("ExecutionOutput — per-cell verdict reasons", () => {
+	it("renders the reason text in the cell card when the verdict has a non-empty reason", () => {
+		const { container } = renderOutput(PRE_EVAL);
+		const cards = container.querySelectorAll(".cell-card");
+		// Cell 0: same verdict with reason; cell 2: different verdict with reason.
+		expect(cards[0].querySelector(".cell-reason")?.textContent).toContain("same reshape trick");
+		expect(cards[2].querySelector(".cell-reason")?.textContent).toContain("solves via numpy");
+		expect(screen.getByText("same reshape trick")).toBeTruthy();
+		expect(screen.getByText("solves via numpy")).toBeTruthy();
+	});
+
+	it("renders no reason block for a verdict without a reason", () => {
+		const preEval: PreEvalData = {
+			...PRE_EVAL,
+			markers: [
+				{ cellIndex: 0, marker: "same", reason: "" },
+				{ cellIndex: 1, marker: "questionable", reason: "hardcoded result" },
+			],
+		};
+		const { container } = renderOutput(preEval);
+		const cards = container.querySelectorAll(".cell-card");
+		// Empty reason → no .cell-reason block; verdicts with a reason keep theirs.
+		expect(cards[0].querySelector(".cell-reason")).toBeNull();
+		expect(cards[1].querySelector(".cell-reason")?.textContent).toContain("hardcoded result");
+	});
+
+	it("renders no reason blocks at all when there are no markers", () => {
+		const { container } = renderOutput(null);
+		expect(container.querySelectorAll(".cell-reason").length).toBe(0);
+		// Error cells badge (execution truth) but carry no verdict reason.
+		expect(screen.getByText("Error")).toBeTruthy();
+	});
+});
