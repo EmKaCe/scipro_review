@@ -87,7 +87,20 @@ vi.mock("$lib/server/copilot/screening", () => ({
 
 const pdfParseMock = vi.hoisted(() => vi.fn());
 
-vi.mock("pdf-parse/lib/pdf-parse.js", () => ({ default: pdfParseMock }));
+// pdf-parse v2 exports a PDFParse class; mock the class so the caller's
+// `new PDFParse({ data }).getText({ pageJoiner })` resolves through the
+// ergonomic pdfParseMock function (one getText call == one parse).
+vi.mock("pdf-parse", () => ({
+	PDFParse: class {
+		constructor(opts: { data: Uint8Array }) {
+			this.opts = opts;
+		}
+		opts: { data: Uint8Array };
+		async getText(): Promise<{ text: string }> {
+			return pdfParseMock();
+		}
+	},
+}));
 
 // ---------------------------------------------------------------------------
 // Fixtures
