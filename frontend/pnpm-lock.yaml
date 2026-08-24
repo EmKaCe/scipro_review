@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       '@ai-sdk/openai-compatible':
-        specifier: ^3.0.32
+        specifier: ^3.0.34
         version: 3.0.35(zod@4.4.3)
       '@mastra/core':
         specifier: ^1.61.0
