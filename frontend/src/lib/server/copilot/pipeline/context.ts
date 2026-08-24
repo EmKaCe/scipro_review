@@ -11,11 +11,10 @@ import type { Dirent } from "node:fs";
 import path from "node:path";
 
 import * as yaml from "js-yaml";
-// Subpath import (not the package index): pdf-parse@1.1.1's index.js parses a
-// bundled test PDF at require time; lib/pdf-parse.js is the clean entry point.
-// Pure-JS (bundled pdf.js) — works in the Node Docker image, unlike the
-// executor-venv Python that the previous execFileSync approach depended on.
-import pdfParse from "pdf-parse/lib/pdf-parse.js";
+// pdf-parse v2 ships a PDFParse class on the package index (no subpath imports
+// anymore). Pure-JS (bundled pdf.js) — works in the Node Docker image, unlike
+// the executor-venv Python that the previous execFileSync approach depended on.
+import { PDFParse } from "pdf-parse";
 
 import { assertSafeSegment, getDataDir } from "$lib/server/metadata";
 import type { ExecutedCell } from "$lib/server/executor-client";
@@ -296,7 +295,7 @@ export async function loadAssignmentPdfText(assignmentId: string): Promise<strin
 	const extraction = (async (): Promise<string | null> => {
 		try {
 			const data = await readFile(pdfPath);
-			const parsed = await pdfParse(data);
+			const parsed = await new PDFParse({ data }).getText({ pageJoiner: "\n\n" });
 			const text = (parsed.text ?? "").replace(/\n{3,}/g, "\n\n").trim();
 			if (!text) return null;
 			return text.length > ASSIGNMENT_PDF_TEXT_CAP

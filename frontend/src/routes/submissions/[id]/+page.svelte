@@ -231,6 +231,10 @@
 	let gradeResult = $derived<GradeResult | null>(
 		gradingConfig ? calculateGrade(gradingInputs, gradingConfig, totalDeductions) : null,
 	);
+	/** Grading dimension key → display title, for the pre-evaluation results panel. */
+	const dimensionTitles = $derived(
+		Object.fromEntries((gradingConfig?.dimensions ?? []).map((d) => [d.key, d.title])),
+	);
 
 	// -----------------------------------------------------------------------
 	// Data loading
@@ -958,6 +962,7 @@
 					submissionCells={cells}
 					preEval={submission.preEval}
 					onApplyGradeSuggestion={handleApplyPreEval}
+					{dimensionTitles}
 				/>
 
 				<!-- Cohort calibration notice (BUG-002): surface adjusted

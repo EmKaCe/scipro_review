@@ -172,6 +172,20 @@ For day-to-day use, **nearly all configuration happens on one Settings page** (`
 deployment-level env vars and a few read-only code constants live elsewhere: standing up the webapp is
 *not* a six-place exercise.
 
+Everything below is grouped by *purpose* — the same four groups the in-app **Configuration map**
+card uses:
+
+| Group | What it covers | Where you change it | When it applies |
+| --- | --- | --- | --- |
+| **Settings page** | `data/settings.yaml` (Execution & AI), `data/grading_config.yaml` (Grading), appearance (localStorage) | Settings page cards (below) | Saves apply immediately; LLM endpoint/model on the next request |
+| **Assignment editor** | Rubric criteria (`data/criteria/<id>.yaml`), scoring config (`data/scoring/<id>.yaml`), assignment metadata (`data/assignments.yaml`) | Assignment editor (Settings → Assignments) | Next request / page load |
+| **Deployment environment** | Env vars — `ADAPTER`, `PORT`, `ORIGIN`, `DATA_DIR`, executor, LLM fallbacks, `PRE_EVAL_CRITIQUE` | `.env` / environment (tables below) | Restart required |
+| **Read-only constants** | Engineering defaults: concurrency 2, injection threshold 0.7, `TEXTAREA_MIN_CHARS` 20, rich-output caps | Source code (table below) | Rebuild + restart |
+
+> The Settings page's **Configuration map** card reports live values for everything below:
+> settings/assignment rows link to the editor cards that own them; env and code rows are read-only
+> there (env changes need a restart, code constants need a rebuild).
+
 Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`) are edited from the
 Settings page; the tables here are their reference. **Precedence:** a value set in the YAML file wins,
 then the matching environment variable, then the built-in default. Secrets (`KI_CONNECT_API_KEY`) are
@@ -362,15 +376,23 @@ default, `--apply` to write.)
 
 ### Read-only code constants
 
-Engineering defaults a teacher never adjusts: injection threshold 0.7 (`copilot/agent.ts`), KI Connect
-concurrency 2 (`routes/api/submissions/pre-evaluate/+server.ts`), `TEXTAREA_MIN_CHARS` 20
-(`copilot/post-process.ts`).
+Engineering defaults a teacher never adjusts. The in-app Configuration map marks these read-only;
+to change one, edit the source (or the env default) and rebuild + restart. These no longer appear as
+individual rows in the app UI — this table is their home:
+
+| Constant | Value | Where it lives |
+| --- | --- | --- |
+| KI Connect concurrency ceiling | `2` | `src/routes/api/submissions/pre-evaluate/+server.ts` — empirically safe parallel-call cap (do not raise without measuring against KI Connect rate limits) |
+| Prompt-injection threshold | `0.7` | `src/lib/server/copilot/agent.ts` (PromptInjectionDetector) |
+| `TEXTAREA_MIN_CHARS` | `20` | `src/lib/server/copilot/post-process.ts` — minimum textarea length before evidence-fill kicks in |
+| Rich-output caps | `RICH_OUTPUT_MAX_IMAGE_BYTES` 5 MiB / `RICH_OUTPUT_MAX_HTML_CHARS` 200k | `executor/runner.py` — env-driven defaults (set via env / `.env`; listed with the other executor vars above) |
 
 ---
 
 **Rule of thumb:** **app-level** changes (llm/executor/copilot, env, localStorage, in-code) go on the
 Settings page; **assignment-level** changes (criteria, scoring, per-assignment metadata) go in the
-assignment editor. The Settings page shows the full "Configuration map" for reference.
+assignment editor. The Settings page's Configuration map reports the live values of every row in the
+four groups above — read it to see what this deployment is actually running.
 
 ### Agent Configuration
 

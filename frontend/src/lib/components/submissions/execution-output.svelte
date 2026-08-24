@@ -249,6 +249,9 @@
 					</button>
 				{/if}
 			</div>
+			{#if verdict?.reason}
+				<div class="cell-reason">{verdict.reason}</div>
+			{/if}
 			{#if cell.type === "code"}
 				{#if showFixed && fixed}
 					<!-- Loud, always-visible marker: the teacher must never
@@ -404,6 +407,13 @@
 		font-weight: 600;
 	}
 	.cell-type {
+		color: var(--muted-foreground);
+	}
+	/* Pre-evaluation verdict reason — small muted note under the header,
+	   visually subordinate to the code block (no box/border). */
+	.cell-reason {
+		padding: 3px 12px 0;
+		font-size: 11px;
 		color: var(--muted-foreground);
 	}
 	.cell-toggle {

@@ -21,6 +21,7 @@ import * as yaml from "js-yaml";
 import type { Category, CategoryEntry, CriteriaFile, MergedRubric } from "$lib/types/criteria";
 import { parseCategoryKey } from "$lib/types/criteria";
 import { getDataDir } from "./metadata";
+import { loadGradingConfigFile } from "./grading-config-writer";
 
 // ---------------------------------------------------------------------------
 // Loading
@@ -129,6 +130,26 @@ function requireOptionalBoolean(value: unknown, label: string): void {
 }
 
 /**
+ * Validate an optional `dimensions` field (main-point default or sub-point
+ * override). Absent → allowed. Present → must be a non-empty array of
+ * non-empty strings, and (when the grading config loads) every key must be a
+ * known dimension key. Unknown YAML keys remain tolerated elsewhere — only a
+ * PRESENT-but-malformed `dimensions` field is rejected here.
+ */
+function requireOptionalDimensions(value: unknown, label: string): void {
+	if (value === undefined) return;
+	const isNonEmptyStringArray =
+		Array.isArray(value) &&
+		value.length > 0 &&
+		value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+	if (!isNonEmptyStringArray) {
+		throw new CriteriaValidationError(
+			`criteria: ${label} must be a non-empty array of strings`,
+		);
+	}
+}
+
+/**
  * Validate a v2 criteria YAML document (the schema used by
  * data/criteria/*.yaml — see {@link CriteriaFile}).
  *
@@ -141,6 +162,11 @@ function requireOptionalBoolean(value: unknown, label: string): void {
  * - a main-point item lacks a `main_point` string or a `sub_points` array
  * - a sub-point lacks a `text` string or carries a non-boolean
  *   `comment` / `point_deduction`
+ * - a present-but-malformed `dimensions` field (non-array, empty array, or
+ *   non-string entry) on a main point or sub-point
+ * - a `dimensions` key that is not a known grading dimension (checked only
+ *   when data/grading_config.yaml loads; absent or unloadable config SKIPS
+ *   the membership check — the malformed-shape checks above always apply)
  * - a category key is duplicated within the upload itself
  *
  * Duplicate-key detection uses YAML 1.2 (js-yaml default) semantics: the
@@ -151,10 +177,10 @@ function requireOptionalBoolean(value: unknown, label: string): void {
  * @param raw - The YAML document text
  * @param fileName - File name for error messages
  */
-export function validateCriteriaYaml(
+export async function validateCriteriaYaml(
 	raw: string,
 	fileName: string,
-): { fileName: string; categories: Record<string, unknown> } {
+): Promise<{ fileName: string; categories: Record<string, unknown> }> {
 	let parsed: unknown;
 	try {
 		parsed = yaml.load(raw);
@@ -196,6 +222,10 @@ export function validateCriteriaYaml(
 					mainPoint.main_point,
 					`category "${key}".${sentiment}[${i}].main_point`,
 				);
+				requireOptionalDimensions(
+					mainPoint.dimensions,
+					`category "${key}".${sentiment}[${i}].dimensions`,
+				);
 				const subPoints = requireArray(
 					mainPoint.sub_points,
 					`category "${key}".${sentiment}[${i}].sub_points`,
@@ -217,6 +247,69 @@ export function validateCriteriaYaml(
 						subPoint.point_deduction,
 						`category "${key}".${sentiment}[${i}].sub_points[${j}].point_deduction`,
 					);
+					requireOptionalDimensions(
+						subPoint.dimensions,
+						`category "${key}".${sentiment}[${i}].sub_points[${j}].dimensions`,
+					);
+				}
+			}
+		}
+	}
+
+	// Key membership (soft): unknown dimension keys are rejected ONLY when
+	// grading_config.yaml loads. A missing file or an unloadable (corrupt)
+	// config skips the check entirely — a valid rubric must never be blocked
+	// because the global grading config is absent.
+	let knownDimensionKeys: Set<string> | null = null;
+	try {
+		const gradingConfig = await loadGradingConfigFile();
+		if (gradingConfig) {
+			knownDimensionKeys = new Set(gradingConfig.dimensions.map((d) => d.key));
+		}
+	} catch {
+		knownDimensionKeys = null;
+	}
+	if (knownDimensionKeys) {
+		const listDimensions = (value: unknown): readonly string[] =>
+			Array.isArray(value) ? value.filter((e): e is string => typeof e === "string") : [];
+		const seen = new Set<string>();
+		for (const [key, value] of Object.entries(categories)) {
+			const category = requireRecord(value, `category "${key}"`);
+			for (const sentiment of SENTIMENTS) {
+				const mainPoints = requireArray(
+					category[sentiment],
+					`category "${key}".${sentiment}`,
+				);
+				for (const [i, mp] of mainPoints.entries()) {
+					const mainPoint = requireRecord(mp, `category "${key}".${sentiment}[${i}]`);
+					for (const dim of listDimensions(mainPoint.dimensions)) {
+						if (seen.has(`${sentiment}[${i}].${dim}`)) continue;
+						seen.add(`${sentiment}[${i}].${dim}`);
+						if (!knownDimensionKeys.has(dim)) {
+							throw new CriteriaValidationError(
+								`criteria: category "${key}".${sentiment}[${i}].dimensions contains unknown key "${dim}" (known: ${[...knownDimensionKeys].join(", ")})`,
+							);
+						}
+					}
+					const subPoints = requireArray(
+						mainPoint.sub_points,
+						`category "${key}".${sentiment}[${i}].sub_points`,
+					);
+					for (const [j, sp] of subPoints.entries()) {
+						const subPoint = requireRecord(
+							sp,
+							`category "${key}".${sentiment}[${i}].sub_points[${j}]`,
+						);
+						for (const dim of listDimensions(subPoint.dimensions)) {
+							if (seen.has(`${sentiment}[${i}][${j}].${dim}`)) continue;
+							seen.add(`${sentiment}[${i}][${j}].${dim}`);
+							if (!knownDimensionKeys.has(dim)) {
+								throw new CriteriaValidationError(
+									`criteria: category "${key}".${sentiment}[${i}].sub_points[${j}].dimensions contains unknown key "${dim}" (known: ${[...knownDimensionKeys].join(", ")})`,
+								);
+							}
+						}
+					}
 				}
 			}
 		}

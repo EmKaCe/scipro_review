@@ -10,6 +10,7 @@
 	import ChevronUp from "@lucide/svelte/icons/chevron-up";
 	import Plus from "@lucide/svelte/icons/plus";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
+	import X from "@lucide/svelte/icons/x";
 
 	import { Button } from "$lib/components/ui/button/index.js";
 	import {
@@ -19,6 +20,7 @@
 		emptyCategory,
 		emptyMainPoint,
 		emptySubPoint,
+		resolveEditableSubPointDimensions,
 	} from "./criteria-editor-model.js";
 
 	interface Props {
@@ -26,9 +28,118 @@
 		categories: EditableCategory[];
 		/** Report a mutation; the parent replaces its draft with `next`. */
 		onChange: (next: EditableCategory[]) => void;
+		/**
+		 * Fixed grading dimensions (key + title) driving the chip pickers.
+		 * Empty list renders no pickers (the page degrades gracefully when the
+		 * grading config cannot be loaded); stored keys are then shown as
+		 * static informational chips only.
+		 */
+		dimensions?: { key: string; title: string }[];
 	}
 
-	let { categories, onChange }: Props = $props();
+	let { categories, onChange, dimensions = [] }: Props = $props();
+
+	/**
+	 * Sub-point rows where the teacher explicitly opened the override editor.
+	 * Keyed by `${sentiment}:${mainPointIndex}:${subPointIndex}` (rows are
+	 * keyed by index in the #each). A stored override also keeps its editor
+	 * open; clearing an override closes it again.
+	 */
+	let overrideEditing = $state<Record<string, boolean>>({});
+
+	function subPointKey(sentiment: Sentiment, mainPointIndex: number, subPointIndex: number) {
+		return `${sentiment}:${mainPointIndex}:${subPointIndex}`;
+	}
+
+	// -----------------------------------------------------------------------
+	// Dimension chip handlers (immutable updates, same pattern as the inputs)
+	// -----------------------------------------------------------------------
+
+	function setMainPointDimensions(
+		categoryIndex: number,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		nextDimensions: string[],
+	) {
+		const next = [...categories];
+		const mainPoints = [...next[categoryIndex]![sentiment]];
+		mainPoints[mainPointIndex] = { ...mainPoints[mainPointIndex]!, dimensions: nextDimensions };
+		next[categoryIndex] = { ...next[categoryIndex]!, [sentiment]: mainPoints };
+		onChange(next);
+	}
+
+	function toggleMainPointDimension(
+		categoryIndex: number,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		key: string,
+	) {
+		const mp = categories[categoryIndex]![sentiment][mainPointIndex]!;
+		const selected = mp.dimensions.includes(key);
+		setMainPointDimensions(
+			categoryIndex,
+			sentiment,
+			mainPointIndex,
+			selected ? mp.dimensions.filter((k) => k !== key) : [...mp.dimensions, key],
+		);
+	}
+
+	function setSubPointDimensions(
+		categoryIndex: number,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		subPointIndex: number,
+		nextDimensions: string[],
+	) {
+		const next = [...categories];
+		const mainPoints = [...next[categoryIndex]![sentiment]];
+		const subPoints = [...mainPoints[mainPointIndex]!.sub_points];
+		subPoints[subPointIndex] = { ...subPoints[subPointIndex]!, dimensions: nextDimensions };
+		mainPoints[mainPointIndex] = { ...mainPoints[mainPointIndex]!, sub_points: subPoints };
+		next[categoryIndex] = { ...next[categoryIndex]!, [sentiment]: mainPoints };
+		onChange(next);
+	}
+
+	/**
+	 * Toggle a sub-point chip. The toggle works on the RESOLVED set
+	 * (override ?? group ?? []), so opening the override editor and clicking a
+	 * group-inherited chip materializes an override with the remaining keys.
+	 * An empty result closes the editor (an empty override = no override).
+	 */
+	function toggleSubPointDimension(
+		categoryIndex: number,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		subPointIndex: number,
+		key: string,
+	) {
+		const mp = categories[categoryIndex]![sentiment][mainPointIndex]!;
+		const sp = mp.sub_points[subPointIndex]!;
+		const resolved = resolveEditableSubPointDimensions(mp, sp);
+		const selected = resolved.includes(key);
+		const nextOverride = selected ? resolved.filter((k) => k !== key) : [...resolved, key];
+		setSubPointDimensions(
+			categoryIndex,
+			sentiment,
+			mainPointIndex,
+			subPointIndex,
+			nextOverride,
+		);
+		if (nextOverride.length === 0) {
+			overrideEditing[subPointKey(sentiment, mainPointIndex, subPointIndex)] = false;
+		}
+	}
+
+	/** Restore the group default: drop the sub-point override and close its editor. */
+	function clearSubPointOverride(
+		categoryIndex: number,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		subPointIndex: number,
+	) {
+		setSubPointDimensions(categoryIndex, sentiment, mainPointIndex, subPointIndex, []);
+		overrideEditing[subPointKey(sentiment, mainPointIndex, subPointIndex)] = false;
+	}
 
 	// -----------------------------------------------------------------------
 	// Category CRUD
@@ -290,8 +401,49 @@
 								</Button>
 							</div>
 
+							{#if dimensions.length > 0}
+								<div class="dimension-row" aria-label="Group default dimensions">
+									<span
+										class="dimension-label"
+										title="Applied to every sub-point in this group unless a sub-point overrides it"
+										>Group dimensions</span
+									>
+									{#each dimensions as dimension (dimension.key)}
+										<button
+											type="button"
+											class:selected={mainPoint.dimensions.includes(
+												dimension.key,
+											)}
+											class="dimension-chip"
+											aria-pressed={mainPoint.dimensions.includes(
+												dimension.key,
+											)}
+											title={dimension.title}
+											onclick={() =>
+												toggleMainPointDimension(
+													categoryIndex,
+													sentiment,
+													mainPointIndex,
+													dimension.key,
+												)}
+										>
+											{dimension.key}
+										</button>
+									{/each}
+								</div>
+							{/if}
+
 							<div class="sub-points">
 								{#each mainPoint.sub_points as subPoint, subPointIndex (subPointIndex)}
+									{@const resolvedDimensions = resolveEditableSubPointDimensions(
+										mainPoint,
+										subPoint,
+									)}
+									{@const hasOverride = subPoint.dimensions.length > 0}
+									{@const overrideOpen =
+										overrideEditing[
+											subPointKey(sentiment, mainPointIndex, subPointIndex)
+										] ?? false}
 									<div class="sub-point">
 										<input
 											class="input sp-input"
@@ -384,6 +536,78 @@
 											/>
 											Deduction
 										</label>
+										{#if dimensions.length > 0 || hasOverride}
+											<div class="sub-dimension-row">
+												{#if hasOverride}
+													<span class="sub-override-label">Override</span>
+												{/if}
+												{#if hasOverride || overrideOpen}
+													{#each dimensions as dimension (dimension.key)}
+														<button
+															type="button"
+															class:selected={resolvedDimensions.includes(
+																dimension.key,
+															)}
+															class="dimension-chip"
+															aria-pressed={resolvedDimensions.includes(
+																dimension.key,
+															)}
+															title={dimension.title}
+															onclick={() =>
+																toggleSubPointDimension(
+																	categoryIndex,
+																	sentiment,
+																	mainPointIndex,
+																	subPointIndex,
+																	dimension.key,
+																)}
+														>
+															{dimension.key}
+														</button>
+													{/each}
+													{#if hasOverride}
+														<button
+															type="button"
+															class="clear-override"
+															title="Restore the group default dimensions"
+															onclick={() =>
+																clearSubPointOverride(
+																	categoryIndex,
+																	sentiment,
+																	mainPointIndex,
+																	subPointIndex,
+																)}
+														>
+															<X size={10} />
+															Clear override
+														</button>
+													{/if}
+												{:else}
+													<button
+														type="button"
+														class="override-toggle"
+														title="Override the group default dimensions for this sub-point"
+														onclick={() =>
+															(overrideEditing[
+																subPointKey(
+																	sentiment,
+																	mainPointIndex,
+																	subPointIndex,
+																)
+															] = true)}
+													>
+														Override dimensions
+													</button>
+												{/if}
+												{#if resolvedDimensions.length === 0}
+													<span
+														class="no-dimension-chip"
+														title="No grading dimension selected — applies through teacher judgment only."
+														>· no dimension</span
+													>
+												{/if}
+											</div>
+										{/if}
 										<div class="icon-group">
 											<Button
 												type="button"
@@ -570,6 +794,99 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 2px;
+	}
+	.dimension-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		flex-wrap: wrap;
+		margin-left: 10px;
+	}
+	.dimension-label {
+		font-size: 10px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+	.dimension-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 8px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		background: transparent;
+		color: var(--muted-foreground);
+		font-family: var(--font-mono);
+		font-size: 10px;
+		line-height: 1.5;
+		cursor: pointer;
+		transition:
+			background 0.15s,
+			color 0.15s,
+			border-color 0.15s;
+	}
+	.dimension-chip:hover {
+		border-color: color-mix(in oklch, var(--primary) 45%, var(--border));
+		color: var(--fg);
+	}
+	.dimension-chip.selected {
+		background: var(--primary);
+		border-color: var(--primary);
+		color: var(--primary-foreground);
+	}
+	.sub-dimension-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		flex-wrap: wrap;
+		width: 100%;
+		margin-left: 14px;
+	}
+	.sub-override-label {
+		font-size: 10px;
+		font-weight: 500;
+		letter-spacing: 0.06em;
+		text-transform: uppercase;
+		color: var(--primary);
+	}
+	.no-dimension-chip {
+		display: inline-flex;
+		align-items: center;
+		margin-left: 2px;
+		font-size: 10px;
+		color: var(--muted-foreground);
+		white-space: nowrap;
+	}
+	.override-toggle {
+		border: none;
+		background: transparent;
+		padding: 0;
+		font-size: 10.5px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		text-decoration: underline;
+		text-decoration-style: dotted;
+		text-underline-offset: 2px;
+		cursor: pointer;
+	}
+	.override-toggle:hover {
+		color: var(--primary);
+	}
+	.clear-override {
+		display: inline-flex;
+		align-items: center;
+		gap: 3px;
+		border: none;
+		background: transparent;
+		padding: 0;
+		font-size: 10.5px;
+		font-weight: 500;
+		color: var(--muted-foreground);
+		cursor: pointer;
+	}
+	.clear-override:hover {
+		color: var(--destructive);
 	}
 	.editor-actions {
 		display: flex;
