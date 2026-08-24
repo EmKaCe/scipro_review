@@ -149,7 +149,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 	const yamlText = yaml.dump({ categories: body.categories });
 	let validated: { fileName: string; categories: Record<string, unknown> };
 	try {
-		validated = validateCriteriaYaml(yamlText, path.basename(fileName));
+		validated = await validateCriteriaYaml(yamlText, path.basename(fileName));
 	} catch (err) {
 		if (err instanceof CriteriaValidationError) {
 			throw error(400, err.message);
@@ -243,7 +243,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	// Schema validation (throws CriteriaValidationError with a 400 message).
 	let validated: { fileName: string; categories: Record<string, unknown> };
 	try {
-		validated = validateCriteriaYaml(raw, basename);
+		validated = await validateCriteriaYaml(raw, basename);
 	} catch (err) {
 		if (err instanceof CriteriaValidationError) {
 			throw error(400, err.message);

@@ -159,7 +159,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	// document surfaces as a 400 with the validation message (never a silent
 	// save). This is the same schema the PUT/upload save path enforces.
 	try {
-		validateCriteriaYaml(
+		await validateCriteriaYaml(
 			yaml.dump({ categories: categoriesMap }),
 			fileName.split("/").pop() ?? `${id}.yaml`,
 		);
