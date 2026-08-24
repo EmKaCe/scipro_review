@@ -18,6 +18,14 @@ export interface EditableSubPoint {
 	point_deduction: boolean;
 	/** Grading dimensions this sub-point contributes to (sub-point override). */
 	dimensions: string[];
+	/**
+	 * Client-only stable identity for editor-local UI state (e.g. which
+	 * override editor is open). Never serialized — toServerMainPoint builds
+	 * its record explicitly, so this key can never reach the YAML. Assigned
+	 * by emptySubPoint(); sub-points loaded from a file lack it and fall back
+	 * to index-keyed state.
+	 */
+	_id?: string;
 }
 
 export interface EditableMainPoint {
@@ -39,8 +47,17 @@ export interface EditableCategory {
 	negative: EditableMainPoint[];
 }
 
+/** Monotonic id source for editor-created sub-points (client-only `_id`). */
+let nextSubPointId = 1;
+
 export function emptySubPoint(): EditableSubPoint {
-	return { text: "", comment: false, point_deduction: false, dimensions: [] };
+	return {
+		text: "",
+		comment: false,
+		point_deduction: false,
+		dimensions: [],
+		_id: `sp-${nextSubPointId++}`,
+	};
 }
 
 export function emptyMainPoint(): EditableMainPoint {

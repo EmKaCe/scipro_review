@@ -17,6 +17,7 @@
 		SENTIMENTS,
 		type Sentiment,
 		type EditableCategory,
+		type EditableSubPoint,
 		emptyCategory,
 		emptyMainPoint,
 		emptySubPoint,
@@ -49,6 +50,22 @@
 
 	function subPointKey(sentiment: Sentiment, mainPointIndex: number, subPointIndex: number) {
 		return `${sentiment}:${mainPointIndex}:${subPointIndex}`;
+	}
+
+	/**
+	 * Stable identity for editor-local state: prefers the sub-point's
+	 * client-only `_id` (survives insert/remove/reorder) and falls back to the
+	 * index key for file-loaded rows that carry no `_id`.
+	 */
+	function stableSubPointKey(
+		subPoint: EditableSubPoint,
+		sentiment: Sentiment,
+		mainPointIndex: number,
+		subPointIndex: number,
+	) {
+		return subPoint._id
+			? `sp:${subPoint._id}`
+			: subPointKey(sentiment, mainPointIndex, subPointIndex);
 	}
 
 	// -----------------------------------------------------------------------
@@ -126,7 +143,8 @@
 			nextOverride,
 		);
 		if (nextOverride.length === 0) {
-			overrideEditing[subPointKey(sentiment, mainPointIndex, subPointIndex)] = false;
+			overrideEditing[stableSubPointKey(sp, sentiment, mainPointIndex, subPointIndex)] =
+				false;
 		}
 	}
 
@@ -137,8 +155,10 @@
 		mainPointIndex: number,
 		subPointIndex: number,
 	) {
+		const sp =
+			categories[categoryIndex]![sentiment][mainPointIndex]!.sub_points[subPointIndex]!;
 		setSubPointDimensions(categoryIndex, sentiment, mainPointIndex, subPointIndex, []);
-		overrideEditing[subPointKey(sentiment, mainPointIndex, subPointIndex)] = false;
+		overrideEditing[stableSubPointKey(sp, sentiment, mainPointIndex, subPointIndex)] = false;
 	}
 
 	// -----------------------------------------------------------------------
@@ -442,7 +462,12 @@
 									{@const hasOverride = subPoint.dimensions.length > 0}
 									{@const overrideOpen =
 										overrideEditing[
-											subPointKey(sentiment, mainPointIndex, subPointIndex)
+											stableSubPointKey(
+												subPoint,
+												sentiment,
+												mainPointIndex,
+												subPointIndex,
+											)
 										] ?? false}
 									<div class="sub-point">
 										<input
@@ -589,7 +614,8 @@
 														title="Override the group default dimensions for this sub-point"
 														onclick={() =>
 															(overrideEditing[
-																subPointKey(
+																stableSubPointKey(
+																	subPoint,
 																	sentiment,
 																	mainPointIndex,
 																	subPointIndex,

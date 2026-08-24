@@ -160,6 +160,26 @@ describe("config-map module: settings group", () => {
 		expect(row(resp, "llm.model").status).toBe("ok");
 	});
 
+	it("reports ok (not env-fallback) when the file explicitly declares the same value as the env var", async () => {
+		// The file is the source of truth; a file value equal to the env var
+		// is file-owned, NOT an env fallback (the row would keep its value
+		// even if the env var were removed).
+		process.env.KI_CONNECT_BASE_URL = "https://llm.example.test/api/v1";
+		process.env.KI_CONNECT_MODEL = "test-model-7b";
+		await writeDataFile("settings.yaml", SETTINGS_FILE);
+
+		const resp = await getConfigMap();
+
+		const baseUrl = row(resp, "llm.base_url");
+		expect(baseUrl.value).toBe("https://llm.example.test/api/v1");
+		expect(baseUrl.status).toBe("ok");
+		expect(baseUrl.source).toBe("settings.yaml");
+
+		const model = row(resp, "llm.model");
+		expect(model.value).toBe("test-model-7b");
+		expect(model.status).toBe("ok");
+	});
+
 	it("reports the api key row as unset when no key is configured", async () => {
 		const resp = await getConfigMap();
 

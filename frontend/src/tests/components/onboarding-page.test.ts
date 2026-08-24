@@ -317,4 +317,44 @@ describe("onboarding page — in-place LLM setup (B2)", () => {
 		await renderPage();
 		expect(screen.queryByLabelText("KI Connect API key")).toBeNull();
 	});
+
+	it("clears a transient status error once a later refresh succeeds (restore path)", async () => {
+		// Initial status load FAILS → page shows the error state.
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+			}
+			if (String(url).includes("/api/backup") && init?.method === "POST") {
+				return Promise.resolve({ ok: true, json: () => Promise.resolve({ restored: 1 }) });
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+		await renderPage();
+		expect(await screen.findByText(/Could not load setup status/)).toBeTruthy();
+
+		// A successful restore triggers refreshStatus() → status succeeds now.
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve({
+					ok: true,
+					json: () => Promise.resolve(statusBody(DEFAULT_ITEMS)),
+				});
+			}
+			if (String(url).includes("/api/backup") && init?.method === "POST") {
+				return Promise.resolve({ ok: true, json: () => Promise.resolve({ restored: 1 }) });
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+
+		const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
+		expect(fileInput).not.toBeNull();
+		if (!fileInput) return;
+		const file = new File(["zip-bytes"], "backup.zip", { type: "application/zip" });
+		await fireEvent.change(fileInput, { target: { files: [file] } });
+		await fireEvent.click(screen.getByRole("button", { name: /Confirm restore/ }));
+
+		// Error state clears: the checklist renders again.
+		await waitFor(() => expect(screen.getByText(/First-run setup checklist/)).toBeTruthy());
+		expect(screen.queryByText(/Could not load setup status/)).toBeNull();
+	});
 });
