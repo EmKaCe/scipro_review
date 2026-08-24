@@ -19,7 +19,9 @@
 			of a fresh installation before the first assignment exists. On a Docker install the tracked
 			example assignment is seeded automatically from the repo on first boot.
 		</p>
-		<a class="first-run-link" href="{base}/onboarding">Open the setup checklist →</a>
+		<a class="first-run-link" href="{base}/onboarding"
+			>Get started — set up your first assignment or restore a backup →</a
+		>
 		{#if message}
 			<p class="first-run-detail">{message}</p>
 		{/if}
