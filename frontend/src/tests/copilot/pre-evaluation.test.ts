@@ -87,7 +87,20 @@ vi.mock("$lib/server/copilot/screening", () => ({
 
 const pdfParseMock = vi.hoisted(() => vi.fn());
 
-vi.mock("pdf-parse/lib/pdf-parse.js", () => ({ default: pdfParseMock }));
+// pdf-parse v2 exports a PDFParse class; mock the class so the caller's
+// `new PDFParse({ data }).getText({ pageJoiner })` resolves through the
+// ergonomic pdfParseMock function (one getText call == one parse).
+vi.mock("pdf-parse", () => ({
+	PDFParse: class {
+		constructor(opts: { data: Uint8Array }) {
+			this.opts = opts;
+		}
+		opts: { data: Uint8Array };
+		async getText(): Promise<{ text: string }> {
+			return pdfParseMock();
+		}
+	},
+}));
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -602,6 +615,11 @@ let dataDir: string;
 beforeEach(async () => {
 	dataDir = await mkdtemp(path.join(os.tmpdir(), "scipro-preeval-"));
 	process.env.DATA_DIR = dataDir;
+	// Pin the quality-critical phase model: the resolver honors the
+	// PHASE_2_MODEL env override BEFORE the settings-UI model, and the
+	// fixture settings.yaml carries qwen3-30b — the model-routing tests
+	// assert the gpt-oss-120b contract explicitly.
+	process.env.PHASE_2_MODEL = "openai-gpt-oss-120b";
 
 	await writeFile(path.join(dataDir, "assignments.yaml"), ASSIGNMENTS_YAML);
 	await mkdir(path.join(dataDir, "criteria"), { recursive: true });
@@ -662,6 +680,7 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	delete process.env.DATA_DIR;
+	delete process.env.PHASE_2_MODEL;
 	await rm(dataDir, { recursive: true, force: true });
 });
 

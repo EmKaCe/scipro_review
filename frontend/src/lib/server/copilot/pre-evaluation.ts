@@ -74,7 +74,7 @@ import {
 	CRITIQUE_SYSTEM_PROMPT,
 	PHASE2A_SCORING_PROMPT,
 	PHASE3_FEEDBACK_PROMPT,
-	PHASE_2_MODEL,
+	getPhase2Model,
 	modelHintBlock,
 } from "./pipeline/prompts";
 
@@ -552,6 +552,9 @@ export async function preEvaluateSubmission(
 	const settings = await loadSettings();
 	const llmTimeoutMs =
 		settings.llm.timeoutMs > 0 ? settings.llm.timeoutMs : PRE_EVALUATION_LLM_TIMEOUT_MS;
+	// Quality-critical phases (2a scoring, critique, 2b rubric selection)
+	// run on the settings-configured model (PHASE_2_MODEL env override wins).
+	const phase2Model = await getPhase2Model();
 
 	// ── Cell screening (B13): student content is UNTRUSTED ──
 	// Each cell's source + text output is screened by a tiny quick LLM BEFORE
@@ -690,13 +693,13 @@ export async function preEvaluateSubmission(
 						)
 					: null,
 			),
-		).replace("{DOCS_FACTS}", docsFactsBlock) + modelHintBlock(PHASE_2_MODEL),
+		).replace("{DOCS_FACTS}", docsFactsBlock) + modelHintBlock(phase2Model),
 		phase2aUserPrompt,
 		submissionId,
 		assignmentId,
 		"Phase 2a (scoring)",
 		llmTimeoutMs,
-		PHASE_2_MODEL,
+		phase2Model,
 		0.2,
 	);
 
@@ -707,13 +710,13 @@ export async function preEvaluateSubmission(
 	if (CRITIQUE_ENABLED) {
 		try {
 			const critique = await callPhase<ScoringResult>(
-				CRITIQUE_SYSTEM_PROMPT + modelHintBlock(PHASE_2_MODEL),
+				CRITIQUE_SYSTEM_PROMPT + modelHintBlock(phase2Model),
 				JSON.stringify(scoring),
 				submissionId,
 				assignmentId,
 				"Phase 2a critique",
 				llmTimeoutMs,
-				PHASE_2_MODEL,
+				phase2Model,
 				0.2,
 			);
 			if (
@@ -778,7 +781,7 @@ export async function preEvaluateSubmission(
 			llmTimeoutMs,
 			preAnalysis,
 			cells: screenedCells,
-			model: PHASE_2_MODEL,
+			model: phase2Model,
 			temperature: 0.2,
 			autofixBlock,
 		});

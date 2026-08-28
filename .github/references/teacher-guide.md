@@ -31,7 +31,7 @@ Do these in order. Each step maps to one place in the app (or one file).
 | 1 | **Create or import the assignment** | Assignments UI (`/settings/assignments`) → `data/assignments.yaml` | id, title, enabled, grading dimensions |
 | 2 | **Wire the criteria + scoring** | Assignment editor → `data/criteria/<id>.yaml` + `data/scoring/<id>.yaml` | The rubric checklist + scoring config (anchors, evidence, dimension guidance) |
 | 3 | **Configure the LLM provider** | `.env` (start-up) or Settings → Execution & AI (runtime) | Base URL, model id, API key |
-| 4 | **Fetch the offline docs index** *(optional)* | `frontend/scripts/fetch-docs-index.mjs --public` (plain HTTPS, no gh CLI needed) or `build-docs-index.mjs` to rebuild | Grounds API-fact checks; without it, search is BM25-only (see below) |
+| 4 | **Fetch the offline docs index** *(optional — safe to skip)* | One-time host helper, not an app workflow: from the repo root, `frontend/scripts/fetch-docs-index.mjs --public` (plain HTTPS, no gh CLI needed) or `build-docs-index.mjs` to rebuild | Grounds API-fact checks; without it, search is BM25-only (see below). ~680 MB download — defer it until you want grounding |
 | 5 | **Upload the first submission** | Submissions page (`/submissions`) upload bar | Drag-and-drop; classified automatically |
 
 ### Where each one lives
@@ -47,19 +47,25 @@ Do these in order. Each step maps to one place in the app (or one file).
   endpoint** (KI Connect is the default; OpenRouter is a first-class target) —
   set the base URL, the provider-specific **model id**, and the key.
 - **Docs index** — the prebuilt offline index
-  (`<DATA_DIR>/docs-index/`) covers **38,380 chunks across 10 libraries** —
+  (`<DATA_DIR>/docs-index/` — inside the same `data/` tree, gitignored, **not a
+  volume**) covers **38,380 chunks across 10 libraries** —
   numpy, pandas, scipy, scikit-learn, matplotlib and seaborn, plus the Python
   stdlib/builtins/typing and curated integration notes (4096-dim vectors).
-  Fetching it is **optional**: the index loader never throws — if the
-  index is missing or the semantic (vector) leg is unavailable, retrieval
-  **degrades to BM25-only** (exact-name matching) and logs a `loadNote`. That is
-  quieter, not broken.
+  Fetching it is **optional**: the prebuilt index is publicly downloadable
+  (~680 MB release asset) — a bandwidth consideration, not a secret — and the
+  index loader never throws: if the index is missing or the semantic (vector)
+  leg is unavailable, retrieval **degrades to BM25-only** (exact-name matching)
+  and logs a `loadNote`. That is quieter, not broken. Defer it until you want
+  API-fact grounding; nothing in the first run requires it.
 
 > ⚠️ **Localhost-only by design (D4).** The notebook-execution backend
 > (**executor**) is **not hardened sandboxing** — it runs untrusted student
 > notebooks, and keeping it on localhost (the Docker default) is intentional.
 > Do **not** expose it publicly. Treat the whole teacher app as a trusted,
-> single-operator tool on your own machine.
+> single-operator tool on your own machine. The full operational model —
+> loopback-only binding, no auth, `ORIGIN`/CSRF, executor sandbox limits, the
+> residual app-net vector, secret handling — is in
+> [concepts.md § 7 "Security & trust boundaries"](concepts.md).
 
 ---
 

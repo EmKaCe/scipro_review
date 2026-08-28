@@ -36,6 +36,7 @@ import {
 	validateCriteriaYaml,
 } from "$lib/server/criteria";
 import { getDataDir } from "$lib/server/metadata";
+import { parseMultipartFormData } from "$lib/server/form-data";
 import type { CriteriaFile } from "$lib/types/criteria";
 
 /** Safe criteria basenames: letters, digits, underscores, hyphens, .yaml. */
@@ -148,7 +149,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 	const yamlText = yaml.dump({ categories: body.categories });
 	let validated: { fileName: string; categories: Record<string, unknown> };
 	try {
-		validated = validateCriteriaYaml(yamlText, path.basename(fileName));
+		validated = await validateCriteriaYaml(yamlText, path.basename(fileName));
 	} catch (err) {
 		if (err instanceof CriteriaValidationError) {
 			throw error(400, err.message);
@@ -220,12 +221,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 export async function POST(event: RequestEvent): Promise<Response> {
 	const id = event.params.id ?? "";
 
-	let form: FormData;
-	try {
-		form = await event.request.formData();
-	} catch {
-		throw error(400, "Expected a multipart/form-data body");
-	}
+	const form = await parseMultipartFormData(event);
 
 	const file = form.get("file");
 	if (!(file instanceof File)) {
@@ -247,7 +243,7 @@ export async function POST(event: RequestEvent): Promise<Response> {
 	// Schema validation (throws CriteriaValidationError with a 400 message).
 	let validated: { fileName: string; categories: Record<string, unknown> };
 	try {
-		validated = validateCriteriaYaml(raw, basename);
+		validated = await validateCriteriaYaml(raw, basename);
 	} catch (err) {
 		if (err instanceof CriteriaValidationError) {
 			throw error(400, err.message);

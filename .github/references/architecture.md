@@ -192,6 +192,13 @@ flowchart TD
   reference anchors; the old→new pairs are stored as `calibrationAdjustments`
   and surfaced in the UI. Runs only when the assignment has `reference_anchors`
   in its scoring config.
+- **KI Connect transient retries (2026-08-22)** — pre-eval LLM calls do retry
+  transient failures: 5xx responses, timeouts (`AbortError`), and network
+  errors (`fetch` `TypeError`) are retried up to 4 attempts with exponential
+  backoff; 429s retry respecting `Retry-After` when provided (in place since
+  `f5e5ba6`). Other 4xx (auth, bad requests) are **not** retried. The batch
+  concurrency ceiling stays 2 regardless — retries survive transient
+  single-request throttling, they do not license higher parallelism.
 
 ### 3.3 Screening (trust boundary)
 
@@ -264,6 +271,10 @@ flowchart LR
 `executor/` is a FastAPI service that runs student notebooks in a **hardened
 container** (`cap_drop: [ALL]`, `no-new-privileges`, read-only rootfs with a
 `tmpfs` `/tmp`, pids cap). The frontend never executes student code itself.
+**Residual vector (documented):** the executor still shares the Docker bridge
+(`app-net`) with the frontend, so a malicious notebook could attempt to reach
+the frontend's own port — accepted only for the loopback-only deployment model
+(P1, 2026-08-18); revisit if the app is ever exposed beyond localhost.
 
 ```
 executor/

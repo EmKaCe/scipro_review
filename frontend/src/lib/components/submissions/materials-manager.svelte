@@ -6,6 +6,7 @@
 	import Database from "@lucide/svelte/icons/database";
 	import FileText from "@lucide/svelte/icons/file-text";
 	import FolderX from "@lucide/svelte/icons/folder-x";
+	import KeyRound from "@lucide/svelte/icons/key-round";
 	import Loader from "@lucide/svelte/icons/loader";
 	import Trash2 from "@lucide/svelte/icons/trash-2";
 	import Upload from "@lucide/svelte/icons/upload";
@@ -34,12 +35,19 @@
 	let uploadResults = $state<MaterialUploadResult[]>([]);
 	let inputRef: HTMLInputElement | undefined = $state(undefined);
 
-	function kindLabel(kind: MaterialsStatus["files"][number]["kind"]): string {
-		return kind === "material-data" ? "Input data" : "Material";
+	function kindLabelFor(name: string, kind: MaterialsStatus["files"][number]["kind"]): string {
+		if (kind === "material-data") return "Input data";
+		const lower = name.toLowerCase();
+		if (lower === "key.ipynb" || lower.endsWith("_key.ipynb")) return "Key";
+		if (lower.endsWith(".pdf")) return "PDF";
+		return "Material";
 	}
 
-	function kindIcon(kind: MaterialsStatus["files"][number]["kind"]) {
-		return kind === "material-data" ? Database : FileText;
+	function kindIconFor(name: string, kind: MaterialsStatus["files"][number]["kind"]) {
+		if (kind === "material-data") return Database;
+		const lower = name.toLowerCase();
+		if (lower === "key.ipynb" || lower.endsWith("_key.ipynb")) return KeyRound;
+		return FileText;
 	}
 
 	function handlePick() {
@@ -169,7 +177,7 @@
 					{:else}
 						<CircleCheck size={13} class="mm-ok-icon" />
 					{/if}
-					<span class="mm-row-kind">{kindLabel(result.kind)}</span>
+					<span class="mm-row-kind">{kindLabelFor(result.name, result.kind)}</span>
 					<span class="mm-row-name" class:mm-error-name={result.error}>{result.name}</span
 					>
 					{#if result.error}
@@ -193,10 +201,10 @@
 	{:else}
 		<ul class="mm-list">
 			{#each materials.files as file (file.relativePath)}
-				{@const Icon = kindIcon(file.kind)}
+				{@const Icon = kindIconFor(file.name, file.kind)}
 				<li class="mm-row">
 					<Icon size={14} class="mm-row-icon" />
-					<span class="mm-row-kind">{kindLabel(file.kind)}</span>
+					<span class="mm-row-kind">{kindLabelFor(file.name, file.kind)}</span>
 					<span class="mm-row-name">{file.name}</span>
 					<button
 						class="mm-delete"

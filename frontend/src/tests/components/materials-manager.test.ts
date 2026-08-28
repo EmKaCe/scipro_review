@@ -125,7 +125,7 @@ describe("MaterialsManager", () => {
 		await waitFor(() => {
 			expect(screen.getByText("assignment.pdf")).toBeTruthy();
 		});
-		expect(screen.getByText("Material")).toBeTruthy();
+		expect(screen.getByText("PDF")).toBeTruthy();
 		expect(screen.getByRole("button", { name: /Delete/ })).toBeTruthy();
 	});
 
@@ -231,9 +231,10 @@ describe("MaterialsManager", () => {
 		await waitFor(() => {
 			expect(screen.getByText("assignment.pdf")).toBeTruthy();
 			expect(screen.getByText("soil.csv")).toBeTruthy();
-			// List row (key.ipynb) + result row (assignment.pdf) → "Material" x2;
-			// result row (soil.csv) → "Input data" x1.
-			expect(screen.getAllByText("Material")).toHaveLength(2);
+			// List row (key.ipynb) → "Key"; result rows (assignment.pdf,
+			// soil.csv) → "PDF" + "Input data".
+			expect(screen.getAllByText("PDF")).toHaveLength(1);
+			expect(screen.getAllByText("Key")).toHaveLength(1);
 			expect(screen.getAllByText("Input data")).toHaveLength(1);
 		});
 	});

@@ -43,8 +43,23 @@ cp .env.example .env       # then edit ORIGIN and set a KI_CONNECT_API_KEY
 docker compose up -d       # open http://localhost:4174
 ```
 
+The app reads and writes the repo's **tracked `data/` directory directly**
+(both containers bind `./data` to `/app/data`) — no volume, no copy step. The
+clone boots already configured with the example assignment, and criteria you
+author in the app are immediately visible in `git status`. See *Sharing grading
+criteria between teachers* below.
+
 Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
 reaching the app from another machine) — it is required for CSRF-safe file uploads.
+
+**First run:** open `http://localhost:4174/onboarding` — the setup checklist
+walks you through the five steps (assignment, criteria + scoring, LLM provider,
+offline docs index, first pipeline run). The docs-index step has a
+**Download vectors now** button that fetches the prebuilt public index
+(~680 MB, no API key) straight from the web UI; until it exists, copilot
+search degrades to BM25-only. Each item links to the page that completes it,
+and the checklist refreshes when you come back.
+
 From source instead:
 
 ```bash
@@ -140,6 +155,7 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 - **Backup & Restore** — full data-directory backup ZIP download/restore
 - **Troubleshooting** — 403 uploads, executor health, auth failures, timeouts
 - **Deployment** — local, LAN, Tailscale, data persistence, upgrades
+- **Security & Trust Boundaries** — loopback-only binding, no auth (never expose without auth + TLS first), ORIGIN/CSRF, executor sandbox limits and the residual app-net risk
 
 > **New to the codebase?** Read the [Concepts & trust boundaries](.github/references/concepts.md) — the explainable mental model (pipeline, deterministic-vs-LLM, what needs a teacher) with visuals, before the deep dive.  
 > **Teacher?** Read the [Teacher guide](.github/references/teacher-guide.md) — task-oriented setup, pre-evaluation, review, and export.
@@ -155,6 +171,20 @@ For day-to-day use, **nearly all configuration happens on one Settings page** (`
 & AI, Grading, and Appearance. Per-assignment content is edited in the assignment editor. Only
 deployment-level env vars and a few read-only code constants live elsewhere: standing up the webapp is
 *not* a six-place exercise.
+
+Everything below is grouped by *purpose* — the same four groups the in-app **Configuration map**
+card uses:
+
+| Group | What it covers | Where you change it | When it applies |
+| --- | --- | --- | --- |
+| **Settings page** | `data/settings.yaml` (Execution & AI), `data/grading_config.yaml` (Grading), appearance (localStorage) | Settings page cards (below) | Saves apply immediately; LLM endpoint/model on the next request |
+| **Assignment editor** | Rubric criteria (`data/criteria/<id>.yaml`), scoring config (`data/scoring/<id>.yaml`), assignment metadata (`data/assignments.yaml`) | Assignment editor (Settings → Assignments) | Next request / page load |
+| **Deployment environment** | Env vars — `ADAPTER`, `PORT`, `ORIGIN`, `DATA_DIR`, executor, LLM fallbacks, `PRE_EVAL_CRITIQUE` | `.env` / environment (tables below) | Restart required |
+| **Read-only constants** | Engineering defaults: concurrency 2, injection threshold 0.7, `TEXTAREA_MIN_CHARS` 20, rich-output caps | Source code (table below) | Rebuild + restart |
+
+> The Settings page's **Configuration map** card reports live values for everything below:
+> settings/assignment rows link to the editor cards that own them; env and code rows are read-only
+> there (env changes need a restart, code constants need a rebuild).
 
 Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`) are edited from the
 Settings page; the tables here are their reference. **Precedence:** a value set in the YAML file wins,
@@ -174,6 +204,7 @@ Deployment-level. Set in `.env` / the environment **before** starting the server
 | `NODE_ENV` | `production` | Node runtime mode (`production`/`development`). |
 | `PORT` | `4174` | Port the teacher Node server listens on. |
 | `ORIGIN` | `http://localhost:4174` | Canonical origin teachers use to reach the app. Required for CSRF-safe form POSTs (uploads, materials) over plain HTTP — set it to the address you actually use (e.g. `http://192.168.1.10:4174`). |
+| `BODY_SIZE_LIMIT` | `50M` | Max request body (uploads, materials, backups). adapter-node's own default is 512K — too small for notebooks/PDFs; raised to 50M in the Dockerfile and `.env.example`. |
 | `DATA_DIR` | `./data` (Docker: `/app/data`) | Data root for all runtime config and state (settings, assignments, grading config, criteria, submissions, docs index). |
 | `DOCS_INDEX_DIR` | `<DATA_DIR>/docs-index` | Docs-RAG index directory holding `docs-index.json` + `docs-vectors.bin`. |
 | `COMPOSE_PROJECT_NAME` | `svelte-review` | Docker Compose project name (container/volume prefix). |
@@ -295,17 +326,73 @@ Per-assignment content (the app-vs-assignment rule): rubric criteria (`data/crit
 scoring config (anchors, evidence regexes, disallowed libs, dimension guidance —
 `data/scoring/<id>.yaml`), and assignment metadata (`data/assignments.yaml`). Not on the Settings page.
 
+### Sharing grading criteria between teachers
+
+Criteria live in ONE place: the repo's tracked `data/`. The running app binds
+that directory directly — no volume, no copy, no sync step. Both teachers and
+students already consume the same files (the student build bakes `data/` at
+build time).
+
+| In the repo (`data/`) | On the machine only |
+|---|---|
+| ✅ `assignments.yaml` — registry | ❌ `submissions/` — student notebooks, never committed |
+| ✅ `criteria/*.yaml` — rubric | ❌ `materials/` — keys, PDFs, input data |
+| ✅ `scoring/*.yaml` — anchors/evidence | ❌ `copilot/`, `plagiarism/` — runtime trails |
+| ✅ `grading_config.yaml`, `settings.yaml` | ❌ `docs-index/` — 680 MB vector index |
+| | ❌ `.env` — API keys (never even in the repo) |
+
+**Author & share:** write or edit criteria in the app → it is already a change
+in your clone (`git status` shows it) → commit and push with your normal git
+tool (GitHub Desktop / VS Code — one click, no terminal):
+
+```bash
+git add data && git commit -m "criteria: add <assignment>" && git push
+```
+
+**Receive:** `git pull` → the app reads the files per request, so the new
+criteria are live on the next page load. Nothing else to do.
+
+Two honest notes:
+
+- `settings.yaml` (provider/model config) and `enabled:` toggles in the
+  registry are also tracked — a provider swap or an enable/disable will show
+  in `git status`. Review before committing; `git checkout -- data/settings.yaml`
+  reverts machine-only churn.
+- Runtime directories are gitignored, so `git add data` can never sweep
+  submissions or keys into the repo.
+
+**Migrating a pre-2.6 named-volume install** (older compose used a
+`svelte-review-data` volume): copy its contents into the clone once, then run
+the bind-mounted compose:
+
+```bash
+docker run --rm -v svelte-review-data:/src -v "$PWD/data:/dst" alpine sh -c "cp -rn /src/. /dst/"
+docker compose up -d --build
+```
+
+(`frontend/scripts/criteria-export.mjs` / `criteria-import.mjs` remain for
+hand-rolled installs that keep DATA_DIR outside the clone — dry-run by
+default, `--apply` to write.)
+
 ### Read-only code constants
 
-Engineering defaults a teacher never adjusts: injection threshold 0.7 (`copilot/agent.ts`), KI Connect
-concurrency 2 (`routes/api/submissions/pre-evaluate/+server.ts`), `TEXTAREA_MIN_CHARS` 20
-(`copilot/post-process.ts`).
+Engineering defaults a teacher never adjusts. The in-app Configuration map marks these read-only;
+to change one, edit the source (or the env default) and rebuild + restart. These no longer appear as
+individual rows in the app UI — this table is their home:
+
+| Constant | Value | Where it lives |
+| --- | --- | --- |
+| KI Connect concurrency ceiling | `2` | `src/routes/api/submissions/pre-evaluate/+server.ts` — empirically safe parallel-call cap (do not raise without measuring against KI Connect rate limits) |
+| Prompt-injection threshold | `0.7` | `src/lib/server/copilot/agent.ts` (PromptInjectionDetector) |
+| `TEXTAREA_MIN_CHARS` | `20` | `src/lib/server/copilot/post-process.ts` — minimum textarea length before evidence-fill kicks in |
+| Rich-output caps | `RICH_OUTPUT_MAX_IMAGE_BYTES` 5 MiB / `RICH_OUTPUT_MAX_HTML_CHARS` 200k | `executor/runner.py` — env-driven defaults (set via env / `.env`; listed with the other executor vars above) |
 
 ---
 
 **Rule of thumb:** **app-level** changes (llm/executor/copilot, env, localStorage, in-code) go on the
 Settings page; **assignment-level** changes (criteria, scoring, per-assignment metadata) go in the
-assignment editor. The Settings page shows the full "Configuration map" for reference.
+assignment editor. The Settings page's Configuration map reports the live values of every row in the
+four groups above — read it to see what this deployment is actually running.
 
 ### Agent Configuration
 

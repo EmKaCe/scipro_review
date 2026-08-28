@@ -197,6 +197,16 @@
 		return "—";
 	}
 
+	const CONFIDENCE_LABELS: Record<string, string> = {
+		needs_review: "Needs review",
+		review_optional: "Review optional",
+		high_confidence: "High confidence",
+	};
+
+	function confidenceLabel(value: string): string {
+		return CONFIDENCE_LABELS[value] ?? value;
+	}
+
 	// ── Pre-evaluate All ──
 	/** Live run record from the status endpoint (null until first fetch). */
 	let preEvalStatus = $state<PreEvalProgress | null>(null);
@@ -283,6 +293,18 @@
 				}`,
 				5000,
 			);
+			if (summary.failed > 0) {
+				// Surface WHY rows failed without hunting the log panel: one
+				// error toast with per-row reasons (transient LLM errors
+				// are the common case; re-running the batch retries failed
+				// rows because they keep their executed/error status).
+				const reasons = summary.results
+					.filter((r) => !r.ok && r.error)
+					.map((r) => `${r.studentId}: ${r.error}`)
+					.slice(0, 3)
+					.join("\n");
+				addToast("error", `Failed: ${reasons}`, 8000);
+			}
 			// Record the run's tallies so the page's log-panel banner shows
 			// them (BUG-007 — the POST handler is the only writer).
 			setRunSummary("preEval", summary);
@@ -453,6 +475,7 @@
 						/>
 					</th>
 					<th class="col-preeval" role="columnheader"> Pre-Eval </th>
+					<th class="col-confidence" role="columnheader"> Confidence </th>
 					<th
 						class="col-grade"
 						role="columnheader"
@@ -539,6 +562,18 @@
 							{/if}
 						</td>
 						<td class="col-grade cell-bold">{gradeDisplay(sub)}</td>
+						<td class="col-confidence">
+							{#if sub.status === "pre-evaluated" && sub.gradingConfidence}
+								<span
+									class="confidence-chip confidence-{sub.gradingConfidence}"
+									title="Pre-evaluation confidence"
+								>
+									{confidenceLabel(sub.gradingConfidence)}
+								</span>
+							{:else}
+								<span class="confidence-cell-empty">—</span>
+							{/if}
+						</td>
 						<td class="col-actions">
 							<a
 								href="{base}/submissions/{sub.id}"
@@ -596,6 +631,7 @@
 	.table-toolbar {
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
 		gap: 10px;
 		padding: 8px 14px;
 		border-bottom: 1px solid var(--border);
@@ -657,6 +693,8 @@
 		margin-left: auto;
 		display: flex;
 		align-items: center;
+		flex-wrap: wrap;
+		justify-content: flex-end;
 		gap: 8px;
 	}
 	.plagiarism-count-badge {
@@ -737,10 +775,13 @@
 		width: 17%;
 	}
 	.col-preeval {
-		width: 15%;
+		width: 12%;
+	}
+	.col-confidence {
+		width: 130px;
 	}
 	.col-grade {
-		width: 14%;
+		width: 12%;
 	}
 	.col-actions {
 		width: 120px;
@@ -770,6 +811,36 @@
 		font-weight: 500;
 		line-height: 1.4;
 		border: 1px solid transparent;
+	}
+
+	/* ── Confidence chips (Confidence column) ── */
+	.confidence-chip {
+		display: inline-flex;
+		align-items: center;
+		padding: 2px 9px;
+		border-radius: 999px;
+		font-size: 11px;
+		font-weight: 500;
+		line-height: 1.4;
+		white-space: nowrap;
+	}
+	.confidence-needs_review {
+		background: color-mix(in oklch, var(--warning) 14%, transparent);
+		border: 1px solid color-mix(in oklch, var(--warning) 35%, transparent);
+		color: color-mix(in oklch, var(--warning) 75%, var(--foreground));
+	}
+	.confidence-review_optional {
+		background: color-mix(in oklch, var(--muted-foreground) 10%, transparent);
+		border: 1px solid color-mix(in oklch, var(--muted-foreground) 30%, transparent);
+		color: var(--muted-foreground);
+	}
+	.confidence-high_confidence {
+		background: color-mix(in oklch, var(--accent) 12%, transparent);
+		border: 1px solid color-mix(in oklch, var(--accent) 35%, transparent);
+		color: var(--accent);
+	}
+	.confidence-cell-empty {
+		color: var(--muted-foreground);
 	}
 	/* Verified auto-fix affordance (3c.3): points the teacher at the
 	   original↔fixed toggle without hiding the original error summary. */
@@ -922,6 +993,7 @@
 			min-width: 0;
 		}
 		.col-preeval,
+		.col-confidence,
 		.col-grade {
 			display: none;
 		}

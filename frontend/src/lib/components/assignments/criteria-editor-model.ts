@@ -16,11 +16,26 @@ export interface EditableSubPoint {
 	text: string;
 	comment: boolean;
 	point_deduction: boolean;
+	/** Grading dimensions this sub-point contributes to (sub-point override). */
+	dimensions: string[];
+	/**
+	 * Client-only stable identity for editor-local UI state (e.g. which
+	 * override editor is open). Never serialized — toServerMainPoint builds
+	 * its record explicitly, so this key can never reach the YAML. Assigned
+	 * by emptySubPoint(); sub-points loaded from a file lack it and fall back
+	 * to index-keyed state.
+	 */
+	_id?: string;
 }
 
 export interface EditableMainPoint {
 	main_point: string;
 	sub_points: EditableSubPoint[];
+	/**
+	 * Default grading dimensions for all sub-points in this group (inherited
+	 * unless a sub-point carries its own override).
+	 */
+	dimensions: string[];
 }
 
 export interface EditableCategory {
@@ -32,12 +47,21 @@ export interface EditableCategory {
 	negative: EditableMainPoint[];
 }
 
+/** Monotonic id source for editor-created sub-points (client-only `_id`). */
+let nextSubPointId = 1;
+
 export function emptySubPoint(): EditableSubPoint {
-	return { text: "", comment: false, point_deduction: false };
+	return {
+		text: "",
+		comment: false,
+		point_deduction: false,
+		dimensions: [],
+		_id: `sp-${nextSubPointId++}`,
+	};
 }
 
 export function emptyMainPoint(): EditableMainPoint {
-	return { main_point: "", sub_points: [] };
+	return { main_point: "", sub_points: [], dimensions: [] };
 }
 
 /** Next unique "new_category" key (new_category_2, ...) not present in `existing`. */
@@ -62,14 +86,22 @@ export function emptyCategory(existing: string[]): EditableCategory {
 
 function toEditableMainPoint(mp: {
 	main_point?: string;
-	sub_points?: readonly { text?: string; comment?: boolean; point_deduction?: boolean }[];
+	sub_points?: readonly {
+		text?: string;
+		comment?: boolean;
+		point_deduction?: boolean;
+		dimensions?: readonly string[];
+	}[];
+	dimensions?: readonly string[];
 }): EditableMainPoint {
 	return {
 		main_point: mp.main_point ?? "",
+		dimensions: [...(mp.dimensions ?? [])],
 		sub_points: (mp.sub_points ?? []).map((sp) => ({
 			text: sp.text ?? "",
 			comment: sp.comment ?? false,
 			point_deduction: sp.point_deduction ?? false,
+			dimensions: [...(sp.dimensions ?? [])],
 		})),
 	};
 }
@@ -92,10 +124,14 @@ export function fromServerCategories(categories: CriteriaFile["categories"]): Ed
 function toServerMainPoint(mp: EditableMainPoint): Record<string, unknown> {
 	return {
 		main_point: mp.main_point,
+		// dimensions emitted ONLY when non-empty — keeps legacy YAML
+		// byte-stable (an empty array must never appear in the file).
+		...(mp.dimensions.length > 0 ? { dimensions: [...mp.dimensions] } : {}),
 		sub_points: mp.sub_points.map((sp) => {
 			const item: Record<string, unknown> = { text: sp.text };
 			if (sp.comment) item.comment = true;
 			if (sp.point_deduction) item.point_deduction = true;
+			if (sp.dimensions.length > 0) item.dimensions = [...sp.dimensions];
 			return item;
 		}),
 	};
@@ -114,6 +150,26 @@ export function toServerCategories(categories: EditableCategory[]): Record<strin
 		};
 	}
 	return out;
+}
+
+/**
+ * Resolve an editable sub-point's grading dimensions: override ?? group
+ * default ?? []. Override REPLACES, never merges.
+ *
+ * PLAN_PHASE_BY_TOOL mirror rule — keep the two call sites in sync: the
+ * server-side canonical twin lives in types/criteria.ts
+ * (resolveSubPointDimensions); both must implement the same
+ * override ?? group ?? [] semantics.
+ */
+export function resolveEditableSubPointDimensions(
+	mainPoint: EditableMainPoint,
+	subPoint: EditableSubPoint,
+): readonly string[] {
+	return subPoint.dimensions.length > 0
+		? subPoint.dimensions
+		: mainPoint.dimensions.length > 0
+			? mainPoint.dimensions
+			: [];
 }
 
 /** Client-side validation shared by the Visual + YAML editors. */

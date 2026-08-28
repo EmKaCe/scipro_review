@@ -14,6 +14,7 @@ import { error } from "@sveltejs/kit";
 import type { RequestEvent } from "@sveltejs/kit";
 
 import { buildBackupZip, countDataFiles, restoreBackupZip } from "$lib/server/backup-service";
+import { parseMultipartFormData } from "$lib/server/form-data";
 
 /** Download a zip of the whole data directory. */
 export async function GET(): Promise<Response> {
@@ -35,10 +36,7 @@ export async function GET(): Promise<Response> {
 
 /** Restore a backup zip into the data directory (multipart field "file"). */
 export async function POST(event: RequestEvent): Promise<Response> {
-	const formData = await event.request.formData().catch(() => null);
-	if (!formData) {
-		throw error(400, "Expected multipart form data");
-	}
+	const formData = await parseMultipartFormData(event, "Expected multipart form data");
 	const file = formData.get("file");
 	if (!(file instanceof File)) {
 		throw error(400, "Missing 'file' field (a .zip backup)");

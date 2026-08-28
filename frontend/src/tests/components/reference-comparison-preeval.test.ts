@@ -1,11 +1,13 @@
 /**
- * Phase 4c — ReferenceComparison with pre-evaluation data.
+ * Phase 4c — ReferenceComparison as the compact "Pre-evaluation results"
+ * summary.
  *
- * preEval absent / markers null → neutral pending notice (no "Phase 4"
- * wording) plus execution-error rows. markers present → per-cell verdict
- * overview: notebook summary, verdict rows (cell index, marker label,
- * reason) with D2 tones, and the read-only suggested-grade block.
- * "different" is an EXPLAINER tone (neutral), never a flag.
+ * preEval absent / markers null → neutral pending invitation (no "Phase 4"
+ * wording, no red banner). markers present → always-visible header
+ * ("Pre-evaluation results" + status stats + Apply button), notebook
+ * summary, and the suggested-grade grid with dimension TITLES resolved from
+ * `dimensionTitles` (raw key fallback). The per-cell verdict list is GONE —
+ * reasons/errors now render on the cell cards (execution-output.svelte).
  */
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
@@ -34,88 +36,93 @@ const PRE_EVAL: PreEvalData = {
 	evaluatedAt: "2026-08-08T10:00:00Z",
 };
 
+const DIMENSION_TITLES: Record<string, string> = {
+	code_quality: "Code Quality",
+	correctness: "Correctness",
+};
+
 describe("ReferenceComparison without pre-evaluation data", () => {
-	it("shows a neutral pending notice (no Phase 4 wording) when preEval is absent", () => {
+	it("shows the pending invitation copy when preEval is absent (no Phase 4 wording, no Apply button)", () => {
 		render(ReferenceComparison, { props: { submissionCells: CELLS } });
-		expect(screen.getByText(/pre-evaluation has run/i)).toBeTruthy();
+		expect(
+			screen.getByText(
+				"Run pre-evaluation to get a notebook summary, suggested scores, and per-cell notes.",
+			),
+		).toBeTruthy();
 		expect(screen.queryByText(/Phase 4/i)).toBeNull();
+		expect(screen.queryByRole("button", { name: /apply suggested scores/i })).toBeNull();
 	});
 
-	it("keeps the pending notice when preEval.markers is null", () => {
+	it("keeps the pending invitation when preEval.markers is null", () => {
 		render(ReferenceComparison, {
 			props: { submissionCells: CELLS, preEval: { ...PRE_EVAL, markers: null } },
 		});
-		expect(screen.getByText(/pre-evaluation has run/i)).toBeTruthy();
+		expect(
+			screen.getByText(
+				"Run pre-evaluation to get a notebook summary, suggested scores, and per-cell notes.",
+			),
+		).toBeTruthy();
 		expect(screen.queryByText(/cells compared/i)).toBeNull();
-	});
-
-	it("still lists execution errors in the pending state", () => {
-		render(ReferenceComparison, { props: { submissionCells: CELLS } });
-		expect(screen.getByText(/execution failed/i)).toBeTruthy();
+		expect(screen.queryByRole("button", { name: /apply suggested scores/i })).toBeNull();
 	});
 });
 
 describe("ReferenceComparison with pre-evaluation data", () => {
-	it("replaces the pending notice with the notebook summary + verdict rows", () => {
+	it("shows the 'Pre-evaluation results' title, summary and stats (no pending notice)", () => {
 		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval: PRE_EVAL } });
-		expect(screen.queryByText(/pre-evaluation has run/i)).toBeNull();
+		expect(screen.getByText("Pre-evaluation results")).toBeTruthy();
+		expect(screen.queryByText(/run pre-evaluation to get/i)).toBeNull();
 		expect(
 			screen.getByText("Clean, well-commented notebook with a working model."),
 		).toBeTruthy();
-		expect(screen.getByText("Approach matches reference")).toBeTruthy();
-		expect(screen.getByText("Approach differs from reference")).toBeTruthy();
-		expect(screen.getByText("same reshape trick")).toBeTruthy();
-		expect(screen.getByText("solves via numpy")).toBeTruthy();
-		// Execution errors stay visible (cell 1 has no verdict → error row).
-		expect(screen.getByText(/execution failed/i)).toBeTruthy();
-	});
-
-	it("shows the summary stats and the read-only suggested-grade block", () => {
-		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval: PRE_EVAL } });
 		expect(screen.getByText("2 cells compared")).toBeTruthy();
 		expect(screen.getByText("1 error")).toBeTruthy();
+	});
+
+	it("renders the suggested-grade grid with RESOLVED dimension titles from dimensionTitles", () => {
+		render(ReferenceComparison, {
+			props: { submissionCells: CELLS, preEval: PRE_EVAL, dimensionTitles: DIMENSION_TITLES },
+		});
 		expect(screen.getByText("Suggested grade")).toBeTruthy();
-		expect(screen.getByText("code_quality")).toBeTruthy();
+		expect(screen.getByText("Code Quality")).toBeTruthy();
+		expect(screen.getByText("Correctness")).toBeTruthy();
+		// Raw keys must NOT appear when a title is provided.
+		expect(screen.queryByText("code_quality")).toBeNull();
+		expect(screen.queryByText("correctness")).toBeNull();
 		expect(screen.getByText("8")).toBeTruthy();
+		expect(screen.getByText("7")).toBeTruthy();
 		expect(screen.getByText("Solid overall, minor style issues.")).toBeTruthy();
 	});
 
-	it("renders 'different' as a neutral explainer row, never as a flagged row", () => {
-		const { container } = render(ReferenceComparison, {
-			props: { submissionCells: CELLS, preEval: PRE_EVAL },
+	it("falls back to the raw dimension key when no title is in the map", () => {
+		render(ReferenceComparison, {
+			props: {
+				submissionCells: CELLS,
+				preEval: PRE_EVAL,
+				dimensionTitles: { code_quality: "Code Quality" }, // correctness has no title
+			},
 		});
-		// 2 verdict rows + 1 error row (cell 1 has no verdict).
-		expect(container.querySelectorAll(".ref-row").length).toBe(3);
-		// No questionable verdicts here → no warning-tinted rows; only the
-		// error row carries a tint. "different" stays neutral by default.
-		expect(container.querySelectorAll(".row-diff").length).toBe(0);
-		expect(container.querySelectorAll(".row-error").length).toBe(1);
+		expect(screen.getByText("Code Quality")).toBeTruthy();
+		expect(screen.getByText("correctness")).toBeTruthy();
 	});
 
-	it("renders questionable verdicts with the amber (warning) tone", () => {
-		const preEval: PreEvalData = {
-			...PRE_EVAL,
-			markers: [{ cellIndex: 1, marker: "questionable", reason: "hardcoded result" }],
-		};
-		const { container } = render(ReferenceComparison, {
-			props: { submissionCells: CELLS, preEval },
-		});
-		expect(screen.getByText("Approach is questionable")).toBeTruthy();
-		expect(screen.getByText("hardcoded result")).toBeTruthy();
-		// The error cell now has a verdict → its row is the amber verdict,
-		// so no separate error row is rendered for it.
-		expect(container.querySelectorAll(".row-diff").length).toBe(1);
-		expect(container.querySelectorAll(".row-error").length).toBe(0);
+	it("renders NO verdict-list rows — reasons now live on the cell cards", () => {
+		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval: PRE_EVAL } });
+		expect(screen.queryByText("same reshape trick")).toBeNull();
+		expect(screen.queryByText("solves via numpy")).toBeNull();
+		expect(screen.queryByText("Approach matches reference")).toBeNull();
+		expect(screen.queryByText("Approach differs from reference")).toBeNull();
+		expect(screen.queryByText(/execution failed/i)).toBeNull();
 	});
 });
 
-describe("ReferenceComparison — Apply suggested scores (Task B)", () => {
-	it("shows the apply button when gradeSuggestion.dimensions has entries", () => {
+describe("ReferenceComparison — Apply suggested scores", () => {
+	it("shows the Apply button in the header when gradeSuggestion.dimensions has entries", () => {
 		render(ReferenceComparison, { props: { submissionCells: CELLS, preEval: PRE_EVAL } });
 		expect(screen.getByRole("button", { name: /apply suggested scores/i })).toBeTruthy();
 	});
 
-	it("hides the apply button when there are no suggested dimensions", () => {
+	it("hides the Apply button when there are no suggested dimensions", () => {
 		const preEval: PreEvalData = {
 			...PRE_EVAL,
 			gradeSuggestion: { dimensions: {}, justification: "" },
@@ -124,7 +131,7 @@ describe("ReferenceComparison — Apply suggested scores (Task B)", () => {
 		expect(screen.queryByRole("button", { name: /apply suggested scores/i })).toBeNull();
 	});
 
-	it("emits the full pre-evaluation envelope when the apply button is clicked", async () => {
+	it("emits the full pre-evaluation envelope when the Apply button is clicked", async () => {
 		let emitted: PreEvalData | undefined;
 		render(ReferenceComparison, {
 			props: {

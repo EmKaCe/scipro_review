@@ -40,6 +40,8 @@
 
 	// Measured viewport position of the tooltip (null until first measure).
 	let pos = $state<{ top: number; left: number } | null>(null);
+	/** The rendered tooltip element — used to clamp against the viewport. */
+	let contentEl: HTMLDivElement | undefined = $state();
 
 	function measure(): void {
 		const trigger = document.getElementById(root.triggerId);
@@ -65,6 +67,20 @@
 		pos = { top, left };
 	}
 
+	// Keep the tooltip inside the viewport: the transform centers it on the
+	// trigger, so a wide tooltip near an edge would overflow. Clamp the
+	// anchor once the content width is known (8px breathing room).
+	$effect(() => {
+		if (!root.open || !pos || !contentEl) return;
+		const width = contentEl.offsetWidth;
+		const half = width / 2;
+		const minLeft = 8 + half;
+		const maxLeft = window.innerWidth - 8 - half;
+		if (pos.left < minLeft || pos.left > maxLeft) {
+			pos = { ...pos, left: Math.min(Math.max(pos.left, minLeft), maxLeft) };
+		}
+	});
+
 	// Measure on open and keep the tooltip glued to the trigger while open.
 	$effect(() => {
 		if (!root.open) return;
@@ -82,6 +98,7 @@
 {#if root.open && pos}
 	<div
 		{...restProps}
+		bind:this={contentEl}
 		id={root.contentId}
 		data-testid={testId}
 		role="tooltip"

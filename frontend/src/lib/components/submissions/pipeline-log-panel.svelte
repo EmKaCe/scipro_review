@@ -14,6 +14,7 @@
 	import Search from "@lucide/svelte/icons/search";
 	import X from "@lucide/svelte/icons/x";
 	import Copy from "@lucide/svelte/icons/copy";
+	import Download from "@lucide/svelte/icons/download";
 	import Check from "@lucide/svelte/icons/check";
 	import Sparkles from "@lucide/svelte/icons/sparkles";
 	import CheckCircle2 from "@lucide/svelte/icons/circle-check";
@@ -134,6 +135,7 @@
 			hour: "2-digit",
 			minute: "2-digit",
 			second: "2-digit",
+			hour12: false,
 		});
 	}
 
@@ -179,6 +181,26 @@
 		copied = true;
 		if (copyResetTimer) clearTimeout(copyResetTimer);
 		copyResetTimer = setTimeout(() => (copied = false), 1500);
+	}
+
+	/** Download the visible entries as a .log file (troubleshooting attach). */
+	function downloadVisibleLog(): void {
+		const lines = filteredEntries.map(
+			(e) =>
+				`[${formatTime(e.ts)}] [${e.source === "pre-eval" ? "PRE-EVAL" : "EXEC"}] [${e.level}] ${
+					e.message
+				}`,
+		);
+		const text = lines.join("\n");
+		const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement("a");
+		a.href = url;
+		a.download = `scipro-pipeline-log-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, "-")}.log`;
+		document.body.appendChild(a);
+		a.click();
+		a.remove();
+		URL.revokeObjectURL(url);
 	}
 
 	function escapeHtml(value: string): string {
@@ -392,6 +414,18 @@
 							{/if}
 						</span>
 						{copied ? "Copied" : "Copy"}
+					</button>
+					<button
+						class="pipeline-log-tool"
+						type="button"
+						onclick={downloadVisibleLog}
+						disabled={filteredEntries.length === 0}
+						title="Download the visible entries as a .log file"
+					>
+						<span class="pipeline-log-tool-icon">
+							<Download size={12} />
+						</span>
+						Download
 					</button>
 					<button
 						class="pipeline-log-tool"
@@ -864,6 +898,9 @@
 	.log-time {
 		color: var(--muted-foreground);
 		font-variant-numeric: tabular-nums;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	.log-source {
 		font-size: 9px;

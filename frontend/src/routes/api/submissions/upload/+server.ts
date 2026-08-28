@@ -34,6 +34,7 @@ import {
 } from "$lib/server/file-service";
 import { getDataDir, upsertSubmission } from "$lib/server/metadata";
 import { clearResult } from "$lib/server/results-store";
+import { parseMultipartFormData } from "$lib/server/form-data";
 import type { SubmissionUploadResult } from "$lib/services/submissions-api";
 
 const VALID_KINDS: ReadonlySet<string> = new Set<UploadKind>([
@@ -43,12 +44,7 @@ const VALID_KINDS: ReadonlySet<string> = new Set<UploadKind>([
 ]);
 
 export async function POST(event: RequestEvent): Promise<Response> {
-	let form: FormData;
-	try {
-		form = await event.request.formData();
-	} catch {
-		throw error(400, "Expected multipart/form-data body");
-	}
+	const form = await parseMultipartFormData(event, "Expected multipart/form-data body");
 
 	const assignmentId = String(form.get("assignmentId") ?? "").trim();
 	if (!assignmentId) {

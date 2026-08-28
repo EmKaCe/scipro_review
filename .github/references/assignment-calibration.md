@@ -26,8 +26,9 @@ works at every layer without any of them, but quality comes from filling them.
 Soil contamination reached gate-parity through this loop, repeated:
 
 1. **Run the real pipeline on 2-3 submissions** — small-batch live runner (a temp
-   vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the Docker volume,
-   repo-root `.env` loaded, `preEvaluateSubmission(...)`, delete the file after).
+   vitest spec under `frontend/src/tests/copilot/`, `DATA_DIR` = the clone's
+   `data/` directory (bind-mounted into both containers), repo-root `.env`
+   loaded, `preEvaluateSubmission(...)`, delete the file after).
 2. **Compare dimension scores and rubric selections against a reference grading**
    for those submissions. Tolerance: ±0.5 per dimension.
 3. **Tune the scoring config**: evidence regexes (`evidence_patterns`) and the
@@ -84,10 +85,12 @@ in the calibration loop (this is how the soil `sklearn` false-flag bug happened)
 
 ## 6. Pitfalls
 
-- **Volume staleness**: the Docker volume (`/var/lib/docker/volumes/svelte-review-data/_data`)
-  keeps its own copies of `assignments.yaml`, `criteria/*.yaml`, `scoring/*.yaml`,
-  and the docs index. Sync before ANY live run (backup first: `cp -r` the volume
-  config dirs). A lagging volume silently falls back to generic semantics.
+- **Config drift (legacy)**: pre-2.6 installs used a named volume
+  (`svelte-review-data`) whose copies of `assignments.yaml`, `criteria/*.yaml`,
+  `scoring/*.yaml`, and the docs index could lag the repo and silently fall
+  back to generic semantics. The 2.6 compose binds `./data` directly — migrate
+  old volumes (README "Migrating a pre-2.6 named-volume install"), and never
+  keep a second copy of the config.
 - **Compile gate**: every `pattern` in the scoring config must compile
   (`new RegExp(p, 'i')`) — a bad regex surfaces as a 400 / failed test, never
   silent degradation.

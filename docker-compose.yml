@@ -11,8 +11,15 @@
 #   frontend   — SvelteKit Node server (adapter-node)   :4174  (teacher accesses this)
 #   executor   — Python FastAPI notebook executor       :8766  (internal only)
 #
-# Shared named volume:
-#   data       — Persisted at /app/data/ in both containers
+# Shared data directory (single source tree):
+#   The repo's tracked data/ (assignments.yaml, criteria/, scoring/,
+#   grading_config.yaml, settings.yaml) is THE store — both containers bind
+#   ./data to /app/data and read/write it directly. No named volume, no
+#   copy: criteria authored in the app are already in your git tree (git
+#   status shows them; commit/share with your git tool). Gitignored runtime
+#   state (submissions/, materials/, copilot/, plagiarism/, docs-index/)
+#   lives in the same tree but is never committed. The dev overlay
+#   (docker-compose.dev.yml) uses the identical mount.
 # =============================================================================
 
 name: svelte-review
@@ -33,7 +40,8 @@ services:
       # "4174:4174" (and set ORIGIN accordingly).
       - "127.0.0.1:4174:4174"
     volumes:
-      - data:/app/data
+      # Single source tree — the repo's tracked data/ is the app's data dir.
+      - ./data:/app/data
     environment:
       - ADAPTER=node
       - PORT=4174
@@ -86,11 +94,11 @@ services:
     expose:
       - "8766"
     volumes:
-      - data:/app/data
+      - ./data:/app/data
     # P1 executor hardening (2026-08-18): student notebooks are untrusted
     # code. The executor runs with NO Linux capabilities, no new privileges,
     # a pids cap (fork bombs), and a read-only rootfs (only /tmp and the
-    # data volume are writable). Student code needs no network — the only
+    # data bind mount are writable). Student code needs no network — the only
     # outbound call in the executor's own code is the KI Connect auto-fix
     # path (executor/ki_connect.py), which is a server-side feature, not a
     # student-notebook capability. Residual vector (documented): the
@@ -133,11 +141,6 @@ services:
         max-file: "3"
     networks:
       - app-net
-
-# ── Persistent Volumes ──────────────────────────────────────────────────────
-volumes:
-  data:
-    name: svelte-review-data
 
 # ── Network ──────────────────────────────────────────────────────────────────
 networks:

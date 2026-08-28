@@ -9,10 +9,104 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.6.0] - 2026-08-24
+
+### Added
+
+- **Live configuration map** (settings): `GET /api/config/map` aggregates the
+  running server's configuration from the real loaders (settings.yaml,
+  grading_config.yaml, assignments.yaml, env, code constants) — the Settings
+  "Configuration map" card now reports live values with source, edit
+  affordance, and reload semantics per row; file-backed rows deep-link to
+  their owning editor cards; env rows show "restart to apply" honestly; the
+  API-key row reports masked presence only (never read back).
+- **Two-path onboarding**: a "Restore a backup from another machine" card
+  (two-click confirm, 200 MB cap, one-click download of the current backup)
+  plus in-place LLM setup on the checklist — write-only API-key field and a
+  model picker with recommendation badges ("Recommended" for the
+  pipeline-tuned grading model, "Fast — good for validation" for cheap
+  models, gated on the instance's live model list). Dashboard first-run
+  callout invites "set up your first assignment or restore a backup".
+- **"Pre-evaluation results" redesign**: per-cell verdict reasons now render
+  inside the cell cards next to the code; the old collapsed "Reference
+  Comparison" bar is a compact always-visible summary (notebook summary +
+  suggested grade with grading-config dimension titles + Apply in the
+  header); pending state is an invitation to run pre-evaluation.
+- **Dimension-attributed criteria**: optional `dimensions` on main-point
+  groups (default) and sub-points (override, replace-never-merge) with a
+  shared resolver; soft validation (absent allowed, malformed/unknown keys
+  rejected with the known set); the criteria editor gains subtle dimension
+  chip controls and a quiet "no dimension" indicator; preview shows resolved
+  chips.
+- **Turn-based "Draft with AI"** for criteria: phased pipeline (grounding →
+  category planning → per-category turns → deterministic merge → consistency
+  pass with surfaced coverage notes → validation gate with retry, max 3).
+  Grounds on assignment PDF + key notebook + input-data list + the fixed
+  dimension contract, so it no longer requires an existing own rubric
+  (chicken-and-egg removed). Never writes — the teacher reviews and saves.
+- Dashboard **first-run state**: when `assignments.yaml` is absent the
+  dashboard shows an onboarding callout pointing at the setup checklist
+  instead of the red misconfiguration banner; `GET /api/assignments` returns a
+  machine-readable `code: "assignments-missing"` to drive it.
+- **Single-source criteria sharing** (2.6 deployment model): compose binds the
+  repo's tracked `data/` directly into `/app/data` in both containers — no
+  named volume, no seed, no sync step. Criteria authored in the app are
+  immediately changes in the git tree; `git pull` makes shared criteria live
+  on the next page load. Gitignored runtime state (submissions, materials,
+  copilot, plagiarism, the ~680 MB docs index) lives in the same tree but is
+  never committed; `data/docs-index/` was added to `.gitignore`, and the
+  student build's `../data` copy now strips runtime dirs. Migration for older
+  named-volume installs is documented in the README (the
+  `criteria-export`/`criteria-import` scripts remain as host/migration
+  helpers, no longer part of the Docker workflow).
+
+### Changed
+
+- **Dependency bumps (Dependabot)**: dev-tools group (svelte 5.56.10,
+  vite 8.2.2, vitest 4.1.11, @sveltejs/kit 2.70.3, lucide 1.33, svelte-check,
+  typescript-eslint, eslint, globals, @playwright/test, @types/node,
+  @sveltejs/vite-plugin-svelte), @mastra/core 1.61.0,
+  @ai-sdk/openai-compatible 3.0.34, and **pdf-parse 1.1.1 → 2.4.5** (migrated
+  to the v2 `PDFParse` class API; the old `lib/pdf-parse.js` subpath import
+  and its ambient declaration are gone).
+- README Configuration section: purpose-group table, the code-constant
+  inventory the UI no longer shows, and a pointer to the in-app live map.
+
+### Fixed
+
+- **Uploads over 512K failed with a misleading `400 "Expected a
+  multipart/form-data body"`.** SvelteKit's adapter-node enforces
+  `BODY_SIZE_LIMIT` (default 512K) by erroring the request stream mid-read;
+  the per-route `catch` turned that into the generic multipart error, so
+  real notebooks, materials PDFs, and backups (routinely > 512K) could not
+  be uploaded. `BODY_SIZE_LIMIT` is now 50M in the Dockerfile,
+  `.env.example`, and `start:teacher`, and all multipart routes (materials,
+  submissions/upload, criteria upload, backup restore) route through a
+  shared `parseMultipartFormData` that rethrows the body-limit rejection as
+  a genuine 413 with the real message (new unit tests).
+- **Intermittent pre-eval failures:** KI Connect retried only 429 — a
+  transient upstream 5xx, request timeout, or network blip failed the whole
+  row immediately. Transient classes now get bounded retries with backoff
+  (429 rate-limits always retried with backoff + `Retry-After`; other 4xx
+  client errors are never retried), and after a batch the dashboard toasts
+  the per-row failure reasons (previously reasons lived only in the
+  pipeline log).
+- **Material upload panel** labeled every non-data file "Material" — key
+  notebooks now show **Key** (with a key icon) and PDFs show **PDF**; the
+  detection was always correct (`hasKey`), only the row label was wrong.
+- **Submissions toolbar** (Plagiarism / Pre-evaluate All / Manage
+  Assignments / Backup) was clipped by the table container at narrow
+  widths — the toolbar and action group now wrap instead of overflowing.
+- **Pipeline log timestamps** wrapped on locales with AM/PM and could line-
+  break inside the fixed-width time column — now forced 24-hour format with
+  no-wrap + ellipsis.
+
 ### Docs
 
 - Removed the closed monolith-split ADR (decision is stable; git history keeps
   it) and its pointers; corrected the README's CI and Dependabot claims.
+- README Configuration section refresh (purpose-group table, code constants,
+  live-map pointer).
 
 ## [2.5.1] - 2026-08-21
 

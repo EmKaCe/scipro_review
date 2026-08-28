@@ -152,7 +152,42 @@ reload); it may bind on the LAN since it's developer-only.
 
 ---
 
-## 7. Gotchas a new maintainer should know
+## 7. Security & trust boundaries (operational)
+
+The pipeline trust table above answers "what can I trust automatically?" This
+section answers the *operational* question: **what does the app assume about
+the network it runs on?** The honest answer is: very little.
+
+- **Loopback-only binding, no authentication.** The teacher app publishes
+  `127.0.0.1:4174` only and has **no auth or access control** — the port *is*
+  the permission. Anyone who can reach it can read every submission and grade.
+  The loopback model protects exactly one machine: the one the app runs on.
+- **Never expose publicly without auth + TLS.** LAN or Internet exposure of the
+  unauthenticated app exposes all grading data to whoever can reach the port.
+  If you must widen the bind, add authentication and TLS **first**, then change
+  the port binding in `docker-compose.yml` and set `ORIGIN` to the address
+  teachers actually use — a mismatch makes adapter-node's CSRF guard reject
+  uploads (form POSTs) with a `403`.
+- **Executor sandbox limits.** The executor runs student notebooks with no
+  Linux capabilities (`cap_drop: ALL`), `no-new-privileges`, a read-only
+  rootfs, a `tmpfs` `/tmp`, and a pids cap. **It is not hardened sandboxing.**
+  Residual vector: the executor still shares the Docker bridge (`app-net`)
+  with the frontend, so malicious notebook code could attempt to reach the
+  app's own port — accepted only because the whole stack is loopback-only.
+- **Notebook content is untrusted.** Cell text is screened before any prompt
+  (instruction-smuggling guard); on a hit, cells are stripped from the prompt
+  and the row flags `needs_review`. The guard fails open.
+- **Secrets.** API keys live only in `.env` (or runtime Settings) — never in
+  `data/settings.yaml`, never committed. Runtime state
+  (`submissions/`, `copilot/`, `plagiarism/`, `materials/`, `docs-index/`) is
+  gitignored by design.
+- **The public docs-index release (~680 MB)** is a bandwidth consideration,
+  not a secret; the prebuilt index lands in `data/docs-index/` (gitignored)
+  via a one-time fetch.
+
+---
+
+## 8. Gotchas a new maintainer should know
 
 - **Never commit** runtime state: `data/submissions/`, `data/plagiarism/`,
   `data/copilot/`, `data/materials/`, `grading-output/`, or `.env`. Real
@@ -160,10 +195,10 @@ reload); it may bind on the LAN since it's developer-only.
   reintroduce it.**
 - **Vitest narrowing is misleading:** `pnpm test -- <file>` runs the WHOLE
   suite (vitest ignores the positional filter). Use `pnpm vitest run <file>`.
-- **The Docker volume** (`svelte-review-data`) holds its own copy of the
-  config (`assignments.yaml`, `criteria/*.yaml`, `scoring/*.yaml`) and can lag
-  the repo. Before a pre-eval run against the volume, diff volume vs repo and
-  sync — back up first.
+- **One data store since 2.6**: compose binds the repo's `data/` directly into
+  `/app/data` — no named volume, no copy, no drift. Installations migrated from
+  the old `svelte-review-data` volume (see README) should make sure no second
+  copy of the config lags behind the repo.
 - **KI Connect concurrency ceiling is 2.** Do not raise it without measuring
   against the API's rate limits (4 workers triggered sustained 429s).
 - **`hermes verify`** is a Hermes convenience wrapper. The underlying recipe is
@@ -173,7 +208,7 @@ reload); it may bind on the LAN since it's developer-only.
 
 ---
 
-## 8. Where to go next
+## 9. Where to go next
 
 | You want to… | Read |
 | --- | --- |

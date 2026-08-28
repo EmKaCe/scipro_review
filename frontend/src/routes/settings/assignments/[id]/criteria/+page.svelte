@@ -18,6 +18,7 @@
 	import { buttonVariants } from "$lib/components/ui/button/button-variants.js";
 	import { cn } from "$lib/utils.js";
 	import { getCriteria } from "$lib/services/submissions-api.js";
+	import { getGradingConfig } from "$lib/services/grading-config.js";
 	import { headerConfig } from "$lib/stores/header.svelte.js";
 	import type { CriteriaFile } from "$lib/types/criteria.js";
 
@@ -44,6 +45,12 @@
 	let isLoading = $state(true);
 	let loadError = $state<string | null>(null);
 	let initialCriteria = $state<CriteriaFile | null>(null);
+	/**
+	 * Fixed grading dimensions (key + title) for the editor's chip pickers.
+	 * Loaded alongside the criteria; a grading-config failure degrades to []
+	 * (the editor renders without dimension pickers rather than breaking).
+	 */
+	let gradingDimensions = $state<{ key: string; title: string }[]>([]);
 
 	async function load() {
 		isLoading = true;
@@ -57,6 +64,26 @@
 			isLoading = false;
 		}
 	}
+
+	// Dimensions are best-effort: never block the criteria UI on them.
+	$effect(() => {
+		let cancelled = false;
+		getGradingConfig()
+			.then((config) => {
+				if (!cancelled) {
+					gradingDimensions = config.dimensions.map((d) => ({
+						key: d.key,
+						title: d.title,
+					}));
+				}
+			})
+			.catch(() => {
+				// Keep [] — the editor renders without dimension pickers.
+			});
+		return () => {
+			cancelled = true;
+		};
+	});
 
 	onMount(load);
 </script>
@@ -90,7 +117,11 @@
 			</Button>
 		</div>
 	{:else}
-		<CriteriaEditorTabs {assignmentId} initial={initialCriteria} />
+		<CriteriaEditorTabs
+			{assignmentId}
+			initial={initialCriteria}
+			dimensions={gradingDimensions}
+		/>
 	{/if}
 </div>
 

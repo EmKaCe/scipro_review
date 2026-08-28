@@ -474,15 +474,21 @@ export class KiConnectClient {
 					}
 					throw new RateLimitedError(lastRateLimitMs);
 				}
-				if (resp.status >= 400 && resp.status < 500) {
-					const detail = await resp.text().catch(() => "");
-					throw new Error(`KI Connect returned ${resp.status}: ${detail.slice(0, 500)}`);
-				}
 				if (resp.status >= 500) {
+					// Upstream 5xx are transient (gateway hiccups, load balancer
+					// errors) — retry with short backoff before failing the row.
 					const detail = await resp.text().catch(() => "");
+					if (attempt < MAX_ATTEMPTS - 1) {
+						await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+						continue;
+					}
 					throw new Error(
 						`KI Connect server error ${resp.status}: ${detail.slice(0, 500)}`,
 					);
+				}
+				if (resp.status >= 400 && resp.status < 500) {
+					const detail = await resp.text().catch(() => "");
+					throw new Error(`KI Connect returned ${resp.status}: ${detail.slice(0, 500)}`);
 				}
 
 				const data = (await resp.json()) as {
@@ -497,6 +503,18 @@ export class KiConnectClient {
 			} catch (err) {
 				if (err instanceof RateLimitedError) {
 					throw err; // exhausted retries — let the caller decide
+				}
+				// Transient classes get bounded retries: timeouts (AbortError)
+				// and network failures (fetch TypeError). HTTP errors were
+				// already handled/typed above and are NOT retried — a 4xx
+				// would only hit the same wall again, a 5xx was retried in
+				// the status branch.
+				const isTransient =
+					(err instanceof Error && err.name === "AbortError") ||
+					(err instanceof Error && err.name === "TypeError");
+				if (isTransient && attempt < MAX_ATTEMPTS - 1) {
+					await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+					continue;
 				}
 				if (err instanceof Error && err.name === "AbortError") {
 					throw new Error("KI Connect request timed out", { cause: err });

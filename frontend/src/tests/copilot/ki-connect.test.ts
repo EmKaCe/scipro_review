@@ -109,13 +109,32 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 	});
 
 	it("throws with the HTTP status when the retry request itself fails", async () => {
-		fetchMock()
-			.mockResolvedValueOnce(chatResponse("not json at all"))
-			.mockResolvedValueOnce(
-				new Response("upstream exploded", { status: 502, statusText: "Bad Gateway" }),
-			);
+		vi.useFakeTimers();
+		try {
+			// First response is garbage JSON (triggers the repair retry); every
+			// subsequent response is a 502 that is now itself retried (1s, 2s,
+			// 4s backoff) before the row-level call finally throws.
+			fetchMock()
+				.mockResolvedValueOnce(chatResponse("not json at all"))
+				.mockImplementation(() =>
+					Promise.resolve(
+						new Response("upstream exploded", {
+							status: 502,
+							statusText: "Bad Gateway",
+						}),
+					),
+				);
 
-		await expect(client.chatCompletion("system", "user")).rejects.toThrow(/status 502/);
+			const rejection = expect(client.chatCompletion("system", "user")).rejects.toThrow(
+				/JSON repair retry failed with HTTP status 502/,
+			);
+			await vi.advanceTimersByTimeAsync(30_000);
+			await rejection;
+			// 1 original call + 4 repair attempts (3 retries + final throw)
+			expect(fetchMock()).toHaveBeenCalledTimes(5);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("validates the parsed response against an optional Zod schema", async () => {
@@ -172,6 +191,9 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 			expect(capturedSignal!.aborted).toBe(false);
 			await vi.advanceTimersByTimeAsync(1);
 			expect(capturedSignal!.aborted).toBe(true);
+			// Timeouts are transient-retried: exhaust the bounded attempts
+			// (5s per attempt + 1s/2s/4s backoff) before the promise rejects.
+			await vi.advanceTimersByTimeAsync(60_000);
 			await rejection;
 		} finally {
 			vi.useRealTimers();
@@ -204,6 +226,9 @@ describe("KiConnectClient chatCompletion JSON handling", () => {
 			expect(capturedSignal!.aborted).toBe(false);
 			await vi.advanceTimersByTimeAsync(1);
 			expect(capturedSignal!.aborted).toBe(true);
+			// Timeouts are transient-retried: exhaust the bounded attempts
+			// (3s per attempt + 1s/2s/4s backoff) before the promise rejects.
+			await vi.advanceTimersByTimeAsync(60_000);
 			await rejection;
 		} finally {
 			vi.useRealTimers();

@@ -46,6 +46,11 @@ export interface SubPoint {
 	readonly comment?: boolean;
 	/** When true, selecting this item reveals a numeric deduction input. */
 	readonly point_deduction?: boolean;
+	/**
+	 * Grading dimensions this sub-point contributes to (sub-point override;
+	 * see {@link resolveSubPointDimensions} for the override??group??[] rule).
+	 */
+	readonly dimensions?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -58,6 +63,12 @@ export interface MainPoint {
 	readonly main_point: string;
 	/** Selectable checkbox items under this heading. */
 	readonly sub_points: readonly SubPoint[];
+	/**
+	 * Default grading dimensions for all sub-points in this group (inherited
+	 * unless a sub-point carries its own override — see
+	 * {@link resolveSubPointDimensions}).
+	 */
+	readonly dimensions?: readonly string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -118,6 +129,21 @@ export interface CategoryEntry {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve a sub-point's grading dimensions: override ?? group default ?? [].
+ * Override REPLACES, never merges.
+ *
+ * PLAN_PHASE_BY_TOOL mirror rule — keep the two call sites in sync: a
+ * client-side twin lives in criteria-editor-model.ts (resolveEditableSubPointDimensions);
+ * both must implement the same override ?? group ?? [] semantics.
+ */
+export function resolveSubPointDimensions(
+	mainPoint: MainPoint,
+	subPoint: SubPoint,
+): readonly string[] {
+	return subPoint.dimensions ?? mainPoint.dimensions ?? [];
+}
 
 /** Checked-item counts per sentiment (P3-2, rubric tab header). */
 export interface SentimentCounts {

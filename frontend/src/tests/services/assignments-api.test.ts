@@ -184,8 +184,12 @@ describe("GET /api/assignments", () => {
 		expect(body.assignments.map((a) => a.id)).toEqual(["valid"]);
 	});
 
-	it("fails with 500 when assignments.yaml is missing", async () => {
-		await expectHttpError(listAssignments(), 500);
+	it("fails with 500 and a machine-readable code when assignments.yaml is missing", async () => {
+		const res = await listAssignments();
+		expect(res.status).toBe(500);
+		const body = (await res.json()) as { message?: string; code?: string };
+		expect(body.code).toBe("assignments-missing");
+		expect(body.message).toMatch(/assignments\.yaml not found/);
 	});
 
 	it("fails with 500 on corrupt YAML", async () => {

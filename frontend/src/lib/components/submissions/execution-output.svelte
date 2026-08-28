@@ -193,6 +193,7 @@
 		{@const fixed = fixedByIndex.get(cell.index)}
 		{@const showFixed = fixed !== undefined && activeFixedView.has(cell.index)}
 		{@const delta = fixed !== undefined ? cellDelta(cell, fixed) : null}
+		{@const hasHtmlOutput = (cell.outputs ?? []).some((o) => o.mime_type === "text/html")}
 		<div
 			class="cell-card {cell.marker === 'error'
 				? 'cell-error'
@@ -248,6 +249,9 @@
 					</button>
 				{/if}
 			</div>
+			{#if verdict?.reason}
+				<div class="cell-reason">{verdict.reason}</div>
+			{/if}
 			{#if cell.type === "code"}
 				{#if showFixed && fixed}
 					<!-- Loud, always-visible marker: the teacher must never
@@ -288,7 +292,7 @@
 					{#if fixed.error}
 						<div class="cell-error-block">{fixed.error}</div>
 					{/if}
-					{#if fixed.output}
+					{#if fixed.output && !hasHtmlOutput}
 						<div class="cell-output">{fixed.output}</div>
 					{/if}
 					{@render richOutputs(fixed)}
@@ -302,7 +306,7 @@
 					{#if cell.error}
 						<div class="cell-error-block">{cell.error}</div>
 					{/if}
-					{#if cell.output}
+					{#if cell.output && !hasHtmlOutput}
 						<div class="cell-output">{cell.output}</div>
 					{/if}
 					{@render richOutputs(cell)}
@@ -403,6 +407,13 @@
 		font-weight: 600;
 	}
 	.cell-type {
+		color: var(--muted-foreground);
+	}
+	/* Pre-evaluation verdict reason — small muted note under the header,
+	   visually subordinate to the code block (no box/border). */
+	.cell-reason {
+		padding: 3px 12px 0;
+		font-size: 11px;
 		color: var(--muted-foreground);
 	}
 	.cell-toggle {
