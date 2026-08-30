@@ -69,8 +69,10 @@ vi.mock("$lib/server/ki-connect", () => {
 			chatCompletion: kiConnectMock.chatCompletion,
 			chatCompletionText: kiConnectMock.chatCompletionText,
 			model: kiConnectMock.model,
+			listModels: vi.fn().mockResolvedValue([]),
 		}),
 		KiConnectClient: MockKiConnectClient,
+		warnIfUnknownModel: vi.fn().mockResolvedValue(undefined),
 	};
 });
 

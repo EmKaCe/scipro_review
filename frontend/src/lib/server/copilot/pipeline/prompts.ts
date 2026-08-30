@@ -220,7 +220,10 @@ export function buildPhase2aDimensionGuidance(
  * Resolution order (enables a provider swap without a code change):
  *   1. `PHASE_2_MODEL` env var (explicit override)
  *   2. the Settings-UI `llm.model` (data/settings.yaml → KI_CONNECT_MODEL),
- *      prefixed with `openai-` for the KI Connect id convention
+ *      used VERBATIM — the configured id must already match the provider's
+ *      registry exactly (KI Connect mixes vendor prefixes: the canonical
+ *      `openai-gpt-oss-120b` ships in settings.yaml; OpenRouter ids like
+ *      `qwen/qwen3-30b` pass through untouched)
  *   3. the historical default `openai-gpt-oss-120b` — the golden prompt
  *      fixture and the tuned calibration were built against it.
  */
@@ -232,7 +235,7 @@ export async function getPhase2Model(): Promise<string> {
 		const settings = await loadSettings();
 		const settingsModel = (settings.llm?.model ?? "").trim();
 		if (settingsModel) {
-			return settingsModel.startsWith("openai-") ? settingsModel : `openai-${settingsModel}`;
+			return settingsModel;
 		}
 	} catch {
 		// Settings unreadable — fall through to the default.

@@ -531,6 +531,17 @@ pnpm start:teacher        # Start server on port 4174
 > GETs and the health check keep working without it — only multipart uploads
 > fail — which is why the failure looks like a feature bug.
 
+> **LLM calls fail with `The model '…' does not exist`?**
+> The configured model id does not match the provider's registry. KI Connect
+> uses **mixed vendor prefixes** — `openai-gpt-oss-120b` (prefixed) but
+> `qwen3-30b-a3b-instruct-2507` (unprefixed) — so the id must be spelled
+> exactly as listed. List the valid ids with
+> `GET $KI_CONNECT_BASE_URL/models` (or check the Settings page's model
+> picker), fix `llm.model` in `data/settings.yaml` (or `KI_CONNECT_MODEL`
+> in `.env`), and **restart** — settings are cached at load, not hot-reloaded.
+> The server logs a loud `[ki-connect] Configured model … NOT found` warning
+> at the first pipeline/copilot use to surface this early.
+
 ### Common Commands
 
 | Command                                 | Description                                                                      |
