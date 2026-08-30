@@ -13,7 +13,10 @@ import { resetKiConnectClient, warnIfUnknownModel } from "$lib/server/ki-connect
 /** Minimal client stub: only listModels is used by the helper. */
 function stubClient(ids: string[] | Error) {
 	return {
-		listModels: ids instanceof Error ? vi.fn().mockRejectedValue(ids) : vi.fn().mockResolvedValue(ids.map((id) => ({ id }))),
+		listModels:
+			ids instanceof Error
+				? vi.fn().mockRejectedValue(ids)
+				: vi.fn().mockResolvedValue(ids.map((id) => ({ id }))),
 	};
 }
 
@@ -50,7 +53,9 @@ describe("warnIfUnknownModel", () => {
 	});
 
 	it("never throws when the client rejects", async () => {
-		await expect(warnIfUnknownModel("gpt-oss-120b", stubClient(Error("boom")))).resolves.toBeUndefined();
+		await expect(
+			warnIfUnknownModel("gpt-oss-120b", stubClient(Error("boom"))),
+		).resolves.toBeUndefined();
 		expect(warnSpy).not.toHaveBeenCalled();
 	});
 
