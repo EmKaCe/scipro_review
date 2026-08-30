@@ -15,6 +15,7 @@
  *     base_url: https://chat.kiconnect.nrw/api/v1
  *     model: qwen3-30b-a3b-instruct-2507
  *     timeout_ms: 60000
+ *     embedding_model: e5-mistral-7b-instruct  # optional — docs-RAG embedder
  *   copilot:
  *     mode: ask                     # ask | read-only | auto-approve-all
  *     allowed_tools: []             # tools auto-approvable in ask mode (session-capped)
@@ -58,6 +59,14 @@ export interface LlmSettings {
 	baseUrl: string;
 	model: string;
 	timeoutMs: number;
+	/**
+	 * Embedding model for the docs-RAG vector leg (settings.yaml
+	 * llm.embedding_model; env fallback KI_CONNECT_EMBEDDING_MODEL). Optional:
+	 * when absent, resolveEmbeddingModel() falls back to the env var, then the
+	 * built-in default (the model of the downloadable prebuilt corpus —
+	 * e5-mistral-7b-instruct — so a fresh deploy stays option-A-compatible).
+	 */
+	embeddingModel?: string;
 }
 
 export type CopilotMode = "ask" | "read-only" | "auto-approve-all";
@@ -105,6 +114,8 @@ const DEFAULT_CELL_TIMEOUT_S = 30;
 const DEFAULT_LLM_BASE_URL = "https://chat.kiconnect.nrw/api/v1";
 const DEFAULT_LLM_MODEL = "qwen3-30b-a3b-instruct-2507";
 const DEFAULT_LLM_TIMEOUT_MS = 60_000;
+/** Docs-RAG embedding model default (the downloadable prebuilt corpus model). */
+const DEFAULT_EMBEDDING_MODEL = "e5-mistral-7b-instruct";
 const DEFAULT_COPILOT_MODE: CopilotMode = "ask";
 const DEFAULT_COPILOT_ALLOWED_TOOLS: string[] = [];
 const DEFAULT_COPILOT_DENY_TOOLS: string[] = [];
@@ -210,6 +221,11 @@ function defaults(file?: {
 	// omits copilot.last_messages, the effective window follows the
 	// configured LLM's context size, so model switches apply automatically.
 	const llmModel = stringValue(llm.model, envString("KI_CONNECT_MODEL", DEFAULT_LLM_MODEL));
+	// Optional key — stays ABSENT unless configured: file wins, then env;
+	// blank/whitespace values count as absent (never forces settings.yaml churn).
+	const embeddingModel =
+		optionalString(llm.embedding_model) ??
+		optionalString(process.env.KI_CONNECT_EMBEDDING_MODEL);
 
 	return {
 		executor: {
@@ -233,6 +249,7 @@ function defaults(file?: {
 			baseUrl: fileString(llm.base_url, "KI_CONNECT_BASE_URL", DEFAULT_LLM_BASE_URL),
 			model: llmModel,
 			timeoutMs: fileNumber(llm.timeout_ms, "KI_CONNECT_TIMEOUT_MS", DEFAULT_LLM_TIMEOUT_MS),
+			...(embeddingModel !== undefined ? { embeddingModel } : {}),
 		},
 		copilot: {
 			mode: copilotModeValue(copilot.mode, DEFAULT_COPILOT_MODE),
@@ -261,8 +278,29 @@ function positiveNumber(value: unknown, fallback: number): number {
 	return fallback;
 }
 
+/**
+ * Resolve the effective docs-RAG embedding model:
+ * `settings.llm.embeddingModel` → `KI_CONNECT_EMBEDDING_MODEL` env → built-in
+ * default (`e5-mistral-7b-instruct`, the model of the downloadable prebuilt
+ * corpus, so a fresh deploy with no config stays option-A-compatible).
+ *
+ * Used by the docs-embed build job and the config-map row. A blank value
+ * behaves like an absent one (never "wins" over the next chain link).
+ */
+export function resolveEmbeddingModel(settings: Pick<AppSettings, "llm">): string {
+	return (
+		settings.llm.embeddingModel ||
+		envString("KI_CONNECT_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL)
+	);
+}
+
 function stringValue(value: unknown, fallback: string): string {
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : fallback;
+}
+
+/** Non-empty trimmed string, or undefined when absent/blank (optional keys). */
+function optionalString(value: unknown): string | undefined {
+	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
 /** YAML number with env fallback: file value wins, then env, then default. */
@@ -318,6 +356,11 @@ export function toSettingsYaml(settings: AppSettings): string {
 				base_url: settings.llm.baseUrl,
 				model: settings.llm.model,
 				timeout_ms: settings.llm.timeoutMs,
+				// Optional — serialize only when set, or every teacher save would
+				// write the resolved default into the tracked settings.yaml (churn).
+				...(settings.llm.embeddingModel !== undefined
+					? { embedding_model: settings.llm.embeddingModel }
+					: {}),
 			},
 			copilot: {
 				mode: settings.copilot.mode,

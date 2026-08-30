@@ -21,10 +21,26 @@ import { createRegistry, type ToolContext } from "$lib/server/copilot/registry";
 import { registerDocsTools } from "$lib/server/copilot/tools/docs-tools";
 import {
 	__resetDocsIndexForTests,
+	buildQueryText,
 	getDocsIndexStatus,
+	resolveEmbedQueryModel,
 	searchDocs,
 	type DocsChunk,
 } from "$lib/server/copilot/docs-rag";
+
+// ---------------------------------------------------------------------------
+// Provider mock (2.7.0 §3.1 manifest-driven query embedding)
+// ---------------------------------------------------------------------------
+// The default query embedder (defaultEmbedQuery) builds its provider via
+// createOpenAICompatible — mock that factory so tests can assert WHICH model
+// id and WHICH query text the provider receives, without any network.
+const providerMocks = vi.hoisted(() => ({
+	createOpenAICompatible: vi.fn(),
+}));
+
+vi.mock("@ai-sdk/openai-compatible", () => ({
+	createOpenAICompatible: providerMocks.createOpenAICompatible,
+}));
 
 // ---------------------------------------------------------------------------
 // Fixture corpus (hand-written, mirrors the real chunk shape)
@@ -130,6 +146,11 @@ const FIXTURE_VECTORS: number[][] = [
  *   - vectorsFile: override the .bin filename (e.g. point at a missing file)
  *   - vectorCount: override the manifest count (defaults to 4 when withVectors)
  *   - embeddingDim: override the manifest dim (defaults to 4 when withVectors)
+ *   - embeddingModel: override the manifest model (defaults to the built-in
+ *     e5 id when withVectors; pass null for a legacy manifest with vectors)
+ *   - embeddingPrefix: write the manifest embeddingPrefix (2.7.0 §3.3;
+ *     undefined = field ABSENT, like the released corpus; null = explicit
+ *     null; "e5" = prefixed corpus)
  *   - vectorsBytes: override the .bin byte length (defaults to 64)
  *   - duplicateIds: duplicate every chunk id so buildMiniSearch throws
  */
@@ -140,6 +161,8 @@ async function writeFixtureIndex(
 		vectorsFile?: string;
 		vectorCount?: number;
 		embeddingDim?: number | null;
+		embeddingModel?: string | null;
+		embeddingPrefix?: "e5" | null;
 		vectorsBytes?: number;
 		duplicateIds?: boolean;
 	} = {},
@@ -153,7 +176,12 @@ async function writeFixtureIndex(
 		format: "svelte-review-copilot-docs-index",
 		formatVersion: 1,
 		builtAt: "2026-08-18T00:00:00.000Z",
-		embeddingModel: withVectors ? "e5-mistral-7b-instruct" : null,
+		embeddingModel:
+			options.embeddingModel !== undefined
+				? options.embeddingModel
+				: withVectors
+					? "e5-mistral-7b-instruct"
+					: null,
 		embeddingDim: withVectors ? (options.embeddingDim ?? 4) : null,
 		libraries: [
 			{
@@ -195,6 +223,9 @@ async function writeFixtureIndex(
 		index.vectorsFile = options.vectorsFile ?? "docs-vectors.bin";
 		index.vectorCount = options.vectorCount ?? FIXTURE_VECTORS.length;
 	}
+	if (options.embeddingPrefix !== undefined) {
+		index.embeddingPrefix = options.embeddingPrefix;
+	}
 	await writeFile(path.join(dir, "docs-index.json"), JSON.stringify(index), "utf-8");
 	if (withVectors) {
 		// float32 little-endian, row-major: 4 chunks x 4 dims = 16 floats = 64 bytes.
@@ -233,6 +264,8 @@ beforeEach(async () => {
 afterEach(async () => {
 	await rm(dataDir, { recursive: true, force: true });
 	delete process.env.DATA_DIR;
+	delete process.env.KI_CONNECT_EMBEDDING_MODEL;
+	providerMocks.createOpenAICompatible.mockReset();
 	__resetDocsIndexForTests();
 	vi.restoreAllMocks();
 });
@@ -317,6 +350,175 @@ describe("searchDocs — paraphrase via embeddings (RRF fusion)", () => {
 
 		expect(embedQuery).not.toHaveBeenCalled();
 		expect(hits[0]!.title).toBe("scipy.optimize.curve_fit");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// (2.7.0) manifest-driven query embedding (real default provider path)
+// ---------------------------------------------------------------------------
+
+interface CapturedEmbedCall {
+	modelId: string;
+	values: string[];
+}
+
+/**
+ * Point the mocked createOpenAICompatible at a fake provider that records
+ * the embedding-model id and the input texts, and returns one vector of
+ * `dim` dims with a 1 in the LAST slot (so a 4-dim fixture ranks KMeans on
+ * top — axis 3). `onCall` captures the call args for assertions.
+ */
+function installFakeEmbedProvider(dim = 4, onCall?: (call: CapturedEmbedCall) => void): void {
+	providerMocks.createOpenAICompatible.mockReturnValue({
+		embeddingModel: (modelId: string) => ({
+			doEmbed: async (args: { values: string[] }) => {
+				onCall?.({ modelId, values: args.values });
+				const vec = new Array<number>(dim).fill(0);
+				vec[dim - 1] = 1;
+				return { embeddings: [vec] };
+			},
+		}),
+	});
+}
+
+describe("searchDocs — manifest-driven query embedding (2.7.0 §3.1)", () => {
+	const origThreshold = process.env.DOCS_RAG_EMBED_THRESHOLD;
+
+	beforeAll(() => {
+		process.env.DOCS_RAG_EMBED_THRESHOLD = "1";
+	});
+
+	afterAll(() => {
+		if (origThreshold === undefined) delete process.env.DOCS_RAG_EMBED_THRESHOLD;
+		else process.env.DOCS_RAG_EMBED_THRESHOLD = origThreshold;
+	});
+
+	it("embeds the query with the MANIFEST model even when it differs from the built-in default", async () => {
+		await writeFixtureIndex(dataDir, true, { embeddingModel: "my-custom-embedder-3072" });
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		const hits = await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.modelId).toBe("my-custom-embedder-3072");
+		// The fake provider returned the KMeans vector — RRF must surface it.
+		expect(hits[0]!.title).toBe("sklearn.cluster.KMeans");
+	});
+
+	it("falls back to the built-in default for a legacy manifest without embeddingModel", async () => {
+		await writeFixtureIndex(dataDir, true, { embeddingModel: null });
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.modelId).toBe("e5-mistral-7b-instruct");
+	});
+
+	it("honors the KI_CONNECT_EMBEDDING_MODEL env fallback when the manifest has no model", async () => {
+		await writeFixtureIndex(dataDir, true, { embeddingModel: null });
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embedder";
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls[0]!.modelId).toBe("env-embedder");
+	});
+
+	it('prefixes the query with "query: " when the manifest records embeddingPrefix "e5"', async () => {
+		await writeFixtureIndex(dataDir, true, { embeddingPrefix: "e5" });
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls).toHaveLength(1);
+		expect(calls[0]!.values).toEqual(["query: partition observations into homogeneous groups"]);
+	});
+
+	it("keeps the query verbatim when the manifest has no prefix — even for an e5-named model (trap rule)", async () => {
+		// The fixture default model IS e5-mistral-7b-instruct, but the
+		// released corpus has no embeddingPrefix field → must stay verbatim.
+		await writeFixtureIndex(dataDir, true);
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls[0]!.values).toEqual(["partition observations into homogeneous groups"]);
+	});
+
+	it("keeps the query verbatim when the manifest records embeddingPrefix null", async () => {
+		await writeFixtureIndex(dataDir, true, { embeddingPrefix: null });
+		const calls: CapturedEmbedCall[] = [];
+		installFakeEmbedProvider(4, (c) => calls.push(c));
+
+		await searchDocs("partition observations into homogeneous groups");
+
+		expect(calls[0]!.values).toEqual(["partition observations into homogeneous groups"]);
+	});
+
+	it("degrades to BM25-only (no throw) with an honest loadNote when the provider rejects the manifest model", async () => {
+		await writeFixtureIndex(dataDir, true); // manifest model = e5-mistral-7b-instruct
+		providerMocks.createOpenAICompatible.mockReturnValue({
+			embeddingModel: () => ({
+				doEmbed: async () => {
+					throw new Error("404 model not available on provider");
+				},
+			}),
+		});
+
+		const hits = await searchDocs("partition observations into homogeneous groups");
+
+		// No lexical overlap → empty BM25 leg, but NO throw.
+		expect(hits).toEqual([]);
+		const note = getDocsIndexStatus().note ?? "";
+		expect(note).toContain("e5-mistral-7b-instruct");
+		expect(note).toContain("404 model not available on provider");
+	});
+
+	it("degrades to BM25-only with a loadNote when the provider returns the wrong dimension", async () => {
+		await writeFixtureIndex(dataDir, true); // manifest dim 4, model e5-mistral-7b-instruct
+		installFakeEmbedProvider(3);
+
+		const hits = await searchDocs("partition observations into homogeneous groups");
+
+		expect(hits).toEqual([]);
+		expect(getDocsIndexStatus().note ?? "").toContain("e5-mistral-7b-instruct");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// (2.7.0) prefix convention + model resolution helpers (unit)
+// ---------------------------------------------------------------------------
+
+describe("buildQueryText — e5 prefix convention (2.7.0 §3.3)", () => {
+	it('prepends "query: " only when the prefix profile is "e5"', () => {
+		expect(buildQueryText("fit a curve to data", "e5")).toBe("query: fit a curve to data");
+		expect(buildQueryText("fit a curve to data", null)).toBe("fit a curve to data");
+	});
+
+	it("never infers the prefix from the model id alone", () => {
+		// Trap rule: an e5-named model with no recorded prefix stays verbatim.
+		expect(buildQueryText("fit a curve to data", null)).toBe("fit a curve to data");
+	});
+});
+
+describe("resolveEmbedQueryModel — manifest wins, env → built-in default fallback (2.7.0 §3.1)", () => {
+	it("uses the manifest model when present", () => {
+		expect(resolveEmbedQueryModel("e5-large-v2")).toBe("e5-large-v2");
+	});
+
+	it("falls back to the env var when the manifest has none", () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embedder";
+		expect(resolveEmbedQueryModel(null)).toBe("env-embedder");
+	});
+
+	it("falls back to the built-in default when neither the manifest nor env has a model", () => {
+		expect(resolveEmbedQueryModel(null)).toBe("e5-mistral-7b-instruct");
 	});
 });
 

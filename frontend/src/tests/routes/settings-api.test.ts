@@ -6,12 +6,18 @@
  * route's GET/PUT validation (secrets are never part of the surface).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { GET, PATCH, PUT } from "../../routes/api/settings/+server";
-import { loadSettings, writeSettings, type AppSettings } from "$lib/server/settings";
+import {
+	loadSettings,
+	resolveEmbeddingModel,
+	toSettingsYaml,
+	writeSettings,
+	type AppSettings,
+} from "$lib/server/settings";
 import { setApiKey } from "$lib/server/api-key-store";
 import { resolveLastMessagesDefault } from "$lib/server/copilot/model-context";
 
@@ -60,6 +66,7 @@ afterEach(async () => {
 	delete process.env.KI_CONNECT_BASE_URL;
 	delete process.env.KI_CONNECT_MODEL;
 	delete process.env.KI_CONNECT_TIMEOUT_MS;
+	delete process.env.KI_CONNECT_EMBEDDING_MODEL;
 	delete process.env.KI_CONNECT_API_KEY;
 	setApiKey("");
 	await rm(dataDir, { recursive: true, force: true });
@@ -92,6 +99,9 @@ describe("settings module", () => {
 		expect(s.executor.notebookTimeoutMs).toBe(120_000);
 		expect(s.executor.cellTimeoutS).toBe(30);
 		expect(s.llm.baseUrl).toBe("https://chat.kiconnect.nrw/api/v1");
+		// Optional key stays absent (never forced into the file by a default).
+		expect(s.llm.embeddingModel).toBeUndefined();
+		expect(resolveEmbeddingModel(s)).toBe("e5-mistral-7b-instruct");
 	});
 
 	it("falls back to env vars when the file is missing", async () => {
@@ -164,6 +174,103 @@ describe("settings module", () => {
 		expect(s.copilot.autoCompact).toBe(false);
 		expect(s.copilot.lastMessages).toBe(2);
 	});
+
+	it("keeps llm.embeddingModel from the yaml when set", async () => {
+		await writeFile(
+			path.join(dataDir, "settings.yaml"),
+			"llm:\n  embedding_model: custom-embed-8b\n",
+		);
+
+		const s = await loadSettings();
+		expect(s.llm.embeddingModel).toBe("custom-embed-8b");
+	});
+
+	it("resolves llm.embeddingModel from KI_CONNECT_EMBEDDING_MODEL when the yaml omits it", async () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embed-70b";
+
+		const s = await loadSettings();
+		expect(s.llm.embeddingModel).toBe("env-embed-70b");
+	});
+
+	it("prefers yaml embedding_model over the env var", async () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embed-70b";
+		await writeFile(
+			path.join(dataDir, "settings.yaml"),
+			"llm:\n  embedding_model: file-embed-8b\n",
+		);
+
+		const s = await loadSettings();
+		expect(s.llm.embeddingModel).toBe("file-embed-8b");
+	});
+
+	it("treats blank embedding_model values as absent (no file churn)", async () => {
+		await writeFile(path.join(dataDir, "settings.yaml"), 'llm:\n  embedding_model: "   "\n');
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "";
+
+		const s = await loadSettings();
+		expect(s.llm.embeddingModel).toBeUndefined();
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Resolver chain
+// ---------------------------------------------------------------------------
+
+describe("resolveEmbeddingModel", () => {
+	it("returns the settings value when yaml configured it", () => {
+		expect(
+			resolveEmbeddingModel({
+				llm: { ...FULL.llm, embeddingModel: "custom-embed-8b" },
+			}),
+		).toBe("custom-embed-8b");
+	});
+
+	it("falls back to KI_CONNECT_EMBEDDING_MODEL env when the key is absent", () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embed-70b";
+		expect(resolveEmbeddingModel({ llm: FULL.llm })).toBe("env-embed-70b");
+	});
+
+	it("returns the built-in default when neither settings nor env configure it", () => {
+		delete process.env.KI_CONNECT_EMBEDDING_MODEL;
+		expect(resolveEmbeddingModel({ llm: FULL.llm })).toBe("e5-mistral-7b-instruct");
+	});
+
+	it("treats a blank env var as unset (default applies)", () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "   ";
+		expect(resolveEmbeddingModel({ llm: FULL.llm })).toBe("e5-mistral-7b-instruct");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// toSettingsYaml — embedding_model serialization
+// ---------------------------------------------------------------------------
+
+describe("toSettingsYaml embedding_model", () => {
+	it("omits embedding_model entirely when embeddingModel is unset", () => {
+		expect(toSettingsYaml(FULL)).not.toContain("embedding_model");
+	});
+
+	it("serializes embedding_model only when set", () => {
+		const withModel: AppSettings = {
+			...FULL,
+			llm: { ...FULL.llm, embeddingModel: "custom-embed-8b" },
+		};
+		const yaml = toSettingsYaml(withModel);
+		expect(yaml).toContain("embedding_model: custom-embed-8b");
+		// Round-trip: the written file keeps the value.
+		expect(toSettingsYaml(withModel)).not.toContain("embedding_model: e5-mistral-7b-instruct");
+	});
+
+	it("round-trips a set embeddingModel through writeSettings without inventing one", async () => {
+		const withModel: AppSettings = {
+			...FULL,
+			llm: { ...FULL.llm, embeddingModel: "custom-embed-8b" },
+		};
+		await writeSettings(withModel);
+
+		const s = await loadSettings();
+		expect(s.llm.embeddingModel).toBe("custom-embed-8b");
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -212,6 +319,58 @@ describe("/api/settings", () => {
 		expect(((await resp.json()) as AppSettings).copilot.autoCompact).toBe(false);
 		// Reload from disk — the persisted value survives.
 		expect((await loadSettings()).copilot.autoCompact).toBe(false);
+	});
+
+	it("PUT accepts an optional embeddingModel and round-trips it", async () => {
+		const withModel: AppSettings = {
+			...FULL,
+			llm: { ...FULL.llm, embeddingModel: "custom-embed-8b" },
+		};
+		const resp = await PUT({ request: putRequest(withModel) } as never);
+		expect(resp.status).toBe(200);
+		expect(((await resp.json()) as AppSettings).llm.embeddingModel).toBe("custom-embed-8b");
+		expect((await loadSettings()).llm.embeddingModel).toBe("custom-embed-8b");
+
+		const raw = await readFile(path.join(dataDir, "settings.yaml"), "utf-8");
+		expect(raw).toContain("embedding_model: custom-embed-8b");
+	});
+
+	it("PUT without embeddingModel stays accepted and never writes the key (no churn)", async () => {
+		const resp = await PUT({ request: putRequest(FULL) } as never);
+		expect(resp.status).toBe(200);
+
+		const raw = await readFile(path.join(dataDir, "settings.yaml"), "utf-8");
+		expect(raw).not.toContain("embedding_model");
+	});
+
+	it("PUT rejects non-string or blank embeddingModel values with 400", async () => {
+		const base = {
+			executor: { requestTimeoutMs: 1, notebookTimeoutMs: 1, cellTimeoutS: 1 },
+			llm: { baseUrl: "x", model: "m", timeoutMs: 1 },
+			copilot: {
+				mode: "ask",
+				allowedTools: [],
+				denyTools: [],
+				approvalTtlSeconds: 60,
+				sessionCap: 20,
+				lastMessages: 16,
+				autoCompact: true,
+			},
+		};
+		for (const bad of [
+			{ ...base, llm: { ...base.llm, embeddingModel: 42 } },
+			{ ...base, llm: { ...base.llm, embeddingModel: true } },
+			{ ...base, llm: { ...base.llm, embeddingModel: "" } },
+			{ ...base, llm: { ...base.llm, embeddingModel: "   " } },
+		]) {
+			let status: number | null = null;
+			try {
+				await PUT({ request: putRequest(bad) } as never);
+			} catch (err) {
+				status = (err as { status?: number }).status ?? null;
+			}
+			expect(status).toBe(400);
+		}
 	});
 
 	it("rejects invalid bodies with 400", async () => {

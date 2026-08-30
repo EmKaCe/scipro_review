@@ -6,7 +6,8 @@
  *         returns the API key itself.
  * PUT   — persist settings to data/settings.yaml. The full AppSettings shape
  *         is required; values are validated (positive numbers, non-empty
- *         strings) and merged over defaults on the next read.
+ *         strings) and merged over defaults on the next read. llm.embeddingModel
+ *         is optional — absent stays absent, present must be non-empty.
  * PATCH — replace the KI Connect API key in the server process
  *         (`{ apiKey: string }`); the key never leaves the server again.
  *
@@ -47,6 +48,9 @@ function isAppSettings(value: unknown): value is AppSettings {
 		Number.isInteger(copilot.lastMessages) &&
 		copilot.lastMessages >= 1 &&
 		copilot.lastMessages <= 50;
+	// Optional key: absent is fine; when present it must be a non-empty string
+	// (blank values would be written to settings.yaml and churn the file).
+	const embeddingModelOk = llm.embeddingModel === undefined || nonEmpty(llm.embeddingModel);
 	return (
 		posInt(ex.requestTimeoutMs) &&
 		posInt(ex.notebookTimeoutMs) &&
@@ -54,6 +58,7 @@ function isAppSettings(value: unknown): value is AppSettings {
 		nonEmpty(llm.baseUrl) &&
 		nonEmpty(llm.model) &&
 		posInt(llm.timeoutMs) &&
+		embeddingModelOk &&
 		isMode(copilot.mode) &&
 		stringArray(copilot.allowedTools) &&
 		stringArray(copilot.denyTools) &&
@@ -80,7 +85,7 @@ export async function PUT(event: RequestEvent): Promise<Response> {
 	if (!isAppSettings(body)) {
 		throw error(
 			400,
-			"Invalid settings: expected executor (requestTimeoutMs, notebookTimeoutMs, cellTimeoutS) and llm (baseUrl, model, timeoutMs) with positive numbers / non-empty strings",
+			"Invalid settings: expected executor (requestTimeoutMs, notebookTimeoutMs, cellTimeoutS) and llm (baseUrl, model, timeoutMs, optional embeddingModel) with positive numbers / non-empty strings",
 		);
 	}
 	await writeSettings(body);

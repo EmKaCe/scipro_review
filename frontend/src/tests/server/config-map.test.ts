@@ -33,6 +33,7 @@ const SETTINGS_FILE = {
 		base_url: "https://llm.example.test/api/v1",
 		model: "test-model-7b",
 		timeout_ms: 90_000,
+		embedding_model: "e5-mistral-7b-instruct",
 	},
 	copilot: {
 		mode: "read-only",
@@ -88,6 +89,7 @@ afterEach(async () => {
 	delete process.env.PRE_EVAL_CRITIQUE;
 	delete process.env.KI_CONNECT_BASE_URL;
 	delete process.env.KI_CONNECT_MODEL;
+	delete process.env.KI_CONNECT_EMBEDDING_MODEL;
 	delete process.env.KI_CONNECT_API_KEY;
 	setApiKey("");
 	await rm(dataDir, { recursive: true, force: true });
@@ -111,6 +113,14 @@ describe("config-map module: settings group", () => {
 
 		expect(row(resp, "llm.model").value).toBe("test-model-7b");
 		expect(row(resp, "llm.timeout_ms").value).toBe("90000");
+
+		const embedding = row(resp, "llm.embedding_model");
+		expect(embedding.value).toBe("e5-mistral-7b-instruct");
+		expect(embedding.status).toBe("ok");
+		expect(embedding.source).toBe("settings.yaml");
+		expect(embedding.affordance).toBe("this-page");
+		expect(embedding.reload).toBe("next-request");
+
 		expect(row(resp, "executor.request_timeout_ms").value).toBe("45000");
 		expect(row(resp, "executor.notebook_timeout_ms").value).toBe("180000");
 		expect(row(resp, "executor.cell_timeout_s").value).toBe("45");
@@ -178,6 +188,42 @@ describe("config-map module: settings group", () => {
 		const model = row(resp, "llm.model");
 		expect(model.value).toBe("test-model-7b");
 		expect(model.status).toBe("ok");
+	});
+
+	it("reports llm.embedding_model as env-fallback when only the env var configures it", async () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "env-embed-70b";
+
+		const resp = await getConfigMap();
+
+		const embedding = row(resp, "llm.embedding_model");
+		expect(embedding.value).toBe("env-embed-70b");
+		expect(embedding.status).toBe("env-fallback");
+		expect(embedding.source).toBe("env");
+		expect(embedding.reload).toBe("next-request");
+	});
+
+	it("reports llm.embedding_model as unset with the built-in default when nothing configures it", async () => {
+		const resp = await getConfigMap();
+
+		const embedding = row(resp, "llm.embedding_model");
+		expect(embedding.value).toBe("e5-mistral-7b-instruct");
+		expect(embedding.status).toBe("unset");
+		expect(embedding.source).toBe("settings.yaml");
+		expect(embedding.affordance).toBe("this-page");
+		expect(embedding.reload).toBe("next-request");
+		expect(embedding.description).toContain("must match the vectors manifest");
+	});
+
+	it("reports llm.embedding_model as ok when the file declares the same value as the env var", async () => {
+		process.env.KI_CONNECT_EMBEDDING_MODEL = "e5-mistral-7b-instruct";
+		await writeDataFile("settings.yaml", SETTINGS_FILE);
+
+		const resp = await getConfigMap();
+
+		const embedding = row(resp, "llm.embedding_model");
+		expect(embedding.value).toBe("e5-mistral-7b-instruct");
+		expect(embedding.status).toBe("ok");
+		expect(embedding.source).toBe("settings.yaml");
 	});
 
 	it("reports the api key row as unset when no key is configured", async () => {

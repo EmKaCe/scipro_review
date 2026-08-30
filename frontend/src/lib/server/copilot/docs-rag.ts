@@ -74,6 +74,18 @@ export interface DocsLibraryManifest {
 	builtAt: string;
 }
 
+/**
+ * Per-model prefix convention recorded in the manifest at build time.
+ *
+ * e5-family models are trained with instruction prefixes (`query:` /
+ * `passage:`); OpenAI embedding models are not. The convention is decided
+ * ONCE at build/download time (2.7.0 §3.3) and recorded in the manifest —
+ * the query embedder mirrors it and NEVER infers it from the model id alone
+ * (trap rule: auto-prefixing queries against the released prefix-free corpus
+ * would silently misalign retrieval).
+ */
+export type EmbeddingPrefixProfile = "e5" | null;
+
 /** On-disk shape of docs-index.json (formatVersion 1). */
 export interface DocsIndexFile {
 	format: string;
@@ -81,6 +93,13 @@ export interface DocsIndexFile {
 	builtAt: string;
 	embeddingModel: string | null;
 	embeddingDim: number | null;
+	/**
+	 * Prefix profile recorded at build time (2.7.0 §3.3, additive + optional).
+	 * `"e5"` means corpus chunks were embedded as `passage: <text>` and
+	 * queries must be embedded as `query: <text>`. Absent/null (the released
+	 * corpus) = no prefixes anywhere.
+	 */
+	embeddingPrefix?: EmbeddingPrefixProfile;
 	libraries: DocsLibraryManifest[];
 	chunks: DocsChunk[];
 	/** Name of the float32 LE vectors file, relative to this JSON's dir. */
@@ -174,7 +193,8 @@ const SNIPPET_MARKER = "\n… (truncated)";
 // BM25-only — retrieval weakens, nothing breaks (see loadDocsIndex).
 // 2.7.0 note: the manifest's embeddingModel becomes authoritative when a
 // rebuilt/custom index is present (see the 2.7.0 design in
-// .github/references/plans/).
+// .github/references/plans/). This constant is the built-in default matched
+// to the downloadable prebuilt corpus.
 const EMBEDDING_MODEL = "e5-mistral-7b-instruct";
 const EMBEDDING_TIMEOUT_MS = 30_000;
 
@@ -187,6 +207,14 @@ interface LoadedIndex {
 	vectors: Float32Array | null;
 	/** Embedding dimension from the manifest (null when the index has no vectors). */
 	embeddingDim: number | null;
+	/**
+	 * Embedding model the corpus vectors were built with, from the manifest
+	 * (2.7.0 §3.1). Authoritative for query embedding when non-null; null on
+	 * legacy manifests → resolver fallback (env → built-in default).
+	 */
+	embeddingModel: string | null;
+	/** Prefix profile recorded at build time (2.7.0 §3.3); null = no prefixes. */
+	embeddingPrefix: EmbeddingPrefixProfile;
 	manifest: DocsLibraryManifest[];
 	miniSearch: MiniSearch<DocsChunk>;
 }
@@ -287,6 +315,11 @@ export async function loadDocsIndex(): Promise<LoadedIndex | null> {
 			chunks,
 			vectors,
 			embeddingDim: typeof file.embeddingDim === "number" ? file.embeddingDim : null,
+			embeddingModel:
+				typeof file.embeddingModel === "string" && file.embeddingModel.length > 0
+					? file.embeddingModel
+					: null,
+			embeddingPrefix: file.embeddingPrefix === "e5" ? "e5" : null,
 			manifest: Array.isArray(file.libraries)
 				? (file.libraries as DocsLibraryManifest[])
 				: [],
@@ -314,6 +347,9 @@ export function getDocsIndexStatus(): DocsIndexStatus {
 			loaded: true,
 			chunkCount: loadedIndex.chunks.length,
 			libraries: [...new Set(loadedIndex.chunks.map((c) => c.library))],
+			// A mid-session embedding-leg degrade still records an honest
+			// note (2.7.0 §3.1 mismatch semantics) — surface it here too.
+			note: loadNote ?? undefined,
 		};
 	}
 	return { loaded: false, chunkCount: 0, libraries: [], note: loadNote ?? undefined };
@@ -323,18 +359,82 @@ export function getDocsIndexStatus(): DocsIndexStatus {
 // Embedding leg
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve the model used to embed QUERIES (2.7.0 §3.1).
+ *
+ * The loaded index's manifest `embeddingModel` is AUTHORITATIVE: the corpus
+ * vectors were built with it, and cosine alignment only holds if the query
+ * is embedded with the SAME model. When the manifest has none (legacy
+ * index, vectors still present), fall back to the env var, then the
+ * built-in default that matches the downloadable prebuilt corpus. Never
+ * substitutes the settings value when the manifest has one — a dim and
+ * distribution mismatch would silently corrupt retrieval.
+ *
+ * TODO(2.7.0-W2): the wave-2 settings resolver plugs in HERE — the fallback
+ * chain becomes `settings.llm.embeddingModel` → `KI_CONNECT_EMBEDDING_MODEL`
+ * → built-in default (2.7.0 design §3.2). docs-rag.ts deliberately does NOT
+ * import settings.ts (W1-A owns it); the wave-2 job runner wires the
+ * resolver into this slot.
+ */
+export function resolveEmbedQueryModel(manifestModel: string | null): string {
+	if (manifestModel) return manifestModel;
+	const envModel = process.env.KI_CONNECT_EMBEDDING_MODEL;
+	if (envModel && envModel.length > 0) return envModel;
+	return EMBEDDING_MODEL;
+}
+
+/**
+ * Apply the manifest's query-side prefix convention (2.7.0 §3.3).
+ *
+ * `"query: "` is prepended ONLY when the manifest records
+ * `embeddingPrefix: "e5"` (the corpus was embedded as `passage: <text>`).
+ * The prefix profile is NEVER inferred from the model id alone — the
+ * released prefix-free corpus must keep verbatim queries (auto-prefixing
+ * would misalign retrieval).
+ *
+ * Exported so the wave-2 build job mirrors the same convention when it
+ * writes new vectors from the released chunk set.
+ */
+export function buildQueryText(query: string, prefix: EmbeddingPrefixProfile): string {
+	return prefix === "e5" ? `query: ${query}` : query;
+}
+
+/** Manifest context the default query embedder needs (model + prefix). */
+interface EmbedManifestContext {
+	embeddingModel: string | null;
+	embeddingPrefix: EmbeddingPrefixProfile;
+}
+
+/**
+ * Record an honest BM25-only degrade note when the embedding leg fails
+ * (2.7.0 §3.1 mismatch semantics). Mentions the manifest model so the note
+ * explains what the vectors were built with and that NO substitution
+ * happened — the configured model is only for new vector builds.
+ */
+function setEmbeddingDegradeNote(model: string | null, reason: string): void {
+	if (model) {
+		loadNote = `Semantic vectors are built with ${model} — query embedding failed (${reason}); degraded to BM25-only. Your configured embedding model is only used for new vector builds — rebuild or re-download the vectors to switch.`;
+	}
+}
+
 /** Default query embedder: KI Connect via the AI SDK provider (agent.ts pattern). */
-async function defaultEmbedQuery(query: string): Promise<number[]> {
+async function defaultEmbedQuery(query: string, manifest: EmbedManifestContext): Promise<number[]> {
+	// TODO(2.7.0-W2): the wave-2 wiring builds this provider from settings
+	// (llm.baseUrl / llm.timeoutMs) instead of raw env — see 2.7.0 design
+	// §3.1. Kept env-based here; docs-rag.ts does not import settings.ts.
 	const provider = createOpenAICompatible({
 		name: "ki-connect",
 		baseURL: process.env.KI_CONNECT_BASE_URL ?? "https://chat.kiconnect.nrw/api/v1",
 		apiKey: process.env.KI_CONNECT_API_KEY,
 	});
-	const model = provider.embeddingModel(EMBEDDING_MODEL);
+	const model = provider.embeddingModel(resolveEmbedQueryModel(manifest.embeddingModel));
 	const controller = new AbortController();
 	const timeoutId = setTimeout(() => controller.abort(), EMBEDDING_TIMEOUT_MS);
 	try {
-		const result = await model.doEmbed({ values: [query], abortSignal: controller.signal });
+		const result = await model.doEmbed({
+			values: [buildQueryText(query, manifest.embeddingPrefix)],
+			abortSignal: controller.signal,
+		});
 		const vector = result.embeddings[0];
 		if (!vector || vector.length === 0) throw new Error("empty embedding returned");
 		return vector;
@@ -465,10 +565,17 @@ export async function searchDocs(
 	}
 
 	// Embedding leg — degrade to BM25-only on ANY failure (endpoint down,
-	// no key, no vectors, embedder throws, wrong vector dimension).
+	// no key, no vectors, embedder throws, wrong vector dimension). Every
+	// failure path lands on bm25Top below; NEVER throws.
 	if (index.vectors) {
 		try {
-			const embedQuery = options.embedQuery ?? defaultEmbedQuery;
+			const embedQuery =
+				options.embedQuery ??
+				((q: string) =>
+					defaultEmbedQuery(q, {
+						embeddingModel: index.embeddingModel,
+						embeddingPrefix: index.embeddingPrefix,
+					}));
 			const queryVector = await embedQuery(query);
 			// The query vector must match the corpus dimension — cosine()
 			// would otherwise silently compute a partial dot product.
@@ -487,8 +594,22 @@ export async function searchDocs(
 				const fused = rrfFuse(bm25Top, embedTop, topK);
 				return fused.map((r) => toHit(r.chunk, r.score));
 			}
-		} catch {
-			// fall through to BM25-only
+			// Wrong-length query vector — BM25-only with an honest note that
+			// names the manifest model (2.7.0 §3.1 mismatch semantics).
+			setEmbeddingDegradeNote(
+				index.embeddingModel,
+				Array.isArray(queryVector)
+					? `query vector has ${queryVector.length} dims but the manifest embeddingDim is ${index.embeddingDim ?? "null"}`
+					: "embedder returned a non-array vector",
+			);
+		} catch (err) {
+			// Endpoint down / 404 model / no key etc. → BM25-only. No model
+			// substitution: the manifest model is what the vectors were built
+			// with; the note names it so the degrade is honest.
+			setEmbeddingDegradeNote(
+				index.embeddingModel,
+				err instanceof Error ? err.message : String(err),
+			);
 		}
 	}
 

@@ -19,6 +19,10 @@
  *   set and the effective value equals it, the row is "env-fallback"
  *   (settings.yaml has no llm.* override in effect). When the env var is
  *   unset the value is the code default and the row is "ok".
+ * - llm.embedding_model is optional; its row is "unset" (value = built-in
+ *   default) when neither settings.yaml nor KI_CONNECT_EMBEDDING_MODEL
+ *   configures it, "env-fallback" (source env) when only the env var does,
+ *   else "ok".
  * - Cheap by construction: every loader is a file read / env lookup.
  *   Never touches secrets beyond presence.
  *
@@ -32,7 +36,7 @@ import { getEnabledAssignments } from "$lib/server/assignments";
 import { hasApiKey } from "$lib/server/api-key-store";
 import { loadGradingConfigFile } from "$lib/server/grading-config-writer";
 import { getDataDir } from "$lib/server/metadata";
-import { getSettingsPath, loadSettings } from "$lib/server/settings";
+import { getSettingsPath, loadSettings, resolveEmbeddingModel } from "$lib/server/settings";
 import type { Assignment } from "$lib/types/assignments";
 
 // ---------------------------------------------------------------------------
@@ -136,6 +140,14 @@ async function settingsRows(
 			settings.llm.model,
 			"KI_CONNECT_MODEL",
 			fileLlm.has("model"),
+		),
+		embeddingModelRow(
+			"llm.embedding_model",
+			"LLM embedding model",
+			"Model used to embed docs chunks and queries; must match the vectors manifest for the semantic leg (settings.yaml llm.embedding_model; env fallback KI_CONNECT_EMBEDDING_MODEL; built-in default e5-mistral-7b-instruct).",
+			resolveEmbeddingModel(settings),
+			"KI_CONNECT_EMBEDDING_MODEL",
+			fileLlm.has("embedding_model"),
 		),
 		{
 			id: "llm.timeout_ms",
@@ -313,6 +325,37 @@ function llmRow(
 		description,
 		value,
 		source: "settings.yaml",
+		status,
+		affordance: "this-page",
+		reload: "next-request",
+	};
+}
+
+/**
+ * llm.embedding_model row: mirrors llmRow, but with an explicit "unset" state —
+ * when neither settings.yaml nor the env var configures it, the built-in
+ * default (the downloadable prebuilt corpus model, via resolveEmbeddingModel)
+ * is in effect and the row says so instead of claiming "ok". Source follows
+ * the actual origin: "env" only for a true env fallback, "settings.yaml"
+ * otherwise (the settings group's surface, matching llm.base_url).
+ */
+function embeddingModelRow(
+	id: string,
+	name: string,
+	description: string,
+	value: string,
+	envKey: string,
+	declaredInFile: boolean,
+): ConfigMapRow {
+	const envValue = process.env[envKey]?.trim() ?? "";
+	const status: RowStatus = declaredInFile ? "ok" : envValue !== "" ? "env-fallback" : "unset";
+	return {
+		id,
+		group: "settings",
+		name,
+		description,
+		value,
+		source: !declaredInFile && envValue !== "" ? "env" : "settings.yaml",
 		status,
 		affordance: "this-page",
 		reload: "next-request",
