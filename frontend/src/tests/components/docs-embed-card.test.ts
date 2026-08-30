@@ -249,13 +249,11 @@ describe("option B — rebuild locally with live progress", () => {
 	it("adopts the started job, renders live progress, and finishes with the model summary", async () => {
 		vi.useFakeTimers();
 		try {
-			let started = false;
 			let currentJob: JobSource | null = null;
 			installFetch({
 				status: () => currentJob,
 				post: (body) => {
 					expect(body).toEqual({ mode: "rebuild" });
-					started = true;
 					currentJob = embedJob({ phase: "embed", total: 38_380 });
 					return { ok: true, body: { ok: true, started: true } };
 				},
@@ -373,12 +371,10 @@ describe("option B — rebuild locally with live progress", () => {
 	it("summarizes wrong-dimension batches on the done state", async () => {
 		vi.useFakeTimers();
 		try {
-			let started = false;
 			let currentJob: JobSource | null = null;
 			installFetch({
 				status: () => currentJob,
 				post: () => {
-					started = true;
 					currentJob = embedJob({ phase: "embed" });
 					return { ok: true, body: { ok: true, started: true } };
 				},
