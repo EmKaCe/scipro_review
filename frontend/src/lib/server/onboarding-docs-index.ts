@@ -32,7 +32,9 @@ async function resolveFetchScript(): Promise<string> {
 		path.resolve(process.cwd(), "frontend/scripts/fetch-docs-index.mjs"),
 		(() => {
 			try {
-				return fileURLToPath(new URL("../../../scripts/fetch-docs-index.mjs", import.meta.url));
+				return fileURLToPath(
+					new URL("../../../scripts/fetch-docs-index.mjs", import.meta.url),
+				);
 			} catch {
 				return "";
 			}
@@ -143,9 +145,13 @@ export async function downloadDocsIndex(): Promise<DocsIndexDownloadResult> {
 		if (await indexExists(dir)) {
 			return { ok: true, alreadyPresent: true, output: "" };
 		}
-		const child = spawn(process.execPath, [await resolveFetchScript(), "--public", "--out", dir], {
-			stdio: ["ignore", "pipe", "pipe"],
-		});
+		const child = spawn(
+			process.execPath,
+			[await resolveFetchScript(), "--public", "--out", dir],
+			{
+				stdio: ["ignore", "pipe", "pipe"],
+			},
+		);
 		let stdout = "";
 		let stderr = "";
 		child.stdout?.on("data", (chunk: Buffer) => {
