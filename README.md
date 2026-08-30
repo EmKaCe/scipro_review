@@ -39,7 +39,9 @@ Pick the build you need first (see **Which build do you want?** below), then run
 Fastest path is Docker — it launches the full teacher release (web app + execution backend) on port `4174`:
 
 ```bash
-cp .env.example .env       # then edit ORIGIN and set a KI_CONNECT_API_KEY
+cp .env.example .env       # boot-time settings only — edit ORIGIN if you reach
+                           # the app from another machine (the LLM key goes in
+                           # the Setup wizard, not here)
 docker compose up -d       # open http://localhost:4174
 ```
 
@@ -52,13 +54,26 @@ criteria between teachers* below.
 Set `ORIGIN` to the address you actually open (e.g. `http://192.168.1.10:4174` when
 reaching the app from another machine) — it is required for CSRF-safe file uploads.
 
-**First run:** open `http://localhost:4174/onboarding` — the setup checklist
-walks you through the five steps (assignment, criteria + scoring, LLM provider,
-offline docs index, first pipeline run). The docs-index step has a
-**Download vectors now** button that fetches the prebuilt public index
-(~680 MB, no API key) straight from the web UI; until it exists, copilot
-search degrades to BM25-only. Each item links to the page that completes it,
-and the checklist refreshes when you come back.
+**First run (teacher build):** opening `http://localhost:4174` lands you on the
+**setup wizard** (`/onboarding`) — the teacher build redirects there until the
+core setup is done, or you dismiss it once. The wizard walks you through:
+
+1. **Choose a path** — *start fresh setup*, or *restore from backup* (brings
+   back settings, assignments and submissions from another machine; most of the
+   remaining setup is then already done).
+2. **LLM provider** — enter the API key and pick the model in place. Provider
+   config is stored in `data/settings.yaml` plus an in-process key store — no
+   `.env` editing.
+3. **Docs index** *(optional)* — **Download vectors now** fetches the prebuilt
+   public index (~680 MB, no API key), rebuild locally, or skip; until an index
+   exists, copilot search degrades to BM25-only.
+4. **Executor check** *(optional)* — a live probe that the notebook-execution
+   backend is reachable.
+5. **Reference assignment** *(optional)* — one click installs the bundled
+   `soil_contamination` assignment with criteria and scoring wired.
+6. **Finish** — an honest summary of what's done vs. skipped, then *Finish &
+   open submissions*. Dismissing once is remembered (`data/wizard_state.json`),
+   and the first grading pass is a non-blocking pointer, not a requirement.
 
 From source instead:
 
@@ -70,6 +85,8 @@ pnpm build:teacher    # Node build → frontend/build/
 pnpm start:teacher    # or run the built server on port 4174
 ```
 
+First run works the same as the Docker path: the app lands you on the **setup wizard**.
+
 ### Student mode (static SPA for GitHub Pages)
 
 ```bash
@@ -80,9 +97,10 @@ pnpm build:student    # static build → frontend/build/ (deploy to GitHub Pages
 pnpm start:student    # serve the static build on port 4173
 ```
 
-For the full walkthrough — `.env` variables, first start, uploads, pipeline,
-grading, backup — see the in-app **teacher documentation** at [`/docs`](frontend/src/routes/docs/+page.svelte)
-and the **Documentation** list below.
+For the full walkthrough — first start via the setup wizard, deployment env
+vars, uploads, pipeline, grading, backup — see the in-app **teacher
+documentation** at [`/docs`](frontend/src/routes/docs/+page.svelte) and the
+**Documentation** list below.
 
 ---
 
@@ -146,8 +164,8 @@ boundaries honest. Before you rely on it:
 
 The app ships with an in-app **teacher documentation** page at [`/docs`](frontend/src/routes/docs/+page.svelte), covering:
 
-- **Getting Started** — Docker prerequisites, clone, `.env` setup, first start
-- **Configuration** — `.env` variables, settings page, assignments & grading config YAML
+- **Getting Started** — Docker prerequisites, clone, first start via the Setup wizard
+- **Configuration** — Settings page + Setup wizard, deployment env vars, assignments & grading config YAML
 - **Uploading Submissions** — file naming, classification, kind override, materials
 - **Running the Pipeline** — Process All / Pre-evaluate All, progress & logs, auto-fix
 - **Grading Workflow** — reference comparison, rubric, grading sidebar, save & export
@@ -167,10 +185,14 @@ The app ships with an in-app **teacher documentation** page at [`/docs`](fronten
 
 ## Configuration
 
-For day-to-day use, **nearly all configuration happens on one Settings page** (`/settings`) — Execution
-& AI, Grading, and Appearance. Per-assignment content is edited in the assignment editor. Only
-deployment-level env vars and a few read-only code constants live elsewhere: standing up the webapp is
-*not* a six-place exercise.
+For day-to-day use, **nearly all configuration happens inside the app**: the
+**Setup wizard** (`/onboarding`) configures the LLM provider on first run, and
+the **Settings page** (`/settings`) covers Execution & AI, Grading, and
+Appearance afterwards — both write the same settings store (`data/settings.yaml`
+plus an in-process key store; secrets are never written to a settings file).
+Per-assignment content is edited in the assignment editor. Only
+deployment-level env vars and a few read-only code constants live elsewhere:
+standing up the webapp is *not* a six-place exercise.
 
 Everything below is grouped by *purpose* — the same four groups the in-app **Configuration map**
 card uses:
@@ -186,47 +208,65 @@ card uses:
 > settings/assignment rows link to the editor cards that own them; env and code rows are read-only
 > there (env changes need a restart, code constants need a rebuild).
 
-Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`) are edited from the
-Settings page; the tables here are their reference. **Precedence:** a value set in the YAML file wins,
-then the matching environment variable, then the built-in default. Secrets (`KI_CONNECT_API_KEY`) are
-never written to a settings file.
+Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`)
+are edited from the Settings page — the Setup wizard writes the same store on
+first run; the tables here are their reference. **Precedence:** a value set in
+the YAML file wins, then the matching environment variable, then the built-in
+default. The API key is a runtime secret: it lives in an in-process key store,
+entered via the Setup wizard or Settings → Execution & AI, and is never written
+to a settings file.
 
-### Environment variables
+### Deployment configuration (environment variables)
 
-Deployment-level. Set in `.env` / the environment **before** starting the server; restart to apply.
+Boot-time concerns only. Set in `.env` / the environment **before** starting
+the server; restart to apply. Runtime provider configuration (API key, base
+URL, model, embedding model) is **not** here — configure it in the **Setup
+wizard** (`/onboarding`) on first run or under **Settings → Execution & AI**
+afterwards; it is stored in `data/settings.yaml` + the in-process key store.
 [`.env.example`](.env.example) is the canonical template.
 
-**Deployment & build**
+**Core deployment variables**
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `DATA_DIR` | `./data` (Docker: `/app/data`) | Data root for all runtime config and state (settings, assignments, grading config, criteria, submissions, docs index). |
+| `DOCS_INDEX_DIR` | `<DATA_DIR>/docs-index` | Docs-RAG index directory holding `docs-index.json` + `docs-vectors.bin`. |
 | `ADAPTER` | `node` | Build adapter: `node` (teacher server) or `static` (student SPA). |
+| `EXECUTOR_URL` | `http://executor:8766` | Base URL the frontend uses to reach the notebook-execution backend. |
+
+**Deployment & build (rest)**
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
 | `NODE_ENV` | `production` | Node runtime mode (`production`/`development`). |
 | `PORT` | `4174` | Port the teacher Node server listens on. |
 | `ORIGIN` | `http://localhost:4174` | Canonical origin teachers use to reach the app. Required for CSRF-safe form POSTs (uploads, materials) over plain HTTP — set it to the address you actually use (e.g. `http://192.168.1.10:4174`). |
 | `BODY_SIZE_LIMIT` | `50M` | Max request body (uploads, materials, backups). adapter-node's own default is 512K — too small for notebooks/PDFs; raised to 50M in the Dockerfile and `.env.example`. |
-| `DATA_DIR` | `./data` (Docker: `/app/data`) | Data root for all runtime config and state (settings, assignments, grading config, criteria, submissions, docs index). |
-| `DOCS_INDEX_DIR` | `<DATA_DIR>/docs-index` | Docs-RAG index directory holding `docs-index.json` + `docs-vectors.bin`. |
 | `COMPOSE_PROJECT_NAME` | `svelte-review` | Docker Compose project name (container/volume prefix). |
 
 **Executor (Python backend)**
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `EXECUTOR_URL` | `http://executor:8766` | Base URL the frontend uses to reach the notebook-execution backend. |
 | `EXECUTOR_PORT` | `8766` | Port the FastAPI executor binds. |
 | `EXECUTOR_LOG_LEVEL` | `info` | Executor log verbosity (`debug`/`info`/`warning`/`error`). |
 | `RICH_OUTPUT_MAX_IMAGE_BYTES` | `5242880` (5 MiB) | Cell image outputs larger than this are skipped (not stored) when saving rich results. |
 | `RICH_OUTPUT_MAX_HTML_CHARS` | `200000` | Cell HTML outputs longer than this are truncated. |
 
-**LLM (KI Connect)**
+**LLM provider (optional Docker overrides)**
+
+The primary place for provider config is the **Setup wizard** (first run) or
+**Settings → Execution & AI** (runtime) — the settings store wins when both
+exist. These env vars remain as code fallbacks, so existing `.env`-based
+installations keep working unchanged:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `KI_CONNECT_BASE_URL` | `https://chat.kiconnect.nrw/api/v1` | OpenAI-compatible API base URL (env fallback for `llm.base_url`). |
-| `KI_CONNECT_API_KEY` | — (secret) | Bearer token. Never written to a settings file or sent back to the browser; replaceable at runtime under Settings → Execution & AI. |
-| `KI_CONNECT_MODEL` | `qwen3-30b-a3b-instruct-2507` | Default model (env fallback for `llm.model`). |
-| `KI_CONNECT_TIMEOUT_MS` | `60000` | LLM request timeout (env fallback for `llm.timeout_ms`). |
+| `KI_CONNECT_BASE_URL` | `https://chat.kiconnect.nrw/api/v1` | OpenAI-compatible API base URL (override for `llm.base_url`). |
+| `KI_CONNECT_API_KEY` | — (secret) | Bearer token (override). Stored in-process when set via the wizard/Settings; never written to a settings file or sent back to the browser. |
+| `KI_CONNECT_MODEL` | `qwen3-30b-a3b-instruct-2507` | Default model (override for `llm.model`). |
+| `KI_CONNECT_EMBEDDING_MODEL` | `e5-mistral-7b-instruct` | Embedding model id (override for `llm.embedding_model`). Must keep the 4096-dimension contract of `docs-vectors.bin`. |
+| `KI_CONNECT_TIMEOUT_MS` | `60000` | LLM request timeout (override for `llm.timeout_ms`). |
 | `SCREENING_MODEL` | (small default) | Overrides the model used to screen untrusted notebook content before it reaches a prompt. |
 
 **Pipeline toggle**
@@ -240,15 +280,17 @@ Deployment-level. Set in `.env` / the environment **before** starting the server
 KI Connect (`chat.kiconnect.nrw`) is the **default** provider, but it is only an
 OpenAI-compatible endpoint — the app works with **any** provider that speaks
 that protocol. External users who cannot reach the NRW gateway can point the app
-at their own provider (OpenRouter is a first-class documented target). Two
-equivalent ways to switch:
+at their own provider (OpenRouter is a first-class documented target). The
+**settings store is the primary path** — set in the Setup wizard on first run or
+under Settings → Execution & AI; the matching env vars remain as Docker
+overrides:
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Base URL | `data/settings.yaml` → `llm.base_url`, or `KI_CONNECT_BASE_URL` env | e.g. `https://openrouter.ai/api/v1` |
-| Model | `data/settings.yaml` → `llm.model`, or `KI_CONNECT_MODEL` env | Provider-specific id — use the **`<model-id>`** from the provider's model list (e.g. OpenRouter's `/models`), not an invented name |
-| Timeout | `data/settings.yaml` → `llm.timeout_ms`, or `KI_CONNECT_TIMEOUT_MS` env | Default `60000` |
-| API key | Runtime **Settings → Execution & AI**, or `KI_CONNECT_API_KEY` env | **Never** written to `data/settings.yaml` or committed; replaceable at runtime |
+| Base URL | Settings → Execution & AI → `data/settings.yaml` `llm.base_url` (primary); `KI_CONNECT_BASE_URL` env override | e.g. `https://openrouter.ai/api/v1` |
+| Model | Settings → Execution & AI → `data/settings.yaml` `llm.model` (primary); `KI_CONNECT_MODEL` env override | Provider-specific id — use the **`<model-id>`** from the provider's model list (e.g. OpenRouter's `/models`), not an invented name |
+| Timeout | Settings → Execution & AI → `data/settings.yaml` `llm.timeout_ms` (primary); `KI_CONNECT_TIMEOUT_MS` env override | Default `60000` |
+| API key | **Setup wizard** (first run) or **Settings → Execution & AI** (runtime) — in-process key store; `KI_CONNECT_API_KEY` env as Docker override | **Never** written to `data/settings.yaml` or committed; replaceable at runtime |
 
 **Precedence:** a value in `data/settings.yaml` wins, then the matching
 environment variable, then the built-in default (see `settings.ts` —
@@ -294,9 +336,10 @@ optional; defaults shown.
 
 | Key | Default | What it does |
 | --- | --- | --- |
-| `llm.base_url` | `https://chat.kiconnect.nrw/api/v1` | LLM provider base URL (env: `KI_CONNECT_BASE_URL`). |
-| `llm.model` | `qwen3-30b-a3b-instruct-2507` | Model id (env: `KI_CONNECT_MODEL`). |
-| `llm.timeout_ms` | `60000` | LLM request timeout (env: `KI_CONNECT_TIMEOUT_MS`). |
+| `llm.base_url` | `https://chat.kiconnect.nrw/api/v1` | LLM provider base URL (env override: `KI_CONNECT_BASE_URL`). |
+| `llm.model` | `qwen3-30b-a3b-instruct-2507` | Model id (env override: `KI_CONNECT_MODEL`). |
+| `llm.timeout_ms` | `60000` | LLM request timeout (env override: `KI_CONNECT_TIMEOUT_MS`). |
+| `llm.embedding_model` | `e5-mistral-7b-instruct` | Docs-RAG embedder model id (env override: `KI_CONNECT_EMBEDDING_MODEL`); must keep the 4096-dimension contract of `docs-vectors.bin`. |
 
 **`copilot`** — copilot behavior
 
@@ -536,9 +579,11 @@ pnpm start:teacher        # Start server on port 4174
 > uses **mixed vendor prefixes** — `openai-gpt-oss-120b` (prefixed) but
 > `qwen3-30b-a3b-instruct-2507` (unprefixed) — so the id must be spelled
 > exactly as listed. List the valid ids with
-> `GET $KI_CONNECT_BASE_URL/models` (or check the Settings page's model
-> picker), fix `llm.model` in `data/settings.yaml` (or `KI_CONNECT_MODEL`
-> in `.env`), and **restart** — settings are cached at load, not hot-reloaded.
+> `GET $KI_CONNECT_BASE_URL/models` (or pick from the Settings page's model
+> picker), change the model under **Settings → Execution & AI** (that is also
+> where the Setup wizard writes it; `KI_CONNECT_MODEL` in `.env` is only a
+> Docker override), and **restart** — settings are cached at load, not
+> hot-reloaded.
 > The server logs a loud `[ki-connect] Configured model … NOT found` warning
 > at the first pipeline/copilot use to surface this early.
 

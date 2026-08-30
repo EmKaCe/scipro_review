@@ -41,18 +41,22 @@ cd scipro_review</code
 					></pre>
 			</li>
 			<li>
-				Create the environment file and add your API key:
+				Create the environment file (boot-time deployment settings only):
 				<pre><code>cp .env.example .env</code></pre>
-				Then edit<code>.env</code> and set
-				<code>KI_CONNECT_API_KEY=sk-...</code> to your KI Connect key.
+				Edit<code>ORIGIN</code> if you reach the app from another machine (see the note
+				below). The LLM API key is <em>not</em> entered here — the Setup wizard handles it on
+				first start.
 			</li>
 			<li>
 				Start the stack:
 				<pre><code>docker compose up -d</code></pre>
 			</li>
 			<li>
-				Open <a href="http://localhost:4174">http://localhost:4174</a> in your browser. The
-				app now shows the <strong>teacher dashboard</strong>.
+				Open <a href="http://localhost:4174">http://localhost:4174</a> in your browser. You
+				land on the <strong>Setup wizard</strong> (<code>/onboarding</code>): it walks you
+				through the LLM provider, the offline docs index, an executor health check, and the
+				reference assignment. The teacher build redirects to the wizard until the core setup
+				is done — or you dismiss it once on the finish step.
 			</li>
 		</ol>
 		<div
@@ -80,10 +84,14 @@ cd scipro_review</code
 	<section id="configuration">
 		<h2>Configuration</h2>
 		<p>
-			Configuration is split between the <code>.env</code> file (machine-level settings, read
-			at container start) and the in-app settings page (runtime settings, stored in
-			<code>data/settings.yaml</code>). Course content lives in YAML files under
-			<code>data/</code>.
+			Runtime app configuration happens <strong>inside the app</strong>: the
+			<strong>Setup wizard</strong> (<code>/onboarding</code>) on first run, then the
+			<strong>Settings page</strong> (<code>/settings</code>) — both write
+			<code>data/settings.yaml</code> plus an in-process key store (secrets are never written
+			to a settings file). The <code>.env</code> file is
+			<strong>deployment-only</strong>: boot-time settings such as
+			<code>ORIGIN</code>, <code>EXECUTOR_URL</code> and <code>DATA_DIR</code>. Course content
+			lives in YAML files under <code>data/</code>.
 		</p>
 		<p class="note">
 			<strong>Deep reference:</strong> this page is the <em>how-to</em>. For the full
@@ -94,11 +102,20 @@ cd scipro_review</code
 			new-assignment / accuracy guidance, <code>assignment-calibration.md</code> and
 			<code>quality-statement.md</code>.
 		</p>
-		<h3>Environment File (<code>.env</code>)</h3>
+		<h3>Environment File (<code>.env</code>) — deployment only</h3>
 		<ul>
 			<li>
-				<strong><code>KI_CONNECT_API_KEY</code></strong> — Bearer token for the KI Connect NRW
-				OpenAI-compatible API. Required for pre-evaluation and the copilot.
+				<strong><code>KI_CONNECT_API_KEY</code></strong> —
+				<em>optional Docker override.</em>
+				The primary path is the Setup wizard (first run) or Settings → Execution &amp; AI (runtime):
+				the key lives in the server process only and is never written to
+				<code>data/settings.yaml</code>. Existing <code>.env</code>-based installs keep
+				working (the env fallback remains in code).
+			</li>
+			<li>
+				<strong><code>KI_CONNECT_BASE_URL</code> / <code>KI_CONNECT_MODEL</code></strong> —
+				optional Docker overrides for <code>llm.base_url</code> / <code>llm.model</code>.
+				Primary path: the Setup wizard or Settings → Execution &amp; AI.
 			</li>
 			<li>
 				<strong><code>ORIGIN</code></strong> — The public URL teachers use to reach the app.
@@ -469,8 +486,11 @@ grade_boundaries:
 				<tr>
 					<td>KI Connect auth failed</td>
 					<td>
-						Verify <code>KI_CONNECT_API_KEY</code> in <code>.env</code> is correct and not
-						empty, then restart the stack
+						Check the key under Settings → Execution &amp; AI — set on first run in the
+						Setup wizard — and the provider's base URL / model id. On
+						<code>.env</code>-based Docker installs, verify
+						<code>KI_CONNECT_API_KEY</code> in <code>.env</code> is set, then restart the
+						stack
 					</td>
 				</tr>
 				<tr>
@@ -636,8 +656,11 @@ docker compose up -d --build</code
 		<h3>Secrets and the docs index</h3>
 		<ul>
 			<li>
-				API keys belong only in <code>.env</code> (or the runtime Settings → Execution &amp;
-				AI page) — <strong>never</strong> in <code>data/settings.yaml</code> and never committed.
+				API keys are entered in the Setup wizard or Settings → Execution &amp; AI and live
+				in an in-process key store — <strong>never</strong> in
+				<code>data/settings.yaml</code> and never committed. The
+				<code>KI_CONNECT_API_KEY</code> env var (Docker) is an optional override for
+				<code>.env</code>-based installs.
 			</li>
 			<li>
 				The prebuilt docs index is published as a <strong

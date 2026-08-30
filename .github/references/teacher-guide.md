@@ -26,12 +26,38 @@ flowchart LR
 
 Do these in order. Each step maps to one place in the app (or one file).
 
+### First run: the setup wizard
+
+A fresh teacher install lands on the **setup wizard** (`/onboarding`) first —
+the teacher build redirects there until the core setup is done, or you dismiss
+it once on the finish step. Most steps are completed right inside the wizard:
+
+| Wizard step | What you do | Notes |
+|---|---|---|
+| **Welcome / fork** | *Start fresh setup* or *Restore a backup from another machine* | Restore brings back settings, assignments and submissions; the remaining steps are then mostly already done |
+| **LLM provider** | Enter the API key, pick the model | Saved to the settings store (`data/settings.yaml` + in-process key store) — no `.env` editing |
+| **Docs index** *(skippable)* | *Download vectors now* (prebuilt index, ~680 MB, no API key), rebuild locally, or skip | Until an index exists, copilot search degrades to BM25-only — quieter, not broken |
+| **Executor check** *(skippable)* | Live probe of the notebook-execution backend | Re-probe or skip and check it later |
+| **Reference assignment** *(skippable)* | One click installs the bundled `soil_contamination` assignment, criteria and scoring wired | Already using your own assignment? Skip — your setup counts the same |
+| **Finish** | Honest summary of done vs. skipped, then *Finish & open submissions* | Dismissing once stops the redirect; the first grading pass is a non-blocking pointer |
+
+**The redirect, briefly (for teachers who want to skip):** the wizard is the
+entrypoint until the LLM provider is configured **and** an assignment is wired
+up, in either direction. Docs index, executor check and the first grading pass
+**never block** it — skip them freely. To move past the wizard, walk to the
+Finish step and press *Finish & open submissions*: the dismissal is recorded
+once (`data/wizard_state.json`) and the redirect stops on this machine until
+core setup changes again.
+
+The table below is the same ground, mapped to where each thing lives after
+the wizard:
+
 | # | Step | Where it happens | Notes |
 |---|---|---|---|
-| 1 | **Create or import the assignment** | Assignments UI (`/settings/assignments`) → `data/assignments.yaml` | id, title, enabled, grading dimensions |
+| 1 | **Create or import the assignment** | Assignments UI (`/settings/assignments`) → `data/assignments.yaml` | On a fresh install, the wizard's Reference assignment step does this for the bundled `soil_contamination` |
 | 2 | **Wire the criteria + scoring** | Assignment editor → `data/criteria/<id>.yaml` + `data/scoring/<id>.yaml` | The rubric checklist + scoring config (anchors, evidence, dimension guidance) |
-| 3 | **Configure the LLM provider** | `.env` (start-up) or Settings → Execution & AI (runtime) | Base URL, model id, API key |
-| 4 | **Fetch the offline docs index** *(optional — safe to skip)* | One-time host helper, not an app workflow: from the repo root, `frontend/scripts/fetch-docs-index.mjs --public` (plain HTTPS, no gh CLI needed) or `build-docs-index.mjs` to rebuild | Grounds API-fact checks; without it, search is BM25-only (see below). ~680 MB download — defer it until you want grounding |
+| 3 | **Configure the LLM provider** | Setup wizard (`/onboarding`) on first run, or Settings → Execution & AI afterwards | Base URL, model id, API key — settings store, not `.env` |
+| 4 | **Fetch the offline docs index** *(optional — safe to skip)* | Wizard's **Docs index** step (*Download vectors now*), or from the repo root `frontend/scripts/fetch-docs-index.mjs --public` (plain HTTPS, no gh CLI needed) / `build-docs-index.mjs` to rebuild | Grounds API-fact checks; without it, search is BM25-only (see below). ~680 MB download — defer it until you want grounding |
 | 5 | **Upload the first submission** | Submissions page (`/submissions`) upload bar | Drag-and-drop; classified automatically |
 
 ### Where each one lives
@@ -41,9 +67,12 @@ Do these in order. Each step maps to one place in the app (or one file).
   (`data/criteria/<id>.yaml`) define what to check per category; the scoring
   config (`data/scoring/<id>.yaml`) holds anchors, evidence patterns, disallowed
   libraries, and the per-dimension guidance text the model sees.
-- **LLM provider** is *app-level*. The API key is a **runtime-only secret** — in
-  Settings → Execution & AI or the `.env` key `KI_CONNECT_API_KEY`; it is never
-  written to a settings file. The app works with **any OpenAI-compatible
+- **LLM provider** is *app-level*. Configure it in the **Setup wizard** on first
+  run or in **Settings → Execution & AI** afterwards: the API key goes to the
+  in-process key store (never a settings file), and the base URL / model /
+  embedding model to `data/settings.yaml`. `KI_CONNECT_*` env vars still work
+  as **Docker/deployment overrides** (the code fallbacks remain), but they are
+  no longer part of the setup path. The app works with **any OpenAI-compatible
   endpoint** (KI Connect is the default; OpenRouter is a first-class target) —
   set the base URL, the provider-specific **model id**, and the key.
 - **Docs index** — the prebuilt offline index
@@ -219,7 +248,7 @@ For the full troubleshooting list see the in-app **/docs → Troubleshooting**.
 | Symptom | Fix |
 |---|---|
 | **Uploads return 403** | Set `ORIGIN` in `.env` to the URL you actually use to reach the app (e.g. `http://<lan-ip>:4174`) and restart with `docker compose up -d`. This is the CSRF guard, not an upload bug. |
-| **No LLM / pre-eval or copilot does nothing** | Check the API key (`KI_CONNECT_API_KEY` or Settings → Execution & AI) and the provider's **model id**. Keys are runtime-only and never written to a settings file. |
+| **No LLM / pre-eval or copilot does nothing** | Check the API key (Settings → Execution & AI — set on first run in the Setup wizard) and the provider's **model id**. Keys are runtime-only, stored in-process, never in a settings file. |
 | **Executor not healthy** | `docker compose ps` — the executor must show `healthy`; start with `docker compose up -d` and inspect `docker compose logs executor`. |
 | **Pipeline is slow** | Concurrency is capped at **2** against the LLM provider (the empirical rate-limit ceiling — do not raise it). For a faster-but-less-thorough run, set `PRE_EVAL_CRITIQUE=0` to disable the extra critique pass, or pick a faster model in Settings. |
 
