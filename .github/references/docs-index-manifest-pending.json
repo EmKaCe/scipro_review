@@ -1,0 +1,24 @@
+{
+  "format": "svelte-review-copilot-docs-index",
+  "formatVersion": 1,
+  "chunks": 38380,
+  "embeddingModel": "e5-mistral-7b-instruct",
+  "libraries": [
+    "numpy",
+    "pandas",
+    "scipy",
+    "sklearn",
+    "matplotlib",
+    "seaborn",
+    "builtins",
+    "stdlib",
+    "typing",
+    "integration"
+  ],
+  "builtAt": "2026-08-20T12:31:11.980Z",
+  "configSha": "7245f5490e1bd1243cb08268ebe8d88d0d8d403b6dcf7b1c7a41c35c2c3433b8",
+  "sha256": {
+    "docs-index.json": "d1e0d78a4b9ee85c6bb7fa0adcbe6e35cca74c03bcca991e2a0f672a2d3a0c6e",
+    "docs-vectors.bin": "3cd05210f6bb3028afdcefe72d6b44d16e99827f4cdfd4c0fb7edf636433a689"
+  }
+}
