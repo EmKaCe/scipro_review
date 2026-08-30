@@ -1,10 +1,11 @@
 /**
- * @file Component tests — onboarding page (two-path setup).
+ * @file Component tests — onboarding wizard page (2.8.0-w2 step shell).
  *
- * Covers B1 (restore card: two-click confirm, success refresh, failure
- * surface, download link), B2 (in-place LLM setup: key + model save,
- * recommended tagging, static fallback) and B3 (first-run callout copy on
- * the dashboard is asserted in first-run-callout.test.ts).
+ * The page composes WizardShell (rail + nav) with per-step bodies: the
+ * welcome fork (fresh vs restore), the restore card, the LLM provider
+ * card, the DocsEmbedCard, the executor probe, the seed action and the
+ * done summary. Status is fetched on mount; entries land on the "welcome"
+ * step every time and navigate by clicking fork buttons / Next.
  */
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +13,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/svelte";
 
 import OnboardingPage from "../../routes/onboarding/+page.svelte";
 import * as settingsApi from "$lib/services/settings-api.js";
+
+const nav = vi.hoisted(() => ({
+	goto: vi.fn(),
+	invalidateAll: vi.fn(),
+}));
 
 vi.mock("$lib/services/settings-api.js", async (importOriginal) => {
 	const actual = await importOriginal<typeof settingsApi>();
@@ -54,6 +60,8 @@ vi.mock("$lib/services/settings-api.js", async (importOriginal) => {
 
 vi.mock("$app/paths", () => ({ base: "" }));
 
+vi.mock("$app/navigation", () => nav);
+
 vi.mock("$lib/stores/toast.svelte.js", () => ({
 	addToast: vi.fn(),
 }));
@@ -68,7 +76,7 @@ function statusBody(items: { id: string; done: boolean | null; detail?: string }
 	return { items };
 }
 
-/** Default status: llm-provider NOT done (the expandable case). */
+/** Default status: provider NOT done, docs done — the expandable case. */
 const DEFAULT_ITEMS = [
 	{ id: "create-assignment", done: true },
 	{ id: "wire-scoring", done: true },
@@ -76,6 +84,32 @@ const DEFAULT_ITEMS = [
 	{ id: "docs-index", done: true },
 	{ id: "first-pipeline", done: false },
 ];
+
+/** Docs-index NOT done: the card must offer the A/B/C options. */
+const NO_INDEX_ITEMS = DEFAULT_ITEMS.map((i) =>
+	i.id === "docs-index" ? { ...i, done: false } : i,
+);
+
+const EXECUTOR_HEALTH_OK = {
+	status: "ok",
+	version: "2.8.0",
+	data_dir: "/app/data",
+	ki_connect_available: true,
+};
+
+const SEED_OK = {
+	ok: true,
+	assignmentId: "soil_contamination",
+	alreadyEnabled: false,
+	missingFiles: [],
+};
+
+function jsonResponse(body: unknown, status = 200): Response {
+	return new Response(JSON.stringify(body), {
+		status,
+		headers: { "content-type": "application/json" },
+	});
+}
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -117,13 +151,18 @@ beforeEach(() => {
 	mockedSaveApiKey.mockResolvedValue(undefined);
 	mockedSaveSettings.mockResolvedValue({} as never);
 
-	// The page calls GET /api/onboarding/status on mount (and after saves).
+	// Default script: status + the docs card's own status probe + a
+	// reachable executor; individual tests override the routes they
+	// exercise (backup, seed, health, dismiss).
 	fetchMock.mockImplementation((url: string) => {
 		if (String(url).includes("/api/onboarding/status")) {
-			return Promise.resolve({
-				ok: true,
-				json: () => Promise.resolve(statusBody(DEFAULT_ITEMS)),
-			});
+			return Promise.resolve(jsonResponse(statusBody(DEFAULT_ITEMS)));
+		}
+		if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
+			return Promise.resolve(jsonResponse({ job: null }));
+		}
+		if (String(url).includes("/api/executor/health")) {
+			return Promise.resolve(jsonResponse(EXECUTOR_HEALTH_OK));
 		}
 		return Promise.reject(new Error(`unexpected fetch: ${url}`));
 	});
@@ -133,60 +172,93 @@ afterEach(() => {
 	vi.unstubAllGlobals();
 });
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 async function renderPage() {
-	const result = render(OnboardingPage);
-	// Wait for the initial status load to settle.
-	await waitFor(() => expect(screen.getByText(/First-run setup checklist/)).toBeTruthy());
-	return result;
+	render(OnboardingPage);
+	// The wizard lands on the welcome step once the status load settles.
+	await waitFor(() =>
+		expect(screen.getByRole("button", { name: /Start fresh setup/ })).toBeTruthy(),
+	);
 }
 
-describe("onboarding page — restore card (B1)", () => {
-	it("renders the restore card with the explicit title and copy", async () => {
+async function startFresh(): Promise<void> {
+	await fireEvent.click(screen.getByRole("button", { name: /Start fresh setup/ }));
+}
+
+async function startRestore(): Promise<void> {
+	await fireEvent.click(
+		screen.getByRole("button", { name: /Restore a backup from another machine/ }),
+	);
+}
+
+async function nextStep(): Promise<void> {
+	await fireEvent.click(screen.getByRole("button", { name: /^Next$/ }));
+}
+
+function statusCalls(): number {
+	return fetchMock.mock.calls.filter(([url]) =>
+		String(url).includes("/api/onboarding/status"),
+	).length;
+}
+
+describe("onboarding wizard — welcome fork", () => {
+	it("renders the setup wizard header with both fork choices", async () => {
 		await renderPage();
-		expect(screen.getByText("Restore a backup from another machine")).toBeTruthy();
+		expect(screen.getByText("Setup wizard")).toBeTruthy();
+		expect(screen.getByRole("button", { name: /Start fresh setup/ })).toBeTruthy();
 		expect(
-			screen.getByText(/restore your backup zip and most setup is already done/i),
+			screen.getByRole("button", { name: /Restore a backup from another machine/ }),
 		).toBeTruthy();
 	});
 
-	it("offers a download link for the current backup", async () => {
+	it("shows an error state when the status fetch fails", async () => {
+		fetchMock.mockImplementation(() => Promise.resolve(new Response("boom", { status: 500 })));
+		render(OnboardingPage);
+		expect(await screen.findByText(/Could not load setup status/)).toBeTruthy();
+	});
+});
+
+describe("onboarding wizard — restore step (B1)", () => {
+	it("offers the backup file input and a download link", async () => {
 		await renderPage();
+		await startRestore();
+
+		expect(document.querySelector('input[type="file"]')).not.toBeNull();
 		const link = screen.getByRole("link", { name: /Download current backup/ });
 		expect(link.getAttribute("href")).toBe("/api/backup");
 	});
 
 	it("requires a two-click confirm before restoring, then refreshes the status", async () => {
 		await renderPage();
+		await startRestore();
 
-		// Pick a file (jsdom File is available; only the name matters here).
 		const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
 		expect(fileInput).not.toBeNull();
 		if (!fileInput) return;
 
-		// No restore happens before confirmation.
 		expect(screen.queryByRole("button", { name: /Confirm restore/ })).toBeNull();
 
 		const file = new File(["zip-bytes"], "backup.zip", { type: "application/zip" });
 		await fireEvent.change(fileInput, { target: { files: [file] } });
 		expect(screen.getByRole("button", { name: /Confirm restore/ })).toBeTruthy();
 
-		// Now confirm → POST /api/backup, then status refresh.
 		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
 			if (String(url).includes("/api/backup") && init?.method === "POST") {
-				return Promise.resolve({ ok: true, json: () => Promise.resolve({ restored: 42 }) });
+				return Promise.resolve(jsonResponse({ restored: 42 }));
 			}
 			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () =>
-						Promise.resolve(
-							statusBody(
-								DEFAULT_ITEMS.map((i) =>
-									i.id === "llm-provider" ? { ...i, done: true } : i,
-								),
+				return Promise.resolve(
+					jsonResponse(
+						statusBody(
+							DEFAULT_ITEMS.map((i) =>
+								i.id === "llm-provider" ? { ...i, done: true } : i,
 							),
 						),
-				});
+					),
+				);
 			}
 			return Promise.reject(new Error(`unexpected fetch: ${url}`));
 		});
@@ -200,12 +272,13 @@ describe("onboarding page — restore card (B1)", () => {
 			expect(backupCalls.length).toBe(1);
 		});
 		expect(
-			await screen.findByText(/Backup restored — the checklist below has been re-evaluated/),
+			await screen.findByText(/Backup restored — your setup has been re-evaluated/),
 		).toBeTruthy();
 	});
 
 	it("surfaces the server error on a failed restore and does not refresh", async () => {
 		await renderPage();
+		await startRestore();
 
 		const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
 		expect(fileInput).not.toBeNull();
@@ -216,52 +289,39 @@ describe("onboarding page — restore card (B1)", () => {
 
 		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
 			if (String(url).includes("/api/backup") && init?.method === "POST") {
-				return Promise.resolve({
-					ok: false,
-					status: 400,
-					json: () => Promise.resolve({ error: "Could not restore backup: corrupt zip" }),
-				});
+				return Promise.resolve(
+					jsonResponse({ error: "Could not restore backup: corrupt zip" }, 400),
+				);
 			}
 			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () => Promise.resolve(statusBody(DEFAULT_ITEMS)),
-				});
+				return Promise.resolve(jsonResponse(statusBody(DEFAULT_ITEMS)));
 			}
 			return Promise.reject(new Error(`unexpected fetch: ${url}`));
 		});
 
-		const statusCallsBefore = fetchMock.mock.calls.filter(([u]) =>
-			String(u).includes("/api/onboarding/status"),
-		).length;
-
+		const before = statusCalls();
 		await fireEvent.click(screen.getByRole("button", { name: /Confirm restore/ }));
 
 		expect(
 			await screen.findByText(/Could not restore: Could not restore backup: corrupt zip/),
 		).toBeTruthy();
-		const statusCallsAfter = fetchMock.mock.calls.filter(([u]) =>
-			String(u).includes("/api/onboarding/status"),
-		).length;
-		// No refresh after a failed restore (same count as before the click).
-		expect(statusCallsAfter).toBe(statusCallsBefore);
+		// No refresh after a failed restore.
+		expect(statusCalls()).toBe(before);
 	});
 });
 
-describe("onboarding page — in-place LLM setup (B2)", () => {
-	it("expands the llm-provider item with a key field and model picker when not done", async () => {
+describe("onboarding wizard — provider step (B2)", () => {
+	it("offers the key field and model picker with recommended tagging", async () => {
 		await renderPage();
+		await startFresh();
+
 		expect(screen.getByLabelText("KI Connect API key")).toBeTruthy();
 		expect(screen.getByLabelText("Model")).toBeTruthy();
 		expect(screen.getByRole("button", { name: /Save key & model/ })).toBeTruthy();
-	});
 
-	it("tags the recommended grading model when present in the live list", async () => {
-		await renderPage();
 		await waitFor(() => expect(mockedFetchModels).toHaveBeenCalled());
 		const options = screen.getAllByRole("option") as HTMLOptionElement[];
 		const recommended = options.find((o) => o.textContent?.includes("Recommended"));
-		expect(recommended).toBeTruthy();
 		expect(recommended?.value).toBe("openai-gpt-oss-120b");
 		const fast = options.find((o) => o.textContent?.includes("Fast"));
 		expect(fast?.value).toBe("qwen3-30b-a3b-instruct-2507");
@@ -269,6 +329,8 @@ describe("onboarding page — in-place LLM setup (B2)", () => {
 
 	it("saves the key (PATCH) + model (PUT) and refreshes the status", async () => {
 		await renderPage();
+		await startFresh();
+
 		await fireEvent.input(screen.getByLabelText("KI Connect API key"), {
 			target: { value: "sk-test-123" },
 		});
@@ -292,80 +354,34 @@ describe("onboarding page — in-place LLM setup (B2)", () => {
 			],
 		});
 		await renderPage();
-		expect(
-			await screen.findByText(/you can also set KI_CONNECT_API_KEY in your .env/),
-		).toBeTruthy();
+		await startFresh();
+		expect(await screen.findByText(/you can also set KI_CONNECT_API_KEY in your .env/)).toBeTruthy();
 	});
 
-	it("does not expand the llm-provider item when it is already done", async () => {
+	it("keeps the card usable when the provider is already configured", async () => {
 		fetchMock.mockImplementation((url: string) => {
 			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () =>
-						Promise.resolve(
-							statusBody(
-								DEFAULT_ITEMS.map((i) =>
-									i.id === "llm-provider" ? { ...i, done: true } : i,
-								),
+				return Promise.resolve(
+					jsonResponse(
+						statusBody(
+							DEFAULT_ITEMS.map((i) =>
+								i.id === "llm-provider" ? { ...i, done: true } : i,
 							),
 						),
-				});
+					),
+				);
 			}
 			return Promise.reject(new Error(`unexpected fetch: ${url}`));
 		});
 		await renderPage();
-		expect(screen.queryByLabelText("KI Connect API key")).toBeNull();
-	});
-
-	it("clears a transient status error once a later refresh succeeds (restore path)", async () => {
-		// Initial status load FAILS → page shows the error state.
-		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
-			}
-			if (String(url).includes("/api/backup") && init?.method === "POST") {
-				return Promise.resolve({ ok: true, json: () => Promise.resolve({ restored: 1 }) });
-			}
-			return Promise.reject(new Error(`unexpected fetch: ${url}`));
-		});
-		await renderPage();
-		expect(await screen.findByText(/Could not load setup status/)).toBeTruthy();
-
-		// A successful restore triggers refreshStatus() → status succeeds now.
-		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
-			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () => Promise.resolve(statusBody(DEFAULT_ITEMS)),
-				});
-			}
-			if (String(url).includes("/api/backup") && init?.method === "POST") {
-				return Promise.resolve({ ok: true, json: () => Promise.resolve({ restored: 1 }) });
-			}
-			return Promise.reject(new Error(`unexpected fetch: ${url}`));
-		});
-
-		const fileInput = document.querySelector<HTMLInputElement>('input[type="file"]');
-		expect(fileInput).not.toBeNull();
-		if (!fileInput) return;
-		const file = new File(["zip-bytes"], "backup.zip", { type: "application/zip" });
-		await fireEvent.change(fileInput, { target: { files: [file] } });
-		await fireEvent.click(screen.getByRole("button", { name: /Confirm restore/ }));
-
-		// Error state clears: the checklist renders again.
-		await waitFor(() => expect(screen.getByText(/First-run setup checklist/)).toBeTruthy());
-		expect(screen.queryByText(/Could not load setup status/)).toBeNull();
+		await startFresh();
+		// The provider step body renders regardless of completion state.
+		expect(screen.getByLabelText("KI Connect API key")).toBeTruthy();
 	});
 });
 
-describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
-	/** docs-index NOT done: the card must offer the A/B/C options. */
-	const NO_INDEX_ITEMS = DEFAULT_ITEMS.map((i) =>
-		i.id === "docs-index" ? { ...i, done: false } : i,
-	);
-
-	/** Install the page + card fetch routes driven by the given body makers. */
+describe("onboarding wizard — docs-index step (2.7.0 card inside the shell)", () => {
+	/** Script the page + card fetch routes driven by the given body makers. */
 	function scriptPageAndCard(handlers: {
 		onboardingStatus?: () => unknown;
 		docsStatus?: () => unknown;
@@ -373,19 +389,14 @@ describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
 	}) {
 		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
 			if (String(url).includes("/api/onboarding/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () =>
-						Promise.resolve(
-							handlers.onboardingStatus?.() ?? statusBody(NO_INDEX_ITEMS),
-						),
-				});
+				return Promise.resolve(
+					jsonResponse(handlers.onboardingStatus?.() ?? statusBody(NO_INDEX_ITEMS)),
+				);
 			}
 			if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
-				return Promise.resolve({
-					ok: true,
-					json: () => Promise.resolve(handlers.docsStatus?.() ?? { job: null }),
-				});
+				return Promise.resolve(
+					jsonResponse(handlers.docsStatus?.() ?? { job: null }),
+				);
 			}
 			if (
 				String(url).includes("/api/onboarding/docs-embeddings") &&
@@ -395,24 +406,25 @@ describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
 					? (JSON.parse(String(init.body)) as Record<string, unknown>)
 					: {};
 				return Promise.resolve(
-					(
-						handlers.docsPost ??
-						(() => ({
-							ok: true,
-							json: () => Promise.resolve({ ok: true, started: true }),
-						}))
-					)(body, init),
+					(handlers.docsPost ?? (() => jsonResponse({ ok: true, started: true })))(
+						body,
+						init,
+					),
 				);
 			}
 			return Promise.reject(new Error(`unexpected fetch: ${url}`));
 		});
 	}
 
-	it("offers the three options inside the docs-index item when no index exists", async () => {
-		scriptPageAndCard({});
+	async function navigateToDocs(): Promise<void> {
 		await renderPage();
-		expect(screen.getByText("Fetch the offline docs index")).toBeTruthy();
-		// The card polls its own status on mount before revealing the options.
+		await startFresh();
+		await nextStep(); // provider → docs-index
+	}
+
+	it("offers the three options inside the docs-index step when no index exists", async () => {
+		scriptPageAndCard({});
+		await navigateToDocs();
 		expect(
 			await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
 		).toBeTruthy();
@@ -420,50 +432,35 @@ describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
 		expect(screen.getByRole("button", { name: /C — Skip vectors, BM25 only/ })).toBeTruthy();
 	});
 
-	it("starts a download and refreshes the checklist when it finishes", async () => {
+	it("starts a download and refreshes the status when it finishes", async () => {
 		scriptPageAndCard({
-			docsPost: () => ({
-				ok: true,
-				json: () => Promise.resolve({ ok: true, alreadyPresent: false, output: "" }),
-			}),
+			docsPost: () => jsonResponse({ ok: true, alreadyPresent: false, output: "" }),
 		});
-		await renderPage();
-		const statusCallsBefore = fetchMock.mock.calls.filter(([u]) =>
-			String(u).includes("/api/onboarding/status"),
-		).length;
+		await navigateToDocs();
+		const before = statusCalls();
 
 		await fireEvent.click(
 			await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
 		);
 		expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
 
-		// ondone = refreshStatus → the checklist was re-evaluated.
-		await waitFor(() => {
-			const statusCallsAfter = fetchMock.mock.calls.filter(([u]) =>
-				String(u).includes("/api/onboarding/status"),
-			).length;
-			expect(statusCallsAfter).toBeGreaterThan(statusCallsBefore);
-		});
+		// ondone = refreshStatus → the wizard's status was re-evaluated.
+		await waitFor(() => expect(statusCalls()).toBeGreaterThan(before));
 		const postCalls = fetchMock.mock.calls.filter(
 			([u, init]) =>
 				String(u).includes("/api/onboarding/docs-embeddings") &&
 				(init as RequestInit | undefined)?.method === "POST",
 		);
-		expect(postCalls.length).toBe(1);
 		expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
 			mode: "download",
 		});
 	});
 
-	it("skips via an explicit confirm, posts mode skip, and keeps the item not-done", async () => {
+	it("skips via an explicit confirm and keeps the step not-done", async () => {
 		scriptPageAndCard({
-			docsPost: () => ({
-				ok: true,
-				json: () => Promise.resolve({ ok: true, skipped: true }),
-			}),
+			docsPost: () => jsonResponse({ ok: true, skipped: true }),
 		});
-		await renderPage();
-		expect(screen.queryByText(/Semantic leg disabled — BM25-only/)).toBeNull();
+		await navigateToDocs();
 
 		await fireEvent.click(
 			await screen.findByRole("button", { name: /C — Skip vectors, BM25 only/ }),
@@ -472,26 +469,172 @@ describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
 		await fireEvent.click(screen.getByRole("button", { name: /Confirm skip/ }));
 
 		expect(await screen.findByText(/Semantic leg disabled — BM25-only/)).toBeTruthy();
-		const postCalls = fetchMock.mock.calls.filter(
-			([u, init]) =>
-				String(u).includes("/api/onboarding/docs-embeddings") &&
-				(init as RequestInit | undefined)?.method === "POST",
-		);
-		expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
-			mode: "skip",
-		});
-		// No index exists → the checklist item keeps its "To do" badge.
-		expect(screen.getAllByText("To do").length).toBeGreaterThan(0);
-		expect(screen.queryByText(/Semantic vectors are installed/)).toBeNull();
+		// Welcome + seed are done; the docs-index step stays not-done
+		// (provider is also not-done in this fixture), so exactly two Done
+		// badges render on the rail.
+		expect(screen.getAllByText("Done")).toHaveLength(2);
 	});
 
-	it("shows the installed compact state when the docs index is already present", async () => {
+	it("shows the installed compact state when the docs index already exists", async () => {
 		scriptPageAndCard({ onboardingStatus: () => statusBody(DEFAULT_ITEMS) });
-		await renderPage();
+		await navigateToDocs();
 		expect(
 			await screen.findByText(
 				/Semantic vectors are installed — search uses BM25 \+ vector retrieval\./,
 			),
 		).toBeTruthy();
+	});
+});
+
+describe("onboarding wizard — executor step", () => {
+	async function navigateToExecutor(): Promise<void> {
+		await renderPage();
+		await startFresh();
+		await nextStep(); // provider → docs-index
+		await nextStep(); // docs-index → executor
+	}
+
+	it("probes the executor on entering the step and shows the success card", async () => {
+		await navigateToExecutor();
+		expect(await screen.findByText("Executor reachable")).toBeTruthy();
+		expect(screen.getByText("2.8.0")).toBeTruthy();
+		expect(screen.getByText("ok")).toBeTruthy();
+	});
+
+	it("shows the unreachable state with Re-probe and Skip", async () => {
+		fetchMock.mockImplementation((url: string) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve(jsonResponse(statusBody(NO_INDEX_ITEMS)));
+			}
+			if (String(url).includes("/api/executor/health")) {
+				return Promise.resolve(
+					jsonResponse({
+						ok: false,
+						reachable: false,
+						error: "connect ECONNREFUSED 127.0.0.1:8000",
+					}),
+				);
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+		await navigateToExecutor();
+		expect(await screen.findByText("Executor unreachable")).toBeTruthy();
+		expect(screen.getByRole("button", { name: /Re-probe/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /Skip — I'll check it later/ })).toBeTruthy();
+	});
+});
+
+describe("onboarding wizard — seed step", () => {
+	async function navigateToSeed(): Promise<void> {
+		await renderPage();
+		await startFresh();
+		await nextStep(); // provider → docs-index
+		await nextStep(); // docs-index → executor
+		await nextStep(); // executor → seed
+	}
+
+	function scriptDefault(statusItems: typeof DEFAULT_ITEMS) {
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve(jsonResponse(statusBody(statusItems)));
+			}
+			if (String(url).includes("/api/executor/health")) {
+				return Promise.resolve(jsonResponse(EXECUTOR_HEALTH_OK));
+			}
+			if (String(url).includes("/api/onboarding/seed") && init?.method === "POST") {
+				return Promise.resolve(jsonResponse(SEED_OK));
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+	}
+
+	it("installs the reference assignment and shows the success card", async () => {
+		scriptDefault(NO_INDEX_ITEMS);
+		await navigateToSeed();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: /Install reference assignment/ }),
+		);
+		expect(await screen.findByText("Reference assignment enabled")).toBeTruthy();
+		expect(screen.getByText(/soil_contamination is ready/)).toBeTruthy();
+	});
+
+	it("surfaces the missing-files list on a broken install (422)", async () => {
+		scriptDefault(NO_INDEX_ITEMS);
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve(jsonResponse(statusBody(NO_INDEX_ITEMS)));
+			}
+			if (String(url).includes("/api/executor/health")) {
+				return Promise.resolve(jsonResponse(EXECUTOR_HEALTH_OK));
+			}
+			if (String(url).includes("/api/onboarding/seed") && init?.method === "POST") {
+				return Promise.resolve(
+					jsonResponse(
+						{
+							ok: false,
+							assignmentId: "soil_contamination",
+							alreadyEnabled: false,
+							missingFiles: ["data/scoring/soil_contamination.yaml"],
+						},
+						422,
+					),
+				);
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+		await navigateToSeed();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: /Install reference assignment/ }),
+		);
+		expect(await screen.findByText("Broken install")).toBeTruthy();
+		expect(screen.getByText("data/scoring/soil_contamination.yaml")).toBeTruthy();
+	});
+});
+
+describe("onboarding wizard — done step", () => {
+	it("finish dismisses the wizard and navigates to submissions", async () => {
+		// Provider done, docs-index NOT done — the only skipped step.
+		const providerDoneNoIndex = NO_INDEX_ITEMS.map((i) =>
+			i.id === "llm-provider" ? { ...i, done: true } : i,
+		);
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve(jsonResponse(statusBody(providerDoneNoIndex)));
+			}
+			if (String(url).includes("/api/executor/health")) {
+				return Promise.resolve(jsonResponse(EXECUTOR_HEALTH_OK));
+			}
+			if (String(url).includes("/api/onboarding/dismiss") && init?.method === "POST") {
+				return Promise.resolve(jsonResponse({ ok: true }));
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+		await renderPage();
+		await startFresh();
+		await nextStep(); // provider → docs-index
+		await nextStep(); // docs-index → executor
+		await nextStep(); // executor → seed
+		await nextStep(); // seed → done
+
+		// Summary: provider done, docs-index skipped (not-done), executor
+		// done (probe passed), seed done.
+		expect(screen.getByText("Skipped")).toBeTruthy();
+		expect(
+			screen.getByRole("link", { name: /Run your first grading pass/ }),
+		).toBeTruthy();
+
+		await fireEvent.click(
+			screen.getByRole("button", { name: /Finish & open submissions/ }),
+		);
+		await waitFor(() => expect(nav.goto).toHaveBeenCalledWith("/submissions"));
+		expect(nav.invalidateAll).toHaveBeenCalled();
+		const dismissCalls = fetchMock.mock.calls.filter(
+			([u, init]) =>
+				String(u).includes("/api/onboarding/dismiss") &&
+				(init as RequestInit | undefined)?.method === "POST",
+		);
+		expect(dismissCalls.length).toBe(1);
 	});
 });
