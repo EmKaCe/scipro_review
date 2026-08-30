@@ -12,7 +12,7 @@
  *       returns results,
  *   (e) tool registration + input schema validation.
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -277,6 +277,20 @@ describe("searchDocs — exact-name lookup (BM25)", () => {
 // ---------------------------------------------------------------------------
 
 describe("searchDocs — paraphrase via embeddings (RRF fusion)", () => {
+	// The fixture corpus (4 chunks) scores orders of magnitude below the
+	// production corpus calibration (150); pin a fixture-scale gate so the
+	// leg fires exactly when these tests intend.
+	const origThreshold = process.env.DOCS_RAG_EMBED_THRESHOLD;
+
+	beforeAll(() => {
+		process.env.DOCS_RAG_EMBED_THRESHOLD = "1";
+	});
+
+	afterAll(() => {
+		if (origThreshold === undefined) delete process.env.DOCS_RAG_EMBED_THRESHOLD;
+		else process.env.DOCS_RAG_EMBED_THRESHOLD = origThreshold;
+	});
+
 	it("surfaces the semantically closest page when BM25 has no lexical overlap", async () => {
 		await writeFixtureIndex(dataDir, true);
 

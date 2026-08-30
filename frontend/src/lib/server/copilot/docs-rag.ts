@@ -126,8 +126,40 @@ const INDEX_FILENAME = "docs-index.json";
 const INDEX_FORMAT = "svelte-review-copilot-docs-index";
 const INDEX_FORMAT_VERSION = 1;
 
-/** Top BM25 score below which the embedding leg is also run. */
-const BM25_EMBED_THRESHOLD = 0.5;
+/**
+ * Top raw-MiniSearch BM25 score below which the embedding leg also runs.
+ *
+ * Calibration (2026-08-30, live probes over the released 38k-chunk corpus;
+ * harness: scripts/eval-docs-rag.mts). MiniSearch emits UNNORMALIZED scores
+ * that scale with query length and match count, so the ORIGINAL 0.5
+ * threshold was unreachable: natural-language queries score 42-1190 raw
+ * ("fit" -> 43, "reshape" -> 48.5 via 712 prefix hits), lexically-confident
+ * queries 212-1190 (2026-08-30 eval: min top-score 212.6, median 502). The
+ * semantic leg fired on ZERO of 12 real queries — dead code; only true
+ * zero-hit queries (top=0) ever reached it.
+ *
+ * 150 therefore sits BELOW every lexically-confident query (the accurate
+ * path — the forced-hybrid eval showed the leg DISPLACES correct hits when
+ * BM25 is confident) while catching near-zero-overlap paraphrases, the case
+ * the vector leg exists for ("homogeneous partitioning observations" ->
+ * 31.7, "partition observations into homogeneous groups" -> 125.4). Prefix
+ * matching inflates scores ("stack arrays along a new axis" -> 682), so
+ * those stay on BM25 — correct for them.
+ *
+ * Raw-score space BY DESIGN — MiniSearch scores are corpus/tokenizer-scale
+ * dependent. RE-RUN scripts/eval-docs-rag.mts whenever the corpus or the
+ * MiniSearch version changes; expected confident-query floor ~212, guard
+ * band ~1.4x. DOCS_RAG_EMBED_THRESHOLD env overrides for the fixture-scale
+ * unit tests (a 4-chunk corpus scores orders of magnitude below 150).
+ */
+export const DEFAULT_BM25_EMBED_THRESHOLD = 150;
+export function bm25EmbedThreshold(): number {
+	const env = Number(process.env.DOCS_RAG_EMBED_THRESHOLD);
+	if (Number.isFinite(env) && env > 0) return env;
+	return DEFAULT_BM25_EMBED_THRESHOLD;
+}
+/** Corpus-scale calibration value (details in the comment above). */
+export const BM25_EMBED_THRESHOLD = DEFAULT_BM25_EMBED_THRESHOLD;
 /** RRF constant (standard k=60). */
 const RRF_K = 60;
 /** How many candidates each leg contributes to the RRF fusion. */
@@ -140,6 +172,9 @@ const SNIPPET_MARKER = "\n… (truncated)";
 // 4096 dims (KI Connect / OpenRouter both expose it). On a provider without
 // a compatible embeddings endpoint the vector leg silently degrades to
 // BM25-only — retrieval weakens, nothing breaks (see loadDocsIndex).
+// 2.7.0 note: the manifest's embeddingModel becomes authoritative when a
+// rebuilt/custom index is present (see the 2.7.0 design in
+// .github/references/plans/).
 const EMBEDDING_MODEL = "e5-mistral-7b-instruct";
 const EMBEDDING_TIMEOUT_MS = 30_000;
 
@@ -423,7 +458,7 @@ export async function searchDocs(
 	}));
 
 	const topScore = bm25Top.length > 0 ? bm25Top[0]!.score : 0;
-	const needsEmbedding = bm25Top.length === 0 || topScore < BM25_EMBED_THRESHOLD;
+	const needsEmbedding = bm25Top.length === 0 || topScore < bm25EmbedThreshold();
 
 	if (!needsEmbedding) {
 		return bm25Top.slice(0, topK).map((r) => toHit(r.chunk, r.score));
