@@ -13,7 +13,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promis
 import os from "node:os";
 import path from "node:path";
 
-import { POST } from "../../routes/api/onboarding/dismiss/+server";
+import { GET, POST } from "../../routes/api/onboarding/dismiss/+server";
 import { readWizardState, writeDismissed } from "$lib/server/onboarding-wizard-state";
 
 // ---------------------------------------------------------------------------
@@ -77,6 +77,23 @@ describe("onboarding-wizard-state module", () => {
 // ---------------------------------------------------------------------------
 // API route
 // ---------------------------------------------------------------------------
+
+describe("GET /api/onboarding/dismiss", () => {
+	it("answers { dismissed: false } when no dismiss is on record", async () => {
+		const resp = await GET();
+
+		expect(resp.status).toBe(200);
+		expect(await resp.json()).toEqual({ dismissed: false });
+	});
+
+	it("answers { dismissed: true } once the flag has been persisted", async () => {
+		await writeDismissed();
+
+		const resp = await GET();
+		expect(resp.status).toBe(200);
+		expect(await resp.json()).toEqual({ dismissed: true });
+	});
+});
 
 describe("POST /api/onboarding/dismiss", () => {
 	it("persists the dismiss flag and answers ok:true", async () => {
