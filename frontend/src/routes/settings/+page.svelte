@@ -50,11 +50,11 @@
 					<ListChecks class="mt-0.5 h-5 w-5 shrink-0 text-primary" />
 					<span>
 						<span class="block text-sm font-medium text-foreground"
-							>First-run setup checklist</span
+							>First-run setup wizard</span
 						>
 						<span class="mt-0.5 block text-xs text-muted-foreground">
-							Guided checklist for getting SciPro Review ready — assignments, scoring,
-							LLM, docs index.
+							Guided walkthrough for getting SciPro Review ready — assignments,
+							scoring, LLM, docs index.
 						</span>
 					</span>
 				</span>

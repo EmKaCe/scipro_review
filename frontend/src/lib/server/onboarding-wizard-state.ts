@@ -13,7 +13,7 @@
  * This module runs only on the SvelteKit server (`$lib/server/`).
  */
 
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { getDataDir } from "$lib/server/metadata";
@@ -70,5 +70,11 @@ export async function writeDismissed(): Promise<void> {
 		JSON.stringify({ dismissed: true, dismissedAt: new Date().toISOString() }, null, 2),
 		"utf-8",
 	);
-	await rename(tmpPath, filePath);
+	try {
+		await rename(tmpPath, filePath);
+	} catch (err) {
+		// The rename failed — don't leave the staging temp file behind.
+		await rm(tmpPath, { force: true }).catch(() => {});
+		throw err;
+	}
 }

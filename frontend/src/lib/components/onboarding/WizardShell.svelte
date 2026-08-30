@@ -69,10 +69,13 @@
 		fork?: "fresh" | "restore" | null;
 		onfork: (choice: "fresh" | "restore") => void;
 		ongoto: (step: WizardStepId) => void;
+		/** Optional inline banner rendered above the step content (e.g. a
+		 * transient refresh failure that must not unmount the shell). */
+		banner?: import("svelte").Snippet;
 		children?: import("svelte").Snippet;
 	}
 
-	let { steps, current, fork = null, onfork, ongoto, children }: Props = $props();
+	let { steps, current, fork = null, onfork, ongoto, banner, children }: Props = $props();
 
 	/** The step icons shown in the step header. */
 	const STEP_ICONS: Record<WizardStepId, typeof Sparkles> = {
@@ -106,7 +109,7 @@
 	<div class="grid gap-0 sm:grid-cols-[13rem_1fr]">
 		<nav
 			aria-label="Setup steps"
-			class="border-b border-border bg-muted/20 p-4 sm:border-b-0 sm:border-r"
+			class="border-b border-border bg-muted/20 p-4 sm:border-r sm:border-b-0"
 		>
 			<ol class="space-y-1">
 				{#each railSteps as step, i (step.id)}
@@ -139,7 +142,7 @@
 							</span>
 							{#if step.complete}
 								<span
-									class="shrink-0 rounded-full border border-success/30 bg-success/10 px-1.5 py-px text-[10px] font-semibold tracking-wide uppercase text-success"
+									class="shrink-0 rounded-full border border-success/30 bg-success/10 px-1.5 py-px text-[10px] font-semibold tracking-wide text-success uppercase"
 								>
 									Done
 								</span>
@@ -152,12 +155,20 @@
 
 		<div class="flex min-w-0 flex-col p-5">
 			<header>
-				<h2 class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground">
+				<h2
+					id="wizard-step-heading"
+					tabindex="-1"
+					class="flex items-center gap-2 text-lg font-semibold tracking-tight text-foreground"
+				>
 					<CurrentStepIcon class="h-5 w-5 text-primary" />
 					{STEP_META[current].title}
 				</h2>
 				<p class="mt-1 text-sm text-muted-foreground">{STEP_META[current].blurb}</p>
 			</header>
+
+			{#if banner}
+				<div class="mt-4">{@render banner?.()}</div>
+			{/if}
 
 			{#if current === "welcome"}
 				<!-- The fork decides the path: restore flows jump to restore,
@@ -197,12 +208,17 @@
 			{/if}
 
 			{#if current !== "welcome"}
-				<footer class="mt-6 flex items-center justify-between gap-3 border-t border-border pt-4">
+				<footer
+					class="mt-6 flex items-center justify-between gap-3 border-t border-border pt-4"
+				>
 					<div>
 						{#if prevStep}
 							<button
 								type="button"
-								class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+								class={cn(
+									buttonVariants({ variant: "outline", size: "sm" }),
+									"gap-1",
+								)}
 								onclick={() => ongoto(prevStep.id)}
 							>
 								<ChevronLeft class="h-3.5 w-3.5" />
@@ -214,7 +230,10 @@
 						{#if nextStep}
 							<button
 								type="button"
-								class={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1")}
+								class={cn(
+									buttonVariants({ variant: "default", size: "sm" }),
+									"gap-1",
+								)}
 								onclick={() => ongoto(nextStep.id)}
 							>
 								Next
@@ -227,3 +246,11 @@
 		</div>
 	</div>
 </div>
+
+<style>
+	/* Programmatic focus target (step changes) — suppress the ring for
+	   mouse/script focus, keep the keyboard :focus-visible indicator. */
+	#wizard-step-heading:focus {
+		outline: none;
+	}
+</style>

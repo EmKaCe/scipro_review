@@ -45,6 +45,8 @@
 	let items: OnboardingItem[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
+	/** Post-action refresh failures — inline banner, never unmounts the wizard. */
+	let refreshError: string | null = $state(null);
 
 	// ---------------------------------------------------------------------
 	// Wizard shell state (2.8.0)
@@ -75,27 +77,38 @@
 	let executorProbing = $state(false);
 
 	const steps = $derived(
-		executorProbe === null
-			? baseSteps
-			: markExecutor(baseSteps, executorProbe.reachable),
+		executorProbe === null ? baseSteps : markExecutor(baseSteps, executorProbe.reachable),
 	);
 
 	/** docs-index done flag for the DocsEmbedCard compact/installed look. */
 	const docsIndexDone = $derived(items.find((i) => i.id === "docs-index")?.done === true);
 
 	/** Steps summarized on the Done step (welcome/done themselves excluded). */
-	const doneEntries = $derived(
-		steps.filter((s) => s.id !== "welcome" && s.id !== "done"),
-	);
+	const doneEntries = $derived(steps.filter((s) => s.id !== "welcome" && s.id !== "done"));
 
 	function handleFork(choice: "fresh" | "restore"): void {
 		fork = choice;
 		// Restore flows jump to the restore step; fresh flows skip it.
 		current = choice === "restore" ? "restore" : "provider";
+		focusStepHeading();
 	}
 
 	function handleGoto(step: WizardStepId): void {
 		current = step;
+		focusStepHeading();
+	}
+
+	/** Move focus to the step heading after a step change (a11y). */
+	function focusStepHeading(): void {
+		// requestAnimationFrame lets the new step's heading be in the DOM
+		// before focus lands on it; fall back to a synchronous attempt in
+		// environments without rAF (jsdom tests).
+		const focusHeading = () => document.getElementById("wizard-step-heading")?.focus();
+		if (typeof requestAnimationFrame === "function") {
+			requestAnimationFrame(focusHeading);
+		} else {
+			focusHeading();
+		}
 	}
 
 	// ---------------------------------------------------------------------
@@ -114,7 +127,9 @@
 				data_dir?: string;
 				error?: string;
 			} | null;
-			if (body && body.reachable !== false) {
+			// Reachable only when the payload both lacks reachable:false and
+			// carries a string status — a wrong-shape 200 is a failed probe.
+			if (body && body.reachable !== false && typeof body.status === "string") {
 				executorProbe = {
 					reachable: true,
 					version: body.version,
@@ -124,7 +139,9 @@
 			} else {
 				executorProbe = {
 					reachable: false,
-					error: body?.error ?? `Probe failed (${resp.status})`,
+					error:
+						body?.error ??
+						(body ? "Unexpected response shape" : `Probe failed (${resp.status})`),
 				};
 			}
 		} catch (err) {
@@ -213,8 +230,8 @@
 			await invalidateAll();
 			await goto(`${base}/submissions`);
 		} catch (err) {
-			dismissError =
-				err instanceof Error ? err.message : "Could not save — setup will re-open next visit.";
+			// The template appends "— setup will re-open next visit." once.
+			dismissError = err instanceof Error ? err.message : "Could not save.";
 			dismissing = false;
 		}
 	}
@@ -341,9 +358,12 @@
 			// Clear any earlier failure so one transient error can't stick the
 			// page in the error state after a later successful refresh.
 			error = null;
+			refreshError = null;
 			items = body.items;
 		} catch (err) {
-			error = (err as Error).message;
+			// Post-action refreshes must never unmount the mid-flow wizard —
+			// surface as the inline banner instead of the fatal load error.
+			refreshError = (err as Error).message;
 		}
 	}
 
@@ -395,17 +415,50 @@
 				Setup wizard
 			</h1>
 			<p class="mt-1 text-sm text-muted-foreground">
-				A guided walkthrough to get SciPro Review ready for its first grading pass —
-				most steps are completed right here.
+				A guided walkthrough to get SciPro Review ready for its first grading pass — most
+				steps are completed right here.
 			</p>
 		</header>
 
 		{#if loading}
 			<p class="text-sm text-muted-foreground">Checking your setup…</p>
 		{:else if error}
-			<p class="text-sm text-destructive">Could not load setup status: {error}</p>
+			<div class="space-y-3">
+				<p class="text-sm text-destructive">Could not load setup status: {error}</p>
+				<button
+					type="button"
+					class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
+					onclick={() => void refreshStatus()}
+				>
+					<RefreshCcw class="h-3.5 w-3.5" />
+					Retry
+				</button>
+			</div>
 		{:else}
 			<WizardShell {steps} {current} {fork} onfork={handleFork} ongoto={handleGoto}>
+				{#snippet banner()}
+					{#if refreshError}
+						<div
+							role="status"
+							class="flex flex-wrap items-center gap-2 rounded-[var(--radius)] border border-destructive/30 bg-destructive/5 px-3 py-2"
+						>
+							<p class="min-w-0 flex-1 text-xs text-destructive">
+								Could not refresh setup status: {refreshError}
+							</p>
+							<button
+								type="button"
+								class={cn(
+									buttonVariants({ variant: "outline", size: "sm" }),
+									"gap-1",
+								)}
+								onclick={() => void refreshStatus()}
+							>
+								<RefreshCcw class="h-3.5 w-3.5" />
+								Retry
+							</button>
+						</div>
+					{/if}
+				{/snippet}
 				{#if current === "restore"}
 					<!-- Restore a backup from another machine (machine-migration path) -->
 					<div>
@@ -440,14 +493,19 @@
 									Confirm restore
 								</button>
 							{:else if restorePhase === "running"}
-								<span class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+								<span
+									class="inline-flex items-center gap-2 text-sm text-muted-foreground"
+								>
 									<LoaderCircle class="h-3.5 w-3.5 animate-spin" />
 									Restoring…
 								</span>
 							{/if}
 							<a
 								href={`${base}/api/backup`}
-								class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}
+								class={cn(
+									buttonVariants({ variant: "outline", size: "sm" }),
+									"gap-1.5",
+								)}
 								title="Download a zip of this machine's data directory"
 							>
 								<Download class="h-3.5 w-3.5" />
@@ -486,7 +544,9 @@
 									<button
 										type="button"
 										class="shrink-0 rounded-[var(--radius)] border border-border p-2 text-muted-foreground hover:bg-muted"
-										aria-label={llmApiKeyVisible ? "Hide API key" : "Show API key"}
+										aria-label={llmApiKeyVisible
+											? "Hide API key"
+											: "Show API key"}
 										onclick={() => (llmApiKeyVisible = !llmApiKeyVisible)}
 									>
 										{#if llmApiKeyVisible}
@@ -504,11 +564,13 @@
 								>
 									Model
 								</label>
-								<select id="llm-model" class="input w-full" bind:value={selectedModel}>
+								<select
+									id="llm-model"
+									class="input w-full"
+									bind:value={selectedModel}
+								>
 									{#if models.length === 0}
-										<option value="" disabled
-											>Loading models…</option
-										>
+										<option value="" disabled>Loading models…</option>
 									{/if}
 									{#each models as model (model.id)}
 										{@const rec = recommendModel(model.id, liveModelIds)}
@@ -540,17 +602,19 @@
 							</button>
 							{#if modelsSource === "static"}
 								<span class="text-[11px] text-muted-foreground">
-									Model list unavailable from the API — you can
-									also set KI_CONNECT_API_KEY in your .env.
+									Model list unavailable from the API — check the KI Connect base
+									URL in Settings, or retry after saving your key.
 								</span>
 							{/if}
 						</div>
-						{#if llmError}
-							<p class="mt-1 text-[11px] text-destructive">{llmError}</p>
-						{/if}
-						{#if llmSuccess}
-							<p class="mt-1 text-[11px] text-success">{llmSuccess}</p>
-						{/if}
+						<div aria-live="polite" class="mt-1">
+							{#if llmError}
+								<p class="text-[11px] text-destructive">{llmError}</p>
+							{/if}
+							{#if llmSuccess}
+								<p class="text-[11px] text-success">{llmSuccess}</p>
+							{/if}
+						</div>
 					</div>
 				{:else if current === "docs-index"}
 					<!-- Three-choice docs index install (A download / B rebuild / C skip) -->
@@ -562,7 +626,10 @@
 				{:else if current === "executor"}
 					<!-- Live executor probe -->
 					{#if executorProbing}
-						<div class="flex items-center gap-2 text-sm text-muted-foreground">
+						<div
+							role="status"
+							class="flex items-center gap-2 text-sm text-muted-foreground"
+						>
 							<LoaderCircle class="h-4 w-4 animate-spin" />
 							Checking the executor…
 						</div>
@@ -572,7 +639,9 @@
 						>
 							<CircleCheckBig class="mt-0.5 h-5 w-5 shrink-0 text-success" />
 							<div class="min-w-0">
-								<p class="flex items-center gap-2 text-sm font-semibold text-success">
+								<p
+									class="flex items-center gap-2 text-sm font-semibold text-success"
+								>
 									<Server class="h-4 w-4" />
 									Executor reachable
 								</p>
@@ -600,7 +669,9 @@
 						<div
 							class="rounded-[var(--radius)] border border-destructive/30 bg-destructive/5 p-4"
 						>
-							<p class="flex items-center gap-2 text-sm font-semibold text-destructive">
+							<p
+								class="flex items-center gap-2 text-sm font-semibold text-destructive"
+							>
 								<CircleAlert class="h-4 w-4" />
 								Executor unreachable
 							</p>
@@ -621,7 +692,10 @@
 								</button>
 								<button
 									type="button"
-									class={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1")}
+									class={cn(
+										buttonVariants({ variant: "ghost", size: "sm" }),
+										"gap-1",
+									)}
 									onclick={() => (current = "seed")}
 								>
 									<SkipForward class="h-3.5 w-3.5" />
@@ -633,12 +707,16 @@
 				{:else if current === "seed"}
 					<!-- One-click reference assignment install -->
 					{#if seedState === "running"}
-						<div class="flex items-center gap-2 text-sm text-muted-foreground">
+						<div
+							role="status"
+							class="flex items-center gap-2 text-sm text-muted-foreground"
+						>
 							<LoaderCircle class="h-4 w-4 animate-spin" />
 							Seeding the reference assignment…
 						</div>
 					{:else if seedState === "done" && seedResult}
 						<div
+							role="status"
 							class="flex items-start gap-3 rounded-[var(--radius)] border border-success/30 bg-success/10 p-4"
 						>
 							<CircleCheckBig class="mt-0.5 h-5 w-5 shrink-0 text-success" />
@@ -659,11 +737,16 @@
 						</div>
 					{:else if seedState === "failed"}
 						<div
+							aria-live="polite"
 							class="rounded-[var(--radius)] border border-destructive/30 bg-destructive/5 p-4"
 						>
-							<p class="flex items-center gap-2 text-sm font-semibold text-destructive">
+							<p
+								class="flex items-center gap-2 text-sm font-semibold text-destructive"
+							>
 								<CircleAlert class="h-4 w-4" />
-								{seedResult?.missingFiles?.length ? "Broken install" : "Seed failed"}
+								{seedResult?.missingFiles?.length
+									? "Broken install"
+									: "Seed failed"}
 							</p>
 							{#if seedResult?.missingFiles?.length}
 								<p class="mt-1 text-xs text-muted-foreground">
@@ -695,15 +778,19 @@
 						</div>
 					{:else}
 						<p class="text-sm text-muted-foreground">
-							Install the bundled reference assignment
-							(<span class="font-medium text-foreground">soil_contamination</span>) so
-							your first pass has an assignment, criteria and scoring wired up. Already
-							use your own assignment? Skip — your own setup counts the same way.
+							Install the bundled reference assignment (<span
+								class="font-medium text-foreground">soil_contamination</span
+							>) so your first pass has an assignment, criteria and scoring wired up.
+							Already use your own assignment? Skip — your own setup counts the same
+							way.
 						</p>
 						<div class="mt-3 flex flex-wrap items-center gap-2">
 							<button
 								type="button"
-								class={cn(buttonVariants({ variant: "default", size: "sm" }), "gap-1")}
+								class={cn(
+									buttonVariants({ variant: "default", size: "sm" }),
+									"gap-1",
+								)}
 								onclick={handleSeed}
 							>
 								<PackagePlus class="h-3.5 w-3.5" />
@@ -711,7 +798,10 @@
 							</button>
 							<button
 								type="button"
-								class={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1")}
+								class={cn(
+									buttonVariants({ variant: "ghost", size: "sm" }),
+									"gap-1",
+								)}
 								onclick={() => (current = "done")}
 							>
 								<SkipForward class="h-3.5 w-3.5" />
@@ -734,7 +824,9 @@
 											<Circle class="h-4 w-4 text-muted-foreground" />
 										{/if}
 									</span>
-									<span class="min-w-0 flex-1 text-sm font-medium text-foreground">
+									<span
+										class="min-w-0 flex-1 text-sm font-medium text-foreground"
+									>
 										{STEP_META[step.id].title}
 									</span>
 									<span
@@ -769,7 +861,7 @@
 							</a>
 						</div>
 						{#if dismissError}
-							<p class="text-xs text-destructive">
+							<p role="status" class="text-xs text-destructive">
 								{dismissError} — setup will re-open next visit.
 							</p>
 						{/if}

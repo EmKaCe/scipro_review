@@ -199,9 +199,8 @@ async function nextStep(): Promise<void> {
 }
 
 function statusCalls(): number {
-	return fetchMock.mock.calls.filter(([url]) =>
-		String(url).includes("/api/onboarding/status"),
-	).length;
+	return fetchMock.mock.calls.filter(([url]) => String(url).includes("/api/onboarding/status"))
+		.length;
 }
 
 describe("onboarding wizard — welcome fork", () => {
@@ -355,7 +354,34 @@ describe("onboarding wizard — provider step (B2)", () => {
 		});
 		await renderPage();
 		await startFresh();
-		expect(await screen.findByText(/you can also set KI_CONNECT_API_KEY in your .env/)).toBeTruthy();
+		expect(await screen.findByText(/Model list unavailable from the API/)).toBeTruthy();
+	});
+
+	it("keeps the wizard mounted when a post-action status refresh fails", async () => {
+		// First status fetch (mount) succeeds; the post-save refresh returns 500.
+		let statusHits = 0;
+		fetchMock.mockImplementation((url: string) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				statusHits += 1;
+				if (statusHits === 1) {
+					return Promise.resolve(jsonResponse(statusBody(DEFAULT_ITEMS)));
+				}
+				return Promise.resolve(new Response("boom", { status: 500 }));
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+
+		await renderPage();
+		await startFresh();
+
+		await fireEvent.click(screen.getByRole("button", { name: /Save key & model/ }));
+
+		// The inline refresh-failure banner appears with a Retry button…
+		expect(await screen.findByText(/Could not refresh setup status/)).toBeTruthy();
+		expect(screen.getByRole("button", { name: /Retry/ })).toBeTruthy();
+		// …and the wizard is still mounted with the provider step body intact.
+		expect(screen.getByLabelText("KI Connect API key")).toBeTruthy();
+		expect(screen.getByRole("button", { name: /Save key & model/ })).toBeTruthy();
 	});
 
 	it("keeps the card usable when the provider is already configured", async () => {
@@ -394,9 +420,7 @@ describe("onboarding wizard — docs-index step (2.7.0 card inside the shell)", 
 				);
 			}
 			if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
-				return Promise.resolve(
-					jsonResponse(handlers.docsStatus?.() ?? { job: null }),
-				);
+				return Promise.resolve(jsonResponse(handlers.docsStatus?.() ?? { job: null }));
 			}
 			if (
 				String(url).includes("/api/onboarding/docs-embeddings") &&
@@ -552,9 +576,7 @@ describe("onboarding wizard — seed step", () => {
 		scriptDefault(NO_INDEX_ITEMS);
 		await navigateToSeed();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: /Install reference assignment/ }),
-		);
+		await fireEvent.click(screen.getByRole("button", { name: /Install reference assignment/ }));
 		expect(await screen.findByText("Reference assignment enabled")).toBeTruthy();
 		expect(screen.getByText(/soil_contamination is ready/)).toBeTruthy();
 	});
@@ -585,9 +607,7 @@ describe("onboarding wizard — seed step", () => {
 		});
 		await navigateToSeed();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: /Install reference assignment/ }),
-		);
+		await fireEvent.click(screen.getByRole("button", { name: /Install reference assignment/ }));
 		expect(await screen.findByText("Broken install")).toBeTruthy();
 		expect(screen.getByText("data/scoring/soil_contamination.yaml")).toBeTruthy();
 	});
@@ -621,13 +641,9 @@ describe("onboarding wizard — done step", () => {
 		// Summary: provider done, docs-index skipped (not-done), executor
 		// done (probe passed), seed done.
 		expect(screen.getByText("Skipped")).toBeTruthy();
-		expect(
-			screen.getByRole("link", { name: /Run your first grading pass/ }),
-		).toBeTruthy();
+		expect(screen.getByRole("link", { name: /Run your first grading pass/ })).toBeTruthy();
 
-		await fireEvent.click(
-			screen.getByRole("button", { name: /Finish & open submissions/ }),
-		);
+		await fireEvent.click(screen.getByRole("button", { name: /Finish & open submissions/ }));
 		await waitFor(() => expect(nav.goto).toHaveBeenCalledWith("/submissions"));
 		expect(nav.invalidateAll).toHaveBeenCalled();
 		const dismissCalls = fetchMock.mock.calls.filter(
