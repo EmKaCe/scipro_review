@@ -71,6 +71,7 @@ import { Mastra } from "@mastra/core";
 import { InMemoryStore, MastraCompositeStore } from "@mastra/core/storage";
 import { PromptInjectionDetector, PIIDetector } from "@mastra/core/processors";
 import { Memory } from "@mastra/memory";
+import { warnIfUnknownModel } from "$lib/server/ki-connect";
 
 import { FileMemoryStore } from "./file-memory";
 import { maybeCompactThread } from "./compaction";
@@ -776,6 +777,11 @@ export async function streamChat(
 async function* runChat(input: StreamChatInput): AsyncGenerator<CopilotStreamEvent> {
 	// Policy settings are re-read per request so saved changes apply immediately.
 	const appSettings = await loadSettings();
+	// One loud warning per process when the configured id is not on the live
+	// registry — the copilot passes settings.llm.model RAW to KI Connect (no
+	// Phase-2 style auto-prefix), so a wrong id fails every chat turn.
+	// Non-throwing; see warnIfUnknownModel in ki-connect.ts.
+	void warnIfUnknownModel(appSettings.llm.model);
 	// Per-submission chats don't send assignmentId — derive it so tools are
 	// grounded (the model invents bogus assignment ids otherwise).
 	const resolvedAssignmentId =

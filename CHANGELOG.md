@@ -9,6 +9,61 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.6.1] - 2026-08-30
+
+### Fixed
+
+- **Copilot chat failed with `The model 'gpt-oss-120b' does not exist`**
+  when `settings.yaml` carried the unprefixed model id. The copilot agent
+  passes `llm.model` to KI Connect **raw** (the Phase-2 pipeline auto-prefixes,
+  the agent does not), and KI Connect's registry uses **mixed vendor
+  prefixes** (`openai-gpt-oss-120b` is prefixed, `qwen3-30b-…` is not), so
+  ids cannot be auto-corrected — they must match the registry exactly.
+  `data/settings.yaml` now carries the canonical `openai-gpt-oss-120b`.
+  Found in the fresh-machine smoke run of the public v2.6.0 (clean clone,
+  docker compose, full pipeline exercised with synthetic submissions).
+- **Phase-2 model ids now pass through verbatim — provider-neutral by
+  design.** `getPhase2Model()` no longer prepends the `openai-` KI Connect
+  convention: that auto-prefix was a leftover from when settings.yaml stored
+  the unprefixed id (2.6.1 ships the canonical id), and it actively broke
+  other providers (`openai-` + `qwen/qwen3-30b` → a mangled id that fails
+  Phase 2 on OpenRouter while the copilot worked). The configured
+  `llm.model` must match the provider's registry exactly — true for KI
+  Connect and any OpenAI-compatible endpoint alike; `PHASE_2_MODEL` remains
+  as the explicit override. Regression tests pin pass-through for
+  OpenRouter-style slashed ids and unchanged resolution for the KI Connect
+  canonical id (golden prompt fixture unaffected).
+- **Configured model id is now verified against the live registry** at the
+  first pipeline/copilot use: `warnIfUnknownModel` (ki-connect.ts) fetches
+  `GET {baseUrl}/models` (via the existing non-throwing `listModels()`),
+  warns loudly once per process when the configured id is absent, and stays
+  completely silent when the registry is unreachable — a failed check can
+  never break a grading run. Wired into pre-evaluation and the copilot chat
+  turn, the two paths that consume `llm.model`.
+- **Transitive dependency alerts (Dependabot fold):** lockfile re-resolve
+  cleared 5 of 7 advisories — `brace-expansion` (3× DoS) → 5.0.9, `fast-uri`
+  (host confusion) → 3.1.6, `nanoid` (infinite loop) → 3.3.18. The remaining
+  2 low-severity advisories (`cookie@0.6` under SvelteKit's `^0.6.0` pin,
+  `@ai-sdk/provider-utils@3.0.30` under mastra's exact alias) are
+  upstream-pinned and tracked by Dependabot — forcing them via overrides
+  would run the frameworks against semver-incompatible dependencies.
+  `@mastra/core` 1.61.0 → 1.63.2, `@mastra/memory` 1.27.0 → 1.28.1.
+
+### Added
+
+- **`SECURITY.md`** — security policy (supported versions, private
+  vulnerability reporting, trust-boundary notes on the untrusted-input
+  screening / static-student vs teacher-node split / key handling).
+
+### Docs
+
+- README troubleshooting: new entry for `The model '…' does not exist`
+  (mixed registry prefixes, how to list valid ids, restart-to-apply for
+  settings changes).
+- `.env.example`: `KI_CONNECT_MODEL` documented as registry-exact (with the
+  `GET /models` pointer), and `data/settings.yaml` comments use the
+  canonical id.
+
 ## [2.6.0] - 2026-08-24
 
 ### Added

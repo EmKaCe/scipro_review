@@ -543,4 +543,60 @@ export function getKiConnectClient(): KiConnectClient {
  * fresh instance (e.g. after the API key changed via the settings page). */
 export function resetKiConnectClient(): void {
 	_defaultInstance = null;
+	_warnedModels.clear();
+}
+
+// ---------------------------------------------------------------------------
+// Configured-model verification (2.6.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Model ids we have already warned about this process — one warning per
+ * (model, availability) outcome, never per call.
+ */
+const _warnedModels = new Set<string>();
+
+/**
+ * Warn loudly when the configured model id does not exist on the live KI
+ * Connect registry. Background: KI Connect's registry uses MIXED vendor
+ * prefixes — `openai-gpt-oss-120b` (prefixed) but `qwen3-30b-…` /
+ * `mistralai-mistral-small-…` (unprefixed) — so a wrong id for one model
+ * CANNOT be auto-corrected by heuristics; it must simply be spelled exactly
+ * as listed by `GET {baseUrl}/models`. The 2.6.0 smoke run surfaced the
+ * failure mode: an unprefixed `gpt-oss-120b` in settings.yaml passes the
+ * Phase-2 auto-prefix path silently but breaks every copilot chat turn with
+ * `The model 'gpt-oss-120b' does not exist.` This check surfaces the same
+ * misconfiguration at first use in the pipeline log instead.
+ *
+ * NEVER throws: registry unreachability is normal (no key yet, offline
+ * validation) and must not break a grading run.
+ *
+ * @param model the configured model id (settings `llm.model`)
+ * @param client optional client override (tests)
+ */
+export async function warnIfUnknownModel(
+	model: string,
+	client: Pick<KiConnectClient, "listModels"> = getKiConnectClient(),
+): Promise<void> {
+	const key = `${model}`;
+	if (_warnedModels.has(key)) return;
+	try {
+		const ids = (await client.listModels()).map((m) => m.id);
+		if (ids.length === 0) return; // registry unavailable — stay silent
+		if (ids.includes(model)) {
+			_warnedModels.add(key);
+			return;
+		}
+		_warnedModels.add(key);
+		console.warn(
+			`[ki-connect] Configured model "${model}" was NOT found in the KI Connect ` +
+				`registry. Model ids must match the registry exactly (mixed vendor ` +
+				`prefixes: e.g. "openai-gpt-oss-120b" but plain "qwen3-30b-…"). ` +
+				`Check llm.model in settings.yaml / KI_CONNECT_MODEL against ` +
+				`GET ${"{"}baseUrl}/models — calls with this id will fail with ` +
+				`"model not found" until fixed (settings changes need a restart).`,
+		);
+	} catch {
+		// non-throwing by contract; listModels already swallows, this is belt-and-braces
+	}
 }

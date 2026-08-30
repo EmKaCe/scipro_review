@@ -35,7 +35,9 @@ vi.mock("$lib/server/ki-connect", () => ({
 	getKiConnectClient: () => ({
 		chatCompletion: kiConnectMock.chatCompletion,
 		chatCompletionText: kiConnectMock.chatCompletionText,
+		listModels: vi.fn().mockResolvedValue([]),
 	}),
+	warnIfUnknownModel: vi.fn().mockResolvedValue(undefined),
 }));
 
 // (B13) Cell screening is stubbed so pre-eval call-counts stay exact (no

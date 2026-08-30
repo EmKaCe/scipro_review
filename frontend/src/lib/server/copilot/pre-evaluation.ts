@@ -50,6 +50,7 @@ import { loadCriteriaForAssignment } from "$lib/server/criteria";
 import { assertSafeSegment } from "$lib/server/metadata";
 import { readResults, writeResults, type StoredExecutionResult } from "$lib/server/results-store";
 import { loadSettings } from "$lib/server/settings";
+import { warnIfUnknownModel } from "$lib/server/ki-connect";
 import { analyzeSubmission, type PreAnalysis } from "$lib/server/copilot/pre-analysis";
 // Re-exported for consumers that import pipeline types from pre-evaluation
 // (the type itself lives in the shared client-safe types module).
@@ -555,6 +556,10 @@ export async function preEvaluateSubmission(
 	// Quality-critical phases (2a scoring, critique, 2b rubric selection)
 	// run on the settings-configured model (PHASE_2_MODEL env override wins).
 	const phase2Model = await getPhase2Model();
+	// One loud warning per process when the configured id is not on the live
+	// registry (mixed vendor prefixes mean it must be spelled exactly; see
+	// warnIfUnknownModel). Non-throwing — never breaks a grading run.
+	void warnIfUnknownModel(settings.llm.model);
 
 	// ── Cell screening (B13): student content is UNTRUSTED ──
 	// Each cell's source + text output is screened by a tiny quick LLM BEFORE

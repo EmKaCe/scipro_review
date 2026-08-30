@@ -53,7 +53,9 @@ import {
 import { buildExtraAnalysisEvidence } from "$lib/server/copilot/pipeline/context";
 import {
 	buildPhase2aDimensionGuidance,
+	getPhase2Model,
 	PHASE2A_SCORING_PROMPT,
+	PHASE_2_MODEL_DEFAULT,
 } from "$lib/server/copilot/pipeline/prompts";
 import * as docsRag from "$lib/server/copilot/docs-rag";
 import { buildDocsFactsBlock, extractApiReferences } from "$lib/server/copilot/pre-evaluation";
@@ -257,6 +259,44 @@ describe("Phase 2a prompt byte-equality golden", () => {
 
 	it("the template carries the {DOCS_FACTS} placeholder immediately after {DIMENSION_GUIDE}", () => {
 		expect(PHASE2A_SCORING_PROMPT).toContain("{DIMENSION_GUIDE}{DOCS_FACTS}");
+	});
+});
+
+describe("getPhase2Model — provider-neutral id resolution (2.6.1)", () => {
+	afterEach(() => {
+		delete process.env.PHASE_2_MODEL;
+		vi.unstubAllEnvs();
+	});
+
+	it("passes the configured id through VERBATIM (no prefix munging)", async () => {
+		const settings = await import("$lib/server/settings");
+		vi.spyOn(settings, "loadSettings").mockResolvedValue({
+			llm: { model: "qwen/qwen3-30b" }, // OpenRouter-style slashed id
+		} as never);
+		const model = await getPhase2Model();
+		expect(model).toBe("qwen/qwen3-30b");
+	});
+
+	it("still resolves the KI Connect canonical id unchanged", async () => {
+		const settings = await import("$lib/server/settings");
+		vi.spyOn(settings, "loadSettings").mockResolvedValue({
+			llm: { model: "openai-gpt-oss-120b" },
+		} as never);
+		expect(await getPhase2Model()).toBe("openai-gpt-oss-120b");
+	});
+
+	it("honors the PHASE_2_MODEL env override before settings", async () => {
+		vi.stubEnv("PHASE_2_MODEL", "mistralai/mistral-small-latest");
+		expect(await getPhase2Model()).toBe("mistralai/mistral-small-latest");
+	});
+
+	it("falls back to the default when no model is configured", async () => {
+		vi.stubEnv("KI_CONNECT_MODEL", "");
+		const { loadSettings } = await import("$lib/server/settings");
+		vi.spyOn(await import("$lib/server/settings"), "loadSettings").mockResolvedValue({
+			llm: { model: "" },
+		} as never);
+		expect(await getPhase2Model()).toBe(PHASE_2_MODEL_DEFAULT);
 	});
 });
 

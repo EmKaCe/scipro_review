@@ -136,6 +136,10 @@ const RRF_CANDIDATES = 20;
 const SNIPPET_CHARS = 1200;
 const SNIPPET_MARKER = "\n… (truncated)";
 
+// Provider note: the offline docs-vectors.bin is built with this model at
+// 4096 dims (KI Connect / OpenRouter both expose it). On a provider without
+// a compatible embeddings endpoint the vector leg silently degrades to
+// BM25-only — retrieval weakens, nothing breaks (see loadDocsIndex).
 const EMBEDDING_MODEL = "e5-mistral-7b-instruct";
 const EMBEDDING_TIMEOUT_MS = 30_000;
 
