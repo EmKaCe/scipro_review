@@ -291,9 +291,8 @@ describe("getPhase2Model — provider-neutral id resolution (2.6.1)", () => {
 	});
 
 	it("falls back to the default when no model is configured", async () => {
-		vi.stubEnv("KI_CONNECT_MODEL", "");
-		const { loadSettings } = await import("$lib/server/settings");
-		vi.spyOn(await import("$lib/server/settings"), "loadSettings").mockResolvedValue({
+		const settings = await import("$lib/server/settings");
+		vi.spyOn(settings, "loadSettings").mockResolvedValue({
 			llm: { model: "" },
 		} as never);
 		expect(await getPhase2Model()).toBe(PHASE_2_MODEL_DEFAULT);
