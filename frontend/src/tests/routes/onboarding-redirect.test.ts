@@ -118,7 +118,12 @@ describe("root layout — teacher entrypoint redirect (2.8.0-w2)", () => {
 	});
 
 	it("(e) never redirects the onboarding route itself or any /api route", async () => {
-		for (const path of ["/onboarding", "/onboarding/", "/api/onboarding/status", "/api/backup"]) {
+		for (const path of [
+			"/onboarding",
+			"/onboarding/",
+			"/api/onboarding/status",
+			"/api/backup",
+		]) {
 			const result = await load(loadEvent(path));
 			expect(result).toEqual({});
 		}

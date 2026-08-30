@@ -76,11 +76,11 @@ export function deriveSteps(
 	status: OnboardingStatusInput,
 	options: DeriveOptions = {},
 ): WizardStep[] {
-	const byId = new Map(status.items.map((i) => [i.id, i]));
+	const byId: Record<string, { id: string; done: boolean | null; detail?: string }> = {};
+	for (const item of status.items) byId[item.id] = item;
 
 	/** True when every listed status item is present with done:true. */
-	const itemsDone = (...ids: string[]): boolean =>
-		ids.every((id) => byId.get(id)?.done === true);
+	const itemsDone = (...ids: string[]): boolean => ids.every((id) => byId[id]?.done === true);
 
 	const steps: WizardStep[] = [
 		// welcome — always complete.
@@ -88,9 +88,9 @@ export function deriveSteps(
 		// restore — no status mapping; only the fork choice activates it.
 		{ id: "restore", complete: options.fork !== "restore" },
 		// provider — status item llm-provider.
-		{ id: "provider", complete: byId.get("llm-provider")?.done === true },
+		{ id: "provider", complete: byId["llm-provider"]?.done === true },
 		// docs-index — status item docs-index.
-		{ id: "docs-index", complete: byId.get("docs-index")?.done === true },
+		{ id: "docs-index", complete: byId["docs-index"]?.done === true },
 		// executor — probed separately; status-only derivation leaves it
 		// incomplete until markExecutor() applies the probe result.
 		{ id: "executor", complete: false },

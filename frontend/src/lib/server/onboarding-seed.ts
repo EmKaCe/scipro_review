@@ -145,7 +145,10 @@ function resolveScoringPath(assignment: {
  * `scoring_file` value, else the canonical data/scoring/<id>.yaml — used in
  * missingFiles so the wizard can point at what the registry references.
  */
-function scoringPathLabel(assignment: { readonly id: string; readonly scoring_file?: string }): string {
+function scoringPathLabel(assignment: {
+	readonly id: string;
+	readonly scoring_file?: string;
+}): string {
 	if (assignment.scoring_file) {
 		return assignment.scoring_file;
 	}

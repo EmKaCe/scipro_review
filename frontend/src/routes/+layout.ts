@@ -57,10 +57,7 @@ export async function load(event: LoadEvent): Promise<Record<string, never>> {
 		]);
 		if (!statusResp.ok || !dismissResp.ok) return {};
 
-		const [status, dismiss] = (await Promise.all([
-			statusResp.json(),
-			dismissResp.json(),
-		])) as [
+		const [status, dismiss] = (await Promise.all([statusResp.json(), dismissResp.json()])) as [
 			{ items?: { id: string; done: boolean | null }[] },
 			{ dismissed?: boolean },
 		];

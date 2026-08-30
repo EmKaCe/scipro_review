@@ -67,7 +67,11 @@ describe("WizardShell.svelte", () => {
 		const restoreFlow = makeSteps("restore");
 		expect(restoreFlow.find((s) => s.id === "restore")?.complete).toBe(false);
 
-		const { unmount } = renderShell({ steps: restoreFlow, current: "restore", fork: "restore" });
+		const { unmount } = renderShell({
+			steps: restoreFlow,
+			current: "restore",
+			fork: "restore",
+		});
 		// Rail entry + step header both carry the title in a restore flow.
 		expect(screen.getAllByText("Restore a backup").length).toBeGreaterThan(0);
 
@@ -106,7 +110,9 @@ describe("WizardShell.svelte", () => {
 		fireEvent.click(screen.getByRole("button", { name: /Start fresh setup/ }));
 		expect(onfork).toHaveBeenCalledWith("fresh");
 
-		fireEvent.click(screen.getByRole("button", { name: /Restore a backup from another machine/ }));
+		fireEvent.click(
+			screen.getByRole("button", { name: /Restore a backup from another machine/ }),
+		);
 		expect(onfork).toHaveBeenCalledWith("restore");
 		expect(ongoto).not.toHaveBeenCalled();
 	});
