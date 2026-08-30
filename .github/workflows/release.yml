@@ -86,10 +86,41 @@ jobs:
           fi
           echo "Tag ${TAG} matches package version ${VERSION}."
 
-      - name: Create or update release
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Build student (static) bundle
+        working-directory: frontend
+        env:
+          ADAPTER: static
+        run: pnpm build:student
+
+      - name: Package student bundle
+        run: |
+          mkdir -p dist
+          rm -rf /tmp/pkg-student && cp -r frontend/build /tmp/pkg-student
+          tar czf "dist/scipro-review-${{ steps.tag.outputs.tag }}-student-static.tar.gz" -C /tmp/pkg-student .
+          rm -rf frontend/build
+
+      - name: Build teacher (Node adapter) bundle
+        working-directory: frontend
+        env:
+          ADAPTER: node
+        run: pnpm build:teacher
+
+      - name: Package teacher bundle
+        run: |
+          rm -rf /tmp/pkg-teacher && cp -r frontend/build /tmp/pkg-teacher
+          tar czf "dist/scipro-review-${{ steps.tag.outputs.tag }}-teacher-node.tar.gz" -C /tmp/pkg-teacher .
+
+      - name: Create or update release with assets
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.tag }}
           generate_release_notes: true
           fail_on_unmatched_files: true
+          files: |
+            dist/scipro-review-${{ steps.tag.outputs.tag }}-student-static.tar.gz
+            dist/scipro-review-${{ steps.tag.outputs.tag }}-teacher-node.tar.gz
