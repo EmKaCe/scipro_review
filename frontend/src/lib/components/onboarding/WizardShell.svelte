@@ -106,7 +106,7 @@
 </script>
 
 <div class="overflow-hidden rounded-[var(--radius)] border border-border bg-card shadow-sm">
-	<div class="grid gap-0 sm:grid-cols-[13rem_1fr]">
+	<div class="grid gap-0 sm:grid-cols-[15rem_1fr]">
 		<nav
 			aria-label="Setup steps"
 			class="border-b border-border bg-muted/20 p-4 sm:border-r sm:border-b-0"
