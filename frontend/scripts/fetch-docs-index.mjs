@@ -45,7 +45,10 @@
  *   --help        show this help
  */
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
@@ -114,8 +117,9 @@ async function downloadViaHttps(repo, tag, asset, dest) {
 	if (!res.ok) {
 		throw new Error(`download ${asset}: HTTP ${res.status} ${res.statusText}`);
 	}
-	const buf = Buffer.from(await res.arrayBuffer());
-	await writeFile(dest, buf);
+	// Stream to disk — buffering 628 MB via arrayBuffer() OOM-killed the
+	// 512MB-capped frontend container on the 2.7.0 clean-slate runbook run.
+	await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
 }
 
 const args = parseArgs(process.argv.slice(2));

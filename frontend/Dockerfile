@@ -36,10 +36,13 @@ RUN apk add --no-cache tini
 
 WORKDIR /app
 
-# Copy only what's needed to run the built server
+# Copy what the built server needs. scripts/ is included because the
+# docs-embeddings onboarding (2.7.0) spawns fetch-docs-index.mjs at runtime;
+# it is dependency-free (node built-ins + the adapter's own node_modules).
 COPY --from=builder /app/build ./build
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/scripts ./scripts
 
 # Verify the build output exists
 RUN test -f build/index.js || (echo "ERROR: build/index.js not found — did build:teacher succeed?" && exit 1)

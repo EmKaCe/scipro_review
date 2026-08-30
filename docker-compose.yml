@@ -70,7 +70,10 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 512M
+          # 1G: the docs-index download (628 MB, streamed) trips cgroup page-
+          # cache accounting at 512M — the writer was OOM-killed on the 2.7.0
+          # clean-slate runbook run even with on-disk streaming.
+          memory: 1G
         reservations:
           cpus: "0.25"
           memory: 128M

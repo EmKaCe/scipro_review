@@ -20,15 +20,34 @@ import { fileURLToPath } from "node:url";
 
 import { getDataDir } from "$lib/server/metadata";
 
-/** fetch-docs-index.mjs relative to this module (src/lib/server → scripts/). */
-function resolveFetchScript(): string {
-	try {
-		return fileURLToPath(new URL("../../../scripts/fetch-docs-index.mjs", import.meta.url));
-	} catch {
-		// Vitest/vite-node transforms import.meta.url to a non-file scheme —
-		// fall back to the repo-relative path from the process cwd.
-		return path.resolve(process.cwd(), "scripts/fetch-docs-index.mjs");
+/** fetch-docs-index.mjs relative to this module (src/lib/server → scripts/).
+ * Resolution must VERIFY existence: the adapter-node chunk layout puts this
+ * module at build/server/chunks/**, where ../../../scripts points at
+ * build/scripts (missing) — silently returning it made the child fail with a
+ * bare MODULE_NOT_FOUND (clean-slate 2.7.0 runbook finding). Existence-check
+ * every candidate; fall back to process.cwd(). */
+async function resolveFetchScript(): Promise<string> {
+	const candidates = [
+		path.resolve(process.cwd(), "scripts/fetch-docs-index.mjs"),
+		path.resolve(process.cwd(), "frontend/scripts/fetch-docs-index.mjs"),
+		(() => {
+			try {
+				return fileURLToPath(new URL("../../../scripts/fetch-docs-index.mjs", import.meta.url));
+			} catch {
+				return "";
+			}
+		})(),
+	];
+	for (const c of candidates) {
+		if (!c) continue;
+		try {
+			await access(c);
+			return c;
+		} catch {
+			/* try next */
+		}
 	}
+	return candidates[0]!;
 }
 const INDEX_FILENAME = "docs-index.json";
 
@@ -124,7 +143,7 @@ export async function downloadDocsIndex(): Promise<DocsIndexDownloadResult> {
 		if (await indexExists(dir)) {
 			return { ok: true, alreadyPresent: true, output: "" };
 		}
-		const child = spawn(process.execPath, [resolveFetchScript(), "--public", "--out", dir], {
+		const child = spawn(process.execPath, [await resolveFetchScript(), "--public", "--out", dir], {
 			stdio: ["ignore", "pipe", "pipe"],
 		});
 		let stdout = "";
