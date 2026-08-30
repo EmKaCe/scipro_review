@@ -71,7 +71,33 @@ async function indexExists(dir: string): Promise<boolean> {
 	}
 }
 
-/** Single in-flight download; concurrent callers get InProgressError (409). */
+/**
+ * Single-flight job slot, SHARED between the docs-index download (mode A)
+ * and the 2.7.0 embed-rebuild job (option B) — claimJobSlot/tryRelease.
+ * The legacy `downloadDocsIndex` mirror keeps its own guard-free path by
+ * claiming through the same slot.
+ */
+let slotOwner: string | null = null;
+
+/** Claim the single docs-index mutation slot. Throws when already held. */
+export function claimJobSlot(owner: string): void {
+	if (slotOwner !== null) {
+		throw new Error(`A docs-index job (${slotOwner}) is already in progress.`);
+	}
+	slotOwner = owner;
+}
+
+/** Release the slot (idempotent for the given owner). */
+export function releaseJobSlot(owner: string): void {
+	if (slotOwner === owner) slotOwner = null;
+}
+
+/** Test hook: force-release the slot (never mid-job in production). */
+export function __resetJobSlotForTests(): void {
+	slotOwner = null;
+}
+
+/** Legacy in-flight promise guard for downloadDocsIndex — mirrors slotOwner. */
 let inFlight: Promise<DocsIndexDownloadResult> | null = null;
 
 /**
@@ -90,6 +116,8 @@ export async function downloadDocsIndex(): Promise<DocsIndexDownloadResult> {
 	if (inFlight) {
 		throw new DocsIndexDownloadInProgressError();
 	}
+	// Claim the shared slot so embed-rebuild (option B) contends with us too.
+	claimJobSlot("docs-index-download");
 
 	const run = (async (): Promise<DocsIndexDownloadResult> => {
 		// Re-check under the guard: a concurrent run may have landed the file.
@@ -125,5 +153,6 @@ export async function downloadDocsIndex(): Promise<DocsIndexDownloadResult> {
 		return await run;
 	} finally {
 		if (inFlight === run) inFlight = null;
+		releaseJobSlot("docs-index-download");
 	}
 }

@@ -7,6 +7,7 @@
 	import LocalDataCard from "$lib/components/settings/local-data-card.svelte";
 	import DataManagementCard from "$lib/components/settings/data-management-card.svelte";
 	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
+	import DocsEmbedCard from "$lib/components/onboarding/DocsEmbedCard.svelte";
 	import GradingConfigCard from "$lib/components/settings/grading-config-card.svelte";
 	import ConfigurationMapCard from "$lib/components/settings/configuration-map-card.svelte";
 	import AboutCard from "$lib/components/settings/about-card.svelte";
@@ -38,6 +39,7 @@
 		<AppearanceCard />
 		{#if base === ""}
 			<ExecutionAiCard />
+			<DocsEmbedCard context="settings" />
 			<GradingConfigCard />
 			<ConfigurationMapCard />
 			<a

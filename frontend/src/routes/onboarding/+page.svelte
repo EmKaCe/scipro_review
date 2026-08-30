@@ -21,6 +21,7 @@
 	import Eye from "@lucide/svelte/icons/eye";
 	import EyeOff from "@lucide/svelte/icons/eye-off";
 	import LoaderCircle from "@lucide/svelte/icons/loader-circle";
+	import DocsEmbedCard from "$lib/components/onboarding/DocsEmbedCard.svelte";
 
 	/** One item as returned by GET /api/onboarding/status. */
 	interface OnboardingItem {
@@ -61,7 +62,7 @@
 			title: "Fetch the offline docs index",
 			description:
 				"Build the offline docs-index for copilot search. Until it exists, search degrades to BM25-only with a load note.",
-			help: "Downloads the prebuilt public index (~680 MB) — no API key needed. You can also keep going; search will just fall back to BM25.",
+			help: "Choose how the semantic search leg is built: download prebuilt vectors, rebuild them against your endpoint, or skip (BM25-only). BM25 exact-API search works either way.",
 			link: () => undefined,
 		},
 		"first-pipeline": {
@@ -74,9 +75,6 @@
 	let items: OnboardingItem[] = $state([]);
 	let loading = $state(true);
 	let error: string | null = $state(null);
-	/** docs-index download state: "idle" | "running" | "done" | "failed". */
-	let docsDownload = $state<"idle" | "running" | "done" | "failed">("idle");
-	let docsDownloadError: string | null = $state(null);
 
 	// ---------------------------------------------------------------------
 	// B1 — Restore a backup from another machine
@@ -199,24 +197,6 @@
 			items = body.items;
 		} catch (err) {
 			error = (err as Error).message;
-		}
-	}
-
-	async function startDocsDownload(): Promise<void> {
-		if (docsDownload === "running") return;
-		docsDownload = "running";
-		docsDownloadError = null;
-		try {
-			const resp = await fetch(`${base}/api/onboarding/docs-index`, { method: "POST" });
-			const body = (await resp.json()) as { ok?: boolean; error?: string };
-			if (!resp.ok || body.ok === false) {
-				throw new Error(body.error ?? `Download failed (${resp.status})`);
-			}
-			docsDownload = "done";
-			await refreshStatus();
-		} catch (err) {
-			docsDownload = "failed";
-			docsDownloadError = (err as Error).message;
 		}
 	}
 
@@ -502,34 +482,13 @@
 									</div>
 								{/if}
 							</div>
-							{#if item.id === "docs-index" && item.done !== true}
+							{#if item.id === "docs-index"}
 								<div class="mt-2">
-									<button
-										type="button"
-										class={cn(
-											buttonVariants({ variant: "outline", size: "sm" }),
-											"gap-1",
-										)}
-										disabled={docsDownload === "running"}
-										onclick={startDocsDownload}
-									>
-										{#if docsDownload === "running"}
-											<span
-												class="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"
-											></span>
-											Downloading…
-										{:else if docsDownload === "done"}
-											<CircleCheckBig class="h-3.5 w-3.5" />
-											Downloaded
-										{:else}
-											Download vectors now
-										{/if}
-									</button>
-									{#if docsDownload === "failed" && docsDownloadError}
-										<p class="mt-1 text-[11px] text-destructive">
-											{docsDownloadError}
-										</p>
-									{/if}
+									<DocsEmbedCard
+										context="onboarding"
+										indexPresent={item.done === true}
+										ondone={refreshStatus}
+									/>
 								</div>
 							{/if}
 							{#if href}

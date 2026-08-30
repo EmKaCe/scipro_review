@@ -358,3 +358,140 @@ describe("onboarding page — in-place LLM setup (B2)", () => {
 		expect(screen.queryByText(/Could not load setup status/)).toBeNull();
 	});
 });
+
+describe("onboarding page — docs-index three-choice card (2.7.0)", () => {
+	/** docs-index NOT done: the card must offer the A/B/C options. */
+	const NO_INDEX_ITEMS = DEFAULT_ITEMS.map((i) =>
+		i.id === "docs-index" ? { ...i, done: false } : i,
+	);
+
+	/** Install the page + card fetch routes driven by the given body makers. */
+	function scriptPageAndCard(handlers: {
+		onboardingStatus?: () => unknown;
+		docsStatus?: () => unknown;
+		docsPost?: (body: Record<string, unknown>, init: RequestInit) => unknown;
+	}) {
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve({
+					ok: true,
+					json: () =>
+						Promise.resolve(
+							handlers.onboardingStatus?.() ?? statusBody(NO_INDEX_ITEMS),
+						),
+				});
+			}
+			if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
+				return Promise.resolve({
+					ok: true,
+					json: () => Promise.resolve(handlers.docsStatus?.() ?? { job: null }),
+				});
+			}
+			if (
+				String(url).includes("/api/onboarding/docs-embeddings") &&
+				init?.method === "POST"
+			) {
+				const body = init.body
+					? (JSON.parse(String(init.body)) as Record<string, unknown>)
+					: {};
+				return Promise.resolve(
+					(
+						handlers.docsPost ??
+						(() => ({
+							ok: true,
+							json: () => Promise.resolve({ ok: true, started: true }),
+						}))
+					)(body, init),
+				);
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+	}
+
+	it("offers the three options inside the docs-index item when no index exists", async () => {
+		scriptPageAndCard({});
+		await renderPage();
+		expect(screen.getByText("Fetch the offline docs index")).toBeTruthy();
+		// The card polls its own status on mount before revealing the options.
+		expect(
+			await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
+		).toBeTruthy();
+		expect(screen.getByRole("button", { name: /B — Build vectors locally/ })).toBeTruthy();
+		expect(screen.getByRole("button", { name: /C — Skip vectors, BM25 only/ })).toBeTruthy();
+	});
+
+	it("starts a download and refreshes the checklist when it finishes", async () => {
+		scriptPageAndCard({
+			docsPost: () => ({
+				ok: true,
+				json: () => Promise.resolve({ ok: true, alreadyPresent: false, output: "" }),
+			}),
+		});
+		await renderPage();
+		const statusCallsBefore = fetchMock.mock.calls.filter(([u]) =>
+			String(u).includes("/api/onboarding/status"),
+		).length;
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
+		);
+		expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
+
+		// ondone = refreshStatus → the checklist was re-evaluated.
+		await waitFor(() => {
+			const statusCallsAfter = fetchMock.mock.calls.filter(([u]) =>
+				String(u).includes("/api/onboarding/status"),
+			).length;
+			expect(statusCallsAfter).toBeGreaterThan(statusCallsBefore);
+		});
+		const postCalls = fetchMock.mock.calls.filter(
+			([u, init]) =>
+				String(u).includes("/api/onboarding/docs-embeddings") &&
+				(init as RequestInit | undefined)?.method === "POST",
+		);
+		expect(postCalls.length).toBe(1);
+		expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
+			mode: "download",
+		});
+	});
+
+	it("skips via an explicit confirm, posts mode skip, and keeps the item not-done", async () => {
+		scriptPageAndCard({
+			docsPost: () => ({
+				ok: true,
+				json: () => Promise.resolve({ ok: true, skipped: true }),
+			}),
+		});
+		await renderPage();
+		expect(screen.queryByText(/Semantic leg disabled — BM25-only/)).toBeNull();
+
+		await fireEvent.click(
+			await screen.findByRole("button", { name: /C — Skip vectors, BM25 only/ }),
+		);
+		expect(screen.getByText(/BM25 still finds exact API names/)).toBeTruthy();
+		await fireEvent.click(screen.getByRole("button", { name: /Confirm skip/ }));
+
+		expect(await screen.findByText(/Semantic leg disabled — BM25-only/)).toBeTruthy();
+		const postCalls = fetchMock.mock.calls.filter(
+			([u, init]) =>
+				String(u).includes("/api/onboarding/docs-embeddings") &&
+				(init as RequestInit | undefined)?.method === "POST",
+		);
+		expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
+			mode: "skip",
+		});
+		// No index exists → the checklist item keeps its "To do" badge.
+		expect(screen.getAllByText("To do").length).toBeGreaterThan(0);
+		expect(screen.queryByText(/Semantic vectors are installed/)).toBeNull();
+	});
+
+	it("shows the installed compact state when the docs index is already present", async () => {
+		scriptPageAndCard({ onboardingStatus: () => statusBody(DEFAULT_ITEMS) });
+		await renderPage();
+		expect(
+			await screen.findByText(
+				/Semantic vectors are installed — search uses BM25 \+ vector retrieval\./,
+			),
+		).toBeTruthy();
+	});
+});
