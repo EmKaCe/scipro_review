@@ -56,7 +56,11 @@ services:
       # Internal URL to reach the executor via Docker DNS
       - EXECUTOR_URL=http://executor:8766
     env_file:
-      - .env
+      # Optional: create .env from .env.example ONLY for deployment-level
+      # overrides (ORIGIN, KI_CONNECT_* docker overrides). All runtime
+      # config — API key, model, base URL — is set in the Setup wizard.
+      - path: .env
+        required: false
     depends_on:
       executor:
         condition: service_healthy
@@ -120,7 +124,8 @@ services:
       - EXECUTOR_LOG_LEVEL=info
       - DATA_DIR=/app/data
     env_file:
-      - .env
+      - path: .env
+        required: false
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8766/health"]
       interval: 15s

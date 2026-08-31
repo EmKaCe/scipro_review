@@ -1,22 +1,30 @@
 /**
  * @file Root layout — teacher entrypoint redirect (2.8.0 wizard).
  *
- * The teacher build (__TEACHER_MODE__) lands on /onboarding until the core
- * setup items are complete or the wizard was dismissed once:
+ * The teacher build (__TEACHER_MODE__) lands on /onboarding until the
+ * wizard is dismissed once — dismissal is the ONLY gate:
  *
- *   redirect = teacher && !dev && !coreComplete && !dismissed
+ *   redirect = teacher && !dev && dismissed !== true
  *
- * where coreComplete = llm-provider done:true AND create-assignment AND
- * wire-scoring both done:true (the seed step's items). docs-index and
- * first-pipeline NEVER gate the redirect — non-blocking steps. The
- * onboarding route itself and every /api route are exempt (no redirect
- * loop, no interference with API calls). The student/static build
- * (__TEACHER_MODE__ false) and dev mode return {} immediately.
+ * Setup completeness deliberately does NOT gate the redirect: a
+ * pre-provisioned install (restored backup, docker compose with a carried
+ * over data/ directory, or a clone whose tracked config is already
+ * complete) would otherwise never see the wizard — and the dismiss
+ * semantics ("show once per fresh setup") make completeness the wrong
+ * signal. Once the teacher finishes or skips the wizard, the persisted
+ * flag (POST /api/onboarding/dismiss → data/wizard_state.json) means the
+ * app opens straight to the dashboard from then on.
  *
- * Both probes (status + dismiss) are wrapped defensively: any network
- * error or non-ok response resolves {} — a broken status endpoint must
- * never block the app. Each navigation costs two GETs; acceptable per
- * the 2.8.0 plan.
+ * The onboarding route itself and every /api route are exempt (no
+ * redirect loop, no interference with API calls). The student/static
+ * build (__TEACHER_MODE__ false) and dev mode return {} immediately.
+ *
+ * Probes are wrapped defensively: any network error or non-ok response
+ * resolves {} — a broken status/dismiss endpoint must never block the
+ * app (and must never trap the user OUT of the wizard either, so a
+ * dismissed-but-unverifiable state also redirects — the wizard is
+ * re-scrollable/finishable, cost is one extra visit). Each navigation
+ * costs two GETs; acceptable per the 2.8.0 plan.
  */
 import { dev } from "$app/environment";
 import { base } from "$app/paths";
@@ -51,24 +59,11 @@ export async function load(event: LoadEvent): Promise<Record<string, never>> {
 	}
 
 	try {
-		const [statusResp, dismissResp] = await Promise.all([
-			fetch(`${base}/api/onboarding/status`),
-			fetch(`${base}/api/onboarding/dismiss`),
-		]);
-		if (!statusResp.ok || !dismissResp.ok) return {};
+		const dismissResp = await fetch(`${base}/api/onboarding/dismiss`);
+		if (!dismissResp.ok) throw new Error(`dismiss probe failed (${dismissResp.status})`);
 
-		const [status, dismiss] = (await Promise.all([statusResp.json(), dismissResp.json()])) as [
-			{ items?: { id: string; done: boolean | null }[] },
-			{ dismissed?: boolean },
-		];
-
-		const byId = new Map((status.items ?? []).map((i) => [i.id, i]));
-		const providerDone = byId.get("llm-provider")?.done === true;
-		const assignmentDone = byId.get("create-assignment")?.done === true;
-		const scoringDone = byId.get("wire-scoring")?.done === true;
-		const coreComplete = providerDone && assignmentDone && scoringDone;
-
-		if (!coreComplete && dismiss.dismissed !== true) {
+		const dismiss = (await dismissResp.json()) as { dismissed?: boolean };
+		if (dismiss.dismissed !== true) {
 			throw redirect(307, `${base}/onboarding`);
 		}
 		return {};
