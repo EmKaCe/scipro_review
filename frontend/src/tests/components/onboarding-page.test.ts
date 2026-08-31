@@ -480,28 +480,86 @@ describe("onboarding wizard — docs-index step (2.7.0 card inside the shell)", 
 		expect(screen.getByRole("button", { name: /C — Skip vectors, BM25 only/ })).toBeTruthy();
 	});
 
-	it("starts a download and refreshes the status when it finishes", async () => {
-		scriptPageAndCard({
-			docsPost: () => jsonResponse({ ok: true, alreadyPresent: false, output: "" }),
-		});
-		await navigateToDocs();
-		const before = statusCalls();
+	it("starts a download, tracks progress, and refreshes the status when it finishes", async () => {
+		vi.useFakeTimers();
+		try {
+			let currentJob: {
+				kind: "fetch";
+				phase: "fetch-chunks" | "done";
+				startedAt: number;
+				done: number;
+				total: number;
+				ratePerSecond: number;
+				etaSeconds: number;
+				failedBatches: number;
+				model: string;
+				error: string | null;
+			} | null = null;
+			scriptPageAndCard({
+				docsPost: () => {
+					currentJob = {
+						kind: "fetch",
+						phase: "fetch-chunks",
+						startedAt: Date.now(),
+						done: 0,
+						total: 629_145_600,
+						ratePerSecond: 0,
+						etaSeconds: 0,
+						failedBatches: 0,
+						model: "prebuilt",
+						error: null,
+					};
+					return jsonResponse({ ok: true, alreadyPresent: false });
+				},
+			});
+			// The card's status poll must see the fetch job.
+			const origImpl = fetchMock.getMockImplementation() as
+				| ((url: string, init?: RequestInit) => Promise<Response>)
+				| undefined;
+			fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+				if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
+					return Promise.resolve(jsonResponse({ job: currentJob }));
+				}
+				return origImpl?.(url, init) ?? Promise.reject(new Error(`unexpected fetch: ${url}`));
+			});
+			await navigateToDocs();
+			const before = statusCalls();
 
-		await fireEvent.click(
-			await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
-		);
-		expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
+			await fireEvent.click(
+				await screen.findByRole("button", { name: /A — Download prebuilt vectors/ }),
+			);
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(screen.getByText(/downloaded 0 B \/ 600 MB/, { selector: "p" })).toBeTruthy();
 
-		// ondone = refreshStatus → the wizard's status was re-evaluated.
-		await waitFor(() => expect(statusCalls()).toBeGreaterThan(before));
-		const postCalls = fetchMock.mock.calls.filter(
-			([u, init]) =>
-				String(u).includes("/api/onboarding/docs-embeddings") &&
-				(init as RequestInit | undefined)?.method === "POST",
-		);
-		expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
-			mode: "download",
-		});
+			// Job completes → done summary + status refresh via ondone.
+			currentJob = {
+				kind: "fetch",
+				phase: "done",
+				startedAt: Date.now(),
+				done: 629_145_600,
+				total: 629_145_600,
+				ratePerSecond: 12_582_912,
+				etaSeconds: 0,
+				failedBatches: 0,
+				model: "prebuilt",
+				error: null,
+			};
+			await vi.advanceTimersByTimeAsync(2000);
+			expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
+
+			// ondone = refreshStatus → the wizard's status was re-evaluated.
+			await waitFor(() => expect(statusCalls()).toBeGreaterThan(before));
+			const postCalls = fetchMock.mock.calls.filter(
+				([u, init]) =>
+					String(u).includes("/api/onboarding/docs-embeddings") &&
+					(init as RequestInit | undefined)?.method === "POST",
+			);
+			expect(JSON.parse(String((postCalls[0]?.[1] as RequestInit).body))).toEqual({
+				mode: "download",
+			});
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("skips via an explicit confirm and keeps the step not-done", async () => {

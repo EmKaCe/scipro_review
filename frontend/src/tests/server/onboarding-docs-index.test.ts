@@ -25,7 +25,7 @@ import { POST } from "../../routes/api/onboarding/docs-index/+server";
 // ---------------------------------------------------------------------------
 
 interface FakeChild {
-	child: EventEmitter & { stdout: EventEmitter; stderr: EventEmitter };
+	child: EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
 	emitStdout: (s: string) => void;
 	emitStderr: (s: string) => void;
 	close: (code: number) => void;
@@ -34,7 +34,8 @@ interface FakeChild {
 function makeFakeChild(): FakeChild {
 	const stdout = new EventEmitter();
 	const stderr = new EventEmitter();
-	const child = Object.assign(new EventEmitter(), { stdout, stderr });
+	const kill = vi.fn();
+	const child = Object.assign(new EventEmitter(), { stdout, stderr, kill });
 	return {
 		child,
 		emitStdout: (s: string) => stdout.emit("data", Buffer.from(s)),
@@ -55,6 +56,9 @@ beforeEach(async () => {
 	process.env.DATA_DIR = dataDir;
 	fakes.length = 0;
 	vi.mocked(spawn).mockReset();
+	const mod = await import("$lib/server/onboarding-docs-index");
+	mod.__resetDocsIndexDownloadForTests();
+	mod.__resetJobSlotForTests();
 });
 
 afterEach(async () => {
@@ -116,6 +120,47 @@ describe("onboarding-docs-index module", () => {
 		expect(args.join(" ")).not.toContain("build-docs-index");
 		expect(args.join(" ")).not.toMatch(/\bgh\b/);
 		expect(args.join(" ")).not.toContain("KI_CONNECT");
+	});
+
+	it("startDocsIndexDownload returns immediately and tracks byte progress via status", async () => {
+		const fake = mockSpawn();
+		const mod = await import("$lib/server/onboarding-docs-index");
+
+		const started = await mod.startDocsIndexDownload();
+		expect(started).toEqual({ ok: true, alreadyPresent: false });
+		// The child spawns a moment later (script resolution is async) —
+		// the POST must not block on the download itself.
+		await waitForSpawn();
+
+		// Progress lines update the shared status contract (bytes).
+		fake.emitStdout("[fetch-docs-index] progress docs-vectors.bin 104857600 629145600\n");
+		const mid = await mod.getDocsIndexDownloadStatus();
+		expect(mid?.kind).toBe("fetch");
+		expect(mid?.phase).toBe("fetch-chunks");
+		expect(mid?.done).toBe(104_857_600);
+		expect(mid?.total).toBe(629_145_600);
+
+		fake.close(0);
+		const done = await mod.getDocsIndexDownloadStatus();
+		expect(done?.phase).toBe("done");
+		expect(done?.done).toBe(629_145_600);
+	});
+
+	it("cancel kills the child and the job reads as cancelled", async () => {
+		const fake = mockSpawn();
+		const mod = await import("$lib/server/onboarding-docs-index");
+
+		await mod.startDocsIndexDownload();
+		await waitForSpawn();
+		expect(fake.child.kill).toBeDefined();
+
+		expect(mod.cancelDocsIndexDownload()).toBe(true);
+		// The child was killed → close with a non-zero code; the close
+		// handler must read the cancel flag and mark the job cancelled.
+		fake.close(1);
+		const state = await mod.getDocsIndexDownloadStatus();
+		expect(state?.phase).toBe("cancelled");
+		expect(state?.error).toContain("cancelled");
 	});
 
 	it("short-circuits when docs-index.json already exists (no spawn)", async () => {

@@ -46,8 +46,6 @@
  */
 import { createHash } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -109,6 +107,12 @@ const gh = (args) => execFileSync("gh", args, { encoding: "utf-8" });
  * Download a release asset over plain HTTPS, following redirects (GitHub
  * redirects /releases/download/... to objects.githubusercontent.com).
  * No auth; works for any PUBLIC release asset.
+ *
+ * Progress: emits one line per ~2% of the asset's bytes to stdout as
+ * `[fetch-docs-index] progress <asset> <receivedBytes> <totalBytes>`.
+ * The server-side download job parses these lines into the status
+ * contract (done/total = bytes). The line is also the only place the
+ * total is known — Content-Length is read from the response headers.
  */
 async function downloadViaHttps(repo, tag, asset, dest) {
 	const url = `https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(asset)}`;
@@ -117,9 +121,36 @@ async function downloadViaHttps(repo, tag, asset, dest) {
 	if (!res.ok) {
 		throw new Error(`download ${asset}: HTTP ${res.status} ${res.statusText}`);
 	}
+	const total = Number(res.headers.get("content-length") ?? 0);
 	// Stream to disk — buffering 628 MB via arrayBuffer() OOM-killed the
 	// 512MB-capped frontend container on the 2.7.0 clean-slate runbook run.
-	await pipeline(Readable.fromWeb(res.body), createWriteStream(dest));
+	const reader = res.body.getReader();
+	const writer = createWriteStream(dest);
+	let received = 0;
+	let lastEmit = 0;
+	try {
+		for (;;) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			received += value.byteLength;
+			// Emit at most every 256 KB (or on the final chunk) so a 630 MB
+			// download produces a few thousand lines, not millions.
+			if (received - lastEmit >= 256 * 1024 || done) {
+				console.log(
+					`[fetch-docs-index] progress ${asset} ${received} ${total || received}`,
+				);
+				lastEmit = received;
+			}
+			if (!writer.write(value)) {
+				await new Promise((resolve) => writer.once("drain", resolve));
+			}
+		}
+		await new Promise((resolve, reject) => {
+			writer.end((err) => (err ? reject(err) : resolve()));
+		});
+	} finally {
+		reader.releaseLock();
+	}
 }
 
 const args = parseArgs(process.argv.slice(2));

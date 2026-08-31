@@ -39,7 +39,7 @@
 	type RunningPhase = "fetch-chunks" | "embed" | "finalize";
 
 	const PHASE_LABELS: Record<RunningPhase, string> = {
-		"fetch-chunks": "fetching chunks",
+		"fetch-chunks": "downloading",
 		embed: "embedding",
 		finalize: "finalizing",
 	};
@@ -59,6 +59,19 @@
 	function formatEta(seconds: number): string {
 		if (seconds >= 60) return `${Math.round(seconds / 60)} min`;
 		return `${Math.max(1, Math.round(seconds))} s`;
+	}
+
+	/** 629_145_600 → "600 MB". */
+	function formatBytes(n: number): string {
+		if (n >= 1_073_741_824) return `${(n / 1_073_741_824).toFixed(1)} GB`;
+		if (n >= 1_048_576) return `${Math.round(n / 1_048_576)} MB`;
+		if (n >= 1024) return `${Math.round(n / 1024)} KB`;
+		return `${Math.round(n)} B`;
+	}
+
+	/** 12_582_912 → "12 MB/s". */
+	function formatRate(n: number): string {
+		return `${formatBytes(n)}/s`;
 	}
 
 	interface Props {
@@ -351,6 +364,7 @@
 			});
 			const body = (await resp.json().catch(() => null)) as {
 				job?: DocsEmbedJob | null;
+				alreadyPresent?: boolean;
 				error?: string;
 			} | null;
 			if (!resp.ok) {
@@ -367,15 +381,23 @@
 				running = true;
 				wasRunning = true;
 				error = null;
-			} else if (payload.mode === "rebuild") {
+			} else if (payload.mode === "rebuild" || payload.mode === "download") {
 				// The runner writes its job state before the POST returns
-				// (started:true) — adopt it via the polling loop.
+				// (started:true) — adopt it via the polling loop. For a
+				// download, alreadyPresent:true means nothing was fetched.
+				if (payload.mode === "download" && body?.alreadyPresent === true) {
+					phase = "done";
+					job = null;
+					error = null;
+					choice = choice ?? "A";
+					ondone?.();
+					return;
+				}
 				phase = "running";
 				running = true;
 				error = null;
 			} else {
-				// Download fast-path already finished (or already present) —
-				// nothing left to follow.
+				// Download fast-path already finished — nothing left to follow.
 				phase = "done";
 				job = null;
 				error = null;
@@ -511,7 +533,7 @@
 						<span>Building vectors locally…</span>
 					{/if}
 				</span>
-				{#if job?.kind === "embed" && isRunningPhase(job.phase)}
+				{#if job && isRunningPhase(job.phase)}
 					<span
 						class="rounded-full border border-primary/30 bg-primary/10 px-2 py-px text-[10px] font-semibold tracking-wide text-primary uppercase"
 					>
@@ -519,11 +541,19 @@
 					</span>
 				{/if}
 			</div>
-			{#if job?.kind === "embed" && job.total > 0}
+			{#if job && job.total > 0}
 				<p class="font-mono text-xs text-muted-foreground">
-					embedded {formatCount(job.done)} / {formatCount(job.total)}
+					{#if job.kind === "fetch"}
+						downloaded {formatBytes(job.done)} / {formatBytes(job.total)}
+					{:else}
+						embedded {formatCount(job.done)} / {formatCount(job.total)}
+					{/if}
 					{#if job.ratePerSecond != null && job.ratePerSecond > 0}
-						<span> · {job.ratePerSecond.toFixed(1)} texts/s</span>
+						<span>
+							· {job.kind === "fetch"
+								? formatRate(job.ratePerSecond)
+								: `${job.ratePerSecond.toFixed(1)} texts/s`}
+						</span>
 					{/if}
 					{#if job.etaSeconds != null && job.etaSeconds > 0}
 						<span> · ETA {formatEta(job.etaSeconds)}</span>
@@ -545,7 +575,7 @@
 			{#if error}
 				<p class="text-xs text-destructive">{error}</p>
 			{/if}
-			{#if choice === "B"}
+			{#if choice === "B" || choice === "A"}
 				<button
 					type="button"
 					class={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1")}
@@ -604,7 +634,7 @@
 								? ` · ${job.dim}-dim`
 								: ""}
 						{:else}
-							{job?.model ?? PREBUILT_MODEL} · {job?.dim ?? PREBUILT_DIM}-dim
+							{PREBUILT_MODEL} · {job?.dim ?? PREBUILT_DIM}-dim
 						{/if}
 					</p>
 					{#if (job?.failedBatches ?? 0) > 0}
@@ -652,8 +682,9 @@
 				{/if}
 				{#if interrupted}
 					<p class="mt-1 text-[11px] text-muted-foreground">
-						Your existing index (if any) is untouched — stale staging files are cleaned
-						automatically on the next attempt.
+						{choice === "A"
+							? "The download was interrupted — the staging files are cleaned automatically on the next attempt."
+							: "Your existing index (if any) is untouched — stale staging files are cleaned automatically on the next attempt."}
 					</p>
 				{/if}
 				<div class="mt-2 flex flex-wrap items-center gap-2">
@@ -663,7 +694,7 @@
 						onclick={retry}
 					>
 						<RotateCcw class="h-3.5 w-3.5" />
-						{interrupted ? "Retry rebuild" : "Retry"}
+						{interrupted ? (choice === "A" ? "Retry download" : "Retry rebuild") : "Retry"}
 					</button>
 					<button
 						type="button"

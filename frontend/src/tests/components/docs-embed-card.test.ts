@@ -202,39 +202,90 @@ describe("idle — three-option card", () => {
 });
 
 describe("option A — download prebuilt", () => {
-	it("POSTs mode download, shows the spinner, finishes with the prebuilt summary", async () => {
-		const posts: Array<Record<string, unknown>> = [];
-		// Defer the response body so the in-flight "Downloading…" state is
-		// observable (a real download takes minutes server-side).
-		let releaseDownload: () => void = () => {};
-		const downloadJson = new Promise<unknown>((resolve) => {
-			releaseDownload = () => resolve({ ok: true, alreadyPresent: false, output: "" });
-		});
-		installFetch({
-			status: () => null,
-			post: (body) => {
-				posts.push(body);
-				return { ok: true, status: 200, json: () => downloadJson };
-			},
-		});
-		renderCard({ context: "onboarding", indexPresent: false });
-		await settle();
+	it("POSTs mode download, shows live byte progress, finishes with the prebuilt summary", async () => {
+		vi.useFakeTimers();
+		try {
+			const posts: Array<Record<string, unknown>> = [];
+			let currentJob: JobSource | null = null;
+			installFetch({
+				status: () => currentJob,
+				post: (body) => {
+					posts.push(body);
+					// The 2.8.1 download POST returns immediately; the job is
+					// adopted via the status polling loop.
+					currentJob = {
+						kind: "fetch",
+						phase: "fetch-chunks",
+						startedAt: Date.now(),
+						done: 0,
+						total: 629_145_600,
+						ratePerSecond: 0,
+						etaSeconds: 0,
+						failedBatches: 0,
+						model: "prebuilt",
+						error: null,
+					};
+					return { ok: true, body: { ok: true, alreadyPresent: false } };
+				},
+			});
+			renderCard({ context: "onboarding", indexPresent: false });
+			await settle();
 
-		await clickButton(/A — Download prebuilt vectors/);
-		// During the awaited POST the running branch shows the download spinner.
-		expect(screen.getByText(/Downloading prebuilt vectors…/)).toBeTruthy();
+			await clickButton(/A — Download prebuilt vectors/);
+			await settle();
+			// During the download the running branch shows the spinner + phase.
+			expect(screen.getByText(/Downloading prebuilt vectors…/)).toBeTruthy();
 
-		releaseDownload();
-		await screen.findByText("Prebuilt vectors downloaded");
-		expect(screen.getByText(/e5-mistral-7b-instruct · 4096-dim/)).toBeTruthy();
-		expect(posts).toEqual([{ mode: "download" }]);
-		expect(ondone).toHaveBeenCalledTimes(1);
+			// Progress populates on the next 2s tick.
+			currentJob = {
+				kind: "fetch",
+				phase: "fetch-chunks",
+				startedAt: Date.now(),
+				done: 314_572_800,
+				total: 629_145_600,
+				ratePerSecond: 12_582_912,
+				etaSeconds: 25,
+				failedBatches: 0,
+				model: "prebuilt",
+				error: null,
+			};
+			await vi.advanceTimersByTimeAsync(2000);
+			await settle();
+
+			const progress = screen.getByText(/downloaded 300 MB \/ 600 MB/, { selector: "p" });
+			expect(progress.textContent).toContain("12 MB/s");
+			expect(progress.textContent).toContain("ETA 25 s");
+			expect(screen.getByText(/downloading/)).toBeTruthy();
+
+			// Job completes → done summary with the prebuilt model.
+			currentJob = {
+				kind: "fetch",
+				phase: "done",
+				startedAt: Date.now(),
+				done: 629_145_600,
+				total: 629_145_600,
+				ratePerSecond: 12_582_912,
+				etaSeconds: 0,
+				failedBatches: 0,
+				model: "prebuilt",
+				error: null,
+			};
+			await vi.advanceTimersByTimeAsync(2000);
+			await settle();
+
+			expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
+			expect(screen.getByText(/e5-mistral-7b-instruct · 4096-dim/)).toBeTruthy();
+			expect(posts).toEqual([{ mode: "download" }]);
+			expect(ondone).toHaveBeenCalledTimes(1);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("treats an already-present fast path as done (no job to follow)", async () => {
 		installFetch({
 			status: () => null,
-			post: () => ({ ok: true, body: { ok: true, alreadyPresent: true, output: "" } }),
+			post: () => ({ ok: true, body: { ok: true, alreadyPresent: true } }),
 		});
 		renderCard({ context: "onboarding", indexPresent: false });
 		await settle();
@@ -242,6 +293,63 @@ describe("option A — download prebuilt", () => {
 		await clickButton(/A — Download prebuilt vectors/);
 		expect(await screen.findByText("Prebuilt vectors downloaded")).toBeTruthy();
 		expect(ondone).toHaveBeenCalledTimes(1);
+	});
+
+	it("cancels a running download via DELETE and returns to the options", async () => {
+		vi.useFakeTimers();
+		try {
+			let currentJob: JobSource | null = null;
+			let deletes = 0;
+			installFetch({
+				status: () => currentJob,
+				post: () => {
+					currentJob = {
+						kind: "fetch",
+						phase: "fetch-chunks",
+						startedAt: Date.now(),
+						done: 104_857_600,
+						total: 629_145_600,
+						ratePerSecond: 0,
+						etaSeconds: 0,
+						failedBatches: 0,
+						model: "prebuilt",
+						error: null,
+					};
+					return { ok: true, body: { ok: true, alreadyPresent: false } };
+				},
+				del: () => {
+					deletes += 1;
+					return { ok: true, body: { ok: true, cancelling: true } };
+				},
+			});
+			renderCard({ context: "onboarding", indexPresent: false });
+			await settle();
+			await clickButton(/A — Download prebuilt vectors/);
+			await settle();
+
+			await clickButton(/Cancel/);
+			expect(deletes).toBe(1);
+
+			currentJob = {
+				kind: "fetch",
+				phase: "cancelled",
+				startedAt: Date.now(),
+				done: 104_857_600,
+				total: 629_145_600,
+				ratePerSecond: 0,
+				etaSeconds: 0,
+				failedBatches: 0,
+				model: "prebuilt",
+				error: "Docs-index download cancelled.",
+			};
+			await vi.advanceTimersByTimeAsync(2000);
+			await settle();
+
+			expect(screen.getByText(/Cancelled — nothing was changed\./)).toBeTruthy();
+			expect(screen.getByRole("button", { name: /A — Download prebuilt vectors/ })).toBeTruthy();
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 });
 
@@ -318,7 +426,7 @@ describe("option B — rebuild locally with live progress", () => {
 			await clickButton(/B — Build vectors locally/);
 			await settle();
 
-			expect(screen.getByText(/fetching chunks/)).toBeTruthy();
+			expect(screen.getByText(/downloading/)).toBeTruthy();
 
 			currentJob = embedJob({ phase: "finalize", done: 38_380, total: 38_380 });
 			await vi.advanceTimersByTimeAsync(2000);

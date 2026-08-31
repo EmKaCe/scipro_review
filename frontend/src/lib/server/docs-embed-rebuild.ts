@@ -43,6 +43,19 @@ import { loadSettings, resolveEmbeddingModel } from "$lib/server/settings";
 import { hasApiKey } from "$lib/server/api-key-store";
 import { claimJobSlot, releaseJobSlot } from "./onboarding-docs-index";
 import { getDataDir } from "./metadata";
+import {
+	getLiveJob,
+	getDocsEmbedJobStatus as getDocsEmbedJobStatusShared,
+	requestCancel,
+	setLiveJob,
+	readJobState,
+	writeJobState,
+	type DocsEmbedJobState,
+	type JobKind,
+	type JobPhase,
+} from "./docs-embed-job-state";
+
+export type { DocsEmbedJobState, JobKind, JobPhase } from "./docs-embed-job-state";
 
 // ---------------------------------------------------------------------------
 // Constants (design doc §2.5)
@@ -73,34 +86,12 @@ export const RATE_LIMIT_ABORT_CONSECUTIVE = 5;
 const STAGING_SUBDIR = ".embed-staging";
 const INDEX_JSON = "docs-index.json";
 const VECTORS_BIN = "docs-vectors.bin";
-export const STATE_FILENAME = ".docs-embed-job.json";
 
 // ---------------------------------------------------------------------------
-// Public shapes (the API + status contracts, design doc §4.1)
+// Public shapes (the API + status contracts, design doc §4.1) — re-exported
+// from the shared job-state module so the download (fetch) and embed jobs
+// speak ONE status contract.
 // ---------------------------------------------------------------------------
-
-export type JobKind = "fetch" | "embed";
-export type JobPhase =
-	"fetch-chunks" | "embed" | "finalize" | "done" | "failed" | "cancelled" | "interrupted";
-
-/** Shape served by GET /api/onboarding/docs-embeddings/status (doc §4.1). */
-export interface DocsEmbedJobState {
-	kind: JobKind;
-	phase: JobPhase;
-	startedAt: number;
-	/** Embedded chunk count (embed) / files done (fetch). */
-	done: number;
-	/** Total chunks expected (embed) / files (fetch). */
-	total: number;
-	/** Sliding-window rate, texts/second (0 until measurable). */
-	ratePerSecond: number;
-	/** Whole seconds remaining at the current rate (0 when rate is 0). */
-	etaSeconds: number;
-	failedBatches: number;
-	/** Embedding model the job resolved at POST time (snapshot). */
-	model: string;
-	error: string | null;
-}
 
 /** Contentions (HTTP 409). */
 export class DocsEmbedJobInProgressError extends Error {
@@ -135,31 +126,17 @@ function getDataDirSafe(): string {
 // Job-state persistence (NOT module memory — refresh + crash must survive)
 // ---------------------------------------------------------------------------
 
-/** This process's live job; the state FILE is the cross-restart truth. */
-let running: { state: DocsEmbedJobState; cancelled: boolean } | null = null;
-
 /** Test hook: drop module state (never mid-job in production). */
 export function __resetDocsEmbedJobForTests(): void {
-	running = null;
+	setLiveJob("embed", null);
 }
 
 async function writeStateFile(dir: string, state: DocsEmbedJobState): Promise<void> {
-	try {
-		await writeFile(path.join(dir, STATE_FILENAME), JSON.stringify(state, null, 1));
-	} catch {
-		// A failed telemetry write must never crash the embed loop; the
-		// in-process state stays authoritative while this process is alive.
-	}
+	await writeJobState(dir, state);
 }
 
 async function readStateFile(dir: string): Promise<DocsEmbedJobState | null> {
-	try {
-		return JSON.parse(
-			await readFile(path.join(dir, STATE_FILENAME), "utf-8"),
-		) as DocsEmbedJobState;
-	} catch {
-		return null;
-	}
+	return readJobState(dir);
 }
 
 async function cleanStaging(dir: string): Promise<void> {
@@ -175,26 +152,18 @@ async function cleanStaging(dir: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 /**
- * GET-status core: the running job, or `interrupted` when a state file
- * exists but no live process owns it (crash recovery, doc §4.1). Never throws.
+ * GET-status core: the running job (either kind), or `interrupted` when a
+ * state file exists but no live process owns it (crash recovery, doc §4.1).
+ * Never throws. Delegates to the shared job-state module so the download
+ * (fetch) and embed jobs answer one coherent status.
  */
 export async function getDocsEmbedJobStatus(): Promise<DocsEmbedJobState | null> {
-	if (running) return running.state;
-	const dir = getIndexDir();
-	const persisted = await readStateFile(dir);
-	if (!persisted) return null;
-	// Terminal phases are the job's own verdict — surface them verbatim.
-	// Only a NON-terminal persisted state (process died mid-embed, doc §5-2)
-	// reads as interrupted.
-	const terminal = ["done", "failed", "cancelled"];
-	return terminal.includes(persisted.phase) ? persisted : { ...persisted, phase: "interrupted" };
+	return getDocsEmbedJobStatusShared();
 }
 
-/** Request cancellation of the running job (checked at batch boundaries). */
+/** Request cancellation of the running embed job (checked at batch boundaries). */
 export function cancelDocsEmbedJob(): boolean {
-	if (!running) return false;
-	running.cancelled = true;
-	return true;
+	return requestCancel("embed");
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +251,7 @@ export async function startDocsEmbedRebuild(options: StartEmbedJobOptions = {}):
 			model: config.model,
 			error: null,
 		};
-		running = { state, cancelled: false };
+		setLiveJob("embed", { state, cancelled: false });
 		await mkdir(path.join(dir, STAGING_SUBDIR), { recursive: true });
 		await writeStateFile(dir, state);
 
@@ -399,11 +368,11 @@ async function runEmbedJob(
 		let recent429 = 0;
 
 		for (let start = 0; start < chunks.length; start += batchSize) {
-			if (running?.cancelled) {
+			if (getLiveJob("embed")?.cancelled) {
 				state.phase = "cancelled";
 				state.error = "Embed rebuild cancelled.";
 				await writeStateFile(dir, state);
-				running = null; // terminal: status reads the state FILE now
+				setLiveJob("embed", null); // terminal: status reads the state FILE now
 				await cleanStaging(dir);
 				return; // finally releases the slot; old index untouched
 			}
@@ -429,7 +398,7 @@ async function runEmbedJob(
 						state.error =
 							"Rate-limited by the embeddings provider — wait a few minutes and retry, or switch providers.";
 						state.phase = "failed";
-						running = null;
+						setLiveJob("embed", null);
 						await writeStateFile(dir, state);
 						await cleanStaging(dir);
 						return;
@@ -442,7 +411,7 @@ async function runEmbedJob(
 					state.error = `Too many failed batches (${state.failedBatches}/${totalBatches}): ${(err as Error).message}`;
 					state.phase = "failed";
 					await writeStateFile(dir, state);
-					running = null; // terminal: status reads the state FILE now
+					setLiveJob("embed", null); // terminal: status reads the state FILE now
 					await cleanStaging(dir);
 					return;
 				}
@@ -501,7 +470,7 @@ async function runEmbedJob(
 		state.phase = "done";
 		state.done = state.total;
 		await writeStateFile(dir, state);
-		running = null; // terminal: status reads the state FILE now
+		setLiveJob("embed", null); // terminal: status reads the state FILE now
 		await cleanStaging(dir);
 	} catch (err) {
 		try {
@@ -514,7 +483,7 @@ async function runEmbedJob(
 		state.error = (err as Error).message;
 		state.phase = "failed";
 		await writeStateFile(dir, state);
-		running = null; // terminal: status reads the state FILE now
+		setLiveJob("embed", null); // terminal: status reads the state FILE now
 		await cleanStaging(dir);
 	}
 }

@@ -29,7 +29,7 @@ import {
 import {
 	DocsIndexDownloadFailedError,
 	DocsIndexDownloadInProgressError,
-	downloadDocsIndex,
+	startDocsIndexDownload,
 } from "$lib/server/onboarding-docs-index";
 import { getDataDir } from "$lib/server/metadata";
 
@@ -74,7 +74,7 @@ export async function POST({ request }: RequestEvent): Promise<Response> {
 
 	if (mode === "download") {
 		try {
-			const result = await downloadDocsIndex();
+			const result = await startDocsIndexDownload();
 			return json(result);
 		} catch (err) {
 			if (err instanceof DocsIndexDownloadInProgressError) throw error(409, err.message);
