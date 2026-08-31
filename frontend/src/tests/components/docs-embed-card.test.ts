@@ -346,7 +346,9 @@ describe("option A — download prebuilt", () => {
 			await settle();
 
 			expect(screen.getByText(/Cancelled — nothing was changed\./)).toBeTruthy();
-			expect(screen.getByRole("button", { name: /A — Download prebuilt vectors/ })).toBeTruthy();
+			expect(
+				screen.getByRole("button", { name: /A — Download prebuilt vectors/ }),
+			).toBeTruthy();
 		} finally {
 			vi.useRealTimers();
 		}

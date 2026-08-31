@@ -514,13 +514,14 @@ describe("onboarding wizard — docs-index step (2.7.0 card inside the shell)", 
 			});
 			// The card's status poll must see the fetch job.
 			const origImpl = fetchMock.getMockImplementation() as
-				| ((url: string, init?: RequestInit) => Promise<Response>)
-				| undefined;
+				((url: string, init?: RequestInit) => Promise<Response>) | undefined;
 			fetchMock.mockImplementation((url: string, init?: RequestInit) => {
 				if (String(url).includes("/api/onboarding/docs-embeddings/status")) {
 					return Promise.resolve(jsonResponse({ job: currentJob }));
 				}
-				return origImpl?.(url, init) ?? Promise.reject(new Error(`unexpected fetch: ${url}`));
+				return (
+					origImpl?.(url, init) ?? Promise.reject(new Error(`unexpected fetch: ${url}`))
+				);
 			});
 			await navigateToDocs();
 			const before = statusCalls();
@@ -739,7 +740,7 @@ describe("onboarding wizard — done step", () => {
 	it("refuses to dismiss while core setup is incomplete (no bounce loop)", async () => {
 		// llm-provider NOT done — the entrypoint redirect would re-fire on
 		// the dashboard, so Finish must refuse instead of stranding the user.
-		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+		fetchMock.mockImplementation((url: string, _init?: RequestInit) => {
 			if (String(url).includes("/api/onboarding/status")) {
 				return Promise.resolve(jsonResponse(statusBody(DEFAULT_ITEMS)));
 			}

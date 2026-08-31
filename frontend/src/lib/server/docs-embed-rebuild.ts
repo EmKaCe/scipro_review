@@ -48,11 +48,8 @@ import {
 	getDocsEmbedJobStatus as getDocsEmbedJobStatusShared,
 	requestCancel,
 	setLiveJob,
-	readJobState,
 	writeJobState,
 	type DocsEmbedJobState,
-	type JobKind,
-	type JobPhase,
 } from "./docs-embed-job-state";
 
 export type { DocsEmbedJobState, JobKind, JobPhase } from "./docs-embed-job-state";
@@ -133,10 +130,6 @@ export function __resetDocsEmbedJobForTests(): void {
 
 async function writeStateFile(dir: string, state: DocsEmbedJobState): Promise<void> {
 	await writeJobState(dir, state);
-}
-
-async function readStateFile(dir: string): Promise<DocsEmbedJobState | null> {
-	return readJobState(dir);
 }
 
 async function cleanStaging(dir: string): Promise<void> {

@@ -269,9 +269,11 @@ export async function startDocsIndexDownload(): Promise<{ ok: true; alreadyPrese
 	// Clean the guard on completion; swallow the rejection here — the
 	// blocking legacy path (downloadDocsIndex) and the status contract
 	// surface failures, this fire-and-forget cleanup must not.
-	void run.finally(() => {
-		if (inFlight === run) inFlight = null;
-	}).catch(() => {});
+	void run
+		.finally(() => {
+			if (inFlight === run) inFlight = null;
+		})
+		.catch(() => {});
 	return { ok: true, alreadyPresent: false };
 }
 

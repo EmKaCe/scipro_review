@@ -25,13 +25,7 @@ export const STATE_FILENAME = ".docs-embed-job.json";
 
 export type JobKind = "fetch" | "embed";
 export type JobPhase =
-	| "fetch-chunks"
-	| "embed"
-	| "finalize"
-	| "done"
-	| "failed"
-	| "cancelled"
-	| "interrupted";
+	"fetch-chunks" | "embed" | "finalize" | "done" | "failed" | "cancelled" | "interrupted";
 
 /** Shape served by GET /api/onboarding/docs-embeddings/status (doc §4.1). */
 export interface DocsEmbedJobState {

@@ -25,7 +25,11 @@ import { POST } from "../../routes/api/onboarding/docs-index/+server";
 // ---------------------------------------------------------------------------
 
 interface FakeChild {
-	child: EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: ReturnType<typeof vi.fn> };
+	child: EventEmitter & {
+		stdout: EventEmitter;
+		stderr: EventEmitter;
+		kill: ReturnType<typeof vi.fn>;
+	};
 	emitStdout: (s: string) => void;
 	emitStderr: (s: string) => void;
 	close: (code: number) => void;

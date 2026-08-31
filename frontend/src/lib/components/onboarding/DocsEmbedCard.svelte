@@ -694,7 +694,11 @@
 						onclick={retry}
 					>
 						<RotateCcw class="h-3.5 w-3.5" />
-						{interrupted ? (choice === "A" ? "Retry download" : "Retry rebuild") : "Retry"}
+						{interrupted
+							? choice === "A"
+								? "Retry download"
+								: "Retry rebuild"
+							: "Retry"}
 					</button>
 					<button
 						type="button"
