@@ -3,7 +3,7 @@
  *
  * Badges degrade gracefully: a model is only badged when its id is present
  * in the LIVE list offered by the instance (never hardcode a recommendation
- * that cannot be honored — see config-map-live-inventory-2026-08-24.md).
+ * that cannot be honored).
  *
  * Mirror rule: keep the id sets in sync with
  * - frontend/src/lib/server/copilot/pipeline/prompts.ts

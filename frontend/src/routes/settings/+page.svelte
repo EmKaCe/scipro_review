@@ -9,7 +9,6 @@
 	import ExecutionAiCard from "$lib/components/settings/execution-ai-card.svelte";
 	import DocsEmbedCard from "$lib/components/onboarding/DocsEmbedCard.svelte";
 	import GradingConfigCard from "$lib/components/settings/grading-config-card.svelte";
-	import ConfigurationMapCard from "$lib/components/settings/configuration-map-card.svelte";
 	import AboutCard from "$lib/components/settings/about-card.svelte";
 	import DangerZoneCard from "$lib/components/settings/danger-zone-card.svelte";
 	import ListChecks from "@lucide/svelte/icons/list-checks";
@@ -41,7 +40,6 @@
 			<ExecutionAiCard />
 			<DocsEmbedCard context="settings" />
 			<GradingConfigCard />
-			<ConfigurationMapCard />
 			<a
 				href={`${base}/onboarding`}
 				class="group flex items-center justify-between gap-4 rounded-[var(--radius)] border border-border bg-card p-5 shadow-sm transition-colors hover:border-primary/40"

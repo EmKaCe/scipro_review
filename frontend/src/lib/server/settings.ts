@@ -284,7 +284,7 @@ function positiveNumber(value: unknown, fallback: number): number {
  * default (`e5-mistral-7b-instruct`, the model of the downloadable prebuilt
  * corpus, so a fresh deploy with no config stays option-A-compatible).
  *
- * Used by the docs-embed build job and the config-map row. A blank value
+ * Used by the docs-embed build job. A blank value
  * behaves like an absent one (never "wins" over the next chain link).
  */
 export function resolveEmbeddingModel(settings: Pick<AppSettings, "llm">): string {

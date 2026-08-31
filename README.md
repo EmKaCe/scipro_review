@@ -194,8 +194,7 @@ Per-assignment content is edited in the assignment editor. Only
 deployment-level env vars and a few read-only code constants live elsewhere:
 standing up the webapp is *not* a six-place exercise.
 
-Everything below is grouped by *purpose* — the same four groups the in-app **Configuration map**
-card uses:
+Everything below is grouped by *purpose*:
 
 | Group | What it covers | Where you change it | When it applies |
 | --- | --- | --- | --- |
@@ -203,10 +202,6 @@ card uses:
 | **Assignment editor** | Rubric criteria (`data/criteria/<id>.yaml`), scoring config (`data/scoring/<id>.yaml`), assignment metadata (`data/assignments.yaml`) | Assignment editor (Settings → Assignments) | Next request / page load |
 | **Deployment environment** | Env vars — `ADAPTER`, `PORT`, `ORIGIN`, `DATA_DIR`, executor, LLM fallbacks, `PRE_EVAL_CRITIQUE` | `.env` / environment (tables below) | Restart required |
 | **Read-only constants** | Engineering defaults: concurrency 2, injection threshold 0.7, `TEXTAREA_MIN_CHARS` 20, rich-output caps | Source code (table below) | Rebuild + restart |
-
-> The Settings page's **Configuration map** card reports live values for everything below:
-> settings/assignment rows link to the editor cards that own them; env and code rows are read-only
-> there (env changes need a restart, code constants need a rebuild).
 
 Two of the sources below (`data/settings.yaml` and `data/grading_config.yaml`)
 are edited from the Settings page — the Setup wizard writes the same store on
@@ -419,9 +414,7 @@ default, `--apply` to write.)
 
 ### Read-only code constants
 
-Engineering defaults a teacher never adjusts. The in-app Configuration map marks these read-only;
-to change one, edit the source (or the env default) and rebuild + restart. These no longer appear as
-individual rows in the app UI — this table is their home:
+Engineering defaults a teacher never adjusts. To change one, edit the source (or the env default) and rebuild + restart. These do not appear as rows in the app UI — this table is their home:
 
 | Constant | Value | Where it lives |
 | --- | --- | --- |
@@ -434,8 +427,7 @@ individual rows in the app UI — this table is their home:
 
 **Rule of thumb:** **app-level** changes (llm/executor/copilot, env, localStorage, in-code) go on the
 Settings page; **assignment-level** changes (criteria, scoring, per-assignment metadata) go in the
-assignment editor. The Settings page's Configuration map reports the live values of every row in the
-four groups above — read it to see what this deployment is actually running.
+assignment editor.
 
 ### Agent Configuration
 
