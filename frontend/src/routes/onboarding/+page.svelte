@@ -222,6 +222,21 @@
 		dismissing = true;
 		dismissError = null;
 		try {
+			// Dismissing while core setup is still incomplete would strand
+			// the teacher on the dashboard: the entrypoint redirect re-fires
+			// (dismiss only suppresses when core is complete) and the app
+			// bounces straight back here. Refuse the dismiss and point at
+			// the missing core step instead.
+			const coreIds = new Set(["create-assignment", "wire-scoring", "llm-provider"]);
+			const coreIncomplete = items.some((i) => coreIds.has(i.id) && i.done !== true);
+			if (coreIncomplete) {
+				const missing = items
+					.filter((i) => coreIds.has(i.id) && i.done !== true)
+					.map((i) => i.id);
+				dismissError = `Finish is disabled until the core setup is complete (${missing.join(", ")}).`;
+				dismissing = false;
+				return;
+			}
 			const resp = await fetch(`${base}/api/onboarding/dismiss`, { method: "POST" });
 			if (!resp.ok) {
 				const body = (await resp.json().catch(() => null)) as { error?: string } | null;
@@ -288,6 +303,8 @@
 	let models: ModelInfo[] = $state([]);
 	let modelsSource = $state<"live" | "static" | null>(null);
 	let selectedModel = $state("");
+	let llmBaseUrl = $state("");
+	let llmTimeoutMs = $state(60_000);
 
 	/** Load the current settings + model list once for the llm-provider picker. */
 	$effect(() => {
@@ -295,7 +312,11 @@
 		async function load() {
 			try {
 				const settings = await fetchSettings();
-				if (!cancelled) selectedModel = settings.llm.model;
+				if (!cancelled) {
+					selectedModel = settings.llm.model;
+					llmBaseUrl = settings.llm.baseUrl;
+					llmTimeoutMs = settings.llm.timeoutMs;
+				}
 			} catch {
 				// The picker still works with a default model; the save path
 				// re-reads settings itself.
@@ -330,13 +351,20 @@
 				await saveApiKey(key);
 				llmApiKey = "";
 			}
-			if (selectedModel) {
-				// Model save uses the full PUT (PATCH only accepts { apiKey });
-				// re-read current settings so the save never clobbers other edits.
-				const settings = await fetchSettings();
-				const next = { ...settings, llm: { ...settings.llm, model: selectedModel } };
-				await saveSettings(next);
-			}
+			// Full PUT so base URL / timeout / model changes all persist
+			// together; re-read current settings so the save never clobbers
+			// other edits.
+			const settings = await fetchSettings();
+			const next = {
+				...settings,
+				llm: {
+					...settings.llm,
+					baseUrl: llmBaseUrl.trim() || settings.llm.baseUrl,
+					model: selectedModel || settings.llm.model,
+					timeoutMs: llmTimeoutMs,
+				},
+			};
+			await saveSettings(next);
 			llmSuccess = "LLM provider configured — your setup has been re-evaluated.";
 			await refreshStatus();
 		} catch (err) {
@@ -583,6 +611,38 @@
 										</option>
 									{/each}
 								</select>
+							</div>
+							<div class="min-w-0 flex-1">
+								<label
+									class="mb-1 block text-[11px] font-medium text-muted-foreground"
+									for="llm-base-url"
+								>
+									Base URL
+								</label>
+								<input
+									id="llm-base-url"
+									type="url"
+									class="input w-full"
+									placeholder="https://chat.kiconnect.nrw/api/v1"
+									autocomplete="off"
+									bind:value={llmBaseUrl}
+								/>
+							</div>
+							<div class="min-w-0 flex-1">
+								<label
+									class="mb-1 block text-[11px] font-medium text-muted-foreground"
+									for="llm-timeout"
+								>
+									Timeout (ms)
+								</label>
+								<input
+									id="llm-timeout"
+									type="number"
+									min="1000"
+									step="1000"
+									class="input w-full"
+									bind:value={llmTimeoutMs}
+								/>
 							</div>
 						</div>
 						<div class="mt-2 flex flex-wrap items-center gap-2">

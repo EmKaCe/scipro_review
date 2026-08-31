@@ -316,6 +316,8 @@ describe("onboarding wizard — provider step (B2)", () => {
 
 		expect(screen.getByLabelText("KI Connect API key")).toBeTruthy();
 		expect(screen.getByLabelText("Model")).toBeTruthy();
+		expect(screen.getByLabelText("Base URL")).toBeTruthy();
+		expect(screen.getByLabelText("Timeout (ms)")).toBeTruthy();
 		expect(screen.getByRole("button", { name: /Save key & model/ })).toBeTruthy();
 
 		await waitFor(() => expect(mockedFetchModels).toHaveBeenCalled());
@@ -326,7 +328,19 @@ describe("onboarding wizard — provider step (B2)", () => {
 		expect(fast?.value).toBe("qwen3-30b-a3b-instruct-2507");
 	});
 
-	it("saves the key (PATCH) + model (PUT) and refreshes the status", async () => {
+	it("pre-fills base URL and timeout from the current settings", async () => {
+		await renderPage();
+		await startFresh();
+
+		await waitFor(() => {
+			expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+				"https://example.test/v1",
+			);
+		});
+		expect((screen.getByLabelText("Timeout (ms)") as HTMLInputElement).value).toBe("60000");
+	});
+
+	it("saves the key (PATCH) + model/base-url/timeout (PUT) and refreshes the status", async () => {
 		await renderPage();
 		await startFresh();
 
@@ -335,13 +349,23 @@ describe("onboarding wizard — provider step (B2)", () => {
 		});
 		const modelSelect = screen.getByLabelText("Model") as HTMLSelectElement;
 		await fireEvent.change(modelSelect, { target: { value: "openai-gpt-oss-120b" } });
+		await fireEvent.input(screen.getByLabelText("Base URL"), {
+			target: { value: "https://other.test/v1" },
+		});
+		await fireEvent.input(screen.getByLabelText("Timeout (ms)"), {
+			target: { value: "90000" },
+		});
 
 		await fireEvent.click(screen.getByRole("button", { name: /Save key & model/ }));
 
 		await waitFor(() => expect(mockedSaveApiKey).toHaveBeenCalledWith("sk-test-123"));
 		await waitFor(() => expect(mockedSaveSettings).toHaveBeenCalled());
 		expect(mockedSaveSettings.mock.calls[0]?.[0]).toMatchObject({
-			llm: { model: "openai-gpt-oss-120b" },
+			llm: {
+				model: "openai-gpt-oss-120b",
+				baseUrl: "https://other.test/v1",
+				timeoutMs: 90000,
+			},
 		});
 	});
 
@@ -652,5 +676,38 @@ describe("onboarding wizard — done step", () => {
 				(init as RequestInit | undefined)?.method === "POST",
 		);
 		expect(dismissCalls.length).toBe(1);
+	});
+
+	it("refuses to dismiss while core setup is incomplete (no bounce loop)", async () => {
+		// llm-provider NOT done — the entrypoint redirect would re-fire on
+		// the dashboard, so Finish must refuse instead of stranding the user.
+		fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+			if (String(url).includes("/api/onboarding/status")) {
+				return Promise.resolve(jsonResponse(statusBody(DEFAULT_ITEMS)));
+			}
+			if (String(url).includes("/api/executor/health")) {
+				return Promise.resolve(jsonResponse(EXECUTOR_HEALTH_OK));
+			}
+			return Promise.reject(new Error(`unexpected fetch: ${url}`));
+		});
+		await renderPage();
+		await startFresh();
+		await nextStep(); // provider → docs-index
+		await nextStep(); // docs-index → executor
+		await nextStep(); // executor → seed
+		await nextStep(); // seed → done
+
+		await fireEvent.click(screen.getByRole("button", { name: /Finish & open submissions/ }));
+
+		expect(
+			await screen.findByText(/Finish is disabled until the core setup is complete/),
+		).toBeTruthy();
+		expect(nav.goto).not.toHaveBeenCalled();
+		const dismissCalls = fetchMock.mock.calls.filter(
+			([u, init]) =>
+				String(u).includes("/api/onboarding/dismiss") &&
+				(init as RequestInit | undefined)?.method === "POST",
+		);
+		expect(dismissCalls.length).toBe(0);
 	});
 });

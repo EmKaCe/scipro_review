@@ -1,14 +1,13 @@
 // @vitest-environment node
 /**
- * @file Root-layout teacher entrypoint redirect (2.8.0-w2).
+ * @file Root-layout teacher entrypoint redirect (2.8.0-w2, gate fixed 2026-08-31).
  *
- * The teacher build sends users to /onboarding until the wizard was
- * dismissed once (GET /api/onboarding/dismiss → { dismissed }). Setup
- * completeness deliberately does NOT gate the redirect: a pre-provisioned
- * install (existing data dir, tracked config already wired) would never
- * see the wizard otherwise — the "show once per fresh setup" semantics
- * live entirely in the dismiss flag. Any fetch failure resolves {} — a
- * broken dismiss endpoint must never block the app.
+ * The teacher build sends users to /onboarding until the CORE setup is
+ * complete (create-assignment + wire-scoring + llm-provider). The dismiss
+ * flag is deliberately NOT consulted: a dismissed-but-incomplete install
+ * (stale wizard_state.json, dismissed before the API key was saved) must
+ * still land on the wizard, otherwise the teacher is stranded on the
+ * dashboard with a misconfiguration banner and no way back.
  *
  * Mocks: $app/environment (dev) + $app/paths (base) via vi.mock;
  * `__TEACHER_MODE__` via vi.stubGlobal (vitest applies no define — the
@@ -38,13 +37,27 @@ function loadEvent(path = "/"): Parameters<typeof load>[0] {
 	return { url: new URL(`http://localhost${path}`) } as Parameters<typeof load>[0];
 }
 
-/** Script the dismiss read. */
-function scriptDismiss(dismissed: boolean): void {
+/** Core-complete status payload (all three gating items done). */
+const CORE_COMPLETE_ITEMS = [
+	{ id: "create-assignment", done: true },
+	{ id: "wire-scoring", done: true },
+	{ id: "llm-provider", done: true },
+	{ id: "docs-index", done: false },
+	{ id: "first-pipeline", done: false },
+];
+
+/** Core-incomplete status payload (llm-provider missing). */
+const CORE_INCOMPLETE_ITEMS = CORE_COMPLETE_ITEMS.map((i) =>
+	i.id === "llm-provider" ? { ...i, done: false } : i,
+);
+
+/** Script the status probe the redirect consults. */
+function scriptStatus(statusItems: unknown): void {
 	const fetchMock = vi.mocked(globalThis.fetch);
 	fetchMock.mockImplementation((url: string | URL | Request) => {
 		const u = String(url);
-		if (u.includes("/api/onboarding/dismiss"))
-			return Promise.resolve(jsonResponse({ dismissed }));
+		if (u.includes("/api/onboarding/status"))
+			return Promise.resolve(jsonResponse({ items: statusItems }));
 		return Promise.reject(new Error(`unexpected fetch: ${u}`));
 	});
 }
@@ -67,8 +80,8 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe("root layout — teacher entrypoint redirect (2.8.0-w2)", () => {
-	it("(a) teacher + not dismissed → redirects to /onboarding", async () => {
-		scriptDismiss(false);
+	it("(a) teacher + core incomplete → redirects to /onboarding", async () => {
+		scriptStatus(CORE_INCOMPLETE_ITEMS);
 
 		await expect(load(loadEvent("/submissions"))).rejects.toMatchObject({
 			status: 307,
@@ -76,28 +89,37 @@ describe("root layout — teacher entrypoint redirect (2.8.0-w2)", () => {
 		});
 	});
 
-	it("(b) dismissed:true → no redirect (the once-per-setup semantics)", async () => {
-		scriptDismiss(true);
-
-		await expect(load(loadEvent("/submissions"))).resolves.toEqual({});
-	});
-
-	it("(b2) dismissed:true → no redirect EVEN when setup is fully complete", async () => {
-		// The pre-provisioned-install regression: an existing configured
-		// data dir must not suppress the wizard's first visit.
-		scriptDismiss(true);
+	it("(b) core complete → no redirect (pre-provisioned install)", async () => {
+		// A fully wired data dir (tracked config + env key) must not be
+		// forced through the wizard — completeness alone is enough.
+		scriptStatus(CORE_COMPLETE_ITEMS);
 
 		await expect(load(loadEvent("/submissions"))).resolves.toEqual({});
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 	});
 
-	it("(c) dismiss probe network failure → no redirect (never block on a broken endpoint)", async () => {
+	it("(c) core incomplete → redirects EVEN when dismissed (stale-dismiss regression)", async () => {
+		// The 2026-08-31 fix: a stale wizard_state.json (dismissed:true)
+		// must never suppress the wizard while core setup is incomplete.
+		// The dismiss endpoint is not even consulted by the redirect.
+		scriptStatus(CORE_INCOMPLETE_ITEMS);
+
+		await expect(load(loadEvent("/submissions"))).rejects.toMatchObject({
+			status: 307,
+			location: "/onboarding",
+		});
+		// Only the status probe fires — no dismiss fetch on the redirect path.
+		const urls = fetchMock.mock.calls.map(([u]) => String(u));
+		expect(urls.every((u) => u.includes("/api/onboarding/status"))).toBe(true);
+	});
+
+	it("(d) status probe network failure → no redirect (never block on a broken endpoint)", async () => {
 		fetchMock.mockRejectedValue(new Error("connection refused"));
 
 		await expect(load(loadEvent("/submissions"))).resolves.toEqual({});
 	});
 
-	it("(d) dismiss endpoint returns non-ok → no redirect", async () => {
+	it("(d2) status endpoint returns non-ok → no redirect", async () => {
 		fetchMock.mockImplementation(() => Promise.resolve(new Response("boom", { status: 500 })));
 
 		await expect(load(loadEvent("/submissions"))).resolves.toEqual({});
@@ -113,7 +135,7 @@ describe("root layout — teacher entrypoint redirect (2.8.0-w2)", () => {
 			const result = await load(loadEvent(path));
 			expect(result).toEqual({});
 		}
-		// The URL guard short-circuits BEFORE any dismiss fetch.
+		// The URL guard short-circuits BEFORE any probe fetch.
 		expect(fetchMock).not.toHaveBeenCalled();
 	});
 

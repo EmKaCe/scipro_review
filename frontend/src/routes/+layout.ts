@@ -2,29 +2,36 @@
  * @file Root layout — teacher entrypoint redirect (2.8.0 wizard).
  *
  * The teacher build (__TEACHER_MODE__) lands on /onboarding until the
- * wizard is dismissed once — dismissal is the ONLY gate:
+ * CORE setup is complete:
  *
- *   redirect = teacher && !dev && dismissed !== true
+ *   redirect = teacher && !dev && !coreComplete
  *
- * Setup completeness deliberately does NOT gate the redirect: a
- * pre-provisioned install (restored backup, docker compose with a carried
- * over data/ directory, or a clone whose tracked config is already
- * complete) would otherwise never see the wizard — and the dismiss
- * semantics ("show once per fresh setup") make completeness the wrong
- * signal. Once the teacher finishes or skips the wizard, the persisted
- * flag (POST /api/onboarding/dismiss → data/wizard_state.json) means the
- * app opens straight to the dashboard from then on.
+ * Core setup = create-assignment + wire-scoring + llm-provider (the
+ * items that gate real grading). docs-index, executor and first-pipeline
+ * never block the redirect — they are non-blocking steps.
+ *
+ * The persisted dismiss flag (POST /api/onboarding/dismiss →
+ * data/wizard_state.json) is deliberately NOT consulted by the redirect:
+ * a dismissed-but-incomplete install (stale wizard_state.json carried
+ * over from an earlier session, or a wizard dismissed before the API key
+ * was saved) must still land on the wizard — otherwise the teacher is
+ * stranded on the dashboard with a misconfiguration banner and no way
+ * back. This is the regression fixed 2026-08-31: the previous gate was
+ * dismiss-only, so a stale `data/wizard_state.json` (not gitignored at
+ * the time) silently disabled the wizard forever. The flag still exists
+ * as the Done step's "Finish" record, but it no longer controls the
+ * entrypoint.
  *
  * The onboarding route itself and every /api route are exempt (no
  * redirect loop, no interference with API calls). The student/static
  * build (__TEACHER_MODE__ false) and dev mode return {} immediately.
  *
- * Probes are wrapped defensively: any network error or non-ok response
- * resolves {} — a broken status/dismiss endpoint must never block the
- * app (and must never trap the user OUT of the wizard either, so a
- * dismissed-but-unverifiable state also redirects — the wizard is
- * re-scrollable/finishable, cost is one extra visit). Each navigation
- * costs two GETs; acceptable per the 2.8.0 plan.
+ * The status probe is wrapped defensively: any network error or non-ok
+ * response resolves {} — a broken status endpoint must never block the
+ * app (and must never trap the user OUT of the wizard either, so an
+ * unverifiable state also redirects — the wizard is re-scrollable/
+ * finishable, cost is one extra visit). Each navigation costs one GET;
+ * acceptable per the 2.8.0 plan.
  */
 import { dev } from "$app/environment";
 import { base } from "$app/paths";
@@ -44,6 +51,9 @@ function teacherMode(): boolean {
 	return typeof __TEACHER_MODE__ !== "undefined" && __TEACHER_MODE__;
 }
 
+/** The status items that gate the redirect (core grading setup). */
+const CORE_ITEMS = ["create-assignment", "wire-scoring", "llm-provider"] as const;
+
 export async function load(event: LoadEvent): Promise<Record<string, never>> {
 	if (!teacherMode() || dev) return {};
 
@@ -59,11 +69,17 @@ export async function load(event: LoadEvent): Promise<Record<string, never>> {
 	}
 
 	try {
-		const dismissResp = await fetch(`${base}/api/onboarding/dismiss`);
-		if (!dismissResp.ok) throw new Error(`dismiss probe failed (${dismissResp.status})`);
+		const statusResp = await fetch(`${base}/api/onboarding/status`);
+		if (!statusResp.ok) throw new Error(`status probe failed (${statusResp.status})`);
 
-		const dismiss = (await dismissResp.json()) as { dismissed?: boolean };
-		if (dismiss.dismissed !== true) {
+		const status = (await statusResp.json()) as {
+			items?: { id: string; done: boolean | null }[];
+		};
+
+		const byId = new Map((status.items ?? []).map((i) => [i.id, i.done === true]));
+		const coreComplete = CORE_ITEMS.every((id) => byId.get(id) === true);
+
+		if (!coreComplete) {
 			throw redirect(307, `${base}/onboarding`);
 		}
 		return {};

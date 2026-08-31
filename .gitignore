@@ -14,6 +14,9 @@ data/materials/
 # Offline docs vector index (~680 MB, runtime artifact) — never committed
 data/docs-index/
 
+# Wizard dismiss flag (per-machine runtime state) — never committed
+data/wizard_state.json
+
 # Exception: criteria, grading config, and registry stay in git
 !data/assignments.yaml
 !data/grading_config.yaml
