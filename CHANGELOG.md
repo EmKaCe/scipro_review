@@ -9,6 +9,63 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.9.0] - 2026-08-31
+
+### Added
+
+- **Offline docs-index setup — three options (2.7.0)**: the docs leg can be
+  A — download the prebuilt release corpus (~600 MB, no API key), B — re-embed
+  the released chunks locally against the configured endpoint, or C — skip
+  vectors and stay BM25-only. A new `docs-embed-rebuild` job runner writes
+  staged vectors at deterministic offsets and swaps them in atomically;
+  single-flight is shared between download and rebuild (409 on contention);
+  crashes surface as an `interrupted` retryable state. Manifest-driven query
+  embedding mirrors the `e5-` prefix, and the embedding model is optional
+  (`llm.embedding_model`, settings → env → built-in default).
+- **Onboarding setup wizard (2.8.0)**: teacher builds land on a step-shell
+  wizard (`/onboarding`) until core setup is complete — fresh-vs-restore
+  fork, in-place LLM provider (key + model + base URL + timeout), docs-index
+  install, live executor health probe, one-click reference-assignment seed
+  (verify + enable the bundled `soil_contamination`), and a non-blocking
+  "you're done" closing step. The wizard reuses the existing restore /
+  settings / docs-embeddings endpoints; only the seed endpoint, the executor
+  health probe, and the persisted dismiss record are new. `.env` was demoted
+  to deployment-only documentation — runtime provider config lives in the
+  settings store.
+- **Real download progress (2.8.1)**: the prebuilt download is a tracked job
+  like the embed rebuild — the fetch script streams bytes and the card shows
+  MB downloaded / total, MB/s, ETA, a progress bar, and a Cancel button.
+  Both jobs share one status contract (`GET
+  /api/onboarding/docs-embeddings/status`), including crash recovery.
+- Executor: pytest declared as a dev dependency (`uv add --dev`).
+- Release workflow now builds and uploads the student/teacher tarballs
+  (`release.yml`), and the docs-index release carries a regenerated manifest
+  (38,380 chunks, correct sha256s, stale-manifest cross-checks).
+
+### Changed
+
+- **BM25 gate calibrated (fix)**: `docs-rag` compared its semantic-embed
+  score against a normalized assumption; live measurement showed raw BM25
+  scores scale with query length, so the semantic leg never fired. Threshold
+  moved to raw-score space (150) with an env override and a kept eval
+  harness — semantic retrieval now actually runs on real queries.
+- **Chunks-only fetch**: `fetch-docs-index.mjs` gained `--chunks-only`
+  (corpus without the 600 MB vectors bin) for the local re-embed path, with
+  stale-manifest guards (chunk counts cross-checked after sha256).
+- **Settings page cleanup**: the read-only "Configuration map" card was
+  removed — every file-backed row linked to an editor already on the same
+  page, env rows were read-only by nature, and values went stale between
+  manual refreshes. The page keeps the real editors (Execution & AI, Docs
+  index, Grading, Data management, Danger zone); the README's purpose-grouped
+  tables remain the documentation home.
+- **Entrypoint redirect fix**: the wizard redirect previously consulted only
+  the persisted dismiss flag, so a stale `data/wizard_state.json` silently
+  disabled the wizard and stranded the teacher on the dashboard. The gate now
+  keys on core completeness (assignment + scoring + LLM provider) — dismiss
+  never suppresses the wizard while setup is incomplete; the runtime state
+  file is gitignored. Root-path precedence over the `/ → /submissions` page
+  redirect is pinned by a regression test.
+
 ## [2.6.1] - 2026-08-30
 
 ### Fixed
