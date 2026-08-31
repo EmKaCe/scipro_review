@@ -10,13 +10,13 @@ importers:
     dependencies:
       '@ai-sdk/openai-compatible':
         specifier: ^3.0.34
-        version: 3.0.40(zod@4.5.2)
+        version: 3.0.40(zod@4.5.4)
       '@mastra/core':
         specifier: ^1.63.2
-        version: 1.63.2(zod@4.5.2)
+        version: 1.63.2(zod@4.5.4)
       '@mastra/memory':
         specifier: ^1.28.1
-        version: 1.28.1(@mastra/core@1.63.2(zod@4.5.2))
+        version: 1.28.1(@mastra/core@1.63.2(zod@4.5.4))
       '@tiptap/core':
         specifier: ^3.30.2
         version: 3.30.5(@tiptap/pm@3.30.5)
@@ -54,8 +54,8 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       zod:
-        specifier: ^4.4.3
-        version: 4.5.2
+        specifier: ^4.5.4
+        version: 4.5.4
     devDependencies:
       '@eslint/compat':
         specifier: ^2.1.0
@@ -3032,8 +3032,8 @@ packages:
   zod-from-json-schema@0.5.6:
     resolution: {integrity: sha512-U33AJ7ZWS6y9XNSzMWcdy8hRAvZmWhTtpYJu0SXPT5AArbc9nq2ur7Magzmn5RF9KBV4b3FP0nCpmqqlfXlR9w==}
 
-  zod@4.5.2:
-    resolution: {integrity: sha512-XkYXCol10+ba/6F/cueWV+TezUeOqXW0hdeJt5CdXjTYeAgAQg5N03RQdJ80mhfFE72+pblvYMW4wy2Qp4Qbrg==}
+  zod@4.5.4:
+    resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
@@ -3049,42 +3049,42 @@ snapshots:
       jose: 6.2.10
       uuid: 11.1.1
 
-  '@ai-sdk/openai-compatible@3.0.40(zod@4.5.2)':
+  '@ai-sdk/openai-compatible@3.0.40(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 4.0.8
-      '@ai-sdk/provider-utils': 5.0.33(zod@4.5.2)
-      zod: 4.5.2
+      '@ai-sdk/provider-utils': 5.0.33(zod@4.5.4)
+      zod: 4.5.4
 
-  '@ai-sdk/provider-utils@3.0.30(zod@4.5.2)':
+  '@ai-sdk/provider-utils@3.0.30(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 2.0.3
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.1
-      zod: 4.5.2
+      zod: 4.5.4
 
-  '@ai-sdk/provider-utils@4.0.40(zod@4.5.2)':
+  '@ai-sdk/provider-utils@4.0.40(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 3.0.14
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.1
-      zod: 4.5.2
+      zod: 4.5.4
 
-  '@ai-sdk/provider-utils@5.0.13(zod@4.5.2)':
+  '@ai-sdk/provider-utils@5.0.13(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 4.0.4
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
-      zod: 4.5.2
+      zod: 4.5.4
 
-  '@ai-sdk/provider-utils@5.0.33(zod@4.5.2)':
+  '@ai-sdk/provider-utils@5.0.33(zod@4.5.4)':
     dependencies:
       '@ai-sdk/provider': 4.0.8
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.29.0
-      zod: 4.5.2
+      zod: 4.5.4
 
   '@ai-sdk/provider@2.0.3':
     dependencies:
@@ -3324,24 +3324,24 @@ snapshots:
     dependencies:
       '@lukeed/csprng': 1.1.0
 
-  '@mastra/core@1.63.2(zod@4.5.2)':
+  '@mastra/core@1.63.2(zod@4.5.4)':
     dependencies:
       '@a2a-js/sdk-v0_3': '@a2a-js/sdk@0.3.14'
       '@a2a-js/sdk-v1': '@a2a-js/sdk@1.0.1'
-      '@ai-sdk/provider-utils-v5': '@ai-sdk/provider-utils@3.0.30(zod@4.5.2)'
-      '@ai-sdk/provider-utils-v6': '@ai-sdk/provider-utils@4.0.40(zod@4.5.2)'
-      '@ai-sdk/provider-utils-v7': '@ai-sdk/provider-utils@5.0.13(zod@4.5.2)'
+      '@ai-sdk/provider-utils-v5': '@ai-sdk/provider-utils@3.0.30(zod@4.5.4)'
+      '@ai-sdk/provider-utils-v6': '@ai-sdk/provider-utils@4.0.40(zod@4.5.4)'
+      '@ai-sdk/provider-utils-v7': '@ai-sdk/provider-utils@5.0.13(zod@4.5.4)'
       '@ai-sdk/provider-v5': '@ai-sdk/provider@2.0.3'
       '@ai-sdk/provider-v6': '@ai-sdk/provider@3.0.14'
       '@ai-sdk/provider-v7': '@ai-sdk/provider@4.0.4'
       '@isaacs/ttlcache': 2.1.5
       '@lukeed/uuid': 2.0.1
-      '@mastra/schema-compat': 1.3.7(zod@4.5.2)
+      '@mastra/schema-compat': 1.3.7(zod@4.5.4)
       '@modelcontextprotocol/server': 2.0.0
       '@sindresorhus/slugify': 2.2.1
       '@standard-schema/spec': 1.1.0
       ajv: 8.20.0
-      chat: 4.39.0(zod@4.5.2)
+      chat: 4.39.0(zod@4.5.4)
       croner: 10.0.1
       dotenv: 17.4.2
       execa: 9.6.1
@@ -3358,7 +3358,7 @@ snapshots:
       tokenx: 1.6.0
       ws: 8.21.3
       xxhash-wasm: 1.1.0
-      zod: 4.5.2
+      zod: 4.5.4
     transitivePeerDependencies:
       - '@bufbuild/protobuf'
       - '@grpc/grpc-js'
@@ -3370,10 +3370,10 @@ snapshots:
       - utf-8-validate
       - workflow
 
-  '@mastra/memory@1.28.1(@mastra/core@1.63.2(zod@4.5.2))':
+  '@mastra/memory@1.28.1(@mastra/core@1.63.2(zod@4.5.4))':
     dependencies:
-      '@mastra/core': 1.63.2(zod@4.5.2)
-      '@mastra/schema-compat': 1.3.7(zod@4.5.2)
+      '@mastra/core': 1.63.2(zod@4.5.4)
+      '@mastra/schema-compat': 1.3.7(zod@4.5.4)
       async-mutex: 0.5.0
       diff: 8.0.4
       json-schema: 0.4.0
@@ -3381,24 +3381,24 @@ snapshots:
       probe-image-size: 7.4.0
       tokenx: 1.6.0
       xxhash-wasm: 1.1.0
-      zod: 4.5.2
+      zod: 4.5.4
     transitivePeerDependencies:
       - supports-color
 
-  '@mastra/schema-compat@1.3.7(zod@4.5.2)':
+  '@mastra/schema-compat@1.3.7(zod@4.5.4)':
     dependencies:
       json-schema-to-zod: 2.8.1
-      zod: 4.5.2
+      zod: 4.5.4
       zod-from-json-schema: 0.5.6
 
   '@modelcontextprotocol/core@2.0.0':
     dependencies:
-      zod: 4.5.2
+      zod: 4.5.4
 
   '@modelcontextprotocol/server@2.0.0':
     dependencies:
       '@modelcontextprotocol/core': 2.0.0
-      zod: 4.5.2
+      zod: 4.5.4
 
   '@napi-rs/canvas-android-arm64@0.1.80':
     optional: true
@@ -4171,7 +4171,7 @@ snapshots:
 
   character-entities@2.0.2: {}
 
-  chat@4.39.0(zod@4.5.2):
+  chat@4.39.0(zod@4.5.4):
     dependencies:
       '@workflow/serde': 4.1.0-beta.2
       mdast-util-to-string: 4.0.0
@@ -4181,7 +4181,7 @@ snapshots:
       remend: 1.3.1
       unified: 11.0.5
     optionalDependencies:
-      zod: 4.5.2
+      zod: 4.5.4
     transitivePeerDependencies:
       - supports-color
 
@@ -5739,8 +5739,8 @@ snapshots:
 
   zod-from-json-schema@0.5.6:
     dependencies:
-      zod: 4.5.2
+      zod: 4.5.4
 
-  zod@4.5.2: {}
+  zod@4.5.4: {}
 
   zwitch@2.0.4: {}
