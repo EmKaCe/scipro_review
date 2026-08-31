@@ -89,6 +89,17 @@ describe("root layout — teacher entrypoint redirect (2.8.0-w2)", () => {
 		});
 	});
 
+	it("(a2) teacher + core incomplete + root path → onboarding wins over the / → /submissions page redirect", async () => {
+		// The root layout runs BEFORE +page.ts, so a fresh install landing
+		// on / must see the wizard, never the submissions dashboard.
+		scriptStatus(CORE_INCOMPLETE_ITEMS);
+
+		await expect(load(loadEvent("/"))).rejects.toMatchObject({
+			status: 307,
+			location: "/onboarding",
+		});
+	});
+
 	it("(b) core complete → no redirect (pre-provisioned install)", async () => {
 		// A fully wired data dir (tracked config + env key) must not be
 		// forced through the wizard — completeness alone is enough.
