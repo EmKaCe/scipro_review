@@ -61,7 +61,7 @@
 		"vitest": "^4.1.11"
 	},
 	"dependencies": {
-		"@ai-sdk/openai-compatible": "^3.0.34",
+		"@ai-sdk/openai-compatible": "^3.0.41",
 		"@mastra/core": "^1.63.2",
 		"@mastra/memory": "^1.28.1",
 		"@tiptap/core": "^3.30.2",
