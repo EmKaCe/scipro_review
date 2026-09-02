@@ -9,6 +9,19 @@ and this project adheres to the versioning convention in
 
 ## [Unreleased]
 
+## [2.9.1] - 2026-09-02
+
+### Fixed
+
+- **De-redundant evaluation summary**: the legacy export's
+  `evaluation-textbox` re-printed the rubric item count, per-category check
+  counts, and every category note verbatim on top of the checkboxes and
+  textareas that already carry the same content in the same grading JSON —
+  the redundancy teacher feedback (2026-09-01) flagged between the checked
+  bullet points and the free-comment summary. The summary now carries only
+  grade, weighted %, and the per-dimension scores; checkboxes and category
+  textareas remain the sole carriers of the qualitative feedback.
+
 ## [2.9.0] - 2026-08-31
 
 ### Added
