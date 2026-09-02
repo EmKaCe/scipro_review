@@ -250,9 +250,12 @@ describe("generateLegacyGradeJson", () => {
 		expect(output["general-textarea"]).toBe(notes.general_feedback);
 	});
 
-	it("includes an evaluation-textbox with the grade summary and key findings", async () => {
+	it("includes an evaluation-textbox with grade and dimensions but no redundant content", async () => {
 		const output = await generateLegacyGradeJson(
 			makeOptions({
+				rubricSelections: [
+					{ categoryKey: "pandas", optionKey: "merging - proper usage" },
+				],
 				additionalNotes: { pandas: "Merges are correct and well documented." },
 			}),
 		);
@@ -261,8 +264,14 @@ describe("generateLegacyGradeJson", () => {
 		expect(summary).toContain("2026SS_00");
 		expect(summary).toContain("1.7");
 		expect(summary).toContain("87.0");
-		expect(summary).toContain("Key findings");
-		expect(summary).toContain("pandas: Merges are correct and well documented.");
+		// No restatement of the rubric selections or the category notes —
+		// each is already present in its own checkbox/textarea key of the
+		// same JSON (teacher feedback flagged the duplication).
+		expect(summary).not.toContain("Key findings");
+		expect(summary).not.toContain("Rubric:");
+		expect(summary).not.toContain("Checked:");
+		expect(summary).not.toContain("merging - proper usage");
+		expect(summary).not.toContain("Merges are correct");
 	});
 
 	it("does not emit keys that do not exist in the legacy rubric", async () => {

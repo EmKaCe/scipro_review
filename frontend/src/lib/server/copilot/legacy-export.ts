@@ -14,7 +14,8 @@
  *   - N checkbox keys built via buildLegacyId(...) → "checked"
  *   - one textarea key per category that has notes (prefix + "-textarea",
  *     incl. "general-textarea" for general_feedback)
- *   - one "evaluation-textbox" summary (grade, weighted %, key findings)
+ *   - one "evaluation-textbox" summary (grade + weighted % + dimension
+ *     scores; deliberately no restatement of the checkboxes or notes)
  *
  * The grade applies the weighted grading formula
  *   weighted = CQD×4 + CER×4 + AR×4 + SP×4 + CR×1  (max 100)
@@ -206,14 +207,23 @@ function legacyPrefixFor(categoryKey: string): string {
 // Evaluation summary
 // ---------------------------------------------------------------------------
 
-/** Build the "evaluation-textbox" summary paragraph (grade, weighted %, key findings). */
+/**
+ * Build the "evaluation-textbox" summary paragraph: grade, weighted %, and the
+ * per-dimension scores.
+ *
+ * Deliberately does NOT repeat the rubric selections or the category notes:
+ * every checked item already appears as its own checkbox key and every note
+ * already has its own per-category textarea key in the same JSON, so
+ * restating them here duplicated the feedback the professor sees (the
+ * "redundancy between the bullet points and the free comments" reported in
+ * teacher feedback, 2026-09-01). The summary carries only the numbers the
+ * rest of the form does not show.
+ */
 function buildEvaluationTextbox(opts: {
 	submissionId: string;
 	grade: number;
 	weighted: number;
 	dimensions: Record<string, number>;
-	rubricSelections: readonly LegacyRubricSelection[];
-	additionalNotes: Record<string, string>;
 }): string {
 	const dimensionSummary = Object.entries(LEGACY_SLIDER_KEYS)
 		.map(
@@ -222,31 +232,10 @@ function buildEvaluationTextbox(opts: {
 		)
 		.join(", ");
 
-	const lines = [
+	return [
 		`Submission ${opts.submissionId}: Grade ${opts.grade.toFixed(1)} (${opts.weighted.toFixed(1)}% weighted).`,
 		`Dimensions: ${dimensionSummary}.`,
-		`Rubric: ${opts.rubricSelections.length} item(s) checked.`,
-	];
-
-	if (opts.rubricSelections.length > 0) {
-		const counts = new Map<string, number>();
-		for (const selection of opts.rubricSelections) {
-			counts.set(selection.categoryKey, (counts.get(selection.categoryKey) ?? 0) + 1);
-		}
-		lines.push(
-			`Checked: ${[...counts.entries()].map(([key, n]) => `${key} (${n})`).join(", ")}.`,
-		);
-	}
-
-	const notes = Object.entries(opts.additionalNotes);
-	if (notes.length > 0) {
-		lines.push("Key findings:");
-		for (const [categoryKey, note] of notes) {
-			lines.push(`- ${categoryKey}: ${note}`);
-		}
-	}
-
-	return lines.join("\n");
+	].join("\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -306,14 +295,14 @@ export async function generateLegacyGradeJson(
 		output[`${legacyPrefixFor(categoryKey)}-textarea`] = note;
 	}
 
-	// Summary textarea.
+	// Summary textarea — grade and dimension scores only; the rubric
+	// selections and category notes are already represented by their own
+	// checkbox/textarea keys and must not be duplicated here.
 	output["evaluation-textbox"] = buildEvaluationTextbox({
 		submissionId,
 		grade,
 		weighted,
 		dimensions,
-		rubricSelections,
-		additionalNotes,
 	});
 
 	return output;
