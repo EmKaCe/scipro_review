@@ -253,9 +253,7 @@ describe("generateLegacyGradeJson", () => {
 	it("includes an evaluation-textbox with grade and dimensions but no redundant content", async () => {
 		const output = await generateLegacyGradeJson(
 			makeOptions({
-				rubricSelections: [
-					{ categoryKey: "pandas", optionKey: "merging - proper usage" },
-				],
+				rubricSelections: [{ categoryKey: "pandas", optionKey: "merging - proper usage" }],
 				additionalNotes: { pandas: "Merges are correct and well documented." },
 			}),
 		);
